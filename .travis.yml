@@ -1,0 +1,27 @@
+language: go
+sudo: required
+
+go:
+    - 1.4.2
+      #- tip
+env:
+    # alias travis='docker run --rm -v $PWD:/repo -v ~/.travis:/travis andredumas/travis-ci-cli'
+    # travis encrypt -r tgulacsi/ora  'AWS_ACCESS_KEY_ID=...' 'AWS_SECRET_ACCESS_KEY=...+hMtiMhFbmUhu2zB+UyjUdGveIMvWBRIV' 'GO_ORA_DRV_TEST_DB=host:port/sid' GO_ORA_DRV_TEST_USERNAME=... GO_ORA_DRV_TEST_PASSWORD=...
+    - secure: "OksEWQRpzRuwmO3LkXfHk7DQWNUZgeI8iM2DJlCY7g/89gVCKMy4dUyuPAdnU7dYKXIb51KIpwgwM+iOHzRPKRt92CwM3A/lfqOLabZs0JuwOp1LTN9A3fLEU1nqfqyXeSA6+TMy1n3RWm80KCOrH/vwouSPJL3KFITci8jUE6g="
+before_install:
+    - wget https://github.com/barnybug/s3/releases/download/1.0.0/s3-linux-amd64 && mv s3-linux-amd64 s3 && chmod +x s3
+    - ./s3 get s3://tgulacsi-oracle-instantclient/
+    - sudo apt-get install libaio1
+    - sudo dpkg -i oracle-instantclient12.1-basiclite_12.1.0.2.0-2_amd64.deb
+    - sudo dpkg -i oracle-instantclient12.1-devel_12.1.0.2.0-2_amd64.deb
+    - echo /usr/lib/oracle/12.1/client64/lib/ | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig
+    - export CGO_CFLAGS=-I/usr/include/oracle/12.1/client64
+    - export CGO_LDFLAGS=-L/usr/lib/oracle/12.1/client64/lib
+    - mkdir -p $HOME/gopath/src/gopkg.in
+    - ln -s $HOME/gopath/src/github.com/go-goracle/goracle $HOME/gopath/src/gopkg.in/goracle.v1
+install: go get -t gopkg.in/goracle.v1
+before_script:
+    - cd $HOME/gopath/src/gopkg.in/goracle.v1
+    - go test -i . ./oracle/
+script:
+    - go test . ./oracle '-dsn=system/oracle@git.gthomas.eu:49161/xe'

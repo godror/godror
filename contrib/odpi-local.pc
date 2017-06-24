@@ -1,0 +1,12 @@
+prefix=${pcfiledir}/../odpi
+
+libdir=${prefix}/lib
+includedir=${prefix}/include
+srcdir=${prefix}/src
+
+Name: odpi
+Description: ODPI-C library
+Version: 2.0.0-beta4
+Libs: -L${libdir} -lodpic
+Libs.private:
+Cflags: -I${includedir} -I${srcdir}
