@@ -37,7 +37,12 @@ var testDb *sql.DB
 
 func init() {
 	var err error
-	if testDb, err = sql.Open("ora", os.Getenv("GORACLE_DRV_TEST_USERNAME")+"/"+os.Getenv("GORACLE_DRV_TEST_PASSWORD")+"@"+os.Getenv("GORACLE_DRV_TEST_DB")); err != nil {
+	if testDb, err = sql.Open(
+		"goracle",
+		os.Getenv("GORACLE_DRV_TEST_USERNAME")+"/"+
+			os.Getenv("GORACLE_DRV_TEST_PASSWORD")+"@"+
+			os.Getenv("GORACLE_DRV_TEST_DB"),
+	); err != nil {
 		fmt.Println("ERROR")
 		panic(err)
 	}

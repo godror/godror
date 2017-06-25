@@ -23,6 +23,7 @@ install:
     - cd $GOPATH/src/gopkg.in/goracle.v2/odpi
     - make
     - sudo cp -a lib/libodpic.so /usr/local/lib
+    - cd ..
     - sudo ldconfig /usr/local/lib
     - go get -t gopkg.in/goracle.v2
 script:
