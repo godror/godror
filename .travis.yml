@@ -16,16 +16,17 @@ before_install:
     - echo /usr/lib/oracle/12.1/client64/lib/ | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig
     - export CGO_CFLAGS=-I/usr/include/oracle/12.1/client64
     - export CGO_LDFLAGS=-L/usr/lib/oracle/12.1/client64/lib
-    - mkdir -p $HOME/gopath/src/gopkg.in
-    - ln -s $HOME/gopath/src/github.com/go-goracle/goracle $HOME/gopath/src/gopkg.in/goracle.v2
 install:
-    - go get -t gopkg.in/goracle.v2 || echo $?
-    - cd $GOPATH/src/gopkg.in/goracle.v2/odpi
+    - mkdir -p $GOPATH/src/gopkg.in && cd $GOPATH/src/gopkg.in
+    - git clone --depth=50 --branch=master https://github.com/go-goracle/goracle.git goracle.v2
+    - cd goracle.v2
+    - git submodule update --init --recursive
+    - cd odpi
     - make
     - sudo cp -a lib/libodpic.so /usr/local/lib
-    - cd ..
     - sudo ldconfig /usr/local/lib
-    - go get -t gopkg.in/goracle.v2
+    - cd ..
+    - go install .
 script:
     - export GORACLE_DRV_TEST_USERNAME=test
     - export GORACLE_DRV_TEST_PASSWORD=test

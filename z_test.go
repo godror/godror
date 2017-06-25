@@ -208,7 +208,7 @@ func TestExecuteMany(t *testing.T) {
 			"INSERT INTO test_em ("+tc.Name+") VALUES (:1)",
 			tc.Value)
 		if err != nil {
-			t.Fatalf("%d. %+v: %#v", i, tc, err)
+			t.Fatalf("%d. INSERT INTO test_em (%q) VALUES (%+v): %#v", i, tc.Name, tc.Value, err)
 		}
 		ra, err := res.RowsAffected()
 		if err != nil {
