@@ -161,7 +161,7 @@ func (dlw *dpiLobWriter) Close() error {
 }
 
 type DirectLob struct {
-	*conn
+	conn   *conn
 	dpiLob *C.dpiLob
 	opened bool
 }
@@ -175,7 +175,7 @@ func (dl *DirectLob) Close() error {
 	}
 	dl.opened = false
 	if C.dpiLob_closeResource(dl.dpiLob) == C.DPI_FAILURE {
-		return errors.Wrap(dl.getError(), "closeResource")
+		return errors.Wrap(dl.conn.getError(), "closeResource")
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (dl *DirectLob) Close() error {
 func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 	n := C.uint64_t(len(p))
 	if C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
-		return int(n), errors.Wrap(dl.getError(), "readBytes")
+		return int(n), errors.Wrap(dl.conn.getError(), "readBytes")
 	}
 	return int(n), nil
 }
@@ -191,14 +191,14 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 	if !dl.opened {
 		//fmt.Printf("open %p\n", lob)
 		if C.dpiLob_openResource(dl.dpiLob) == C.DPI_FAILURE {
-			return 0, errors.Wrapf(dl.getError(), "openResources(%p)", dl.dpiLob)
+			return 0, errors.Wrapf(dl.conn.getError(), "openResources(%p)", dl.dpiLob)
 		}
 		dl.opened = true
 	}
 
 	n := C.uint64_t(len(p))
 	if C.dpiLob_writeBytes(dl.dpiLob, C.uint64_t(offset)+1, (*C.char)(unsafe.Pointer(&p[0])), n) == C.DPI_FAILURE {
-		return int(n), errors.Wrap(dl.getError(), "writeBytes")
+		return int(n), errors.Wrap(dl.conn.getError(), "writeBytes")
 	}
 	return int(n), nil
 }
