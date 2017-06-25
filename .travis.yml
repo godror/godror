@@ -18,7 +18,13 @@ before_install:
     - export CGO_LDFLAGS=-L/usr/lib/oracle/12.1/client64/lib
     - mkdir -p $HOME/gopath/src/gopkg.in
     - ln -s $HOME/gopath/src/github.com/go-goracle/goracle $HOME/gopath/src/gopkg.in/goracle.v2
-install: go get -t gopkg.in/goracle.v2
+install:
+    - go get -t gopkg.in/goracle.v2 || echo $?
+    - cd $GOPATH/src/gopkg.in/goracle.v2/odpi
+    - make
+    - sudo cp -a lib/libodpic.so /usr/local/lib
+    - sudo ldconfig /usr/local/lib
+    - go get -t gopkg.in/goracle.v2
 script:
     - export GORACLE_DRV_TEST_USERNAME=test
     - export GORACLE_DRV_TEST_PASSWORD=test
