@@ -2,8 +2,7 @@ language: go
 sudo: required
 
 go:
-    - 1.4.2
-      #- tip
+    - 1.9beta1
 env:
     # alias travis='docker run --rm -v $PWD:/repo -v ~/.travis:/travis andredumas/travis-ci-cli'
     # travis encrypt -r tgulacsi/ora  'AWS_ACCESS_KEY_ID=...' 'AWS_SECRET_ACCESS_KEY=...+hMtiMhFbmUhu2zB+UyjUdGveIMvWBRIV' 'GO_ORA_DRV_TEST_DB=host:port/sid' GO_ORA_DRV_TEST_USERNAME=... GO_ORA_DRV_TEST_PASSWORD=...
@@ -18,10 +17,10 @@ before_install:
     - export CGO_CFLAGS=-I/usr/include/oracle/12.1/client64
     - export CGO_LDFLAGS=-L/usr/lib/oracle/12.1/client64/lib
     - mkdir -p $HOME/gopath/src/gopkg.in
-    - ln -s $HOME/gopath/src/github.com/go-goracle/goracle $HOME/gopath/src/gopkg.in/goracle.v1
-install: go get -t gopkg.in/goracle.v1
-before_script:
-    - cd $HOME/gopath/src/gopkg.in/goracle.v1
-    - go test -i . ./oracle/
+    - ln -s $HOME/gopath/src/github.com/go-goracle/goracle $HOME/gopath/src/gopkg.in/goracle.v2
+install: go get -t gopkg.in/goracle.v2
 script:
-    - go test . ./oracle '-dsn=system/oracle@git.gthomas.eu:49161/xe'
+    - export GORACLE_DRV_TEST_USERNAME=test
+    - export GORACLE_DRV_TEST_PASSWORD=test
+    - export GORACLE_DRV_TEST_DB=oracle.gthomas.eu:49161/xe
+    - go test .
