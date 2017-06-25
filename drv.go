@@ -16,10 +16,8 @@
 package goracle
 
 /*
-#cgo CFLAGS: -I./odpi/src -I./odpi/include
-#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl
-
-#include "dpiImpl.h"
+#include <stdlib.h>
+#include <dpi.h>
 */
 import "C"
 
@@ -56,7 +54,7 @@ func init() {
 		panic(err)
 	}
 
-	sql.Register("ora", &d)
+	sql.Register("goracle", &d)
 }
 
 var _ = driver.Driver((*drv)(nil))

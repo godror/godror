@@ -16,10 +16,7 @@
 package goracle
 
 /*
-#cgo CFLAGS: -Iodpi/src -Iodpi/include
-#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl
-
-#include "dpiImpl.h"
+#include <dpi.h>
 */
 import "C"
 import (

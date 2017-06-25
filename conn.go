@@ -17,10 +17,12 @@
 package goracle
 
 /*
-#cgo CFLAGS: -Iodpi/src -Iodpi/include
-#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl
+//#cgo pkg-config: --define-variable=GOPATH=$GOPATH odpi
+#cgo CFLAGS: -I./odpi/include
+#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl -s
 
-#include "dpiImpl.h"
+#include <stdlib.h>
+#include <dpi.h>
 */
 import "C"
 

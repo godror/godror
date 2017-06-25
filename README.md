@@ -12,11 +12,14 @@ It is `go get`'able  with `go get gopkg.in/goracle.v2`
 iff you have
 [ODPI-C](https://www.github.com/oracle/odpi) installed.
 
-Otherwise, after the `go get` failed,
+Otherwise, after the `go get` failed, [Install ODPI](https://oracle.github.io/odpi/doc/installation.html)
 
     cd $GOPATH/src/gopkg.in/goracle.v2/odpi
 	make
+	sudo cp -a lib/libodpic.so /usr/local/lib/
+	sudo ldconfig /usr/local/lib
 	cd ..
+
 	go install
 
 .

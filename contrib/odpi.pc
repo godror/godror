@@ -1,1 +1,12 @@
-odpi-local.pc
+prefix=${GOPATH}/src/gopkg.in/goracle.v2/odpi
+
+libdir=${prefix}/lib
+includedir=${prefix}/include
+srcdir=${prefix}/src
+
+Name: odpi
+Description: ODPI-C library
+Version: 2.0.0-rc.1
+Libs: -L${libdir} -lodpic
+Libs.private:
+Cflags: -I${includedir} -I${srcdir}

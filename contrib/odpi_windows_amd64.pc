@@ -1,6 +1,6 @@
 prefix=c:/Oracle64Instant/sdk
 
-version=2.0.0-beta4
+version=2.0.0-rc.1
 build=odpi64
 
 libdir=${prefix}/lib
