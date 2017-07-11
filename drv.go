@@ -13,9 +13,19 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
+// Package goracle is a database/sql/driver for Oracle DB.
 package goracle
 
+//go:generate git submodule update --init --recursive
+//go:generate sh -c "cd odpi && make"
+//go:generate echo "sudo cp -a odpi/lib/libodpic.so /usr/local/lib/"
+//go:generate echo "sudo ldconfig /usr/local/lib"
+
 /*
+//#cgo pkg-config: --define-variable=GOPATH=$GOPATH odpi
+#cgo CFLAGS: -I./odpi/include
+#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl -s
+
 #include <stdlib.h>
 #include <dpi.h>
 */

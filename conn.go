@@ -13,14 +13,9 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-// Package goracle is a database/sql/driver for Oracle DB.
 package goracle
 
 /*
-//#cgo pkg-config: --define-variable=GOPATH=$GOPATH odpi
-#cgo CFLAGS: -I./odpi/include
-#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl -s
-
 #include <stdlib.h>
 #include <dpi.h>
 */
