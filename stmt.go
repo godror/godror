@@ -278,11 +278,19 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 	rArgs := make([]reflect.Value, len(args))
 	minArrLen, maxArrLen := -1, -1
 	for i, a := range args {
-		rArgs[i] = reflect.ValueOf(a.Value)
-		if _, isByteSlice := a.Value.([]byte); isByteSlice {
+		v := a.Value
+		if o, ok := v.(sql.Out); ok {
+			v = o.Dest
+		}
+		rArgs[i] = reflect.ValueOf(v)
+		if rArgs[i].Kind() == reflect.Ptr {
+			rArgs[i] = rArgs[i].Elem()
+		}
+		if _, isByteSlice := v.([]byte); isByteSlice {
 			continue
 		}
 		st.isSlice[i] = false
+		//fmt.Printf("%d. %T\n", i, v)
 		if rArgs[i].Kind() == reflect.Slice {
 			n := rArgs[i].Len()
 			if minArrLen == -1 || n < minArrLen {
@@ -476,7 +484,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		if !isIn {
 			continue
 		}
-		if !doExecMany {
+		if !(doExecMany || st.PlSQLArrays) || !st.isSlice[i] {
 			if err := set(dv, 0, &data[0], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}

@@ -61,7 +61,11 @@ TYPE vc_tab_typ IS TABLE OF VARCHAR2(100) INDEX BY PLS_INTEGER;
 TYPE dt_tab_typ IS TABLE OF DATE INDEX BY PLS_INTEGER;
 TYPE lob_tab_typ IS TABLE OF CLOB INDEX BY PLS_INTEGER;
 
-PROCEDURE p2(p_int IN OUT int_tab_typ, p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ, p_lob IN OUT lob_tab_typ);
+PROCEDURE inout_int(p_int IN OUT int_tab_typ);
+PROCEDURE inout_num(p_num IN OUT num_tab_typ);
+PROCEDURE inout_vc(p_vc IN OUT vc_tab_typ);
+PROCEDURE inout_dt(p_dt IN OUT dt_tab_typ);
+PROCEDURE p2(p_int IN OUT int_tab_typ, p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ);
 END test_pkg;
 `
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
@@ -69,8 +73,7 @@ END test_pkg;
 	}
 	defer testDb.Exec("DROP PACKAGE test_pkg")
 	qry = `CREATE OR REPLACE PACKAGE BODY test_pkg AS
-PROCEDURE p2(p_int IN OUT int_tab_typ, p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ, p_lob IN OUT lob_tab_typ)
-IS
+PROCEDURE inout_int(p_int IN OUT int_tab_typ) IS
   v_idx PLS_INTEGER;
 BEGIN
   v_idx := p_int.FIRST;
@@ -79,37 +82,62 @@ BEGIN
 	v_idx := p_int.NEXT(v_idx);
   END LOOP;
   p_int(NVL(p_int.LAST, 0)+1) := p_int.COUNT;
+END;
 
+PROCEDURE inout_num(p_num IN OUT num_tab_typ) IS
+  v_idx PLS_INTEGER;
+BEGIN
   v_idx := p_num.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_num(v_idx) := NVL(p_num(v_idx) / 2, 0.5);
 	v_idx := p_num.NEXT(v_idx);
   END LOOP;
   p_num(NVL(p_num.LAST, 0)+1) := p_num.COUNT;
+END;
 
+PROCEDURE inout_vc(p_vc IN OUT vc_tab_typ) IS
+  v_idx PLS_INTEGER;
+BEGIN
   v_idx := p_vc.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_vc(v_idx) := NVL(p_vc(v_idx) ||' +', '-');
 	v_idx := p_vc.NEXT(v_idx);
   END LOOP;
   p_vc(NVL(p_vc.LAST, 0)+1) := p_vc.COUNT;
+END;
 
+PROCEDURE inout_dt(p_dt IN OUT dt_tab_typ) IS
+  v_idx PLS_INTEGER;
+BEGIN
   v_idx := p_dt.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_dt(v_idx) := NVL(p_dt(v_idx) + 1, SYSDATE);
 	v_idx := p_dt.NEXT(v_idx);
   END LOOP;
   p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+END;
 
-  p_lob := NULL;
-END p2;
+PROCEDURE p2(
+	p_int IN OUT int_tab_typ,
+	p_num IN OUT num_tab_typ,
+	p_vc IN OUT vc_tab_typ,
+	p_dt IN OUT dt_tab_typ
+--, p_lob IN OUT lob_tab_typ
+) IS
+BEGIN
+  inout_int(p_int);
+  inout_num(p_num);
+  inout_vc(p_vc);
+  inout_dt(p_dt);
+  --p_lob := NULL;
+END p3;
 END test_pkg;
 `
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 
-	stmt, err := testDb.PrepareContext(ctx, "BEGIN test_pkg.p2(:1, :2, :3, :4, :5); END;")
+	stmt, err := testDb.PrepareContext(ctx, "BEGIN test_pkg.p2(:1, :2, :3, :4); END;")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +147,24 @@ END test_pkg;
 	num := []string{"3.14", "-2.48"}
 	vc := []string{"string", "bring"}
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
-	lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_int(:1); END;",
+		goracle.PlSQLArrays,
+		sql.Out{Dest: &intgr, In: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("int=%#v", intgr)
+	if d := cmp.Diff(intgr, []int32{3 * 2, 1 * 2, 4 * 2, 3}); d != "" {
+		t.Errorf("int: %s", d)
+	}
 	if _, err := stmt.ExecContext(ctx,
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &intgr, In: true},
 		sql.Out{Dest: &num, In: true},
 		sql.Out{Dest: &vc, In: true},
 		sql.Out{Dest: &dt, In: true},
-		sql.Out{Dest: &lob, In: true},
+		//sql.Out{Dest: &lob, In: true},
 	); err != nil {
 		t.Fatal(err)
 	}
