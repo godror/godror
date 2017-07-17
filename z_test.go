@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	goracle "gopkg.in/goracle.v2"
 )
 
@@ -45,6 +47,98 @@ func init() {
 	); err != nil {
 		fmt.Println("ERROR")
 		panic(err)
+	}
+}
+
+func TestInOutArray(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
+TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+TYPE num_tab_typ IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+TYPE vc_tab_typ IS TABLE OF VARCHAR2(100) INDEX BY PLS_INTEGER;
+TYPE dt_tab_typ IS TABLE OF DATE INDEX BY PLS_INTEGER;
+TYPE lob_tab_typ IS TABLE OF CLOB INDEX BY PLS_INTEGER;
+
+PROCEDURE p2(p_int IN OUT int_tab_typ, p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ, p_lob IN OUT lob_tab_typ);
+END test_pkg;
+`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err, qry)
+	}
+	defer testDb.Exec("DROP PACKAGE test_pkg")
+	qry = `CREATE OR REPLACE PACKAGE BODY test_pkg AS
+PROCEDURE p2(p_int IN OUT int_tab_typ, p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ, p_lob IN OUT lob_tab_typ)
+IS
+  v_idx PLS_INTEGER;
+BEGIN
+  v_idx := p_int.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    p_int(v_idx) := NVL(p_int(v_idx) * 2, 1);
+	v_idx := p_int.NEXT(v_idx);
+  END LOOP;
+  p_int(NVL(p_int.LAST, 0)+1) := p_int.COUNT;
+
+  v_idx := p_num.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    p_num(v_idx) := NVL(p_num(v_idx) / 2, 0.5);
+	v_idx := p_num.NEXT(v_idx);
+  END LOOP;
+  p_num(NVL(p_num.LAST, 0)+1) := p_num.COUNT;
+
+  v_idx := p_vc.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    p_vc(v_idx) := NVL(p_vc(v_idx) ||' +', '-');
+	v_idx := p_vc.NEXT(v_idx);
+  END LOOP;
+  p_vc(NVL(p_vc.LAST, 0)+1) := p_vc.COUNT;
+
+  v_idx := p_dt.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    p_dt(v_idx) := NVL(p_dt(v_idx) + 1, SYSDATE);
+	v_idx := p_dt.NEXT(v_idx);
+  END LOOP;
+  p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+
+  p_lob := NULL;
+END p2;
+END test_pkg;
+`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err, qry)
+	}
+
+	stmt, err := testDb.PrepareContext(ctx, "BEGIN test_pkg.p2(:1, :2, :3, :4, :5); END;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	intgr := []int32{3, 1, 4}
+	num := []string{"3.14", "-2.48"}
+	vc := []string{"string", "bring"}
+	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
+	lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	if _, err := stmt.ExecContext(ctx,
+		goracle.PlSQLArrays,
+		sql.Out{Dest: &intgr, In: true},
+		sql.Out{Dest: &num, In: true},
+		sql.Out{Dest: &vc, In: true},
+		sql.Out{Dest: &dt, In: true},
+		sql.Out{Dest: &lob, In: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
+	if d := cmp.Diff(intgr, []int32{3 * 2, 1 * 2, 4 * 2, 3}); d != "" {
+		t.Errorf("int: %s", d)
+	}
+	if d := cmp.Diff(num, []string{"1.57", "-1.24", "2"}); d != "" {
+		t.Errorf("num: %s", d)
+	}
+	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
+		t.Errorf("vc: %s", d)
 	}
 }
 
