@@ -312,7 +312,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 	st.arrLen = minArrLen
 	doExecMany := !st.PlSQLArrays && st.arrLen > 0
 	dataSliceLen := 1
-	if doExecMany {
+	if doExecMany || st.PlSQLArrays {
 		dataSliceLen = st.arrLen
 	}
 
@@ -474,6 +474,8 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 
 		var err error
+		fmt.Printf("newVar(%d, plSQLArrays=%t typ=%v natTyp=%v sliceLen=%d bufSize=%d)\n",
+			i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
 			st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize,
 		); err != nil {

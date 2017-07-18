@@ -72,6 +72,7 @@ END test_pkg;
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PACKAGE test_pkg")
+
 	qry = `CREATE OR REPLACE PACKAGE BODY test_pkg AS
 PROCEDURE inout_int(p_int IN OUT int_tab_typ) IS
   v_idx PLS_INTEGER;
@@ -130,24 +131,50 @@ BEGIN
   inout_vc(p_vc);
   inout_dt(p_dt);
   --p_lob := NULL;
-END p3;
+END p2;
 END test_pkg;
 `
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
-
-	stmt, err := testDb.PrepareContext(ctx, "BEGIN test_pkg.p2(:1, :2, :3, :4); END;")
+	compileErrors, err := goracle.GetCompileErrors(testDb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stmt.Close()
+	if len(compileErrors) != 0 {
+		t.Fatalf("compile errors: %v", compileErrors)
+	}
 
 	intgr := []int32{3, 1, 4}
+	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	num := []string{"3.14", "-2.48"}
+	numWant := []string{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring"}
+	vcWant := []string{"string +", "bring +", "2"}
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
+	dtWant := []time.Time{dt[0].Add(24 * time.Hour), time.Now().Truncate(24 * time.Hour)}
+
+	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_vc(:1); END;",
+		goracle.PlSQLArrays,
+		sql.Out{Dest: &vc, In: true},
+	); err != nil {
+		t.Fatalf("%+v", err)
+	}
+	t.Logf("vc=%#v", vc)
+	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
+		t.Errorf("vc: %s", d)
+	}
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
+		goracle.PlSQLArrays,
+		sql.Out{Dest: &num, In: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("num=%#v", intgr)
+	if d := cmp.Diff(num, numWant); d != "" {
+		t.Errorf("num: %s", d)
+	}
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_int(:1); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &intgr, In: true},
@@ -155,10 +182,12 @@ END test_pkg;
 		t.Fatal(err)
 	}
 	t.Logf("int=%#v", intgr)
-	if d := cmp.Diff(intgr, []int32{3 * 2, 1 * 2, 4 * 2, 3}); d != "" {
+	if d := cmp.Diff(intgr, intgrWant); d != "" {
 		t.Errorf("int: %s", d)
 	}
-	if _, err := stmt.ExecContext(ctx,
+
+	if _, err := testDb.ExecContext(ctx,
+		"BEGIN test_pkg.p2(:1, :2, :3, :4); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &intgr, In: true},
 		sql.Out{Dest: &num, In: true},
@@ -169,14 +198,17 @@ END test_pkg;
 		t.Fatal(err)
 	}
 	t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
-	if d := cmp.Diff(intgr, []int32{3 * 2, 1 * 2, 4 * 2, 3}); d != "" {
+	if d := cmp.Diff(intgr, intgrWant); d != "" {
 		t.Errorf("int: %s", d)
 	}
-	if d := cmp.Diff(num, []string{"1.57", "-1.24", "2"}); d != "" {
+	if d := cmp.Diff(num, numWant); d != "" {
 		t.Errorf("num: %s", d)
 	}
-	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
+	if d := cmp.Diff(vc, vcWant); d != "" {
 		t.Errorf("vc: %s", d)
+	}
+	if d := cmp.Diff(dt, dtWant); d != "" {
+		t.Errorf("dt: %s", d)
 	}
 }
 
