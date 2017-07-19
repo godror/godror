@@ -177,7 +177,7 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	fmt.Printf("dpiConn_newVar(%p typ=%d natTyp=%d arraySize=%d bufSize=%d, 1, isArray=%d, nil, %p, dataArr=%p)",
+	fmt.Printf("dpiConn_newVar(%p typ=%d natTyp=%d arraySize=%d bufSize=%d, 1, isArray=%d, nil, %p, dataArr=%p)\n",
 		c.dpiConn, typ, natTyp, arraySize, bufSize, isArray, &v, &dataArr)
 	if C.dpiConn_newVar(
 		c.dpiConn, typ, natTyp, C.uint32_t(arraySize),

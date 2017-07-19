@@ -154,6 +154,7 @@ END test_pkg;
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
 	dtWant := []time.Time{dt[0].Add(24 * time.Hour), time.Now().Truncate(24 * time.Hour)}
 
+	t.Logf("vc=%#v", vc)
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_vc(:1); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &vc, In: true},

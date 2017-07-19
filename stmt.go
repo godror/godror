@@ -205,6 +205,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if err := get(&z, &st.data[i][j]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, j)
 			}
+			fmt.Printf("%d/%d get: %T %#v\n", i, j, z, z)
 			re.Set(reflect.Append(re, reflect.ValueOf(z)))
 		}
 	}
@@ -334,6 +335,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				value = rv.Elem().Interface()
 			}
 		}
+		fmt.Printf("%d. in=%t out=%t value=%T %#v\n", i, isIn, isOut, value, value)
 
 		var set dataSetter
 		var typ C.dpiOracleTypeNum
@@ -487,6 +489,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			continue
 		}
 		if !(doExecMany || st.PlSQLArrays) || !st.isSlice[i] {
+			fmt.Printf("set(%p, 0, %p, %T=%#v\n", dv, &data[i], value, value)
 			if err := set(dv, 0, &data[0], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
@@ -494,8 +497,11 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			//fmt.Println("n:", len(st.data[i]))
 			for j := 0; j < dataSliceLen; j++ {
 				//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
-				if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
-					v := rArgs[i].Index(j).Interface()
+				v := reflect.ValueOf(value).Index(j).Interface()
+				fmt.Printf("%d.set(%p, 0, %p, %T=%#v\n", j, dv, &st.data[i][j], v, v)
+				//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
+				if err := set(dv, j, &data[j], v); err != nil {
+					//v := rArgs[i].Index(j).Interface()
 					return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, j, v, v)
 				}
 			}
