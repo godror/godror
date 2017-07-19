@@ -474,8 +474,8 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 
 		var err error
-		fmt.Printf("newVar(%d, plSQLArrays=%t typ=%v natTyp=%v sliceLen=%d bufSize=%d)\n",
-			i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
+		//fmt.Printf("newVar(%d, plSQLArrays=%t typ=%v natTyp=%v sliceLen=%d bufSize=%d)\n",
+		//i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
 			st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize,
 		); err != nil {
@@ -505,7 +505,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 	if !named {
 		for i, v := range st.vars {
-			//fmt.Printf("bindByPos(%d, %p, %p)\n", i+1, v, st.data[i])
+			fmt.Printf("dpiStmt_bindByPos(%p, %d, %p)\n", st.dpiStmt, i+1, v)
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
 				return st.getError()
 			}
@@ -607,6 +607,24 @@ func dataGetBytes(v interface{}, data *C.dpiData) error {
 		}
 		b := C.dpiData_getBytes(data)
 		*x = string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+
+	case *interface{}:
+		switch y := (*x).(type) {
+		case []byte:
+			if err := dataGetBytes(&y, data); err != nil {
+				return err
+			}
+			*x = y
+			return nil
+		case string:
+			if err := dataGetBytes(&y, data); err != nil {
+				return err
+			}
+			*x = y
+			return nil
+		default:
+			return errors.Errorf("awaited []byte/string, got %T (%#v)", x, x)
+		}
 
 	default:
 		return errors.Errorf("awaited []byte/string, got %T (%#v)", v, v)
