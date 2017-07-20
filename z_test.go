@@ -225,8 +225,9 @@ END test_pkg;
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
 	dtWant := []time.Time{dt[0].Add(24 * time.Hour), time.Now().Truncate(24 * time.Hour)}
 
-	t.Logf("vc=%#v", vc)
 	goracle.EnableDbmsOutput(ctx, testDb)
+
+	t.Logf("vc=%#v", vc)
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_vc(:1); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &vc, In: true},
@@ -234,7 +235,7 @@ END test_pkg;
 		t.Fatalf("%+v", err)
 	}
 	t.Logf("vc=%#v", vc)
-	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
+	if d := cmp.Diff(vc, vcWant); d != "" {
 		t.Errorf("vc: %s", d)
 		var buf bytes.Buffer
 		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
@@ -243,17 +244,7 @@ END test_pkg;
 		t.Log("OUTPUT:", buf.String())
 		return
 	}
-	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
-	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
-		goracle.PlSQLArrays,
-		sql.Out{Dest: &num, In: true},
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("num=%#v", intgr)
-	if d := cmp.Diff(num, numWant); d != "" {
-		t.Errorf("num: %s", d)
-	}
+
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_int(:1); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &intgr, In: true},
@@ -263,8 +254,32 @@ END test_pkg;
 	t.Logf("int=%#v", intgr)
 	if d := cmp.Diff(intgr, intgrWant); d != "" {
 		t.Errorf("int: %s", d)
+		var buf bytes.Buffer
+		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+			t.Error(err)
+		}
+		t.Log("OUTPUT:", buf.String())
+		return
 	}
 
+	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
+		goracle.PlSQLArrays,
+		sql.Out{Dest: &num, In: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("num=%#v", intgr)
+	if d := cmp.Diff(num, numWant); d != "" {
+		t.Errorf("num: %s", d)
+		var buf bytes.Buffer
+		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+			t.Error(err)
+		}
+		t.Log("OUTPUT:", buf.String())
+		return
+	}
+
+	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	if _, err := testDb.ExecContext(ctx,
 		"BEGIN test_pkg.p2(:1, :2, :3, :4); END;",
 		goracle.PlSQLArrays,

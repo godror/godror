@@ -167,9 +167,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	var res C.int
 	if !st.PlSQLArrays && st.arrLen > 0 {
+		Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
 		res = C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen))
 	} else {
 		var colCount C.uint32_t
+		Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
 		res = C.dpiStmt_execute(st.dpiStmt, mode, &colCount)
 	}
 	done <- struct{}{}
@@ -501,10 +503,6 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				offset = 1
 				n = reflect.ValueOf(value).Len()
 
-				Log("msg", "setNumElementsInArray", "n", n)
-				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
-					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, n)
-				}
 			}
 			//fmt.Println("n:", len(st.data[i]))
 			for j := 0; j < n; j++ {
@@ -515,6 +513,12 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				if err := set(dv, j+offset, &data[j], v); err != nil {
 					//v := rArgs[i].Index(j).Interface()
 					return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, j, v, v)
+				}
+			}
+			if st.PlSQLArrays {
+				Log("C", "dpiVar_setNumElementsInArray", "n", n)
+				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
+					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, n)
 				}
 			}
 		}
@@ -656,12 +660,14 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		if len(x) > 0 {
 			p = (*C.char)(unsafe.Pointer(&x[0]))
 		}
+		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(x)))
 	case string:
 		b := []byte(x)
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
+		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
 	default:
 		return errors.Errorf("awaited []byte/string, got %T (%#v)", v, v)

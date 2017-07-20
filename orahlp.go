@@ -217,5 +217,4 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			return nil
 		}
 	}
-	return nil
 }
