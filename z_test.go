@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +37,9 @@ import (
 )
 
 var testDb *sql.DB
+
+var testLoggersMu sync.RWMutex
+var testLoggers []*testing.T
 
 func init() {
 	var err error
@@ -48,22 +52,73 @@ func init() {
 		fmt.Println("ERROR")
 		panic(err)
 	}
-}
 
-func TestInOutArray(t *testing.T) {
-	var logBuf bytes.Buffer
 	goracle.Log = func(keyvals ...interface{}) error {
-		logBuf.Reset()
+		buf := bufPool.Get().(*bytes.Buffer)
+		defer bufPool.Put(buf)
+		buf.Reset()
 		if len(keyvals)%2 != 0 {
 			keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
 		}
 		for i := 0; i < len(keyvals); i += 2 {
-			fmt.Fprintf(&logBuf, "%s=%#v ", keyvals[i], keyvals[i+1])
+			fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
 		}
-		t.Log(logBuf.String())
-		logBuf.Reset()
+		testLoggersMu.RLock()
+		defer testLoggersMu.RUnlock()
+		for _, f := range testLoggers {
+			f.Log(buf.String())
+		}
 		return nil
 	}
+}
+
+var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
+
+func enableLogging(t *testing.T) func() {
+	testLoggersMu.Lock()
+	testLoggers = append(testLoggers, t)
+	testLoggersMu.Unlock()
+	return func() {
+		testLoggersMu.Lock()
+		defer testLoggersMu.Unlock()
+		for i, f := range testLoggers {
+			if f == t {
+				testLoggers[i] = testLoggers[0]
+				testLoggers = testLoggers[1:]
+				break
+			}
+		}
+	}
+}
+
+func TestDbmsOutput(t *testing.T) {
+	defer enableLogging(t)()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := goracle.EnableDbmsOutput(ctx, testDb); err != nil {
+		t.Fatal(err)
+	}
+
+	txt := `árvíztűrő tükörfúrógép`
+	qry := "BEGIN DBMS_OUTPUT.PUT_LINE('" + txt + "'); END;"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+		t.Error(err)
+	}
+	t.Log(buf.String())
+	if buf.String() != txt {
+		t.Errorf("got %q, wanted %q", buf.String(), txt)
+	}
+}
+
+func TestInOutArray(t *testing.T) {
+	defer enableLogging(t)()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
@@ -161,10 +216,6 @@ END test_pkg;
 		t.Fatalf("compile errors: %v", compileErrors)
 	}
 
-	if _, err := testDb.ExecContext(ctx, "BEGIN DBMS_OUTPUT.enable(1000000); END;"); err != nil {
-		t.Error(err)
-	}
-
 	intgr := []int32{3, 1, 4}
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	num := []string{"3.14", "-2.48"}
@@ -185,8 +236,8 @@ END test_pkg;
 	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
 		t.Errorf("vc: %s", d)
 	}
-	var buf bytes.Buffer
 	goracle.EnableDbmsOutput(ctx, testDb)
+	var buf bytes.Buffer
 	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
 		t.Error(err)
 	}
