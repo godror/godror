@@ -495,8 +495,17 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
 		} else {
+			n := dataSliceLen
+			if st.PlSQLArrays {
+				n = reflect.ValueOf(value).Len()
+
+				Log("msg", "setNumElementsInArray", "n", n)
+				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
+					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, n)
+				}
+			}
 			//fmt.Println("n:", len(st.data[i]))
-			for j := 0; j < dataSliceLen; j++ {
+			for j := 0; j < n; j++ {
 				//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
 				v := reflect.ValueOf(value).Index(j).Interface()
 				Log("msg", "set", "i", i, "j", j, "v", fmt.Sprintf("%T=%#v", v, v))

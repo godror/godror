@@ -226,6 +226,7 @@ END test_pkg;
 	dtWant := []time.Time{dt[0].Add(24 * time.Hour), time.Now().Truncate(24 * time.Hour)}
 
 	t.Logf("vc=%#v", vc)
+	goracle.EnableDbmsOutput(ctx, testDb)
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_vc(:1); END;",
 		goracle.PlSQLArrays,
 		sql.Out{Dest: &vc, In: true},
@@ -235,13 +236,13 @@ END test_pkg;
 	t.Logf("vc=%#v", vc)
 	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
 		t.Errorf("vc: %s", d)
+		var buf bytes.Buffer
+		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+			t.Error(err)
+		}
+		t.Log("OUTPUT:", buf.String())
+		return
 	}
-	goracle.EnableDbmsOutput(ctx, testDb)
-	var buf bytes.Buffer
-	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
-		t.Error(err)
-	}
-	t.Log("OUTPUT:", buf.String())
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
 		goracle.PlSQLArrays,
