@@ -192,28 +192,20 @@ func EnableDbmsOutput(ctx context.Context, conn execer) error {
 }
 
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
-	qry := `DECLARE                 --L1
-  v_arr DBMS_OUTPUT.chararr;            --L2
-  v_num INTEGER := :1;                  --L3
-BEGIN                                   --L4
-  DBMS_OUTPUT.get_lines(v_arr, v_num);  --L5
-  :2 := v_arr;                          --L6
-  :3 := v_num;                          --L7
-END;                                    --L8
-`
+	qry := `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
 	stmt, err := conn.Prepare(qry)
 	if err != nil {
 		return errors.Wrap(err, qry)
 	}
 
+	lines := make([]string, 128)
+	var numLines int64
+	params := []interface{}{PlSQLArrays,
+		sql.Out{Dest: &lines}, sql.Out{Dest: &numLines, In: true},
+	}
 	for {
-		lines := make([]string, 1024)
-		numLines := int64(len(lines))
-		if _, err := stmt.ExecContext(ctx, PlSQLArrays,
-			numLines,
-			sql.Out{Dest: &lines},
-			sql.Out{Dest: &numLines},
-		); err != nil {
+		numLines = int64(len(lines))
+		if _, err := stmt.ExecContext(ctx, params...); err != nil {
 			return errors.Wrap(err, qry)
 		}
 		for i := 0; i < int(numLines); i++ {

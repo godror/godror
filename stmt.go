@@ -495,8 +495,10 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
 		} else {
+			offset := 0
 			n := dataSliceLen
 			if st.PlSQLArrays {
+				offset = 1
 				n = reflect.ValueOf(value).Len()
 
 				Log("msg", "setNumElementsInArray", "n", n)
@@ -508,9 +510,9 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			for j := 0; j < n; j++ {
 				//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
 				v := reflect.ValueOf(value).Index(j).Interface()
-				Log("msg", "set", "i", i, "j", j, "v", fmt.Sprintf("%T=%#v", v, v))
+				Log("msg", "set", "i", i, "j", j+offset, "n", n, "v", fmt.Sprintf("%T=%#v", v, v))
 				//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
-				if err := set(dv, j, &data[j], v); err != nil {
+				if err := set(dv, j+offset, &data[j], v); err != nil {
 					//v := rArgs[i].Index(j).Interface()
 					return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, j, v, v)
 				}
@@ -521,27 +523,26 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 	if !named {
 		for i, v := range st.vars {
-			Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i+1, "v", v)
+			Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v)
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
 				return st.getError()
 			}
 		}
-	} else {
-		for i, a := range args {
-			name := a.Name
-			if name == "" {
-				name = strconv.Itoa(a.Ordinal)
-			}
-			//fmt.Printf("bindByName(%q)\n", name)
-			cName := C.CString(name)
-			res := C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i])
-			C.free(unsafe.Pointer(cName))
-			if res == C.DPI_FAILURE {
-				return st.getError()
-			}
+		return nil
+	}
+	for i, a := range args {
+		name := a.Name
+		if name == "" {
+			name = strconv.Itoa(a.Ordinal)
+		}
+		//fmt.Printf("bindByName(%q)\n", name)
+		cName := C.CString(name)
+		res := C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i])
+		C.free(unsafe.Pointer(cName))
+		if res == C.DPI_FAILURE {
+			return st.getError()
 		}
 	}
-
 	return nil
 }
 
