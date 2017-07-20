@@ -55,6 +55,9 @@ const (
 	DriverName = "gopkg.in/rana/ora.v5 : " + Version
 )
 
+// Log function
+var Log = func(...interface{}) error { return nil }
+
 func init() {
 	var d drv
 	err := &oraErr{}

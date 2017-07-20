@@ -254,6 +254,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue) error {
+	Log("enter", "bindVars", "args", args)
 	var named bool
 	if cap(st.vars) < len(args) {
 		st.vars = make([]*C.dpiVar, len(args))
@@ -335,7 +336,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				value = rv.Elem().Interface()
 			}
 		}
-		fmt.Printf("%d. in=%t out=%t value=%T %#v\n", i, isIn, isOut, value, value)
+		Log("msg", "bindVars", "i", i, "in", isIn, "out", isOut, "value", fmt.Sprintf("%T %#v", value, value))
 
 		var set dataSetter
 		var typ C.dpiOracleTypeNum
@@ -476,7 +477,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 
 		var err error
-		//fmt.Printf("newVar(%d, plSQLArrays=%t typ=%v natTyp=%v sliceLen=%d bufSize=%d)\n",
+		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", typ, "natTyp", natTyp, "sliceLen", dataSliceLen, "bufSize", bufSize)
 		//i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
 			st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize,
@@ -489,7 +490,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			continue
 		}
 		if !(doExecMany || st.PlSQLArrays) || !st.isSlice[i] {
-			fmt.Printf("set(%p, 0, %p, %T=%#v\n", dv, &data[i], value, value)
+			Log("msg", "set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
 			if err := set(dv, 0, &data[0], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
@@ -498,7 +499,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			for j := 0; j < dataSliceLen; j++ {
 				//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
 				v := reflect.ValueOf(value).Index(j).Interface()
-				fmt.Printf("%d.set(%p, 0, %p, %T=%#v\n", j, dv, &st.data[i][j], v, v)
+				Log("msg", "set", "i", i, "j", j, "v", fmt.Sprintf("%T=%#v", v, v))
 				//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
 				if err := set(dv, j, &data[j], v); err != nil {
 					//v := rArgs[i].Index(j).Interface()
@@ -511,7 +512,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 	if !named {
 		for i, v := range st.vars {
-			fmt.Printf("dpiStmt_bindByPos(%p, %d, %p)\n", st.dpiStmt, i+1, v)
+			Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i+1, "v", v)
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
 				return st.getError()
 			}

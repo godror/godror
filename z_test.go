@@ -51,7 +51,19 @@ func init() {
 }
 
 func TestInOutArray(t *testing.T) {
-	t.Parallel()
+	var logBuf bytes.Buffer
+	goracle.Log = func(keyvals ...interface{}) error {
+		logBuf.Reset()
+		if len(keyvals)%2 != 0 {
+			keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
+		}
+		for i := 0; i < len(keyvals); i += 2 {
+			fmt.Fprintf(&logBuf, "%s=%#v ", keyvals[i], keyvals[i+1])
+		}
+		t.Log(logBuf.String())
+		logBuf.Reset()
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
