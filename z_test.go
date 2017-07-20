@@ -77,6 +77,7 @@ END test_pkg;
 PROCEDURE inout_int(p_int IN OUT int_tab_typ) IS
   v_idx PLS_INTEGER;
 BEGIN
+  DBMS_OUTPUT.PUT_LINE('p_int.COUNT='||p_int.COUNT||' FIRST='||p_int.FIRST||' LAST='||p_int.LAST);
   v_idx := p_int.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_int(v_idx) := NVL(p_int(v_idx) * 2, 1);
@@ -88,6 +89,7 @@ END;
 PROCEDURE inout_num(p_num IN OUT num_tab_typ) IS
   v_idx PLS_INTEGER;
 BEGIN
+  DBMS_OUTPUT.PUT_LINE('p_num.COUNT='||p_num.COUNT||' FIRST='||p_num.FIRST||' LAST='||p_num.LAST);
   v_idx := p_num.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_num(v_idx) := NVL(p_num(v_idx) / 2, 0.5);
@@ -99,6 +101,7 @@ END;
 PROCEDURE inout_vc(p_vc IN OUT vc_tab_typ) IS
   v_idx PLS_INTEGER;
 BEGIN
+  DBMS_OUTPUT.PUT_LINE('p_vc.COUNT='||p_vc.COUNT||' FIRST='||p_vc.FIRST||' LAST='||p_vc.LAST);
   v_idx := p_vc.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_vc(v_idx) := NVL(p_vc(v_idx) ||' +', '-');
@@ -110,6 +113,7 @@ END;
 PROCEDURE inout_dt(p_dt IN OUT dt_tab_typ) IS
   v_idx PLS_INTEGER;
 BEGIN
+  DBMS_OUTPUT.PUT_LINE('p_dt.COUNT='||p_dt.COUNT||' FIRST='||p_dt.FIRST||' LAST='||p_dt.LAST);
   v_idx := p_dt.FIRST;
   WHILE v_idx IS NOT NULL LOOP
     p_dt(v_idx) := NVL(p_dt(v_idx) + 1, SYSDATE);
@@ -145,6 +149,10 @@ END test_pkg;
 		t.Fatalf("compile errors: %v", compileErrors)
 	}
 
+	if _, err := testDb.ExecContext(ctx, "BEGIN DBMS_OUTPUT.enable(1000000); END;"); err != nil {
+		t.Error(err)
+	}
+
 	intgr := []int32{3, 1, 4}
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	num := []string{"3.14", "-2.48"}
@@ -165,6 +173,12 @@ END test_pkg;
 	if d := cmp.Diff(vc, []string{"string +", "bring +", "2"}); d != "" {
 		t.Errorf("vc: %s", d)
 	}
+	var buf bytes.Buffer
+	goracle.EnableDbmsOutput(ctx, testDb)
+	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+		t.Error(err)
+	}
+	t.Log(buf.String())
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
 		goracle.PlSQLArrays,

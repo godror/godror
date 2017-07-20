@@ -205,7 +205,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if err := get(&z, &st.data[i][j]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, j)
 			}
-			fmt.Printf("%d/%d get: %T %#v\n", i, j, z, z)
+			fmt.Printf("%d.%d/%d get: %T %#v\n", i, j, n, z, z)
 			re.Set(reflect.Append(re, reflect.ValueOf(z)))
 		}
 	}

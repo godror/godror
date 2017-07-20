@@ -17,8 +17,10 @@ package goracle
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 
 	"github.com/pkg/errors"
 )
@@ -32,7 +34,7 @@ type QueryColumn struct {
 }
 
 type execer interface {
-	Exec(string, ...interface{}) (*sql.Result, error)
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 }
 
 // DescribeQuery describes the columns in the qry string,
@@ -40,10 +42,10 @@ type execer interface {
 //
 // This can help using unknown-at-compile-time, a.k.a.
 // dynamic queries.
-func DescribeQuery(db execer, qry string) ([]QueryColumn, error) {
+func DescribeQuery(ctx context.Context, db execer, qry string) ([]QueryColumn, error) {
 	//res := strings.Repeat("\x00", 32767)
 	res := make([]byte, 32767)
-	if _, err := db.Exec(`DECLARE
+	if _, err := db.ExecContext(ctx, `DECLARE
   c INTEGER;
   col_cnt INTEGER;
   rec_tab DBMS_SQL.DESC_TAB;
@@ -177,4 +179,38 @@ func GetCompileErrors(queryer queryer, all bool) ([]CompileError, error) {
 		}
 	}
 	return errors, rows.Err()
+}
+
+type preparer interface {
+	Prepare(string) (*sql.Stmt, error)
+}
+
+func EnableDbmsOutput(ctx context.Context, conn execer) error {
+	qry := "BEGIN DBMS_OUTPUT.enable(1000000); END;"
+	_, err := conn.ExecContext(ctx, qry)
+	return errors.Wrap(err, qry)
+}
+
+func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
+	// TODO(tgulacsi): use get_lines
+	qry := "BEGIN DBMS_OUTPUT.get_line(:1, :2); END;"
+	stmt, err := conn.Prepare(qry)
+	if err != nil {
+		return errors.Wrap(err, qry)
+	}
+
+	for {
+		var buf string
+		var status int64
+		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &buf}, sql.Out{Dest: &status}); err != nil {
+			return errors.Wrap(err, qry)
+		}
+		if status == 1 {
+			return nil
+		}
+		if _, err := io.WriteString(w, buf); err != nil {
+			return err
+		}
+	}
+	return nil
 }
