@@ -205,7 +205,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if err := get(&z, &st.data[i][j]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, j)
 			}
-			fmt.Printf("%d.%d/%d get: %T %#v\n", i, j, n, z, z)
+			Log("msg", "get", "i", i, "j", j, "n", n, "z", fmt.Sprintf("%T %#v\n", z, z))
 			re.Set(reflect.Append(re, reflect.ValueOf(z)))
 		}
 	}
@@ -477,10 +477,10 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 
 		var err error
-		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", typ, "natTyp", natTyp, "sliceLen", dataSliceLen, "bufSize", bufSize)
+		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(typ), "natTyp", int(natTyp), "sliceLen", dataSliceLen, "bufSize", bufSize)
 		//i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
-			st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize,
+			st.PlSQLArrays && st.isSlice[i], typ, natTyp, dataSliceLen, bufSize,
 		); err != nil {
 			return errors.WithMessage(err, fmt.Sprintf("%d", i))
 		}

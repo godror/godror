@@ -192,30 +192,7 @@ func EnableDbmsOutput(ctx context.Context, conn execer) error {
 }
 
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
-	// TODO(tgulacsi): use get_lines
-	if false {
-		qry := "BEGIN DBMS_OUTPUT.get_line(:1, :2); END;"
-		stmt, err := conn.Prepare(qry)
-		if err != nil {
-			return errors.Wrap(err, qry)
-		}
-
-		for {
-			var buf string
-			var status int64
-			if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &buf}, sql.Out{Dest: &status}); err != nil {
-				return errors.Wrap(err, qry)
-			}
-			if status == 1 {
-				return nil
-			}
-			if _, err := io.WriteString(w, buf); err != nil {
-				return err
-			}
-		}
-		return nil
-	} else {
-		qry := `DECLARE                 --L1
+	qry := `DECLARE                 --L1
   v_arr DBMS_OUTPUT.chararr;            --L2
   v_num INTEGER := :1;                  --L3
 BEGIN                                   --L4
@@ -224,30 +201,29 @@ BEGIN                                   --L4
   :3 := v_num;                          --L7
 END;                                    --L8
 `
-		stmt, err := conn.Prepare(qry)
-		if err != nil {
+	stmt, err := conn.Prepare(qry)
+	if err != nil {
+		return errors.Wrap(err, qry)
+	}
+
+	for {
+		lines := make([]string, 1024)
+		numLines := int64(len(lines))
+		if _, err := stmt.ExecContext(ctx, PlSQLArrays,
+			numLines,
+			sql.Out{Dest: &lines},
+			sql.Out{Dest: &numLines},
+		); err != nil {
 			return errors.Wrap(err, qry)
 		}
-
-		for {
-			lines := make([]string, 1024)
-			numLines := int64(len(lines))
-			if _, err := stmt.ExecContext(ctx, PlSQLArrays,
-				numLines,
-				sql.Out{Dest: &lines},
-				sql.Out{Dest: &numLines},
-			); err != nil {
-				return errors.Wrap(err, qry)
-			}
-			for i := 0; i < int(numLines); i++ {
-				if _, err := io.WriteString(w, lines[i]); err != nil {
-					return err
-				}
-			}
-			if int(numLines) < len(lines) {
-				return nil
+		for i := 0; i < int(numLines); i++ {
+			if _, err := io.WriteString(w, lines[i]); err != nil {
+				return err
 			}
 		}
-		return nil
+		if int(numLines) < len(lines) {
+			return nil
+		}
 	}
+	return nil
 }

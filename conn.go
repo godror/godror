@@ -171,12 +171,12 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 		return nil, nil, errors.New("connection is nil")
 	}
 	isArray := C.int(0)
-	if isPlSQLArray {
+	if isPlSQLArray && arraySize > 1 {
 		isArray = 1
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", typ, "natTyp", natTyp, "arraySize", arraySize, "bufSize", bufSize, "isArray", isArray, "v", v)
+	Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(typ), "natTyp", int(natTyp), "arraySize", arraySize, "bufSize", bufSize, "isArray", isArray, "v", v)
 	if C.dpiConn_newVar(
 		c.dpiConn, typ, natTyp, C.uint32_t(arraySize),
 		C.uint32_t(bufSize), 1,

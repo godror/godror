@@ -241,7 +241,7 @@ END test_pkg;
 	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
 		t.Error(err)
 	}
-	t.Log(buf.String())
+	t.Log("OUTPUT:", buf.String())
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
 		goracle.PlSQLArrays,
