@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -66,6 +67,7 @@ func init() {
 	) == C.DPI_FAILURE {
 		panic(err)
 	}
+	d.pools = make(map[string]*C.dpiPool)
 
 	sql.Register("goracle", &d)
 }
@@ -74,11 +76,30 @@ var _ = driver.Driver((*drv)(nil))
 
 type drv struct {
 	dpiContext *C.dpiContext
+	poolsMu    sync.Mutex
+	pools      map[string]*C.dpiPool
 }
 
 // Open returns a new connection to the database.
 // The name is a string in a driver-specific format.
 func (d *drv) Open(connString string) (driver.Conn, error) {
+	c := conn{drv: d, connString: connString}
+	dc := C.malloc(C.sizeof_void)
+	d.poolsMu.Lock()
+	dp := d.pools[connString]
+	d.poolsMu.Unlock()
+	if dp != nil {
+		if C.dpiPool_acquireConnection(
+			dp,
+			nil, 0, nil, 0, nil,
+			(**C.dpiConn)(unsafe.Pointer(&dc)),
+		) == C.DPI_FAILURE {
+			return nil, d.getError()
+		}
+		c.dpiConn = (*C.dpiConn)(dc)
+		return &c, nil
+	}
+
 	var username, password, sid, connClass string
 	var isSysDBA, isSysOper bool
 	if strings.HasPrefix(connString, "ora://") {
@@ -126,7 +147,6 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 		authMode |= C.DPI_MODE_AUTH_SYSOPER
 	}
 
-	c := conn{drv: d, connString: connString}
 	cUserName, cPassword, cSid := C.CString(username), C.CString(password), C.CString(sid)
 	cUTF8, cConnClass := C.CString("AL32UTF8"), C.CString(connClass)
 	cDriverName := C.CString(DriverName)
@@ -142,9 +162,32 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 	if username == "" && password == "" {
 		extAuth = 1
 	}
-	_ = extAuth
-	dc := C.malloc(C.sizeof_void)
-	if C.dpiConn_create(
+
+	if isSysDBA || isSysOper {
+		if C.dpiConn_create(
+			d.dpiContext,
+			cUserName, C.uint32_t(len(username)),
+			cPassword, C.uint32_t(len(password)),
+			cSid, C.uint32_t(len(sid)),
+			&C.dpiCommonCreateParams{
+				createMode: C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED | C.DPI_MODE_CREATE_EVENTS,
+				encoding:   cUTF8, nencoding: cUTF8,
+				driverName: cDriverName, driverNameLength: C.uint32_t(len(DriverName)),
+			},
+			&C.dpiConnCreateParams{
+				authMode:        authMode,
+				connectionClass: cConnClass, connectionClassLength: C.uint32_t(len(connClass)),
+				externalAuth: extAuth,
+			},
+			(**C.dpiConn)(unsafe.Pointer(&dc)),
+		) == C.DPI_FAILURE {
+			return nil, d.getError()
+		}
+		c.dpiConn = (*C.dpiConn)(dc)
+		return &c, nil
+	}
+
+	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(username)),
 		cPassword, C.uint32_t(len(password)),
@@ -154,15 +197,25 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 			encoding:   cUTF8, nencoding: cUTF8,
 			driverName: cDriverName, driverNameLength: C.uint32_t(len(DriverName)),
 		},
-		&C.dpiConnCreateParams{
-			authMode:        authMode,
-			connectionClass: cConnClass, connectionClassLength: C.uint32_t(len(connClass)),
+		&C.dpiPoolCreateParams{
+			minSessions: 1, maxSessions: 1000, sessionIncrement: 1,
+			homogeneous:  1,
 			externalAuth: extAuth,
+			getMode:      C.DPI_MODE_POOL_GET_NOWAIT,
 		},
-		(**C.dpiConn)(unsafe.Pointer(&dc)),
+		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
 		return nil, d.getError()
 	}
+	C.dpiPool_setTimeout(dp, 300)
+	//C.dpiPool_setMaxLifetimeSession(dp, 3600)
+	C.dpiPool_setStmtCacheSize(dp, 1<<20)
+	if C.dpiPool_acquireConnection(dp, nil, 0, nil, 0, nil, (**C.dpiConn)(unsafe.Pointer(&dc))) == C.DPI_FAILURE {
+		return nil, d.getError()
+	}
+	d.poolsMu.Lock()
+	d.pools[connString] = dp
+	d.poolsMu.Unlock()
 	c.dpiConn = (*C.dpiConn)(dc)
 	return &c, nil
 }

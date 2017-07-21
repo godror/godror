@@ -433,6 +433,8 @@ func TestSelect(t *testing.T) {
 
 func TestExecuteMany(t *testing.T) {
 	t.Parallel()
+	defer tl.enableLogging(t)()
+
 	testDb.Exec("DROP TABLE test_em")
 	testDb.Exec("CREATE TABLE test_em (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
 	defer testDb.Exec("DROP TABLE test_em")

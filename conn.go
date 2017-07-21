@@ -173,6 +173,8 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 	isArray := C.int(0)
 	if isPlSQLArray && arraySize > 1 {
 		isArray = 1
+	} else if arraySize < 0 {
+		arraySize = 1
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
