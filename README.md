@@ -7,6 +7,14 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
+## Rationale ##
+With Go 1.9, driver-specific things are not needed, everything (I need) can be
+achieved with the standard *database/sql* library. Even calling stored procedures
+with OUT parameters, or sending/retrieving PL/SQL array types - just give a
+`goracle.PlSQLArrays` Option within the parameters of `Exec`!
+
+Connections are pooled by default (except `AS SYSOPER` or `AS SYSDBA`).
+
 # Install #
 It is `go get`'able  with `go get gopkg.in/goracle.v2`
 iff you have
