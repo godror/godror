@@ -387,7 +387,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.dests[i] = v
 			}
 		case int32, []int32:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
 			info.set = dataSetNumber
 			if info.isOut {
 				st.gets[i] = dataGetNumber
@@ -407,6 +407,13 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
+		case uint32, []uint32:
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
+			info.set = dataSetNumber
+			if info.isOut {
+				st.gets[i] = dataGetNumber
+				st.dests[i] = v
+			}
 		case uint64, []uint64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
 			info.set = dataSetNumber
@@ -415,14 +422,14 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.dests[i] = v
 			}
 		case float32, []float32:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_FLOAT
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
 			info.set = dataSetNumber
 			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case float64, []float64:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_DOUBLE
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
 			info.set = dataSetNumber
 			if info.isOut {
 				st.gets[i] = dataGetNumber
