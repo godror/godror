@@ -37,9 +37,7 @@ import (
 )
 
 var testDb *sql.DB
-
-var testLoggersMu sync.RWMutex
-var testLoggers []*testing.T
+var tl = &testLogger{}
 
 func init() {
 	var err error
@@ -53,39 +51,63 @@ func init() {
 		panic(err)
 	}
 
-	goracle.Log = func(keyvals ...interface{}) error {
-		buf := bufPool.Get().(*bytes.Buffer)
-		defer bufPool.Put(buf)
-		buf.Reset()
-		if len(keyvals)%2 != 0 {
-			keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
-		}
-		for i := 0; i < len(keyvals); i += 2 {
-			fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
-		}
-		testLoggersMu.RLock()
-		defer testLoggersMu.RUnlock()
-		for _, t := range testLoggers {
-			t.Helper()
-			t.Log(buf.String())
-		}
-		return nil
-	}
+	goracle.Log = tl.Log
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
 
-func enableLogging(t *testing.T) func() {
-	testLoggersMu.Lock()
-	testLoggers = append(testLoggers, t)
-	testLoggersMu.Unlock()
+type testLogger struct {
+	sync.RWMutex
+	Ts       []*testing.T
+	beHelped []*testing.T
+}
+
+func (tl *testLogger) Log(keyvals ...interface{}) error {
+	buf := bufPool.Get().(*bytes.Buffer)
+	defer bufPool.Put(buf)
+	buf.Reset()
+	if len(keyvals)%2 != 0 {
+		keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
+	}
+	for i := 0; i < len(keyvals); i += 2 {
+		fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
+	}
+
+	tl.Lock()
+	for _, t := range tl.beHelped {
+		t.Helper()
+	}
+	tl.beHelped = tl.beHelped[:0]
+	tl.Unlock()
+
+	tl.RLock()
+	defer tl.RUnlock()
+	for _, t := range tl.Ts {
+		t.Log(buf.String())
+	}
+
+	return nil
+}
+func (tl *testLogger) enableLogging(t *testing.T) func() {
+	tl.Lock()
+	tl.Ts = append(tl.Ts, t)
+	tl.beHelped = append(tl.beHelped, t)
+	tl.Unlock()
+
 	return func() {
-		testLoggersMu.Lock()
-		defer testLoggersMu.Unlock()
-		for i, f := range testLoggers {
+		tl.Lock()
+		defer tl.Unlock()
+		for i, f := range tl.Ts {
 			if f == t {
-				testLoggers[i] = testLoggers[0]
-				testLoggers = testLoggers[1:]
+				tl.Ts[i] = tl.Ts[0]
+				tl.Ts = tl.Ts[1:]
+				break
+			}
+		}
+		for i, f := range tl.beHelped {
+			if f == t {
+				tl.beHelped[i] = tl.beHelped[0]
+				tl.beHelped = tl.beHelped[1:]
 				break
 			}
 		}
@@ -93,7 +115,7 @@ func enableLogging(t *testing.T) func() {
 }
 
 func TestDbmsOutput(t *testing.T) {
-	defer enableLogging(t)()
+	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -118,7 +140,7 @@ func TestDbmsOutput(t *testing.T) {
 }
 
 func TestInOutArray(t *testing.T) {
-	defer enableLogging(t)()
+	defer tl.enableLogging(t)()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
