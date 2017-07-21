@@ -290,12 +290,15 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 	minArrLen, maxArrLen := -1, -1
 
 	st.arrLen = minArrLen
-	doExecMany := !st.PlSQLArrays && st.arrLen > 0
-	dataSliceLen := 1
-	if doExecMany || st.PlSQLArrays {
-		dataSliceLen = st.arrLen
-	}
 
+	type argInfo struct {
+		isIn, isOut bool
+		typ         C.dpiOracleTypeNum
+		natTyp      C.dpiNativeTypeNum
+		set         dataSetter
+		bufSize     int
+	}
+	infos := make([]argInfo, len(args))
 	//fmt.Printf("bindVars %d\n", len(args))
 	for i, a := range args {
 		st.gets[i] = nil
@@ -303,25 +306,28 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		if !named {
 			named = a.Name != ""
 		}
-		isIn, isOut := true, false
+		info := &(infos[i])
+		info.isIn = true
 		value := a.Value
 		if out, ok := value.(sql.Out); ok {
-			if st.arrLen > 1 {
+			if !st.PlSQLArrays && st.arrLen > 1 {
 				st.arrLen = maxArraySize
 			}
-			isIn, isOut = out.In, true
+			info.isIn, info.isOut = out.In, true
 			value = out.Dest
 			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
 				value = rv.Elem().Interface()
 			}
 		}
+		st.dests[i] = value
 		st.isSlice[i] = false
 		rArgs[i] = reflect.ValueOf(value)
 		if rArgs[i].Kind() == reflect.Ptr {
 			rArgs[i] = rArgs[i].Elem()
 		}
 		if _, isByteSlice := value.([]byte); !isByteSlice {
-			if rArgs[i].Kind() == reflect.Slice {
+			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice
+			if !st.PlSQLArrays && st.isSlice[i] {
 				n := rArgs[i].Len()
 				if minArrLen == -1 || n < minArrLen {
 					minArrLen = n
@@ -329,19 +335,34 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				if maxArrLen == -1 || n > maxArrLen {
 					maxArrLen = n
 				}
-				st.isSlice[i] = true
 			}
 		}
 
-		Log("msg", "bindVars", "i", i, "in", isIn, "out", isOut, "value", fmt.Sprintf("%T %#v", value, value))
+		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", value, value))
+	}
 
-		var set dataSetter
-		var typ C.dpiOracleTypeNum
-		var natTyp C.dpiNativeTypeNum
-		var bufSize int
+	if maxArrLen > maxArraySize {
+		return errors.Errorf("slice is bigger (%d) than the maximum (%d)", maxArrLen, maxArraySize)
+	}
+	doManyCount := 1
+	doExecMany := !st.PlSQLArrays
+	if doExecMany {
+		if minArrLen != -1 && minArrLen != maxArrLen {
+			return errors.Errorf("PlSQLArrays is not set, but has different lengthed slices (min=%d < %d=max)", minArrLen, maxArrLen)
+		}
+		st.arrLen = minArrLen
+		if doExecMany = st.arrLen > 1; doExecMany {
+			doManyCount = st.arrLen
+		}
+	}
+	Log("doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
+
+	for i := range args {
+		info := &(infos[i])
+		value := st.dests[i]
 		switch v := value.(type) {
 		case Lob, []Lob:
-			typ, natTyp = C.DPI_ORACLE_TYPE_BLOB, C.DPI_NATIVE_TYPE_LOB
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BLOB, C.DPI_NATIVE_TYPE_LOB
 			var isClob bool
 			switch v := v.(type) {
 			case Lob:
@@ -350,66 +371,66 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				isClob = len(v) > 0 && v[0].IsClob
 			}
 			if isClob {
-				typ = C.DPI_ORACLE_TYPE_CLOB
+				info.typ = C.DPI_ORACLE_TYPE_CLOB
 			}
-			set = st.dataSetLOB
-			if isOut {
+			info.set = st.dataSetLOB
+			if info.isOut {
 				st.gets[i] = st.dataGetLOB
 				st.dests[i] = v
 			}
 
 		case int, []int:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case int32, []int32:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case int64, []int64:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case uint, []uint:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case uint64, []uint64:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case float32, []float32:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_FLOAT
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_FLOAT
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case float64, []float64:
-			typ, natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_DOUBLE
-			set = dataSetNumber
-			if isOut {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_DOUBLE
+			info.set = dataSetNumber
+			if info.isOut {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
 		case bool, []bool:
-			typ, natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-			set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
+			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 				b := C.int(0)
 				if v.(bool) {
 					b = 1
@@ -417,7 +438,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				C.dpiData_setBool(data, b)
 				return nil
 			}
-			if isOut {
+			if info.isOut {
 				st.gets[i] = func(v interface{}, data *C.dpiData) error {
 					return nil
 				}
@@ -425,46 +446,46 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			}
 
 		case []byte, [][]byte:
-			typ, natTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
 			switch v := v.(type) {
 			case []byte:
-				bufSize = len(v)
+				info.bufSize = len(v)
 			case [][]byte:
 				for _, b := range v {
-					if n := len(b); n > bufSize {
-						bufSize = n
+					if n := len(b); n > info.bufSize {
+						info.bufSize = n
 					}
 				}
 			}
-			set = dataSetBytes
-			if isOut {
-				bufSize = 4000
+			info.set = dataSetBytes
+			if info.isOut {
+				info.bufSize = 4000
 				st.gets[i] = dataGetBytes
 				st.dests[i] = v
 			}
 
 		case string, []string:
-			typ, natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 			switch v := v.(type) {
 			case string:
-				bufSize = 4 * len(v)
+				info.bufSize = 4 * len(v)
 			case []string:
 				for _, s := range v {
-					if n := 4 * len(s); n > bufSize {
-						bufSize = n
+					if n := 4 * len(s); n > info.bufSize {
+						info.bufSize = n
 					}
 				}
 			}
-			set = dataSetBytes
-			if isOut {
-				bufSize = 32767
+			info.set = dataSetBytes
+			if info.isOut {
+				info.bufSize = 32767
 				st.gets[i] = dataGetBytes
 				st.dests[i] = v
 			}
 
 		case time.Time, []time.Time:
-			typ, natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
-			set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 				t := v.(time.Time)
 				_, z := t.Zone()
 				C.dpiData_setTimestamp(data,
@@ -474,7 +495,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				)
 				return nil
 			}
-			if isOut {
+			if info.isOut {
 				st.gets[i] = func(v interface{}, data *C.dpiData) error {
 					return nil
 				}
@@ -486,35 +507,37 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 
 		var err error
-		n := dataSliceLen
-		if st.PlSQLArrays && st.isSlice[i] && isOut {
+		n := doManyCount
+		if st.PlSQLArrays && st.isSlice[i] && info.isOut {
 			n = maxArraySize
 		}
-		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(typ), "natTyp", int(natTyp), "sliceLen", n, "bufSize", bufSize, "isSlice", st.isSlice[i])
-		//i, st.PlSQLArrays, typ, natTyp, dataSliceLen, bufSize)
+		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
+		//i, st.PlSQLArrays, info.typ, info.natTyp dataSliceLen, info.bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
-			st.PlSQLArrays && st.isSlice[i], typ, natTyp, n, bufSize,
+			st.PlSQLArrays && st.isSlice[i], info.typ, info.natTyp, n, info.bufSize,
 		); err != nil {
 			return errors.WithMessage(err, fmt.Sprintf("%d", i))
 		}
 
+		// Have to setNumElementsInArray for the actual lengths for PL/SQL arrays
 		dv, data := st.vars[i], st.data[i]
-		if !isIn {
+		if !info.isIn {
 			if st.PlSQLArrays {
-				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", maxArraySize)
-				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(maxArraySize)) == C.DPI_FAILURE {
-					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, maxArraySize)
+				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
+				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) == C.DPI_FAILURE {
+					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, 0)
 				}
 			}
 			continue
 		}
-		if !(doExecMany || st.PlSQLArrays) || !st.isSlice[i] {
+
+		if !st.isSlice[i] {
 			Log("msg", "set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
-			if err := set(dv, 0, &data[0], value); err != nil {
+			if err := info.set(dv, 0, &data[0], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
 		} else {
-			n := dataSliceLen
+			n := doManyCount
 			if st.PlSQLArrays {
 				n = reflect.ValueOf(value).Len()
 
@@ -529,19 +552,13 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				v := reflect.ValueOf(value).Index(j).Interface()
 				Log("msg", "set", "i", i, "j", j, "n", n, "v", fmt.Sprintf("%T=%#v", v, v))
 				//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
-				if err := set(dv, j, &data[j], v); err != nil {
+				if err := info.set(dv, j, &data[j], v); err != nil {
 					//v := rArgs[i].Index(j).Interface()
 					return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, j, v, v)
 				}
 			}
 		}
 		//fmt.Printf("data[%d]: %#v\n", i, st.data[i])
-	}
-	if maxArrLen > maxArraySize {
-		return errors.Errorf("slice is bigger (%d) than the maximum (%d)", maxArrLen, maxArraySize)
-	}
-	if !st.PlSQLArrays && minArrLen != -1 && minArrLen != maxArrLen {
-		return errors.Errorf("PlSQLArrays is not set, but has different lengthed slices (min=%d < %d=max)", minArrLen, maxArrLen)
 	}
 
 	if !named {
