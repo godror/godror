@@ -65,8 +65,9 @@ func init() {
 		}
 		testLoggersMu.RLock()
 		defer testLoggersMu.RUnlock()
-		for _, f := range testLoggers {
-			f.Log(buf.String())
+		for _, t := range testLoggers {
+			t.Helper()
+			t.Log(buf.String())
 		}
 		return nil
 	}
