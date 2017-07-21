@@ -51,7 +51,7 @@ func init() {
 		panic(err)
 	}
 
-	goracle.Log = tl.Log
+	goracle.Log = tl.GetLog()
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
@@ -62,31 +62,34 @@ type testLogger struct {
 	beHelped []*testing.T
 }
 
-func (tl *testLogger) Log(keyvals ...interface{}) error {
-	buf := bufPool.Get().(*bytes.Buffer)
-	defer bufPool.Put(buf)
-	buf.Reset()
-	if len(keyvals)%2 != 0 {
-		keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
-	}
-	for i := 0; i < len(keyvals); i += 2 {
-		fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
-	}
+func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
+	return func(keyvals ...interface{}) error {
+		buf := bufPool.Get().(*bytes.Buffer)
+		defer bufPool.Put(buf)
+		buf.Reset()
+		if len(keyvals)%2 != 0 {
+			keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
+		}
+		for i := 0; i < len(keyvals); i += 2 {
+			fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
+		}
 
-	tl.Lock()
-	for _, t := range tl.beHelped {
-		t.Helper()
-	}
-	tl.beHelped = tl.beHelped[:0]
-	tl.Unlock()
+		tl.Lock()
+		for _, t := range tl.beHelped {
+			t.Helper()
+		}
+		tl.beHelped = tl.beHelped[:0]
+		tl.Unlock()
 
-	tl.RLock()
-	defer tl.RUnlock()
-	for _, t := range tl.Ts {
-		t.Log(buf.String())
-	}
+		tl.RLock()
+		defer tl.RUnlock()
+		for _, t := range tl.Ts {
+			t.Helper()
+			t.Log(buf.String())
+		}
 
-	return nil
+		return nil
+	}
 }
 func (tl *testLogger) enableLogging(t *testing.T) func() {
 	tl.Lock()
@@ -250,50 +253,30 @@ END test_pkg;
 
 	goracle.EnableDbmsOutput(ctx, testDb)
 
-	t.Logf("vc=%#v", vc)
-	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_vc(:1); END;",
-		goracle.PlSQLArrays,
-		sql.Out{Dest: &vc, In: true},
-	); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	t.Logf("vc=%#v", vc)
-	if d := cmp.Diff(vc, vcWant); d != "" {
-		t.Errorf("vc: %s", d)
-		var buf bytes.Buffer
-		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
-			t.Error(err)
-		}
-		t.Log("OUTPUT:", buf.String())
-		return
-	}
+	for _, tC := range []struct {
+		Name     string
+		In, Want interface{}
+	}{
+		{Name: "vc", In: vc, Want: vcWant},
+		{Name: "num", In: num, Want: numWant},
+		{Name: "dt", In: dt, Want: dtWant},
+		{Name: "int", In: intgr, Want: intgrWant},
+	} {
 
-	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_int(:1); END;",
-		goracle.PlSQLArrays,
-		sql.Out{Dest: &intgr, In: true},
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("int=%#v", intgr)
-	if d := cmp.Diff(intgr, intgrWant); d != "" {
-		t.Errorf("int: %s", d)
-		var buf bytes.Buffer
-		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
-			t.Error(err)
+		t.Logf("%s=%#v", tC.Name, tC.In)
+		qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
+		if _, err := testDb.ExecContext(ctx, qry,
+			goracle.PlSQLArrays,
+			sql.Out{Dest: &(tC.In), In: true},
+		); err != nil {
+			t.Fatalf("%s\n%+v", qry, err)
 		}
-		t.Log("OUTPUT:", buf.String())
-		return
-	}
-
-	if _, err := testDb.ExecContext(ctx, "BEGIN test_pkg.inout_num(:1); END;",
-		goracle.PlSQLArrays,
-		sql.Out{Dest: &num, In: true},
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("num=%#v", intgr)
-	if d := cmp.Diff(num, numWant); d != "" {
-		t.Errorf("num: %s", d)
+		t.Logf("%s=%#v", tC.Name, tC.In)
+		d := cmp.Diff(tC.In, tC.Want)
+		if d == "" {
+			continue
+		}
+		t.Errorf("%s: %s", tC.Name, d)
 		var buf bytes.Buffer
 		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
 			t.Error(err)
