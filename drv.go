@@ -56,6 +56,9 @@ const (
 	DriverName = "gopkg.in/rana/ora.v5 : " + Version
 )
 
+// Number as string
+type Number string
+
 // Log function
 var Log = func(...interface{}) error { return nil }
 

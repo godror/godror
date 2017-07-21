@@ -464,6 +464,25 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.dests[i] = v
 			}
 
+		case Number, []Number:
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
+			switch v := v.(type) {
+			case Number:
+				info.bufSize = 4 * len(v)
+			case []Number:
+				for _, s := range v {
+					if n := 4 * len(s); n > info.bufSize {
+						info.bufSize = n
+					}
+				}
+			}
+			info.set = dataSetBytes
+			if info.isOut {
+				info.bufSize = 32767
+				st.gets[i] = dataGetBytes
+				st.dests[i] = v
+			}
+
 		case string, []string:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 			switch v := v.(type) {
@@ -484,9 +503,14 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			}
 
 		case time.Time, []time.Time:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 				t := v.(time.Time)
+				if t.IsZero() {
+					data.isNull = 1
+					return nil
+				}
+
 				_, z := t.Zone()
 				C.dpiData_setTimestamp(data,
 					C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
@@ -497,6 +521,27 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			}
 			if info.isOut {
 				st.gets[i] = func(v interface{}, data *C.dpiData) error {
+					ts := C.dpiData_getTimestamp(data)
+					tz := time.Local
+					if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
+						tz = time.FixedZone(
+							fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
+							int(ts.tzHourOffset)*3600+int(ts.tzMinuteOffset)*60,
+						)
+					}
+					t := time.Date(
+						int(ts.year), time.Month(ts.month), int(ts.day),
+						int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
+						tz)
+					Log("msg", "get", "t", t.Format(time.RFC3339), "dest", fmt.Sprintf("%T", v), "tz", ts.tzHourOffset)
+					switch x := v.(type) {
+					case *time.Time:
+						*x = t
+					case *interface{}:
+						*x = t
+					default:
+						return errors.Errorf("%d. arg: wanted time.Time, got %T", i+1, v)
+					}
 					return nil
 				}
 				st.dests[i] = v
@@ -657,6 +702,14 @@ func dataGetBytes(v interface{}, data *C.dpiData) error {
 
 		*x = ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
 
+	case *Number:
+		if data.isNull == 1 {
+			*x = ""
+			return nil
+		}
+		b := C.dpiData_getBytes(data)
+		*x = Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+
 	case *string:
 		if data.isNull == 1 {
 			*x = ""
@@ -673,18 +726,27 @@ func dataGetBytes(v interface{}, data *C.dpiData) error {
 			}
 			*x = y
 			return nil
+
+		case Number:
+			if err := dataGetBytes(&y, data); err != nil {
+				return err
+			}
+			*x = y
+			return nil
+
 		case string:
 			if err := dataGetBytes(&y, data); err != nil {
 				return err
 			}
 			*x = y
 			return nil
+
 		default:
-			return errors.Errorf("awaited []byte/string, got %T (%#v)", x, x)
+			return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", x, x)
 		}
 
 	default:
-		return errors.Errorf("awaited []byte/string, got %T (%#v)", v, v)
+		return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", v, v)
 	}
 	return nil
 }
@@ -698,6 +760,15 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		}
 		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(x)))
+
+	case Number:
+		b := []byte(x)
+		if len(b) > 0 {
+			p = (*C.char)(unsafe.Pointer(&b[0]))
+		}
+		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
+
 	case string:
 		b := []byte(x)
 		if len(b) > 0 {
@@ -706,7 +777,7 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
 	default:
-		return errors.Errorf("awaited []byte/string, got %T (%#v)", v, v)
+		return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", v, v)
 	}
 	return nil
 }

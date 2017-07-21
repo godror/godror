@@ -210,7 +210,7 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 		case C.DPI_NATIVE_TYPE_DOUBLE:
 			return reflect.TypeOf(float64(0))
 		default:
-			return reflect.TypeOf("")
+			return reflect.TypeOf(Number(""))
 		}
 	case C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT:
 		return reflect.TypeOf(float32(0))
@@ -318,7 +318,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				}
 				b := C.dpiData_getBytes(d)
 				//fmt.Printf("b=%p[%d] t=%d i=%d\n", b.ptr, b.length, col.DefaultNumType, C.dpiData_getInt64(d))
-				dest[i] = C.GoStringN(b.ptr, C.int(b.length))
+				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
 			}
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,

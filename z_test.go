@@ -148,7 +148,7 @@ func TestInOutArray(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
-TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
 TYPE num_tab_typ IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
 TYPE vc_tab_typ IS TABLE OF VARCHAR2(100) INDEX BY PLS_INTEGER;
 TYPE dt_tab_typ IS TABLE OF DATE INDEX BY PLS_INTEGER;
@@ -209,7 +209,8 @@ BEGIN
   DBMS_OUTPUT.PUT_LINE('p_dt.COUNT='||p_dt.COUNT||' FIRST='||p_dt.FIRST||' LAST='||p_dt.LAST);
   v_idx := p_dt.FIRST;
   WHILE v_idx IS NOT NULL LOOP
-    p_dt(v_idx) := NVL(p_dt(v_idx) + 1, SYSDATE);
+  DBMS_OUTPUT.PUT_LINE(v_idx||'='||TO_CHAR(p_dt(v_idx), 'YYYY-MM-DD HH24:MI:SS'));
+    p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
 	v_idx := p_dt.NEXT(v_idx);
   END LOOP;
   p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
@@ -244,12 +245,18 @@ END test_pkg;
 
 	intgr := []int32{3, 1, 4}
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
-	num := []string{"3.14", "-2.48"}
-	numWant := []string{"1.57", "-1.24", "2"}
+	num := []goracle.Number{"3.14", "-2.48"}
+	numWant := []goracle.Number{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring"}
 	vcWant := []string{"string +", "bring +", "2"}
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
-	dtWant := []time.Time{dt[0].Add(24 * time.Hour), time.Now().Truncate(24 * time.Hour)}
+	today := time.Now().Truncate(24 * time.Hour)
+	today = today.Add(-2 * time.Hour)
+	dtWant := []time.Time{
+		dt[0].Add(24 * time.Hour),
+		today.Add(-2 * 24 * time.Hour),
+		today,
+	}
 
 	goracle.EnableDbmsOutput(ctx, testDb)
 
@@ -263,7 +270,7 @@ END test_pkg;
 		{Name: "int", In: intgr, Want: intgrWant},
 	} {
 
-		t.Logf("%s=%#v", tC.Name, tC.In)
+		t.Logf("%s=%s", tC.Name, tC.In)
 		qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
 		if _, err := testDb.ExecContext(ctx, qry,
 			goracle.PlSQLArrays,
@@ -271,7 +278,7 @@ END test_pkg;
 		); err != nil {
 			t.Fatalf("%s\n%+v", qry, err)
 		}
-		t.Logf("%s=%#v", tC.Name, tC.In)
+		t.Logf("%s=%s", tC.Name, tC.In)
 		d := cmp.Diff(tC.In, tC.Want)
 		if d == "" {
 			continue
@@ -443,7 +450,7 @@ func TestExecuteMany(t *testing.T) {
 	defer cancel()
 	const num = 1000
 	ints := make([]int, num)
-	nums := make([]string, num)
+	nums := make([]goracle.Number, num)
 	int32s := make([]int32, num)
 	floats := make([]float64, num)
 	strs := make([]string, num)
@@ -453,7 +460,7 @@ func TestExecuteMany(t *testing.T) {
 	for i := range nums {
 		ids[i] = i
 		ints[i] = i << 1
-		nums[i] = strconv.Itoa(i)
+		nums[i] = goracle.Number(strconv.Itoa(i))
 		int32s[i] = int32(i)
 		floats[i] = float64(i) / float64(3.14)
 		strs[i] = fmt.Sprintf("%x", i)
@@ -510,7 +517,8 @@ func TestExecuteMany(t *testing.T) {
 	i := 0
 	for rows.Next() {
 		var id, Int int
-		var num, vc string
+		var num string
+		var vc string
 		var num6 int32
 		var num52 float64
 		var dt time.Time
@@ -523,7 +531,7 @@ func TestExecuteMany(t *testing.T) {
 		if Int != ints[i] {
 			t.Errorf("%d. INT got %d, wanted %d.", i, Int, ints[i])
 		}
-		if num != nums[i] {
+		if num != string(nums[i]) {
 			t.Errorf("%d. NUM got %q, wanted %q.", i, num, nums[i])
 		}
 		if num6 != int32s[i] {

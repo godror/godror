@@ -212,6 +212,9 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			if _, err := io.WriteString(w, lines[i]); err != nil {
 				return err
 			}
+			if _, err := w.Write([]byte{'\n'}); err != nil {
+				return err
+			}
 		}
 		if int(numLines) < len(lines) {
 			return nil
