@@ -26,7 +26,7 @@ install:
     - sudo cp -a lib/libodpic.so /usr/local/lib
     - sudo ldconfig /usr/local/lib
     - cd ..
-    - go get .
+    - go get -t .
 script:
     - export GORACLE_DRV_TEST_USERNAME=test
     - export GORACLE_DRV_TEST_PASSWORD=test
