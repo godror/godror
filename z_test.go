@@ -255,7 +255,7 @@ END test_pkg;
 	vcWant := []string{"string +", "bring +", "2"}
 	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
 	today := time.Now().Truncate(24 * time.Hour)
-	today = today.Add(-2 * time.Hour)
+	today = time.Date(today.Year(), today.Month(), today.Day(), today.Hour(), today.Minute(), today.Second(), 0, time.Local)
 	dtWant := []time.Time{
 		dt[0].Add(24 * time.Hour),
 		today.Add(-2 * 24 * time.Hour),
@@ -263,6 +263,16 @@ END test_pkg;
 	}
 
 	goracle.EnableDbmsOutput(ctx, testDb)
+
+	opts := []cmp.Option{
+		cmp.Comparer(func(x, y time.Time) bool {
+			d := x.Sub(y)
+			if d < 0 {
+				d *= -1
+			}
+			return d <= 2*time.Hour
+		}),
+	}
 
 	for _, tC := range []struct {
 		Name     string
@@ -282,12 +292,11 @@ END test_pkg;
 		); err != nil {
 			t.Fatalf("%s\n%+v", qry, err)
 		}
-		t.Logf("%s=%s", tC.Name, in)
-		d := cmp.Diff(in, tC.Want)
-		if d == "" {
+
+		if cmp.Equal(in, tC.Want, opts...) {
 			continue
 		}
-		t.Errorf("%s: %s", tC.Name, d)
+		t.Errorf("%s: %s", tC.Name, cmp.Diff(in, tC.Want))
 		var buf bytes.Buffer
 		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
 			t.Error(err)
@@ -318,8 +327,10 @@ END test_pkg;
 	if d := cmp.Diff(vc, vcWant); d != "" {
 		t.Errorf("vc: %s", d)
 	}
-	if d := cmp.Diff(dt, dtWant); d != "" {
-		t.Errorf("dt: %s", d)
+	if !cmp.Equal(dt, dtWant, opts...) {
+		if d := cmp.Diff(dt, dtWant); d != "" {
+			t.Errorf("dt: %s", d)
+		}
 	}
 }
 
