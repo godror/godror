@@ -138,8 +138,8 @@ func TestDbmsOutput(t *testing.T) {
 		t.Error(err)
 	}
 	t.Log(buf.String())
-	if buf.String() != txt {
-		t.Errorf("got %q, wanted %q", buf.String(), txt)
+	if buf.String() != txt+"\n" {
+		t.Errorf("got %q, wanted %q", buf.String(), txt+"\n")
 	}
 }
 
