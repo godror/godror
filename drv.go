@@ -259,6 +259,7 @@ func (P connectionParams) string(class bool) string {
 	)
 }
 
+// ParseConnString parses the given connection string into a struct.
 func ParseConnString(connString string) (connectionParams, error) {
 	P := connectionParams{
 		MinSessions:   DefaultPoolMinSessions,

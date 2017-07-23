@@ -185,12 +185,15 @@ type preparer interface {
 	Prepare(string) (*sql.Stmt, error)
 }
 
+// EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
+// This is required if you want to retrieve the output with ReadDbmsOutput later.
 func EnableDbmsOutput(ctx context.Context, conn execer) error {
 	qry := "BEGIN DBMS_OUTPUT.enable(1000000); END;"
 	_, err := conn.ExecContext(ctx, qry)
 	return errors.Wrap(err, qry)
 }
 
+// ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	qry := `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
 	stmt, err := conn.Prepare(qry)
