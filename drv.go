@@ -14,6 +14,23 @@
 //    limitations under the License.
 
 // Package goracle is a database/sql/driver for Oracle DB.
+//
+// The connection string for the sql.Open("goracle", connString) call can be
+// the simple
+//   loin/password@sid [AS SYSDBA|AS SYSOPER]
+//
+// type (with sid being the sexp returned by tnsping),
+// or in the form of
+//   ora://login:password@sid/? \
+//     sysdba=0& \
+//     sysoper=0& \
+//     poolMinSessions=1& \
+//     poolMaxSessions=1000& \
+//     poolIncrement=1
+//
+// These are the defaults. Many advocate that a static session pool (min=max, incr=0)
+// is better, with 1-10 sessions per CPU thread.
+// See http://docs.oracle.com/cd/E82638_01/JJUCP/optimizing-real-world-performance.htm#JJUCP-GUID-BC09F045-5D80-4AF5-93F5-FEF0531E0E1D
 package goracle
 
 //go:generate git submodule update --init --recursive
@@ -36,6 +53,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -54,6 +72,13 @@ const (
 
 	// DriverName is set on the connection to be seen in the DB
 	DriverName = "gopkg.in/rana/ora.v5 : " + Version
+
+	// DefaultPoolMinSessions specifies the default value for minSessions for pool creation.
+	DefaultPoolMinSessions = 1
+	// DefaultPoolMaxSessions specifies the default value for maxSessions for pool creation.
+	DefaultPoolMaxSessions = 1000
+	// DefaultPoolInrement specifies the default value for increment for pool creation.
+	DefaultPoolIncrement = 1
 )
 
 // Number as string
@@ -103,9 +128,10 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 		return &c, nil
 	}
 
+	minSessions, maxSessions, poolIncrement := DefaultPoolMinSessions, DefaultPoolMaxSessions, DefaultPoolIncrement
 	var username, password, sid, connClass string
 	var isSysDBA, isSysOper bool
-	if strings.HasPrefix(connString, "ora://") {
+	if strings.HasPrefix(connString, "oracle://") {
 		u, err := url.Parse(connString)
 		if err != nil {
 			return nil, err
@@ -122,6 +148,32 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 		if isSysDBA = q.Get("sysdba") == "1"; !isSysDBA {
 			isSysOper = q.Get("sysoper") == "1"
 		}
+
+		for _, task := range []struct {
+			Dest *int
+			Key  string
+		}{
+			{&minSessions, "poolMinSessions"},
+			{&maxSessions, "poolMaxSessions"},
+			{&poolIncrement, "poolIncrement"},
+		} {
+			s := q.Get(task.Key)
+			if s == "" {
+				continue
+			}
+			var err error
+			*task.Dest, err = strconv.Atoi(s)
+			if err != nil {
+				return nil, errors.Wrap(err, task.Key+"="+s)
+			}
+		}
+		if minSessions > maxSessions {
+			minSessions = maxSessions
+		}
+		if minSessions == maxSessions {
+			poolIncrement = 0
+		}
+
 	} else {
 		i := strings.IndexByte(connString, '/')
 		if i < 0 {
@@ -201,14 +253,16 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 			driverName: cDriverName, driverNameLength: C.uint32_t(len(DriverName)),
 		},
 		&C.dpiPoolCreateParams{
-			minSessions: 1, maxSessions: 1000, sessionIncrement: 1,
-			homogeneous:  1,
-			externalAuth: extAuth,
-			getMode:      C.DPI_MODE_POOL_GET_NOWAIT,
+			minSessions:      C.uint32_t(minSessions),
+			maxSessions:      C.uint32_t(maxSessions),
+			sessionIncrement: C.uint32_t(poolIncrement),
+			homogeneous:      1,
+			externalAuth:     extAuth,
+			getMode:          C.DPI_MODE_POOL_GET_NOWAIT,
 		},
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, d.getError()
+		return nil, errors.Wrapf(d.getError(), "minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d", minSessions, maxSessions, poolIncrement, extAuth)
 	}
 	C.dpiPool_setTimeout(dp, 300)
 	//C.dpiPool_setMaxLifetimeSession(dp, 3600)
