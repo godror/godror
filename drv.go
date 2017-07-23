@@ -84,6 +84,8 @@ const (
 	DefaultPoolMaxSessions = 1000
 	// DefaultPoolInrement specifies the default value for increment for pool creation.
 	DefaultPoolIncrement = 1
+	// DefaultConnectionClass is the defailt connectionClass
+	DefaultConnectionClass = "POOLED"
 )
 
 // Number as string
@@ -265,6 +267,7 @@ func ParseConnString(connString string) (connectionParams, error) {
 		MinSessions:   DefaultPoolMinSessions,
 		MaxSessions:   DefaultPoolMaxSessions,
 		PoolIncrement: DefaultPoolIncrement,
+		ConnClass:     DefaultConnectionClass,
 	}
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')

@@ -28,6 +28,7 @@ func TestParseConnString(t *testing.T) {
 	}{
 		"simple": {In: "user/pass@sid",
 			Want: connectionParams{Username: "user", Password: "pass", SID: "sid",
+				ConnClass:   DefaultConnectionClass,
 				MinSessions: DefaultPoolMinSessions, MaxSessions: DefaultPoolMaxSessions, PoolIncrement: DefaultPoolIncrement}},
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0",
 			Want: connectionParams{Username: "user", Password: "pass", SID: "sid",
