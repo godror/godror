@@ -44,7 +44,7 @@ func init() {
 	var err error
 	if testDb, err = sql.Open(
 		"goracle",
-		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=4&poolMaxSessions=4&poolIncrement=0",
+		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
 			os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 			os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 			os.Getenv("GORACLE_DRV_TEST_DB"),
@@ -148,7 +148,7 @@ func TestDbmsOutput(t *testing.T) {
 func TestInOutArray(t *testing.T) {
 	defer tl.enableLogging(t)()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
 TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;

@@ -37,7 +37,7 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	dpiConn       *C.dpiConn
-	connString    string
+	connParams    connectionParams
 	inTransaction bool
 	*drv
 }
@@ -122,11 +122,11 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.Errorf("%v isolation level is not supported", sql.IsolationLevel(opts.Isolation))
 	}
 
-	dc, err := c.drv.Open(c.connString)
+	dc, err := c.drv.openConn(c.connParams)
 	if err != nil {
 		return nil, err
 	}
-	c2 := dc.(*conn)
+	c2 := dc
 	c2.inTransaction = true
 	return c2, err
 }
