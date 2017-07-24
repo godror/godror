@@ -121,6 +121,7 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 }
 
 func TestDbmsOutput(t *testing.T) {
+	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -146,6 +147,7 @@ func TestDbmsOutput(t *testing.T) {
 }
 
 func TestInOutArray(t *testing.T) {
+	t.Parallel()
 	defer tl.enableLogging(t)()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

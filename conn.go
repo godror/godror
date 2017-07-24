@@ -83,6 +83,9 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 // idle connections, it shouldn't be necessary for drivers to
 // do their own connection caching.
 func (c *conn) Close() error {
+	if c == nil || c.dpiConn == nil {
+		return nil
+	}
 	if C.dpiConn_release(c.dpiConn) == C.DPI_FAILURE {
 		return c.getError()
 	}
