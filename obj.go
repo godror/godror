@@ -160,6 +160,17 @@ type ObjectType struct {
 	attributes    []ObjectAttribute
 }
 
+func (c *conn) GetObjectType(name string) (*ObjectType, error) {
+	cName := C.CString(name)
+	defer func() { C.free(unsafe.Pointer(cName)) }()
+	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
+	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), (**C.dpiObjectType)(unsafe.Pointer(&objType))) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(objType))
+		return nil, c.getError()
+	}
+	return &ObjectType{dpiObjectType: objType}, nil
+}
+
 func (t *ObjectType) NewObject() (*Object, error) {
 	obj := Object{ObjectType: t}
 	if C.dpiObjectType_createObject(t.dpiObjectType, (**C.dpiObject)(unsafe.Pointer(&obj.dpiObject))) == C.DPI_FAILURE {
