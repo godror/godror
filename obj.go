@@ -35,7 +35,7 @@ func (O *Object) GetAttribute(data *Data, i int) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 	}
-	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.Data) == C.DPI_FAILURE {
+	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil
@@ -45,7 +45,7 @@ func (O *Object) SetAttribute(i int, data *Data) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 	}
-	if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.Data) == C.DPI_FAILURE {
+	if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil
@@ -62,7 +62,7 @@ func (O *ObjectCollection) Append(data *Data) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = O.info.(objectCollectionInfo).nativeTypeNum
 	}
-	if C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, data.Data) == C.DPI_FAILURE {
+	if C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil
@@ -85,7 +85,7 @@ func (O *ObjectCollection) Get(data *Data, i int) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = O.info.(objectCollectionInfo).nativeTypeNum
 	}
-	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, data.Data) == C.DPI_FAILURE {
+	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil
@@ -95,7 +95,7 @@ func (O *ObjectCollection) Set(i int, data *Data) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = O.info.(objectCollectionInfo).nativeTypeNum
 	}
-	if C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, data.Data) == C.DPI_FAILURE {
+	if C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil

@@ -28,57 +28,57 @@ import (
 
 type Data struct {
 	NativeTypeNum C.dpiNativeTypeNum
-	Data          *C.dpiData
+	dpiData       *C.dpiData
 }
 
 func (d *Data) IsNull() bool {
-	return d.Data.isNull == 1
+	return d.dpiData.isNull == 1
 }
 func (d *Data) GetBool() bool {
-	return C.dpiData_getBool(d.Data) == 1
+	return C.dpiData_getBool(d.dpiData) == 1
 }
 func (d *Data) SetBool(b bool) {
 	var i C.int
 	if b {
 		i = 1
 	}
-	C.dpiData_setBool(d.Data, i)
+	C.dpiData_setBool(d.dpiData, i)
 }
 func (d *Data) GetBytes() []byte {
 	if d.IsNull() {
 		return nil
 	}
-	b := C.dpiData_getBytes(d.Data)
+	b := C.dpiData_getBytes(d.dpiData)
 	return ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
 }
 func (d *Data) SetBytes(b []byte) {
 	if b == nil {
-		d.Data.isNull = 1
+		d.dpiData.isNull = 1
 		return
 	}
-	C.dpiData_setBytes(d.Data, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
+	C.dpiData_setBytes(d.dpiData, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
 }
 func (d *Data) GetFloat32() float32 {
-	return float32(C.dpiData_getFloat(d.Data))
+	return float32(C.dpiData_getFloat(d.dpiData))
 }
 func (d *Data) SetFloat32(f float32) {
-	C.dpiData_setFloat(d.Data, C.float(f))
+	C.dpiData_setFloat(d.dpiData, C.float(f))
 }
 
 func (d *Data) GetFloat64() float64 {
-	return float64(C.dpiData_getDouble(d.Data))
+	return float64(C.dpiData_getDouble(d.dpiData))
 }
 func (d *Data) SetFloat64(f float64) {
-	C.dpiData_setDouble(d.Data, C.double(f))
+	C.dpiData_setDouble(d.dpiData, C.double(f))
 }
 func (d *Data) GetInt64() int64 {
-	return int64(C.dpiData_getInt64(d.Data))
+	return int64(C.dpiData_getInt64(d.dpiData))
 }
 func (d *Data) SetInt64(i int64) {
-	C.dpiData_setInt64(d.Data, C.int64_t(i))
+	C.dpiData_setInt64(d.dpiData, C.int64_t(i))
 }
 func (d *Data) GetIntervalDS() time.Duration {
-	ds := C.dpiData_getIntervalDS(d.Data)
+	ds := C.dpiData_getIntervalDS(d.dpiData)
 	return time.Duration(ds.days)*24*time.Hour +
 		time.Duration(ds.hours)*time.Hour +
 		time.Duration(ds.minutes)*time.Minute +
@@ -86,40 +86,40 @@ func (d *Data) GetIntervalDS() time.Duration {
 		time.Duration(ds.fseconds)
 }
 func (d *Data) SetIntervalDS(dur time.Duration) {
-	C.dpiData_setIntervalDS(d.Data,
+	C.dpiData_setIntervalDS(d.dpiData,
 		C.int32_t(int64(dur.Hours())/24),
 		C.int32_t(int64(dur.Hours())%24), C.int32_t(dur.Minutes()), C.int32_t(dur.Seconds()),
 		C.int32_t(dur.Nanoseconds()),
 	)
 }
 func (d *Data) GetIntervalYM() IntervalYM {
-	ym := C.dpiData_getIntervalYM(d.Data)
+	ym := C.dpiData_getIntervalYM(d.dpiData)
 	return IntervalYM{Years: int(ym.years), Months: int(ym.months)}
 }
 func (d *Data) SetIntervalYM(ym IntervalYM) {
-	C.dpiData_setIntervalYM(d.Data, C.int32_t(ym.Years), C.int32_t(ym.Months))
+	C.dpiData_setIntervalYM(d.dpiData, C.int32_t(ym.Years), C.int32_t(ym.Months))
 }
 func (d *Data) GetLob() *Lob {
 	var L Lob
 	if !d.IsNull() {
-		L.Reader = &dpiLobReader{dpiLob: C.dpiData_getLOB(d.Data)}
+		L.Reader = &dpiLobReader{dpiLob: C.dpiData_getLOB(d.dpiData)}
 	}
 	return &L
 }
 func (d *Data) GetObject() *Object {
-	return &Object{dpiObject: C.dpiData_getObject(d.Data)}
+	return &Object{dpiObject: C.dpiData_getObject(d.dpiData)}
 }
 func (d *Data) SetObject(o *Object) {
-	C.dpiData_setObject(d.Data, o.dpiObject)
+	C.dpiData_setObject(d.dpiData, o.dpiObject)
 }
 func (d *Data) GetStmt() *statement {
-	return &statement{dpiStmt: C.dpiData_getStmt(d.Data)}
+	return &statement{dpiStmt: C.dpiData_getStmt(d.dpiData)}
 }
 func (d *Data) SetStmt(s *statement) {
-	C.dpiData_setStmt(d.Data, s.dpiStmt)
+	C.dpiData_setStmt(d.dpiData, s.dpiStmt)
 }
 func (d *Data) GetTime() time.Time {
-	ts := C.dpiData_getTimestamp(d.Data)
+	ts := C.dpiData_getTimestamp(d.dpiData)
 	tz := time.Local
 	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
 		tz = time.FixedZone(
@@ -135,17 +135,17 @@ func (d *Data) GetTime() time.Time {
 }
 func (d *Data) SetTime(t time.Time) {
 	_, z := t.Zone()
-	C.dpiData_setTimestamp(d.Data,
+	C.dpiData_setTimestamp(d.dpiData,
 		C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
 		C.uint8_t(t.Hour()), C.uint8_t(t.Minute()), C.uint8_t(t.Second()), C.uint32_t(t.Nanosecond()),
 		C.int8_t(z/3600), C.int8_t((z%3600)/60),
 	)
 }
 func (d *Data) GetUint64() uint64 {
-	return uint64(C.dpiData_getUint64(d.Data))
+	return uint64(C.dpiData_getUint64(d.dpiData))
 }
 func (d *Data) SetUint64(u uint64) {
-	C.dpiData_setUint64(d.Data, C.uint64_t(u))
+	C.dpiData_setUint64(d.dpiData, C.uint64_t(u))
 }
 
 type IntervalYM struct {
