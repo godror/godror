@@ -68,8 +68,11 @@ func (r *rows) Close() error {
 	for _, v := range r.vars {
 		C.dpiVar_release(v)
 	}
+	if r.statement.dpiStmt == nil {
+		return nil
+	}
 	if C.dpiStmt_release(r.statement.dpiStmt) == C.DPI_FAILURE {
-		return r.getError()
+		return errors.Wrap(r.getError(), "Close")
 	}
 	return nil
 }
@@ -245,13 +248,14 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 //
 // Next should return io.EOF when there are no more rows.
 func (r *rows) Next(dest []driver.Value) error {
+	Log("rows", "Next")
 	if r.finished {
 		return io.EOF
 	}
 	if r.fetched == 0 {
 		var moreRows C.int
 		if C.dpiStmt_fetchRows(r.dpiStmt, fetchRowCount, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
-			return r.getError()
+			return errors.Wrap(r.getError(), "Next")
 		}
 		//fmt.Printf("bri=%d fetched=%d, moreRows=%d\n", r.bufferRowIndex, r.fetched, moreRows)
 		if r.fetched == 0 {
@@ -265,7 +269,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				var n C.uint32_t
 				var data *C.dpiData
 				if C.dpiVar_getData(r.vars[i], &n, &data) == C.DPI_FAILURE {
-					return r.getError()
+					return errors.Wrapf(r.getError(), "getData[%d]", i)
 				}
 				r.data[i] = (*[fetchRowCount]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
@@ -418,7 +422,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			st := &statement{conn: r.conn, dpiStmt: C.dpiData_getStmt(d)}
 			var colCount C.uint32_t
 			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
-				return r.getError()
+				return errors.Wrap(r.getError(), "getNumQueryColumns")
 			}
 			r2, err := st.openRows(int(colCount))
 			if err != nil {
@@ -443,5 +447,46 @@ func (r *rows) Next(dest []driver.Value) error {
 	r.bufferRowIndex++
 	r.fetched--
 
+	return nil
+}
+
+var _ = driver.Rows((*directRow)(nil))
+
+type directRow struct {
+	conn   *conn
+	query  string
+	args   []string
+	result []interface{}
+}
+
+func (dr *directRow) Columns() []string {
+	Log("directRow", "Columns")
+	switch dr.query {
+	case getObjectTypeConst:
+		return []string{"OBJECT_TYPE"}
+	}
+	return nil
+}
+
+// Close closes the rows iterator.
+func (dr *directRow) Close() error {
+	dr.conn = nil
+	dr.query = ""
+	dr.args = nil
+	dr.result = nil
+	return nil
+}
+
+// Next is called to populate the next row of data into
+// the provided slice. The provided slice will be the same
+// size as the Columns() are wide.
+//
+// Next should return io.EOF when there are no more rows.
+func (dr *directRow) Next(dest []driver.Value) error {
+	Log("directRow", "Next", "query", dr.query, "dest", dest)
+	switch dr.query {
+	case getObjectTypeConst:
+		*(dest[0].(*ObjectType)) = *(dr.result[0].(*ObjectType))
+	}
 	return nil
 }

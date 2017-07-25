@@ -231,6 +231,17 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	st.Lock()
 	defer st.Unlock()
 
+	if st.query == getObjectTypeConst {
+		Log("msg", "QueryContext", "args", args)
+		name := args[0].Value.(string)
+		ot, err := st.conn.GetObjectType(name)
+		if err != nil {
+			return nil, errors.WithMessage(err, "GetObjectType "+name)
+		}
+		return &directRow{conn: st.conn, query: st.query,
+			args: []string{name}, result: []interface{}{ot}}, nil
+	}
+
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
 	if err := st.bindVars(args); err != nil {

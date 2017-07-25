@@ -182,7 +182,7 @@ func GetCompileErrors(queryer queryer, all bool) ([]CompileError, error) {
 }
 
 type preparer interface {
-	Prepare(string) (*sql.Stmt, error)
+	PrepareContext(ctx context.Context, qry string) (*sql.Stmt, error)
 }
 
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
@@ -196,7 +196,7 @@ func EnableDbmsOutput(ctx context.Context, conn execer) error {
 // ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	qry := `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
-	stmt, err := conn.Prepare(qry)
+	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)
 	}

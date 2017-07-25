@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/pkg/errors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -126,18 +127,23 @@ func TestDbmsOutput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := goracle.EnableDbmsOutput(ctx, testDb); err != nil {
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := goracle.EnableDbmsOutput(ctx, conn); err != nil {
 		t.Fatal(err)
 	}
 
 	txt := `árvíztűrő tükörfúrógép`
 	qry := "BEGIN DBMS_OUTPUT.PUT_LINE('" + txt + "'); END;"
-	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+	if _, err := conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+	if err := goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 		t.Error(err)
 	}
 	t.Log(buf.String())
@@ -152,6 +158,12 @@ func TestInOutArray(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
 	qry := `CREATE OR REPLACE PACKAGE test_pkg AS
 TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
 TYPE num_tab_typ IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
@@ -168,7 +180,7 @@ PROCEDURE p2(
 	p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ);
 END test_pkg;
 `
-	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+	if _, err := conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PACKAGE test_pkg")
@@ -342,6 +354,11 @@ func TestOutParam(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
 	qry := `CREATE OR REPLACE PROCEDURE
 test_p1(p_int IN OUT INTEGER, p_num IN OUT NUMBER, p_vc IN OUT VARCHAR2, p_dt IN OUT DATE, p_lob IN OUT CLOB)
 IS
@@ -428,6 +445,11 @@ func TestSelect(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
 	const num = 1000
 	rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM < NVL(:alpha, 2) ORDER BY object_id", sql.Named("alpha", num))
 	//rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM < 1000 ORDER BY object_id")
@@ -461,12 +483,17 @@ func TestExecuteMany(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
 
-	testDb.Exec("DROP TABLE test_em")
-	testDb.Exec("CREATE TABLE test_em (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
-	defer testDb.Exec("DROP TABLE test_em")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.ExecContext(ctx, "DROP TABLE test_em")
+	conn.ExecContext(ctx, "CREATE TABLE test_em (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
+	defer testDb.Exec("DROP TABLE test_em")
+
 	const num = 1000
 	ints := make([]int, num)
 	nums := make([]goracle.Number, num)
@@ -496,7 +523,7 @@ func TestExecuteMany(t *testing.T) {
 		{"f_vc", strs},
 		{"f_dt", dates},
 	} {
-		res, err := testDb.ExecContext(ctx,
+		res, err := conn.ExecContext(ctx,
 			"INSERT INTO test_em ("+tc.Name+") VALUES (:1)",
 			tc.Value)
 		if err != nil {
@@ -510,9 +537,9 @@ func TestExecuteMany(t *testing.T) {
 		}
 	}
 
-	testDb.ExecContext(ctx, "TRUNCATE TABLE test_em")
+	conn.ExecContext(ctx, "TRUNCATE TABLE test_em")
 
-	res, err := testDb.ExecContext(ctx,
+	res, err := conn.ExecContext(ctx,
 		`INSERT INTO test_em
 		  (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
 		  VALUES
@@ -528,7 +555,7 @@ func TestExecuteMany(t *testing.T) {
 		t.Errorf("wanted %d rows, got %d", num, ra)
 	}
 
-	rows, err := testDb.QueryContext(ctx, "SELECT * FROM test_em ORDER BY F_id")
+	rows, err := conn.QueryContext(ctx, "SELECT * FROM test_em ORDER BY F_id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,11 +598,18 @@ func TestExecuteMany(t *testing.T) {
 }
 func TestReadWriteLob(t *testing.T) {
 	t.Parallel()
-	testDb.Exec("DROP TABLE test_lob")
-	testDb.Exec("CREATE TABLE test_lob (f_id NUMBER(6), f_blob BLOB, f_clob CLOB)")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.ExecContext(ctx, "DROP TABLE test_lob")
+	conn.ExecContext(ctx, "CREATE TABLE test_lob (f_id NUMBER(6), f_blob BLOB, f_clob CLOB)")
 	defer testDb.Exec("DROP TABLE test_lob")
 
-	stmt, err := testDb.Prepare("INSERT INTO test_lob (F_id, f_blob, F_clob) VALUES (:1, :2, :3)")
+	stmt, err := conn.PrepareContext(ctx, "INSERT INTO test_lob (F_id, f_blob, F_clob) VALUES (:1, :2, :3)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +633,7 @@ func TestReadWriteLob(t *testing.T) {
 			t.Errorf("%d/2. (%v, %q): %v", tN, tC.Bytes, tC.String, err)
 		}
 
-		rows, err := testDb.Query("SELECT F_id, F_blob, F_clob FROM test_lob WHERE F_id IN (:1, :2)", 2*tN, 2*tN+1)
+		rows, err := conn.QueryContext(ctx, "SELECT F_id, F_blob, F_clob FROM test_lob WHERE F_id IN (:1, :2)", 2*tN, 2*tN+1)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
@@ -644,4 +678,36 @@ func copySlice(orig interface{}) interface{} {
 		rc.Index(i).Set(ro.Index(i))
 	}
 	return rc.Interface()
+}
+
+func TestObject(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	qry := `CREATE OR REPLACE PACKAGE test_pkg_obj IS
+  TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+  TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
+  TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
+END;`
+	if _, err := conn.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP PACKAGE test_pkg_obj")
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	defer tl.enableLogging(t)()
+	ot, err := goracle.GetObjectType(tx, "test_pkg_obj.int_tab_typ")
+	if err != nil {
+		t.Fatal(fmt.Sprintf("%+v", err))
+	}
+	t.Log(ot)
 }

@@ -21,8 +21,9 @@ package goracle
 */
 import "C"
 import (
-	"errors"
 	"unsafe"
+
+	"github.com/pkg/errors"
 )
 
 type Object struct {
@@ -161,7 +162,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), (**C.dpiObjectType)(unsafe.Pointer(&objType))) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(objType))
-		return nil, c.getError()
+		return nil, errors.Wrapf(c.getError(), "getObjectType(%q) conn=%p", name, c.dpiConn)
 	}
 	return &ObjectType{dpiObjectType: objType}, nil
 }
@@ -293,4 +294,12 @@ func (A ObjectAttribute) Close() error {
 		return A.getError()
 	}
 	return nil
+}
+
+func GetObjectType(conn queryRower, typeName string) (*ObjectType, error) {
+	var ot ObjectType
+	if err := conn.QueryRow(getObjectTypeConst, typeName).Scan(&ot); err != nil {
+		return nil, errors.Wrap(err, getObjectTypeConst+"("+typeName+")")
+	}
+	return &ot, nil
 }

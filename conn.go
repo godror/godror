@@ -30,6 +30,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const getObjectTypeConst = "--GET_OBJECT_TYPE--"
+
 var _ = driver.Conn((*conn)(nil))
 var _ = driver.ConnBeginTx((*conn)(nil))
 var _ = driver.ConnPrepareContext((*conn)(nil))
@@ -141,6 +143,11 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if query == getObjectTypeConst {
+		Log("msg", "PrepareContext", "shortcut", query)
+		return &statement{conn: c, query: query}, nil
+	}
+
 	cSQL := C.CString(query)
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
