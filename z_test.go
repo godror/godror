@@ -38,14 +38,18 @@ import (
 	goracle "gopkg.in/goracle.v2"
 )
 
-var testDb *sql.DB
-var tl = &testLogger{}
+var (
+	testDb *sql.DB
+	tl     = &testLogger{}
+
+	clientVersion, serverVersion goracle.VersionInfo
+)
 
 func init() {
 	var err error
 	if testDb, err = sql.Open(
 		"goracle",
-		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
+		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
 			os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 			os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 			os.Getenv("GORACLE_DRV_TEST_DB"),
@@ -56,6 +60,13 @@ func init() {
 	}
 
 	goracle.Log = tl.GetLog()
+
+	if clientVersion, err = goracle.ClientVersion(testDb); err != nil {
+		panic(err)
+	}
+	if serverVersion, err = goracle.ServerVersion(testDb); err != nil {
+		panic(err)
+	}
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
@@ -707,7 +718,11 @@ END;`
 	defer tl.enableLogging(t)()
 	ot, err := goracle.GetObjectType(tx, "test_pkg_obj.int_tab_typ")
 	if err != nil {
-		t.Fatal(fmt.Sprintf("%+v", err))
+		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
+			t.Fatal(fmt.Sprintf("%+v", err))
+		}
+		t.Log(err)
+		t.Skip("client or server version < 12")
 	}
 	t.Log(ot)
 }

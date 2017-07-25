@@ -30,7 +30,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-const getObjectTypeConst = "--GET_OBJECT_TYPE--"
+const getConnection = "--GET_CONNECTION--"
 
 var _ = driver.Conn((*conn)(nil))
 var _ = driver.ConnBeginTx((*conn)(nil))
@@ -41,6 +41,7 @@ type conn struct {
 	dpiConn       *C.dpiConn
 	connParams    connectionParams
 	inTransaction bool
+	serverVersion VersionInfo
 	*drv
 }
 
@@ -143,7 +144,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if query == getObjectTypeConst {
+	if query == getConnection {
 		Log("msg", "PrepareContext", "shortcut", query)
 		return &statement{conn: c, query: query}, nil
 	}
@@ -208,3 +209,18 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 }
 
 var _ = driver.Tx((*conn)(nil))
+
+func (c *conn) ServerVersion() (VersionInfo, error) {
+	if c.serverVersion.Version != 0 {
+		return c.serverVersion, nil
+	}
+	var v C.dpiVersionInfo
+	var release *C.char
+	var releaseLen C.uint32_t
+	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+		return c.serverVersion, errors.Wrap(c.getError(), "getServerVersion")
+	}
+	c.serverVersion.set(&v)
+	c.serverVersion.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+	return c.serverVersion, nil
+}

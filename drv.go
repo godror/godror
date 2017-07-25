@@ -67,7 +67,7 @@ import (
 )
 
 // Version of this driver
-const Version = "v5.0.0"
+const Version = "v5.0.3"
 
 const (
 	// DpiMajorVersion is the wanted major version of the underlying ODPI-C library.
@@ -76,7 +76,7 @@ const (
 	DpiMinorVersion = 0
 
 	// DriverName is set on the connection to be seen in the DB
-	DriverName = "gopkg.in/rana/ora.v5 : " + Version
+	DriverName = "gopkg.in/goracle.v2 : " + Version
 
 	// DefaultPoolMinSessions specifies the default value for minSessions for pool creation.
 	DefaultPoolMinSessions = 1
@@ -85,7 +85,7 @@ const (
 	// DefaultPoolInrement specifies the default value for increment for pool creation.
 	DefaultPoolIncrement = 1
 	// DefaultConnectionClass is the defailt connectionClass
-	DefaultConnectionClass = "POOLED"
+	DefaultConnectionClass = "GORACLE"
 )
 
 // Number as string
@@ -95,24 +95,32 @@ type Number string
 var Log = func(...interface{}) error { return nil }
 
 func init() {
-	var d drv
-	err := &oraErr{}
-	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
-		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &err.errInfo,
-	) == C.DPI_FAILURE {
+	d, err := newDrv()
+	if err != nil {
 		panic(err)
 	}
-	d.pools = make(map[string]*C.dpiPool)
-
-	sql.Register("goracle", &d)
+	sql.Register("goracle", d)
 }
 
 var _ = driver.Driver((*drv)(nil))
 
 type drv struct {
-	dpiContext *C.dpiContext
-	poolsMu    sync.Mutex
-	pools      map[string]*C.dpiPool
+	dpiContext    *C.dpiContext
+	clientVersion VersionInfo
+	poolsMu       sync.Mutex
+	pools         map[string]*C.dpiPool
+}
+
+func newDrv() (*drv, error) {
+	var d drv
+	err := &oraErr{}
+	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
+		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &err.errInfo,
+	) == C.DPI_FAILURE {
+		return nil, err
+	}
+	d.pools = make(map[string]*C.dpiPool)
+	return &d, nil
 }
 
 // Open returns a new connection to the database.
@@ -123,6 +131,18 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 		return nil, err
 	}
 	return d.openConn(P)
+}
+
+func (d *drv) ClientVersion() (VersionInfo, error) {
+	if d.clientVersion.Version != 0 {
+		return d.clientVersion, nil
+	}
+	var v C.dpiVersionInfo
+	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
+		return d.clientVersion, errors.Wrap(d.getError(), "getClientVersion")
+	}
+	d.clientVersion.set(&v)
+	return d.clientVersion, nil
 }
 
 func (d *drv) openConn(P connectionParams) (*conn, error) {
@@ -369,4 +389,25 @@ func b2i(b bool) uint8 {
 		return 1
 	}
 	return 0
+}
+
+type VersionInfo struct {
+	Version, Release, Update, PortRelease, PortUpdate, Full int
+	ServerRelease                                           string
+}
+
+func (V *VersionInfo) set(v *C.dpiVersionInfo) {
+	*V = VersionInfo{
+		Version: int(v.versionNum),
+		Release: int(v.releaseNum), Update: int(v.updateNum),
+		PortRelease: int(v.portReleaseNum), PortUpdate: int(v.portUpdateNum),
+		Full: int(v.fullVersionNum),
+	}
+}
+func (V VersionInfo) String() string {
+	var s string
+	if V.ServerRelease != "" {
+		s = " [" + V.ServerRelease + "]"
+	}
+	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
 }

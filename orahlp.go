@@ -109,31 +109,6 @@ END;`, qry, &res,
 	return cols, nil
 }
 
-// ServerVersion data.
-type ServerVersion struct {
-	// major.maintenance.application-server.component-specific.platform-specific
-	Major, Maintenance, AppServer, Component, Platform int8
-}
-
-type queryRower interface {
-	QueryRow(string, ...interface{}) *sql.Row
-}
-
-// GetServerVersion returns the Oracle product version.
-func GetServerVersion(db queryRower) (ServerVersion, error) {
-	var s sql.NullString
-	if err := db.QueryRow("SELECT MIN(VERSION) FROM product_component_version " +
-		" WHERE product LIKE 'Oracle Database%'").Scan(&s); err != nil {
-		return ServerVersion{Major: -1}, err
-	}
-	var v ServerVersion
-	if _, err := fmt.Sscanf(s.String, "%d.%d.%d.%d.%d",
-		&v.Major, &v.Maintenance, &v.AppServer, &v.Component, &v.Platform); err != nil {
-		return v, errors.Wrapf(err, "scan version number %q", s.String)
-	}
-	return v, nil
-}
-
 // CompileError represents a compile-time error as in user_errors view.
 type CompileError struct {
 	Owner, Name, Type    string
@@ -223,4 +198,27 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			return nil
 		}
 	}
+}
+
+func ClientVersion(ex execer) (VersionInfo, error) {
+	c, err := getConn(ex)
+	if err != nil {
+		return VersionInfo{}, err
+	}
+	return c.drv.ClientVersion()
+}
+func ServerVersion(ex execer) (VersionInfo, error) {
+	c, err := getConn(ex)
+	if err != nil {
+		return VersionInfo{}, err
+	}
+	return c.ServerVersion()
+}
+
+func getConn(ex execer) (*conn, error) {
+	var c interface{}
+	if _, err := ex.ExecContext(context.Background(), getConnection, sql.Out{Dest: &c}); err != nil {
+		return nil, errors.Wrap(err, "getConnection")
+	}
+	return c.(*conn), nil
 }

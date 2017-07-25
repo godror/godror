@@ -72,12 +72,15 @@ type dataGetter func(v interface{}, data *C.dpiData) error
 // As of Go 1.1, a Stmt will not be closed if it's in use
 // by any queries.
 func (st *statement) Close() error {
+	if st == nil {
+		return nil
+	}
 	st.Lock()
 	defer st.Unlock()
 	for _, v := range st.vars {
 		C.dpiVar_release(v)
 	}
-	if C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
+	if st.dpiStmt != nil && C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
 		return st.getError()
 	}
 	st.data = nil
@@ -98,6 +101,12 @@ func (st *statement) Close() error {
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
+	if st.dpiStmt == nil {
+		if st.query == getConnection {
+			return 1
+		}
+		return 0
+	}
 	var colCount C.uint32_t
 	if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_PARSE_ONLY, &colCount) == C.DPI_FAILURE {
 		return -1
@@ -146,6 +155,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.Lock()
 	defer st.Unlock()
+
+	if st.dpiStmt == nil && st.query == getConnection {
+		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
+		return driver.ResultNoRows, nil
+	}
 
 	// bind variables
 	if err := st.bindVars(args); err != nil {
@@ -231,15 +245,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	st.Lock()
 	defer st.Unlock()
 
-	if st.query == getObjectTypeConst {
+	if st.query == getConnection {
 		Log("msg", "QueryContext", "args", args)
-		name := args[0].Value.(string)
-		ot, err := st.conn.GetObjectType(name)
-		if err != nil {
-			return nil, errors.WithMessage(err, "GetObjectType "+name)
-		}
-		return &directRow{conn: st.conn, query: st.query,
-			args: []string{name}, result: []interface{}{ot}}, nil
+		return &directRow{conn: st.conn, query: st.query, result: []interface{}{st.conn}}, nil
 	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)

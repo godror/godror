@@ -296,10 +296,10 @@ func (A ObjectAttribute) Close() error {
 	return nil
 }
 
-func GetObjectType(conn queryRower, typeName string) (*ObjectType, error) {
-	var ot ObjectType
-	if err := conn.QueryRow(getObjectTypeConst, typeName).Scan(&ot); err != nil {
-		return nil, errors.Wrap(err, getObjectTypeConst+"("+typeName+")")
+func GetObjectType(ex execer, typeName string) (*ObjectType, error) {
+	c, err := getConn(ex)
+	if err != nil {
+		return nil, err
 	}
-	return &ot, nil
+	return c.GetObjectType(typeName)
 }
