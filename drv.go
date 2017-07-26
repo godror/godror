@@ -158,10 +158,12 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	}
 
 	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
-	connCreateParams := C.dpiConnCreateParams{
-		authMode:     authMode,
-		externalAuth: extAuth,
+	var connCreateParams C.dpiConnCreateParams
+	if C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+		return nil, errors.Wrap(d.getError(), "initConnCreateParams")
 	}
+	connCreateParams.authMode = authMode
+	connCreateParams.externalAuth = extAuth
 	if P.ConnClass != "" {
 		cConnClass := C.CString(P.ConnClass)
 		defer C.free(unsafe.Pointer(cConnClass))
@@ -197,6 +199,15 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		C.free(unsafe.Pointer(cConnClass))
 		C.free(unsafe.Pointer(cDriverName))
 	}()
+	var commonCreateParams C.dpiCommonCreateParams
+	if C.dpiContext_initCommonCreateParams(d.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
+		return nil, errors.Wrap(d.getError(), "initCommonCreateParams")
+	}
+	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED | C.DPI_MODE_CREATE_EVENTS
+	commonCreateParams.encoding = cUTF8
+	commonCreateParams.nencoding = cUTF8
+	commonCreateParams.driverName = cDriverName
+	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
 	if P.IsSysDBA || P.IsSysOper {
 		dc := C.malloc(C.sizeof_void)
@@ -205,11 +216,7 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 			cUserName, C.uint32_t(len(P.Username)),
 			cPassword, C.uint32_t(len(P.Password)),
 			cSid, C.uint32_t(len(P.SID)),
-			&C.dpiCommonCreateParams{
-				createMode: C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED | C.DPI_MODE_CREATE_EVENTS,
-				encoding:   cUTF8, nencoding: cUTF8,
-				driverName: cDriverName, driverNameLength: C.uint32_t(len(DriverName)),
-			},
+			&commonCreateParams,
 			&connCreateParams,
 			(**C.dpiConn)(unsafe.Pointer(&dc)),
 		) == C.DPI_FAILURE {
@@ -218,6 +225,16 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		c.dpiConn = (*C.dpiConn)(dc)
 		return &c, nil
 	}
+	var poolCreateParams C.dpiPoolCreateParams
+	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
+		return nil, errors.Wrap(d.getError(), "initPoolCreateParams")
+	}
+	poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
+	poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
+	poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
+	poolCreateParams.homogeneous = 1
+	poolCreateParams.externalAuth = extAuth
+	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
 
 	var dp *C.dpiPool
 	if C.dpiPool_create(
@@ -225,19 +242,8 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		cUserName, C.uint32_t(len(P.Username)),
 		cPassword, C.uint32_t(len(P.Password)),
 		cSid, C.uint32_t(len(P.SID)),
-		&C.dpiCommonCreateParams{
-			createMode: C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED | C.DPI_MODE_CREATE_EVENTS,
-			encoding:   cUTF8, nencoding: cUTF8,
-			driverName: cDriverName, driverNameLength: C.uint32_t(len(DriverName)),
-		},
-		&C.dpiPoolCreateParams{
-			minSessions:      C.uint32_t(P.MinSessions),
-			maxSessions:      C.uint32_t(P.MaxSessions),
-			sessionIncrement: C.uint32_t(P.PoolIncrement),
-			homogeneous:      1,
-			externalAuth:     extAuth,
-			getMode:          C.DPI_MODE_POOL_GET_NOWAIT,
-		},
+		&commonCreateParams,
+		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
 		return nil, errors.Wrapf(d.getError(), "minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d", P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
