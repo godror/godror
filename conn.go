@@ -47,7 +47,7 @@ type conn struct {
 
 func (c *conn) Break() error {
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
-		return c.getError()
+		return errors.Wrap(c.getError(), "Break")
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	ok := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
 	done <- struct{}{}
 	if !ok {
-		return c.getError()
+		return errors.Wrap(c.getError(), "Ping")
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func (c *conn) Close() error {
 		return nil
 	}
 	if C.dpiConn_release(c.dpiConn) == C.DPI_FAILURE {
-		return c.getError()
+		return errors.Wrap(c.getError(), "Close")
 	}
 	c.dpiConn = nil
 	return nil
@@ -157,7 +157,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
 	) == C.DPI_FAILURE {
-		return nil, c.getError()
+		return nil, errors.Wrap(c.getError(), "Prepare: "+query)
 	}
 	//fmt.Printf("PrepareContext(%q):%p\n", query, dpiStmt)
 	return &statement{conn: c, dpiStmt: dpiStmt}, nil
@@ -165,14 +165,14 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 func (c *conn) Commit() error {
 	c.inTransaction = false
 	if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-		return c.getError()
+		return errors.Wrap(c.getError(), "Commit")
 	}
 	return nil
 }
 func (c *conn) Rollback() error {
 	c.inTransaction = false
 	if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-		return c.getError()
+		return errors.Wrap(c.getError(), "Rollback")
 	}
 	return nil
 }

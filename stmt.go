@@ -81,7 +81,7 @@ func (st *statement) Close() error {
 		C.dpiVar_release(v)
 	}
 	if st.dpiStmt != nil && C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
-		return st.getError()
+		return errors.Wrap(st.getError(), "dpiStmt_release")
 	}
 	st.data = nil
 	st.vars = nil
@@ -636,7 +636,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		for i, v := range st.vars {
 			Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v)
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
-				return st.getError()
+				return errors.Wrapf(st.getError(), "bindByPos[%d]", i)
 			}
 		}
 		return nil
@@ -651,7 +651,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		res := C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i])
 		C.free(unsafe.Pointer(cName))
 		if res == C.DPI_FAILURE {
-			return st.getError()
+			return errors.Wrapf(st.getError(), "bindByName[%q]", name)
 		}
 	}
 	return nil
@@ -884,7 +884,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 	var info C.dpiQueryInfo
 	for i := 0; i < colCount; i++ {
 		if C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info) == C.DPI_FAILURE {
-			return nil, st.getError()
+			return nil, errors.Wrapf(st.getError(), "getQueryInfo[%d]", i)
 		}
 		bufSize := int(info.clientSizeInBytes)
 		//fmt.Println(typ, numTyp, info.precision, info.scale, info.clientSizeInBytes)
@@ -917,11 +917,11 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 
 		if C.dpiStmt_define(st.dpiStmt, C.uint32_t(i+1), r.vars[i]) == C.DPI_FAILURE {
-			return nil, st.getError()
+			return nil, errors.Wrapf(st.getError(), "define[%d]", i)
 		}
 	}
 	if C.dpiStmt_addRef(st.dpiStmt) == C.DPI_FAILURE {
-		return &r, st.getError()
+		return &r, errors.Wrap(st.getError(), "dpiStmt_addRef")
 	}
 	return &r, nil
 }
