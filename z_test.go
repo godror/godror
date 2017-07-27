@@ -37,7 +37,6 @@ import (
 	"github.com/pkg/errors"
 
 	goracle "gopkg.in/goracle.v2"
-	ora "gopkg.in/rana/ora.v3"
 )
 
 var (
@@ -736,7 +735,7 @@ func TestOpenBadMemory(t *testing.T) {
 	zero := mem.Alloc
 	for i := 0; i < 100; i++ {
 		badConStr := strings.Replace(testConStr, "@", fmt.Sprintf("BAD%dBAD@", i), 1)
-		db, err := sql.Open(ora.Name, badConStr)
+		db, err := sql.Open("goracle", badConStr)
 		if err != nil {
 			t.Fatalf("bad connection string %q didn't produce error!", badConStr)
 		}
