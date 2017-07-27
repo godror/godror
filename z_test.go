@@ -26,6 +26,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ import (
 	"github.com/pkg/errors"
 
 	goracle "gopkg.in/goracle.v2"
+	ora "gopkg.in/rana/ora.v3"
 )
 
 var (
@@ -43,18 +45,17 @@ var (
 	tl     = &testLogger{}
 
 	clientVersion, serverVersion goracle.VersionInfo
+	testConStr                   string
 )
 
 func init() {
 	var err error
-	if testDb, err = sql.Open(
-		"goracle",
-		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
-			os.Getenv("GORACLE_DRV_TEST_USERNAME"),
-			os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-			os.Getenv("GORACLE_DRV_TEST_DB"),
-		),
-	); err != nil {
+	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
+		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
+		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
+		os.Getenv("GORACLE_DRV_TEST_DB"),
+	)
+	if testDb, err = sql.Open("goracle", testConStr); err != nil {
 		fmt.Println("ERROR")
 		panic(err)
 	}
@@ -725,4 +726,28 @@ END;`
 		t.Skip("client or server version < 12")
 	}
 	t.Log(ot)
+}
+
+func TestOpenBadMemory(t *testing.T) {
+	var mem runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&mem)
+	t.Log("Allocated 0:", mem.Alloc)
+	zero := mem.Alloc
+	for i := 0; i < 100; i++ {
+		badConStr := strings.Replace(testConStr, "@", fmt.Sprintf("BAD%dBAD@", i), 1)
+		db, err := sql.Open(ora.Name, badConStr)
+		if err != nil {
+			t.Fatalf("bad connection string %q didn't produce error!", badConStr)
+		}
+		db.Close()
+		runtime.GC()
+		runtime.ReadMemStats(&mem)
+		t.Logf("Allocated %d: %d", i+1, mem.Alloc)
+	}
+	d := mem.Alloc - zero
+	t.Logf("atlast: %d", d)
+	if d > 1<<15 {
+		t.Errorf("Consumed more than 32KiB of memory: %d", d)
+	}
 }
