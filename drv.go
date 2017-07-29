@@ -216,7 +216,7 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if P.IsSysDBA || P.IsSysOper || P.Username == "" && P.Password == "" {
+	if P.IsSysDBA || P.IsSysOper {
 		dc := C.malloc(C.sizeof_void)
 		Log("C", "dpiConn_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
 		if C.dpiConn_create(
@@ -240,7 +240,9 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
 	poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
 	poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
-	poolCreateParams.homogeneous = 1
+	if extAuth == 1 {
+		poolCreateParams.homogeneous = 0
+	}
 	poolCreateParams.externalAuth = extAuth
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
 
