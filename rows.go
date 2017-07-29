@@ -248,7 +248,6 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 //
 // Next should return io.EOF when there are no more rows.
 func (r *rows) Next(dest []driver.Value) error {
-	Log("rows", "Next")
 	if r.finished {
 		return io.EOF
 	}
