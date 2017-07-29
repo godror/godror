@@ -176,6 +176,7 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		d.poolsMu.Unlock()
 		if dp != nil {
 			dc := C.malloc(C.sizeof_void)
+			Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
 			if C.dpiPool_acquireConnection(
 				dp,
 				nil, 0, nil, 0, &connCreateParams,
@@ -188,12 +189,18 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		}
 	}
 
-	cUserName, cPassword, cSid := C.CString(P.Username), C.CString(P.Password), C.CString(P.SID)
+	var cUserName, cPassword *C.char
+	if !(P.Username == "" && P.Password == "") {
+		cUserName, cPassword = C.CString(P.Username), C.CString(P.Password)
+	}
+	cSid := C.CString(P.SID)
 	cUTF8, cConnClass := C.CString("AL32UTF8"), C.CString(P.ConnClass)
 	cDriverName := C.CString(DriverName)
 	defer func() {
-		C.free(unsafe.Pointer(cUserName))
-		C.free(unsafe.Pointer(cPassword))
+		if cUserName != nil {
+			C.free(unsafe.Pointer(cUserName))
+			C.free(unsafe.Pointer(cPassword))
+		}
 		C.free(unsafe.Pointer(cSid))
 		C.free(unsafe.Pointer(cUTF8))
 		C.free(unsafe.Pointer(cConnClass))
@@ -209,8 +216,9 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if P.IsSysDBA || P.IsSysOper {
+	if P.IsSysDBA || P.IsSysOper || P.Username == "" && P.Password == "" {
 		dc := C.malloc(C.sizeof_void)
+		Log("C", "dpiConn_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
 		if C.dpiConn_create(
 			d.dpiContext,
 			cUserName, C.uint32_t(len(P.Username)),
@@ -237,6 +245,7 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
 
 	var dp *C.dpiPool
+	Log("C", "dpiPool_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(P.Username)),
@@ -246,7 +255,9 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Wrapf(d.getError(), "minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d", P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
+		return nil, errors.Wrapf(d.getError(), "username=%q password=%q minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d",
+			P.Username, strings.Repeat("*", len(P.Password)),
+			P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
 	}
 	C.dpiPool_setTimeout(dp, 300)
 	//C.dpiPool_setMaxLifetimeSession(dp, 3600)
