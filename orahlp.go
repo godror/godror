@@ -160,6 +160,79 @@ type preparer interface {
 	PrepareContext(ctx context.Context, qry string) (*sql.Stmt, error)
 }
 
+// NamedToOrdered converts the query from named params (:paramname) to :%d placeholders + slice of params, copying the params verbatim.
+func NamedToOrdered(qry string, namedParams map[string]interface{}) (string, []interface{}) {
+	return MapToSlice(qry, func(k string) interface{} { return namedParams[k] })
+}
+
+// MapToSlice modifies query for map (:paramname) to :%d placeholders + slice of params.
+//
+// Calls metParam for each parameter met, and returns the slice of their results.
+func MapToSlice(qry string, metParam func(string) interface{}) (string, []interface{}) {
+	if metParam == nil {
+		metParam = func(string) interface{} { return nil }
+	}
+	arr := make([]interface{}, 0, 16)
+	var buf bytes.Buffer
+	state, p, last := 0, 0, 0
+	var prev rune
+
+	Add := func(i int) {
+		state = 0
+		if i-p <= 1 { // :=
+			return
+		}
+		arr = append(arr, metParam(qry[p+1:i]))
+		param := fmt.Sprintf(":%d", len(arr))
+		buf.WriteString(qry[last:p])
+		buf.WriteString(param)
+		last = i
+	}
+
+	for i, r := range qry {
+		switch state {
+		case 2:
+			if r == '\n' {
+				state = 0
+			}
+		case 3:
+			if prev == '*' && r == '/' {
+				state = 0
+			}
+		case 0:
+			switch r {
+			case '-':
+				if prev == '-' {
+					state = 2
+				}
+			case '*':
+				if prev == '/' {
+					state = 3
+				}
+			case ':':
+				state = 1
+				p = i
+				// An identifier consists of a letter optionally followed by more letters, numerals, dollar signs, underscores, and number signs.
+				// http://docs.oracle.com/cd/B19306_01/appdev.102/b14261/fundamentals.htm#sthref309
+			}
+		case 1:
+			if !('A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' ||
+				(i-p > 1 && ('0' <= r && r <= '9' || r == '$' || r == '_' || r == '#'))) {
+
+				Add(i)
+			}
+		}
+		prev = r
+	}
+	if state == 1 {
+		Add(len(qry))
+	}
+	if last <= len(qry)-1 {
+		buf.WriteString(qry[last:])
+	}
+	return buf.String(), arr
+}
+
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
 // This is required if you want to retrieve the output with ReadDbmsOutput later.
 func EnableDbmsOutput(ctx context.Context, conn execer) error {
