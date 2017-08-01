@@ -270,7 +270,12 @@ END test_pkg;
 		t.Fatal(err)
 	}
 	if len(compileErrors) != 0 {
-		t.Fatalf("compile errors: %v", compileErrors)
+		t.Logf("compile errors: %v", compileErrors)
+		for _, ce := range compileErrors {
+			if strings.Contains(ce.Error(), "TEST_PKG") {
+				t.Fatal(ce)
+			}
+		}
 	}
 
 	intgr := []int32{3, 1, 4}
@@ -384,14 +389,16 @@ END;`
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PROCEDURE test_p1")
-	stmt, err := testDb.PrepareContext(ctx, "BEGIN test_p1(:1, :2, :3, :4, :5); END;")
+
+	qry = "BEGIN test_p1(:1, :2, :3, :4, :5); END;"
+	stmt, err := testDb.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal(errors.Wrap(err, qry))
 	}
 	defer stmt.Close()
 
 	var intgr int = 3
-	var num string = "3.14"
+	num := goracle.Number("3.14")
 	var vc string = "string"
 	var dt time.Time = time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local)
 	var lob goracle.Lob = goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}
@@ -402,7 +409,7 @@ END;`
 		sql.Out{Dest: &dt, In: true},
 		sql.Out{Dest: &lob, In: true},
 	); err != nil {
-		t.Fatal(err)
+		t.Fatal(errors.Wrap(err, qry))
 	}
 	t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
 	if intgr != 6 {
