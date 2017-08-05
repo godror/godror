@@ -412,7 +412,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.gets[i] = dataGetNumber
 				st.dests[i] = v
 			}
-		case int64, []int64:
+		case int64, []int64, sql.NullInt64, []sql.NullInt64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
 			info.set = dataSetNumber
 			if info.isOut {
@@ -667,6 +667,12 @@ func dataGetNumber(v interface{}, data *C.dpiData) error {
 		*x = int32(C.dpiData_getInt64(data))
 	case *int64:
 		*x = int64(C.dpiData_getInt64(data))
+	case *sql.NullInt64:
+		if data.isNull == 1 {
+			x.Valid = false
+		} else {
+			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(data))
+		}
 
 	case *uint:
 		*x = uint(C.dpiData_getUint64(data))
@@ -696,6 +702,12 @@ func dataSetNumber(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error 
 		C.dpiData_setInt64(data, C.int64_t(x))
 	case int64:
 		C.dpiData_setInt64(data, C.int64_t(x))
+	case sql.NullInt64:
+		if x.Valid {
+			C.dpiData_setInt64(data, C.int64_t(x.Int64))
+		} else {
+			data.isNull = 1
+		}
 
 	case uint:
 		C.dpiData_setUint64(data, C.uint64_t(x))
