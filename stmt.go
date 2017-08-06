@@ -509,7 +509,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 				st.dests[i] = v
 			}
 
-		case string, []string:
+		case string, []string, nil:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 			switch v := v.(type) {
 			case string:
@@ -814,6 +814,10 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		}
 		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
+
+	case nil:
+		data.isNull = 1
+
 	default:
 		return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", v, v)
 	}
