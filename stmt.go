@@ -192,6 +192,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	done <- struct{}{}
 	if res == C.DPI_FAILURE {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, errors.Wrapf(st.getError(), "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen)
 	}
 	for i, get := range st.gets {
