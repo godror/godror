@@ -57,6 +57,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -90,6 +91,86 @@ const (
 
 // Number as string
 type Number string
+
+var (
+	Int64   = intType{}
+	Float64 = floatType{}
+	Num     = numType{}
+)
+
+type intType struct{}
+
+func (intType) String() string { return "Int64" }
+func (intType) ConvertValue(v interface{}) (driver.Value, error) {
+	switch x := v.(type) {
+	case int32:
+		return int64(x), nil
+	case uint32:
+		return int64(x), nil
+	case int64:
+		return x, nil
+	case uint64:
+		return int64(x), nil
+	case float32:
+		if _, f := math.Modf(float64(x)); f != 0 {
+			return int64(x), errors.Errorf("non-zero fractional part: %f", f)
+		}
+		return int64(x), nil
+	case float64:
+		if _, f := math.Modf(x); f != 0 {
+			return int64(x), errors.Errorf("non-zero fractional part: %f", f)
+		}
+		return int64(x), nil
+	case Number:
+		return strconv.ParseInt(string(x), 10, 64)
+	default:
+		return nil, errors.Errorf("unknown type %T", v)
+	}
+}
+
+type floatType struct{}
+
+func (floatType) String() string { return "Float64" }
+func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
+	switch x := v.(type) {
+	case int32:
+		return float64(x), nil
+	case uint32:
+		return float64(x), nil
+	case int64:
+		return float64(x), nil
+	case uint64:
+		return float64(x), nil
+	case float32:
+		return float64(x), nil
+	case float64:
+		return x, nil
+	case Number:
+		return strconv.ParseFloat(string(x), 64)
+	default:
+		return nil, errors.Errorf("unknown type %T", v)
+	}
+}
+
+type numType struct{}
+
+func (numType) String() string { return "Num" }
+func (numType) ConvertValue(v interface{}) (driver.Value, error) {
+	switch x := v.(type) {
+	case Number:
+		return string(x), nil
+	case int32, uint32, int64, uint64:
+		return fmt.Sprintf("%d", x), nil
+	case float32, float64:
+		return fmt.Sprintf("%f", x), nil
+	default:
+		return nil, errors.Errorf("unknown type %T", v)
+	}
+}
+func (n Number) String() string { return string(n) }
+func (n Number) Value() (driver.Value, error) {
+	return string(n), nil
+}
 
 // Log function
 var Log = func(...interface{}) error { return nil }

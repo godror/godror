@@ -25,6 +25,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -284,7 +285,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	for i, col := range r.columns {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
-		//fmt.Printf("data[%d][%d]=%+v typ=%d\n", i, r.bufferRowIndex, d, typ)
+		Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "data", fmt.Sprintf("%+v", d), "typ", typ)
 		isNull := d.isNull == 1
 
 		switch typ {
@@ -302,7 +303,13 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			if isNull {
-				dest[i] = 0
+				switch col.NativeType {
+				case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64,
+					C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
+					dest[i] = 0
+				default:
+					dest[i] = nil
+				}
 				continue
 			}
 			switch col.NativeType {
@@ -311,18 +318,17 @@ func (r *rows) Next(dest []driver.Value) error {
 			case C.DPI_NATIVE_TYPE_UINT64:
 				dest[i] = uint64(C.dpiData_getUint64(d))
 			case C.DPI_NATIVE_TYPE_FLOAT:
-				dest[i] = float32(C.dpiData_getFloat(d))
+				//dest[i] = float32(C.dpiData_getFloat(d))
+				dest[i] = strings.TrimRight(fmt.Sprintf("%f", C.dpiData_getFloat(d)), "0.")
 			case C.DPI_NATIVE_TYPE_DOUBLE:
-				dest[i] = float64(C.dpiData_getDouble(d))
+				//dest[i] = float64(C.dpiData_getDouble(d))
+				dest[i] = strings.TrimRight(fmt.Sprintf("%f", C.dpiData_getDouble(d)), ".0")
 			default:
-				if isNull {
-					dest[i] = nil
-					continue
-				}
 				b := C.dpiData_getBytes(d)
-				//fmt.Printf("b=%p[%d] t=%d i=%d\n", b.ptr, b.length, col.DefaultNumType, C.dpiData_getInt64(d))
 				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
+				Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 			}
+			Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,
 			C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:

@@ -63,6 +63,7 @@ type statement struct {
 	isSlice     []bool
 	PlSQLArrays bool
 	arrLen      int
+	columns     []Column
 }
 
 type dataGetter func(v interface{}, data *C.dpiData) error
@@ -87,6 +88,7 @@ func (st *statement) Close() error {
 	st.vars = nil
 	st.gets = nil
 	st.dests = nil
+	st.columns = nil
 	st.dpiStmt = nil
 	return nil
 }
@@ -891,6 +893,26 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	return nil
 }
 
+// ColumnConverter may be optionally implemented by Stmt
+// if the statement is aware of its own columns' types and
+// can convert from any type to a driver Value.
+func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
+	c := driver.ValueConverter(driver.DefaultParameterConverter)
+	switch col := st.columns[idx]; col.OracleType {
+	case C.DPI_ORACLE_TYPE_NUMBER:
+		switch col.NativeType {
+		case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64:
+			c = Int64
+		case C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
+			c = Float64
+		default:
+			c = Num
+		}
+	}
+	Log("msg", "ColumnConverter", "c", c)
+	return driver.Null{Converter: c}
+}
+
 func (st *statement) openRows(colCount int) (*rows, error) {
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, fetchRowCount)
 
@@ -942,6 +964,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 	if C.dpiStmt_addRef(st.dpiStmt) == C.DPI_FAILURE {
 		return &r, errors.Wrap(st.getError(), "dpiStmt_addRef")
 	}
+	st.columns = r.columns
 	return &r, nil
 }
 
