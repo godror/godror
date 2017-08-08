@@ -319,10 +319,10 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = uint64(C.dpiData_getUint64(d))
 			case C.DPI_NATIVE_TYPE_FLOAT:
 				//dest[i] = float32(C.dpiData_getFloat(d))
-				dest[i] = strings.TrimRight(fmt.Sprintf("%f", C.dpiData_getFloat(d)), "0.")
+				dest[i] = shortenFloat(fmt.Sprintf("%f", C.dpiData_getFloat(d)))
 			case C.DPI_NATIVE_TYPE_DOUBLE:
 				//dest[i] = float64(C.dpiData_getDouble(d))
-				dest[i] = strings.TrimRight(fmt.Sprintf("%f", C.dpiData_getDouble(d)), ".0")
+				dest[i] = shortenFloat(fmt.Sprintf("%f", C.dpiData_getDouble(d)))
 			default:
 				b := C.dpiData_getBytes(d)
 				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
@@ -494,4 +494,17 @@ func (dr *directRow) Next(dest []driver.Value) error {
 		*(dest[0].(*interface{})) = dr.result[0]
 	}
 	return nil
+}
+
+func shortenFloat(s string) string {
+	i := strings.LastIndexByte(s, '.')
+	if i < 0 {
+		return s
+	}
+	for j := i + 1; j < len(s); j++ {
+		if s[j] != '0' {
+			return s
+		}
+	}
+	return s[:i]
 }
