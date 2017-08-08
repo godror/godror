@@ -20,12 +20,13 @@ package goracle
 */
 import "C"
 import (
+	"bytes"
 	"database/sql/driver"
 	"fmt"
 	"io"
 	"math"
 	"reflect"
-	"strings"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -319,10 +320,10 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = uint64(C.dpiData_getUint64(d))
 			case C.DPI_NATIVE_TYPE_FLOAT:
 				//dest[i] = float32(C.dpiData_getFloat(d))
-				dest[i] = shortenFloat(fmt.Sprintf("%f", C.dpiData_getFloat(d)))
+				dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
 			case C.DPI_NATIVE_TYPE_DOUBLE:
 				//dest[i] = float64(C.dpiData_getDouble(d))
-				dest[i] = shortenFloat(fmt.Sprintf("%f", C.dpiData_getDouble(d)))
+				dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
 			default:
 				b := C.dpiData_getBytes(d)
 				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
@@ -496,15 +497,17 @@ func (dr *directRow) Next(dest []driver.Value) error {
 	return nil
 }
 
-func shortenFloat(s string) string {
-	i := strings.LastIndexByte(s, '.')
+func printFloat(f float64) string {
+	var a [40]byte
+	b := strconv.AppendFloat(a[:0], f, 'f', -1, 64)
+	i := bytes.IndexByte(b, '.')
 	if i < 0 {
-		return s
+		return string(b)
 	}
-	for j := i + 1; j < len(s); j++ {
-		if s[j] != '0' {
-			return s
+	for j := i + 1; j < len(b); j++ {
+		if b[j] != '0' {
+			return string(b)
 		}
 	}
-	return s[:i]
+	return string(b[:i])
 }
