@@ -20,6 +20,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,37 +31,46 @@ var (
 	testDrv                      *drv
 	testCon                      *conn
 	clientVersion, serverVersion VersionInfo
+	initOnce                     sync.Once
 )
 
-func init() {
+func initConn() (*drv, *conn, error) {
 	var err error
-	if testDrv, err = newDrv(); err != nil {
-		panic(err)
-	}
-	clientVersion, err = testDrv.ClientVersion()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("client:", clientVersion)
-	dc, err := testDrv.Open(
-		fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
-			os.Getenv("GORACLE_DRV_TEST_USERNAME"),
-			os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-			os.Getenv("GORACLE_DRV_TEST_DB"),
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-	testCon = dc.(*conn)
-	serverVersion, err = testCon.ServerVersion()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("server:", serverVersion)
+	initOnce.Do(func() {
+		if testDrv, err = newDrv(); err != nil {
+			return
+		}
+		clientVersion, err = testDrv.ClientVersion()
+		if err != nil {
+			return
+		}
+		fmt.Println("client:", clientVersion)
+		dc, err := testDrv.Open(
+			fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
+				os.Getenv("GORACLE_DRV_TEST_USERNAME"),
+				os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
+				os.Getenv("GORACLE_DRV_TEST_DB"),
+			),
+		)
+		if err != nil {
+			return
+		}
+		testCon = dc.(*conn)
+		serverVersion, err = testCon.ServerVersion()
+		if err != nil {
+			return
+		}
+		fmt.Println("server:", serverVersion)
+	})
+	return testDrv, testCon, err
 }
 
 func TestObjectDirect(t *testing.T) {
+	_, testCon, err := initConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

@@ -48,24 +48,27 @@ var (
 )
 
 func init() {
-	var err error
+	goracle.Log = tl.GetLog()
+
 	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
 		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		os.Getenv("GORACLE_DRV_TEST_DB"),
 	)
+	var err error
 	if testDb, err = sql.Open("goracle", testConStr); err != nil {
-		fmt.Println("ERROR")
-		panic(err)
+		fmt.Printf("ERROR: %+v\n", err)
+		return
+		//panic(err)
 	}
-
-	goracle.Log = tl.GetLog()
 
 	if clientVersion, err = goracle.ClientVersion(testDb); err != nil {
-		panic(err)
+		fmt.Printf("ERROR: %+v\n", err)
+		return
 	}
 	if serverVersion, err = goracle.ServerVersion(testDb); err != nil {
-		panic(err)
+		fmt.Printf("ERROR: %+v\n", err)
+		return
 	}
 }
 
