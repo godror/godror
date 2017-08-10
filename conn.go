@@ -86,13 +86,17 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 // idle connections, it shouldn't be necessary for drivers to
 // do their own connection caching.
 func (c *conn) Close() error {
-	if c == nil || c.dpiConn == nil {
+	if c == nil {
 		return nil
 	}
-	if C.dpiConn_release(c.dpiConn) == C.DPI_FAILURE {
+	dpiConn := c.dpiConn
+	c.dpiConn = nil
+	if dpiConn == nil {
+		return nil
+	}
+	if C.dpiConn_release(dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Close")
 	}
-	c.dpiConn = nil
 	return nil
 }
 
@@ -163,18 +167,26 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	return &statement{conn: c, dpiStmt: dpiStmt}, nil
 }
 func (c *conn) Commit() error {
+	var err error
+	if c.inTransaction {
+		defer func() { err = c.Close() }()
+	}
 	c.inTransaction = false
 	if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "Commit")
+		err = errors.Wrap(c.getError(), "Commit")
 	}
-	return nil
+	return err
 }
 func (c *conn) Rollback() error {
+	var err error
+	if c.inTransaction {
+		defer func() { err = c.Close() }()
+	}
 	c.inTransaction = false
 	if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "Rollback")
+		err = errors.Wrap(c.getError(), "Rollback")
 	}
-	return nil
+	return err
 }
 
 func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNativeTypeNum, arraySize int, bufSize int) (*C.dpiVar, []C.dpiData, error) {
