@@ -167,28 +167,33 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	return &statement{conn: c, dpiStmt: dpiStmt}, nil
 }
 func (c *conn) Commit() error {
-	var err error
-	if c.inTransaction {
-		defer func() { err = c.Close() }()
-	}
-	c.inTransaction = false
-	if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-		err = errors.Wrap(c.getError(), "Commit")
-	}
-	return err
+	return c.endTran(true)
 }
 func (c *conn) Rollback() error {
-	var err error
+	return c.endTran(false)
+}
+func (c *conn) endTran(isCommit bool) error {
+	closeConn := func() error { return nil }
 	if c.inTransaction {
-		defer func() { err = c.Close() }()
+		closeConn = c.Close
 	}
 	c.inTransaction = false
-	if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-		err = errors.Wrap(c.getError(), "Rollback")
-	}
-	return err
-}
 
+	var failure bool
+	msg := "Commit"
+	if isCommit {
+		failure = C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE
+	} else {
+		failure = C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE
+		msg = "Rollback"
+	}
+	if failure {
+		err := errors.Wrap(c.getError(), msg)
+		closeConn()
+		return err
+	}
+	return closeConn()
+}
 func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNativeTypeNum, arraySize int, bufSize int) (*C.dpiVar, []C.dpiData, error) {
 	if c == nil || c.dpiConn == nil {
 		return nil, nil, errors.New("connection is nil")
