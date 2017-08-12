@@ -64,9 +64,9 @@ func (c *conn) Ping(ctx context.Context) error {
 			_ = c.Break()
 		}
 	}()
-	ok := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
 	done <- struct{}{}
-	if !ok {
+	if failure {
 		return errors.Wrap(c.getError(), "Ping")
 	}
 	return nil
