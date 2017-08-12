@@ -116,6 +116,7 @@ type dpiLobWriter struct {
 	dpiLob *C.dpiLob
 	offset C.uint64_t
 	opened bool
+	isClob bool
 }
 
 func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
@@ -138,10 +139,10 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	//fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)
 	dlw.offset += n
 
-	if true && CheckLOBWrite {
+	if !dlw.isClob && CheckLOBWrite {
 		var size C.uint64_t
 		if C.dpiLob_getSize(lob, &size); size != dlw.offset {
-			return int(n), errors.Errorf("%p size=%d, offset=%d", lob, size, dlw.offset)
+			return int(n), errors.Errorf("getSize(%p)=%d != offset=%d", lob, size, dlw.offset)
 		}
 	}
 	return int(n), nil
