@@ -923,36 +923,38 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		data:      make([][]C.dpiData, colCount),
 	}
 	var info C.dpiQueryInfo
+	var ti C.dpiDataTypeInfo
 	for i := 0; i < colCount; i++ {
 		if C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info) == C.DPI_FAILURE {
 			return nil, errors.Wrapf(st.getError(), "getQueryInfo[%d]", i)
 		}
-		bufSize := int(info.clientSizeInBytes)
+		ti = info.typeInfo
+		bufSize := int(ti.clientSizeInBytes)
 		//fmt.Println(typ, numTyp, info.precision, info.scale, info.clientSizeInBytes)
-		switch info.defaultNativeTypeNum {
+		switch ti.defaultNativeTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:
-			info.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 		case C.DPI_ORACLE_TYPE_DATE:
-			info.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		}
 		r.columns[i] = Column{
 			Name:       C.GoStringN(info.name, C.int(info.nameLength)),
-			OracleType: info.oracleTypeNum,
-			NativeType: info.defaultNativeTypeNum,
-			Size:       info.clientSizeInBytes,
-			Precision:  info.precision,
-			Scale:      info.scale,
+			OracleType: ti.oracleTypeNum,
+			NativeType: ti.defaultNativeTypeNum,
+			Size:       ti.clientSizeInBytes,
+			Precision:  ti.precision,
+			Scale:      ti.scale,
 			Nullable:   info.nullOk == 1,
-			ObjectType: info.objectType,
+			ObjectType: ti.objectType,
 		}
-		switch info.oracleTypeNum {
+		switch ti.oracleTypeNum {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR, C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR:
 			bufSize *= 4
 		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
 		if r.vars[i], r.data[i], err = st.newVar(
-			false, info.oracleTypeNum, info.defaultNativeTypeNum, fetchRowCount, bufSize,
+			false, ti.oracleTypeNum, ti.defaultNativeTypeNum, fetchRowCount, bufSize,
 		); err != nil {
 			return nil, err
 		}
