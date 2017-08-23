@@ -185,21 +185,25 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-	var res C.int
+	var err error
 	if !st.PlSQLArrays && st.arrLen > 0 {
 		Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
-		res = C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen))
+		if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
+			err = st.getError()
+		}
 	} else {
 		var colCount C.uint32_t
 		Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
-		res = C.dpiStmt_execute(st.dpiStmt, mode, &colCount)
+		if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
+			err = st.getError()
+		}
 	}
 	done <- struct{}{}
-	if res == C.DPI_FAILURE {
+	if err != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return nil, errors.Wrapf(st.getError(), "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen)
+		return nil, errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen)
 	}
 	for i, get := range st.gets {
 		if get == nil {
