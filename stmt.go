@@ -856,7 +856,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, pos int, data *C.dpiData, v interface{})
 	var chunkSize C.uint32_t
 	_ = C.dpiLob_getChunkSize(lob, &chunkSize)
 	if chunkSize == 0 {
-		chunkSize = 1 << 20
+		chunkSize = 8192
 	}
 	lw := &dpiLobWriter{dpiLob: lob, conn: c, isClob: L.IsClob}
 	_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))

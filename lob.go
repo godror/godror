@@ -20,13 +20,12 @@ package goracle
 */
 import "C"
 import (
+	"fmt"
 	"io"
 	"unsafe"
 
 	"github.com/pkg/errors"
 )
-
-const CheckLOBWrite = true
 
 // Lob is for reading/writing a LOB.
 type Lob struct {
@@ -77,9 +76,9 @@ var _ = io.Reader((*dpiLobReader)(nil))
 
 type dpiLobReader struct {
 	*conn
-	dpiLob   *C.dpiLob
-	offset   C.uint64_t
-	finished bool
+	dpiLob              *C.dpiLob
+	offset, sizePlusOne C.uint64_t
+	finished            bool
 }
 
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
@@ -92,8 +91,18 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	if dlr.sizePlusOne == 0 {
+		// never read size before
+		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
+			return 0, errors.Wrap(dlr.getError(), "getSize")
+		}
+		dlr.sizePlusOne++
+	}
 	n := C.uint64_t(len(p))
-	//fmt.Printf("%p.Read offset=%d n=%d\n", dlr.dpiLob, dlr.offset, n)
+	fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
+	if dlr.offset+1 >= dlr.sizePlusOne {
+		return 0, io.EOF
+	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
 		err := dlr.getError()
 		if dlr.finished = err.Code() == 1403; dlr.finished {
@@ -105,7 +114,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	//fmt.Printf("read %d\n", n)
 	dlr.offset += n
 	var err error
-	if n == 0 {
+	if n == 0 || dlr.offset+1 >= dlr.sizePlusOne {
 		err = io.EOF
 	}
 	return int(n), err
@@ -139,12 +148,6 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	//fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)
 	dlw.offset += n
 
-	if !dlw.isClob && CheckLOBWrite {
-		var size C.uint64_t
-		if C.dpiLob_getSize(lob, &size); size != dlw.offset {
-			return int(n), errors.Errorf("getSize(%p)=%d != offset=%d", lob, size, dlw.offset)
-		}
-	}
 	return int(n), nil
 }
 
