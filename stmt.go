@@ -44,6 +44,8 @@ type Option uint8
 // be left as is - the default is to treat them as arguments for ExecMany.
 const PlSQLArrays = Option(1)
 
+const minChunkSize = 1 << 16
+
 var _ = driver.Stmt((*statement)(nil))
 var _ = driver.StmtQueryContext((*statement)(nil))
 var _ = driver.StmtExecContext((*statement)(nil))
@@ -836,7 +838,7 @@ func (c *conn) dataGetLOB(v interface{}, data *C.dpiData) error {
 		L.Reader = nil
 		return nil
 	}
-	L.Reader = &dpiLobReader{conn: c, dpiLob: lob}
+	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
 	return nil
 }
 func (c *conn) dataSetLOB(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
@@ -857,6 +859,9 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, pos int, data *C.dpiData, v interface{})
 	_ = C.dpiLob_getChunkSize(lob, &chunkSize)
 	if chunkSize == 0 {
 		chunkSize = 8192
+	}
+	for chunkSize < minChunkSize {
+		chunkSize <<= 1
 	}
 	lw := &dpiLobWriter{dpiLob: lob, conn: c, isClob: L.IsClob}
 	_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))

@@ -21,6 +21,7 @@ package goracle
 import "C"
 import (
 	"io"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -78,6 +79,7 @@ type dpiLobReader struct {
 	dpiLob              *C.dpiLob
 	offset, sizePlusOne C.uint64_t
 	finished            bool
+	IsClob              bool
 }
 
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
@@ -90,6 +92,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
+	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
 	if dlr.sizePlusOne == 0 {
 		// never read size before
 		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
@@ -111,7 +115,11 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		return int(n), errors.Wrapf(err, "lob=%p offset=%d n=%d", dlr.dpiLob, dlr.offset, len(p))
 	}
 	//fmt.Printf("read %d\n", n)
-	dlr.offset += n
+	if dlr.IsClob {
+		dlr.offset += C.uint64_t(utf8.RuneCount(p[:n]))
+	} else {
+		dlr.offset += n
+	}
 	var err error
 	if n == 0 || dlr.offset+1 >= dlr.sizePlusOne {
 		err = io.EOF
