@@ -20,7 +20,6 @@ package goracle
 */
 import "C"
 import (
-	"fmt"
 	"io"
 	"unsafe"
 
@@ -99,7 +98,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		dlr.sizePlusOne++
 	}
 	n := C.uint64_t(len(p))
-	fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
+	//fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
 	if dlr.offset+1 >= dlr.sizePlusOne {
 		return 0, io.EOF
 	}
