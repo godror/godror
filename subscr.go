@@ -118,7 +118,7 @@ type RowEvent struct {
 type Subscription struct {
 	*conn
 	dpiSubscr *C.dpiSubscr
-	ID        C.uint32_t
+	ID        C.uint64_t
 	events    chan<- Event
 }
 

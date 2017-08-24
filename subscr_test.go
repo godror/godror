@@ -23,6 +23,10 @@ import (
 )
 
 func TestSubscr(t *testing.T) {
+	_, testCon, err := initConn()
+	if err != nil {
+		t.Fatal(err)
+	}
 	events := make(chan Event, 3)
 	s, err := testCon.NewSubscription(events, "subscr")
 	if err != nil {

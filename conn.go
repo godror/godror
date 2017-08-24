@@ -138,6 +138,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 	c2 := dc
 	c2.inTransaction = true
+	//fmt.Printf("%p BEGIN\n", c2)
 	return c2, err
 }
 
@@ -192,6 +193,7 @@ func (c *conn) endTran(isCommit bool) error {
 		closeConn()
 		return err
 	}
+	//fmt.Printf("%p.%s\n", c, msg)
 	return closeConn()
 }
 func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNativeTypeNum, arraySize int, bufSize int) (*C.dpiVar, []C.dpiData, error) {
