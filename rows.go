@@ -429,7 +429,9 @@ func (r *rows) Next(dest []driver.Value) error {
 			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
 				return errors.Wrap(r.getError(), "getNumQueryColumns")
 			}
+			st.Lock()
 			r2, err := st.openRows(int(colCount))
+			st.Unlock()
 			if err != nil {
 				return err
 			}

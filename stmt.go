@@ -111,6 +111,8 @@ func (st *statement) NumInput() int {
 		}
 		return 0
 	}
+	st.Lock()
+	defer st.Unlock()
 	var colCount C.uint32_t
 	if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_PARSE_ONLY, &colCount) == C.DPI_FAILURE {
 		return -1
@@ -159,6 +161,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.Lock()
 	defer st.Unlock()
+	st.conn.Lock()
+	defer st.conn.Unlock()
 
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
@@ -258,6 +262,8 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	st.Lock()
 	defer st.Unlock()
+	st.conn.Lock()
+	defer st.conn.Unlock()
 
 	if st.query == getConnection {
 		Log("msg", "QueryContext", "args", args)
@@ -839,6 +845,8 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 }
 
 func (c *conn) dataGetLOB(v interface{}, data *C.dpiData) error {
+	c.Lock()
+	defer c.Unlock()
 	L := v.(*Lob)
 	lob := C.dpiData_getLOB(data)
 	if lob == nil {

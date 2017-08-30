@@ -25,6 +25,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"sync"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -38,6 +39,7 @@ var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
+	sync.Mutex
 	dpiConn       *C.dpiConn
 	connParams    connectionParams
 	inTransaction bool
@@ -46,6 +48,8 @@ type conn struct {
 }
 
 func (c *conn) Break() error {
+	c.Lock()
+	defer c.Unlock()
 	//fmt.Fprintf(os.Stderr, "\n%+v\n", errors.New("break"))
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Break")
@@ -57,6 +61,8 @@ func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	c.Lock()
+	defer c.Unlock()
 	done := make(chan struct{}, 1)
 	go func() {
 		select {
@@ -90,6 +96,8 @@ func (c *conn) Close() error {
 	if c == nil {
 		return nil
 	}
+	c.Lock()
+	defer c.Unlock()
 	dpiConn := c.dpiConn
 	c.dpiConn = nil
 	if dpiConn == nil {
@@ -133,6 +141,8 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.Errorf("%v isolation level is not supported", sql.IsolationLevel(opts.Isolation))
 	}
 
+	c.Lock()
+	defer c.Unlock()
 	dc, err := c.drv.openConn(c.connParams)
 	if err != nil {
 		return nil, err
@@ -150,6 +160,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	c.Lock()
+	defer c.Unlock()
 	if query == getConnection {
 		Log("msg", "PrepareContext", "shortcut", query)
 		return &statement{conn: c, query: query}, nil
@@ -175,6 +187,7 @@ func (c *conn) Rollback() error {
 	return c.endTran(false)
 }
 func (c *conn) endTran(isCommit bool) error {
+	c.Lock()
 	closeConn := func() error { return nil }
 	if c.inTransaction {
 		closeConn = c.Close
@@ -189,6 +202,7 @@ func (c *conn) endTran(isCommit bool) error {
 		failure = C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE
 		msg = "Rollback"
 	}
+	c.Unlock()
 	if failure {
 		err := errors.Wrap(c.getError(), msg)
 		closeConn()
@@ -231,6 +245,8 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 var _ = driver.Tx((*conn)(nil))
 
 func (c *conn) ServerVersion() (VersionInfo, error) {
+	c.Lock()
+	defer c.Unlock()
 	if c.serverVersion.Version != 0 {
 		return c.serverVersion, nil
 	}
