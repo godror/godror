@@ -46,6 +46,7 @@ type conn struct {
 }
 
 func (c *conn) Break() error {
+	//fmt.Fprintf(os.Stderr, "\n%+v\n", errors.New("break"))
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Break")
 	}

@@ -171,13 +171,16 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 
 	// execute
-	done := make(chan struct{}, 1)
+	ctxErr := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
+		defer close(ctxErr)
 		select {
-		case <-ctx.Done():
-			_ = st.Break()
 		case <-done:
 			return
+		case <-ctx.Done():
+			ctxErr <- ctx.Err()
+			_ = st.Break()
 		}
 	}()
 
@@ -198,11 +201,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			err = st.getError()
 		}
 	}
-	done <- struct{}{}
+	close(done)
+	if err := <-ctxErr; err != nil {
+		return nil, err
+	}
 	if err != nil {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		return nil, errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen)
 	}
 	for i, get := range st.gets {
@@ -225,7 +228,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			reflect.ValueOf(dest).Elem().Set(re.Slice(0, 0))
 			continue
 		}
-		Log("i", i, "dest", fmt.Sprintf("%T %#v", dest, dest), "re", fmt.Sprintf("%T %#v", re.Interface(), re.Interface()), "re.Kind", re.Kind().String())
+		//Log("i", i, "dest", fmt.Sprintf("%T %#v", dest, dest), "re", fmt.Sprintf("%T %#v", re.Interface(), re.Interface()), "re.Kind", re.Kind().String())
 		z := reflect.Zero(re.Index(0).Type()).Interface()
 		re = re.Slice(0, 0)
 		for j := 0; j < int(n); j++ {
@@ -233,7 +236,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if err := get(&z, &st.data[i][j]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, j)
 			}
-			Log("msg", "get", "i", i, "j", j, "n", n, "z", fmt.Sprintf("%T %#v\n", z, z))
+			//Log("msg", "get", "i", i, "j", j, "n", n, "z", fmt.Sprintf("%T %#v\n", z, z))
 			re = reflect.Append(re, reflect.ValueOf(z))
 		}
 		reflect.ValueOf(dest).Elem().Set(re)
