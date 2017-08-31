@@ -59,6 +59,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -396,7 +397,10 @@ func ParseConnString(connString string) (connectionParams, error) {
 		}
 		P.Username, connString = connString[:i], connString[i+1:]
 		if i = strings.IndexByte(connString, '@'); i < 0 {
-			return P, errors.Errorf("no @ in %q", connString)
+			P.Password = connString
+			if P.SID = os.Getenv("ORACLE_SID"); P.SID == "" {
+				P.SID = os.Getenv("TWO_TASK")
+			}
 		}
 		P.Password, P.SID = connString[:i], connString[i+1:]
 		uSid := strings.ToUpper(P.SID)
