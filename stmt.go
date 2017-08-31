@@ -189,6 +189,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}()
 
 	mode := C.dpiExecMode(C.DPI_MODE_EXEC_DEFAULT)
+	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}

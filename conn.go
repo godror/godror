@@ -25,6 +25,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	//"fmt"
 	"sync"
 	"unsafe"
 
@@ -143,13 +144,11 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	c.Lock()
 	defer c.Unlock()
-	dc, err := c.drv.openConn(c.connParams)
-	if err != nil {
-		return nil, err
+	if c.inTransaction {
+		return nil, errors.New("already in transaction")
 	}
-	dc.inTransaction = true
-	//fmt.Printf("%p BEGIN\n", c2)
-	return dc, err
+	c.inTransaction = true
+	return c, nil
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.
@@ -176,7 +175,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	) == C.DPI_FAILURE {
 		return nil, errors.Wrap(c.getError(), "Prepare: "+query)
 	}
-	//fmt.Printf("PrepareContext(%q):%p\n", query, dpiStmt)
+	//fmt.Printf("%p.PrepareContext(inTran? %t; %q):%p\n", c, c.inTransaction, query, dpiStmt)
 	return &statement{conn: c, dpiStmt: dpiStmt}, nil
 }
 func (c *conn) Commit() error {
@@ -187,29 +186,23 @@ func (c *conn) Rollback() error {
 }
 func (c *conn) endTran(isCommit bool) error {
 	c.Lock()
-	closeConn := func() error { return nil }
-	if c.inTransaction {
-		closeConn = c.Close
-		c.inTransaction = false
-	}
+	c.inTransaction = false
 
 	var err error
+	msg := "Commit"
 	if isCommit {
 		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = errors.Wrap(c.getError(), "Commit")
+			err = errors.Wrap(c.getError(), msg)
 		}
 	} else {
+		msg = "Rollback"
 		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
 			err = errors.Wrap(c.getError(), "Rollback")
 		}
 	}
 	c.Unlock()
-	if err != nil {
-		closeConn()
-		return err
-	}
 	//fmt.Printf("%p.%s\n", c, msg)
-	return closeConn()
+	return err
 }
 func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNativeTypeNum, arraySize int, bufSize int) (*C.dpiVar, []C.dpiData, error) {
 	if c == nil || c.dpiConn == nil {
