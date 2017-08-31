@@ -203,6 +203,7 @@ func (c *conn) endTran(isCommit bool) error {
 			err = errors.Wrap(c.getError(), "Rollback")
 		}
 	}
+	c.Unlock()
 	if err != nil {
 		closeConn()
 		return err
