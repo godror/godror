@@ -846,8 +846,6 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 }
 
 func (c *conn) dataGetLOB(v interface{}, data *C.dpiData) error {
-	c.Lock()
-	defer c.Unlock()
 	L := v.(*Lob)
 	lob := C.dpiData_getLOB(data)
 	if lob == nil {
