@@ -72,7 +72,7 @@ func (c *conn) Ping(ctx context.Context) error {
 		}
 	}()
 	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
-	done <- struct{}{}
+	close(done)
 	if failure {
 		return errors.Wrap(c.getError(), "Ping")
 	}
@@ -147,10 +147,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if err != nil {
 		return nil, err
 	}
-	c2 := dc
-	c2.inTransaction = true
+	dc.inTransaction = true
 	//fmt.Printf("%p BEGIN\n", c2)
-	return c2, err
+	return dc, err
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.
@@ -191,20 +190,20 @@ func (c *conn) endTran(isCommit bool) error {
 	closeConn := func() error { return nil }
 	if c.inTransaction {
 		closeConn = c.Close
+		c.inTransaction = false
 	}
-	c.inTransaction = false
 
-	var failure bool
-	msg := "Commit"
+	var err error
 	if isCommit {
-		failure = C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE
+		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
+			err = errors.Wrap(c.getError(), "Commit")
+		}
 	} else {
-		failure = C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE
-		msg = "Rollback"
+		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
+			err = errors.Wrap(c.getError(), "Rollback")
+		}
 	}
-	c.Unlock()
-	if failure {
-		err := errors.Wrap(c.getError(), msg)
+	if err != nil {
 		closeConn()
 		return err
 	}
