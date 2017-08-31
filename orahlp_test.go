@@ -19,7 +19,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kylelemons/godebug/diff"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestMapToSlice(t *testing.T) {
@@ -77,7 +77,7 @@ END;
 	} {
 
 		got, params := MapToSlice(tc.in, func(s string) interface{} { return s })
-		d := diff.Diff(tc.await, got)
+		d := cmp.Diff(tc.await, got)
 		if d != "" {
 			t.Errorf("%d. diff:\n%s", i, d)
 		}
