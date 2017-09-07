@@ -164,7 +164,7 @@ func (dlw *dpiLobWriter) Close() error {
 	}
 	lob := dlw.dpiLob
 	dlw.dpiLob = nil
-	C.dpiLob_flushBuffer(lob)
+	//C.dpiLob_flushBuffer(lob)
 	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
 		return errors.Wrapf(dlw.getError(), "closeResource(%p)", lob)
 	}
