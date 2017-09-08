@@ -949,10 +949,15 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
-		//fmt.Println(typ, numTyp, info.precision, info.scale, info.clientSizeInBytes)
-		switch ti.defaultNativeTypeNum {
+		//Log("msg", "openRows", "col", i, "info", ti)
+		//Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER)
+		switch ti.oracleTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:
-			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			switch ti.defaultNativeTypeNum {
+			case C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
+				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+				bufSize = 40
+			}
 		case C.DPI_ORACLE_TYPE_DATE:
 			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		}

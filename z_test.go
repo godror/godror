@@ -760,3 +760,70 @@ func TestOpenBadMemory(t *testing.T) {
 		t.Errorf("Consumed more than 32KiB of memory: %d", d)
 	}
 }
+
+func TestSelectFloat(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	qry := `CREATE TABLE test_NUMBERs (
+  INT_COL     NUMBER,
+  FLOAT_COL  NUMBER,
+  EMPTY_INT_COL NUMBER
+)`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP TABLE test_numbers")
+
+	const INT, FLOAT = 1234567, 4.5
+	qry = `INSERT INTO test_numbers
+	(INT_COL, FLOAT_COL, EMPTY_INT_COL)
+     VALUES (1234567, 45/10, NULL)`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+
+	qry = "SELECT int_col, float_col, empty_int_col FROM test_numbers"
+	type numbers struct {
+		Int     int
+		Int64   int64
+		Float   float64
+		NInt    sql.NullInt64
+		String  string
+		NString sql.NullString
+	}
+	//defer tl.enableLogging(t)()
+	var n numbers
+	var i1, i2, i3 interface{}
+	for tName, tC := range map[string]struct {
+		Dest [3]interface{}
+		Want numbers
+	}{
+		"int,float,string": {
+			Dest: [3]interface{}{&n.Int, &n.Float, &n.NString},
+			Want: numbers{Int: INT, Float: FLOAT},
+		},
+		"int64,float,nullInt": {
+			Dest: [3]interface{}{&n.Int64, &n.Float, &n.NInt},
+			Want: numbers{Int64: INT, Float: FLOAT},
+		},
+		"intf,intf,intf": {
+			Dest: [3]interface{}{&i1, &i2, &i3},
+			Want: numbers{Int64: INT, Float: FLOAT},
+		},
+	} {
+		i1, i2, i3 = nil, nil, nil
+		n = numbers{}
+		if err := testDb.QueryRowContext(ctx, qry).Scan(tC.Dest[0], tC.Dest[1], tC.Dest[2]); err != nil {
+			t.Errorf("%q: %v", tName, errors.Wrap(err, qry))
+			continue
+		}
+		if tName == "intf,intf,intf" {
+			t.Logf("%q: %#v, %#v, %#v", tName, i1, i2, i3)
+			continue
+		}
+		t.Logf("%q: %+v", tName, n)
+		if n != tC.Want {
+			t.Errorf("%q:\ngot\t%+v,\nwanted\t%+v.", tName, n, tC.Want)
+		}
+	}
+}
