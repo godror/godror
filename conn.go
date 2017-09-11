@@ -176,7 +176,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, errors.Wrap(c.getError(), "Prepare: "+query)
 	}
 	//fmt.Printf("%p.PrepareContext(inTran? %t; %q):%p\n", c, c.inTransaction, query, dpiStmt)
-	return &statement{conn: c, dpiStmt: dpiStmt}, nil
+	return &statement{conn: c, dpiStmt: dpiStmt, query: query}, nil
 }
 func (c *conn) Commit() error {
 	return c.endTran(true)

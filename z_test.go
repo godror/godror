@@ -827,3 +827,16 @@ func TestSelectFloat(t *testing.T) {
 		}
 	}
 }
+
+func TestNumInputs(t *testing.T) {
+	var a, b string
+	if err := testDb.QueryRow("SELECT :1, :2 FROM DUAL", 'a', 'b').Scan(&a, &b); err != nil {
+		t.Errorf("two inputs: %+v", err)
+	}
+	if err := testDb.QueryRow("SELECT :a, :b FROM DUAL", 'a', 'b').Scan(&a, &b); err != nil {
+		t.Errorf("two named inputs: %+v", err)
+	}
+	if err := testDb.QueryRow("SELECT :a, :a FROM DUAL", sql.Named("a", a)).Scan(&a, &b); err != nil {
+		t.Errorf("named inputs: %+v", err)
+	}
+}

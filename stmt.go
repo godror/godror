@@ -113,15 +113,19 @@ func (st *statement) NumInput() int {
 	}
 	st.Lock()
 	defer st.Unlock()
-	var colCount C.uint32_t
-	if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_PARSE_ONLY, &colCount) == C.DPI_FAILURE {
-		return -1
-	}
 	var cnt C.uint32_t
+	//defer func() { fmt.Printf("%p.NumInput=%d (%q)\n", st, cnt, st.query) }()
 	if C.dpiStmt_getBindCount(st.dpiStmt, &cnt) == C.DPI_FAILURE {
 		return -1
 	}
+	names := make([]*C.char, int(cnt))
+	lengths := make([]C.uint32_t, int(cnt))
+	if C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) == C.DPI_FAILURE {
+		return -1
+	}
 	//fmt.Printf("%p.NumInput=%d\n", st, cnt)
+
+	// return the number of *unique* arguments
 	return int(cnt)
 }
 
