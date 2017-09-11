@@ -118,7 +118,7 @@ func (st *statement) NumInput() int {
 	if C.dpiStmt_getBindCount(st.dpiStmt, &cnt) == C.DPI_FAILURE {
 		return -1
 	}
-	if cnt < 1 {
+	if cnt < 2 { // 1 can't decrease...
 		return int(cnt)
 	}
 	names := make([]*C.char, int(cnt))
