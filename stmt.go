@@ -118,6 +118,9 @@ func (st *statement) NumInput() int {
 	if C.dpiStmt_getBindCount(st.dpiStmt, &cnt) == C.DPI_FAILURE {
 		return -1
 	}
+	if cnt < 1 {
+		return int(cnt)
+	}
 	names := make([]*C.char, int(cnt))
 	lengths := make([]C.uint32_t, int(cnt))
 	if C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) == C.DPI_FAILURE {
