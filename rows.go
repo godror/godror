@@ -16,7 +16,7 @@
 package goracle
 
 /*
-#include <dpi.h>
+#include "dpiImpl.h"
 */
 import "C"
 import (

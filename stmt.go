@@ -17,7 +17,7 @@ package goracle
 
 /*
 #include <stdlib.h>
-#include <dpi.h>
+#include "dpiImpl.h"
 
 const int sizeof_dpiData = sizeof(void);
 */

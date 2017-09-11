@@ -39,17 +39,36 @@
 package goracle
 
 //go:generate git submodule update --init --recursive
-//go:generate sh -c "cd odpi && make"
-//go:generate echo "sudo cp -a odpi/lib/libodpic.so /usr/local/lib/"
-//go:generate echo "sudo ldconfig /usr/local/lib"
 
 /*
-//#cgo pkg-config: --define-variable=GOPATH=$GOPATH odpi
-#cgo CFLAGS: -I./odpi/include
-#cgo LDFLAGS: -Lodpi/lib -lodpic -ldl -s
+#cgo CFLAGS: -I./odpi/include -I./odpi/src
+#cgo LDFLAGS: -ldl -lpthread
 
 #include <stdlib.h>
-#include <dpi.h>
+
+#include "dpiImpl.h"
+#include "dpiConn.c"
+#include "dpiContext.c"
+#include "dpiData.c"
+#include "dpiDeqOptions.c"
+#include "dpiEnqOptions.c"
+#include "dpiEnv.c"
+#include "dpiError.c"
+#include "dpiGen.c"
+#include "dpiGlobal.c"
+#include "dpiLob.c"
+#include "dpiMsgProps.c"
+#include "dpiObject.c"
+#include "dpiObjectAttr.c"
+#include "dpiObjectType.c"
+#include "dpiOci.c"
+#include "dpiOracleType.c"
+#include "dpiPool.c"
+#include "dpiRowid.c"
+#include "dpiStmt.c"
+#include "dpiSubscr.c"
+#include "dpiUtils.c"
+#include "dpiVar.c"
 */
 import "C"
 
