@@ -308,6 +308,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64,
 					C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
 					dest[i] = 0
+				case C.DPI_NATIVE_TYPE_BYTES:
+					dest[i] = nil //Number("")
 				default:
 					dest[i] = nil
 				}

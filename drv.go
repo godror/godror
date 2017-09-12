@@ -123,6 +123,7 @@ type intType struct{}
 
 func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
+	Log("ConvertValue", "Int64", "value", v)
 	switch x := v.(type) {
 	case int32:
 		return int64(x), nil
@@ -142,7 +143,15 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 			return int64(x), errors.Errorf("non-zero fractional part: %f", f)
 		}
 		return int64(x), nil
+	case string:
+		if x == "" {
+			return 0, nil
+		}
+		return strconv.ParseInt(string(x), 10, 64)
 	case Number:
+		if x == "" {
+			return 0, nil
+		}
 		return strconv.ParseInt(string(x), 10, 64)
 	default:
 		return nil, errors.Errorf("unknown type %T", v)
@@ -153,6 +162,7 @@ type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
+	Log("ConvertValue", "Float64", "value", v)
 	switch x := v.(type) {
 	case int32:
 		return float64(x), nil
@@ -166,7 +176,15 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		return float64(x), nil
 	case float64:
 		return x, nil
+	case string:
+		if x == "" {
+			return 0, nil
+		}
+		return strconv.ParseFloat(string(x), 64)
 	case Number:
+		if x == "" {
+			return 0, nil
+		}
 		return strconv.ParseFloat(string(x), 64)
 	default:
 		return nil, errors.Errorf("unknown type %T", v)
@@ -177,8 +195,17 @@ type numType struct{}
 
 func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
+	Log("ConvertValue", "Num", "value", v)
 	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return 0, nil
+		}
+		return string(x), nil
 	case Number:
+		if x == "" {
+			return 0, nil
+		}
 		return string(x), nil
 	case int32, uint32, int64, uint64:
 		return fmt.Sprintf("%d", x), nil
@@ -191,6 +218,25 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 func (n Number) String() string { return string(n) }
 func (n Number) Value() (driver.Value, error) {
 	return string(n), nil
+}
+func (n *Number) Scan(v interface{}) error {
+	if v == nil {
+		*n = ""
+		return nil
+	}
+	switch x := v.(type) {
+	case string:
+		*n = Number(x)
+	case Number:
+		*n = x
+	case int32, uint32, int64, uint64:
+		*n = Number(fmt.Sprintf("%d", x))
+	case float32, float64:
+		*n = Number(fmt.Sprintf("%f", x))
+	default:
+		return errors.Errorf("unknown type %T", v)
+	}
+	return nil
 }
 
 // Log function

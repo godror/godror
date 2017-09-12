@@ -790,16 +790,20 @@ func TestSelectFloat(t *testing.T) {
 		NInt    sql.NullInt64
 		String  string
 		NString sql.NullString
+		Number  goracle.Number
 	}
-	//defer tl.enableLogging(t)()
 	var n numbers
 	var i1, i2, i3 interface{}
 	for tName, tC := range map[string]struct {
 		Dest [3]interface{}
 		Want numbers
 	}{
-		"int,float,string": {
+		"int,float,nstring": {
 			Dest: [3]interface{}{&n.Int, &n.Float, &n.NString},
+			Want: numbers{Int: INT, Float: FLOAT},
+		},
+		"inf,float,Number": {
+			Dest: [3]interface{}{&n.Int, &n.Float, &n.Number},
 			Want: numbers{Int: INT, Float: FLOAT},
 		},
 		"int64,float,nullInt": {
@@ -810,11 +814,27 @@ func TestSelectFloat(t *testing.T) {
 			Dest: [3]interface{}{&i1, &i2, &i3},
 			Want: numbers{Int64: INT, Float: FLOAT},
 		},
+		"int,float,string": {
+			Dest: [3]interface{}{&n.Int, &n.Float, &n.String},
+			Want: numbers{Int: INT, Float: FLOAT},
+		},
 	} {
 		i1, i2, i3 = nil, nil, nil
 		n = numbers{}
-		if err := testDb.QueryRowContext(ctx, qry).Scan(tC.Dest[0], tC.Dest[1], tC.Dest[2]); err != nil {
+		F := func() error {
+			return errors.Wrap(
+				testDb.QueryRowContext(ctx, qry).Scan(tC.Dest[0], tC.Dest[1], tC.Dest[2]),
+				qry)
+		}
+		if err := F(); err != nil {
+			if strings.HasSuffix(err.Error(), "unsupported Scan, storing driver.Value type <nil> into type *string") {
+				t.Log(err)
+				continue
+			}
+			noLogging := tl.enableLogging(t)
+			err = F()
 			t.Errorf("%q: %v", tName, errors.Wrap(err, qry))
+			noLogging()
 			continue
 		}
 		if tName == "intf,intf,intf" {
