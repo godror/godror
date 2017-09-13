@@ -210,10 +210,10 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 			return reflect.TypeOf(int64(0))
 		case C.DPI_NATIVE_TYPE_UINT64:
 			return reflect.TypeOf(uint64(0))
-		case C.DPI_NATIVE_TYPE_FLOAT:
-			return reflect.TypeOf(float32(0))
-		case C.DPI_NATIVE_TYPE_DOUBLE:
-			return reflect.TypeOf(float64(0))
+		//case C.DPI_NATIVE_TYPE_FLOAT:
+		//	return reflect.TypeOf(float32(0))
+		//case C.DPI_NATIVE_TYPE_DOUBLE:
+		//		return reflect.TypeOf(float64(0))
 		default:
 			return reflect.TypeOf(Number(""))
 		}
@@ -292,8 +292,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR,
-			C.DPI_NATIVE_TYPE_BYTES:
+			C.DPI_ORACLE_TYPE_LONG_VARCHAR:
 			//fmt.Printf("CHAR\n")
 			if isNull {
 				dest[i] = ""

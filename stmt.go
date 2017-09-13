@@ -929,8 +929,8 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 		switch col.NativeType {
 		case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64:
 			c = Int64
-		case C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
-			c = Float64
+		//case C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
+		//	c = Float64
 		default:
 			c = Num
 		}
