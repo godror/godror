@@ -828,7 +828,7 @@ func TestSelectFloat(t *testing.T) {
 		}
 		if err := F(); err != nil {
 			if strings.HasSuffix(err.Error(), "unsupported Scan, storing driver.Value type <nil> into type *string") {
-				t.Log(err)
+				t.Log("WARNING:", err)
 				continue
 			}
 			noLogging := tl.enableLogging(t)
