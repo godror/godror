@@ -371,6 +371,8 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		rArgs[i] = reflect.ValueOf(value)
 		if rArgs[i].Kind() == reflect.Ptr {
 			rArgs[i] = rArgs[i].Elem()
+			value = rArgs[i].Interface() // deref pointer
+			st.dests[i] = value
 		}
 		if _, isByteSlice := value.([]byte); !isByteSlice {
 			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice

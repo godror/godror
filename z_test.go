@@ -860,3 +860,12 @@ func TestNumInputs(t *testing.T) {
 		t.Errorf("named inputs: %+v", err)
 	}
 }
+
+func TestPtrArg(t *testing.T) {
+	s := "dog"
+	rows, err := testDb.Query("SELECT * FROM user_objects WHERE object_name=:1", &s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+}
