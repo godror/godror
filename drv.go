@@ -42,7 +42,6 @@ package goracle
 
 /*
 #cgo CFLAGS: -I./odpi/include -I./odpi/src
-#cgo LDFLAGS: -ldl -lpthread
 
 #include <stdlib.h>
 
