@@ -27,10 +27,14 @@ Just as with other Go projects, you don't want to change the import paths, but y
 in place, just set up different remotes:
 
 	cd $GOPATH.src/gopkg.in/goracle.v2
+	git remote add upstream https://github.com/go-goracle/goracle.git
+	git fetch upstream
+	git checkout -b master upstream/master
+
 	git checkout -f master
-	git pull origin master
+	git pull upstream master
 	git remote add fork git@github.com:mygithubacc/goracle
-	git checkout -b newfeature origin/master
+	git checkout -b newfeature upstream/master
 
 Change, experiment as you wish, then
 
