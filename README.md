@@ -7,6 +7,8 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
+At least Go 1.9 is required!
+
 ## Rationale ##
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard *database/sql* library. Even calling stored procedures
