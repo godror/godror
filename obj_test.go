@@ -30,18 +30,18 @@ import (
 var (
 	testDrv                      *drv
 	testCon                      *conn
+	testOpenErr                  error
 	clientVersion, serverVersion VersionInfo
 	initOnce                     sync.Once
 )
 
 func initConn() (*drv, *conn, error) {
-	var err error
 	initOnce.Do(func() {
-		if testDrv, err = newDrv(); err != nil {
+		if testDrv, testOpenErr = newDrv(); testOpenErr != nil {
 			return
 		}
-		clientVersion, err = testDrv.ClientVersion()
-		if err != nil {
+		clientVersion, testOpenErr = testDrv.ClientVersion()
+		if testOpenErr != nil {
 			return
 		}
 		fmt.Println("client:", clientVersion)
@@ -53,16 +53,17 @@ func initConn() (*drv, *conn, error) {
 			),
 		)
 		if err != nil {
+			testOpenErr = err
 			return
 		}
 		testCon = dc.(*conn)
-		serverVersion, err = testCon.ServerVersion()
+		serverVersion, testOpenErr = testCon.ServerVersion()
 		if err != nil {
 			return
 		}
 		fmt.Println("server:", serverVersion)
 	})
-	return testDrv, testCon, err
+	return testDrv, testCon, testOpenErr
 }
 
 func TestObjectDirect(t *testing.T) {
