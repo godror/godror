@@ -218,7 +218,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, err
 	}
 	if err != nil {
-		return nil, errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen)
+		return nil, maybeBadConn(errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen))
 	}
 	for i, get := range st.gets {
 		if get == nil {
@@ -298,7 +298,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	res := C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount)
 	done <- struct{}{}
 	if res == C.DPI_FAILURE {
-		return nil, errors.Wrapf(st.getError(), "dpiStmt_execute")
+		return nil, maybeBadConn(errors.Wrapf(st.getError(), "dpiStmt_execute"))
 	}
 	return st.openRows(int(colCount))
 }

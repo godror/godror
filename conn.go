@@ -75,7 +75,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
 	close(done)
 	if failure {
-		return errors.Wrap(c.getError(), "Ping")
+		return maybeBadConn(errors.Wrap(c.getError(), "Ping"))
 	}
 	return nil
 }
@@ -173,7 +173,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Wrap(c.getError(), "Prepare: "+query)
+		return nil, maybeBadConn(errors.Wrap(c.getError(), "Prepare: "+query))
 	}
 	//fmt.Printf("%p.PrepareContext(inTran? %t; %q):%p\n", c, c.inTransaction, query, dpiStmt)
 	return &statement{conn: c, dpiStmt: dpiStmt, query: query}, nil
@@ -252,4 +252,26 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	c.serverVersion.set(&v)
 	c.serverVersion.ServerRelease = C.GoStringN(release, C.int(releaseLen))
 	return c.serverVersion, nil
+}
+
+func maybeBadConn(err error) error {
+	if err == nil {
+		return nil
+	}
+	if cd, ok := errors.Cause(err).(interface {
+		Code() int
+	}); ok {
+		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
+		switch cd.Code() {
+		case 1012, 3113, 3114, 12528, 12545, 28547:
+			// ORA-01012: Not logged on
+			// ORA-03113: end-of-file on communication channel
+			// ORA-03114: not connected to ORACLE
+			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
+			// ORA-12545: Connect failed because target host or object does not exist
+			// ORA-28547: connection to server failed, probable Oracle Net admin error
+			return driver.ErrBadConn
+		}
+	}
+	return err
 }

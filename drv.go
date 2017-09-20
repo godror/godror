@@ -277,7 +277,8 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.openConn(P)
+	conn, err := d.openConn(P)
+	return conn, maybeBadConn(err)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
