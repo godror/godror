@@ -462,13 +462,14 @@ func ParseConnString(connString string) (connectionParams, error) {
 			return P, errors.Errorf("no / in %q", connString)
 		}
 		P.Username, connString = connString[:i], connString[i+1:]
-		if i = strings.IndexByte(connString, '@'); i < 0 {
+		if i = strings.IndexByte(connString, '@'); i >= 0 {
+			P.Password, P.SID = connString[:i], connString[i+1:]
+		} else {
 			P.Password = connString
 			if P.SID = os.Getenv("ORACLE_SID"); P.SID == "" {
 				P.SID = os.Getenv("TWO_TASK")
 			}
 		}
-		P.Password, P.SID = connString[:i], connString[i+1:]
 		uSid := strings.ToUpper(P.SID)
 		if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
 			P.SID = P.SID[:len(P.SID)-10]
