@@ -49,7 +49,6 @@ package goracle
 #include "dpiConn.c"
 #include "dpiContext.c"
 #include "dpiData.c"
-#include "dpiDebug.c"
 #include "dpiDeqOptions.c"
 #include "dpiEnqOptions.c"
 #include "dpiEnv.c"
