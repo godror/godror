@@ -616,8 +616,11 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 		var err error
 		n := doManyCount
-		if st.PlSQLArrays && st.isSlice[i] && info.isOut {
+		if st.PlSQLArrays && st.isSlice[i] {
 			n = maxArraySize
+			if !info.isOut {
+				n = reflect.ValueOf(value).Len()
+			}
 		}
 		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
 		//i, st.PlSQLArrays, info.typ, info.natTyp dataSliceLen, info.bufSize)
@@ -651,7 +654,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
 				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
-					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, n)
+					return errors.Wrapf(st.getError(), "%+v.setNumElementsInArray[%d](%d)", dv, i, n)
 				}
 			}
 			//fmt.Println("n:", len(st.data[i]))
