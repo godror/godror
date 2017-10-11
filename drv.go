@@ -241,12 +241,15 @@ type Numbers []Number
 
 func NumbersFromStrings(s []string) []Number {
 	if cap(s) == 0 {
-		return nil
+		return []Number{}
 	}
-	return (*(*[1 << 27]Number)(unsafe.Pointer(&(s[:1][0]))))[:len(s):len(s)]
+	return (*(*[1 << 27]Number)(unsafe.Pointer(&(s[:1][0]))))[:len(s):cap(s)]
 }
 func (n Numbers) ToStrings() []string {
-	return (*(*[1 << 27]string)(unsafe.Pointer(&(n[:1][0]))))[:len(n):len(n)]
+	if cap(n) == 0 {
+		return []string{}
+	}
+	return (*(*[1 << 27]string)(unsafe.Pointer(&(n[:1][0]))))[:len(n):cap(n)]
 }
 
 // Log function
