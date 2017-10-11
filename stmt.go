@@ -242,6 +242,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if C.dpiVar_getNumElementsInArray(st.vars[i], &n) == C.DPI_FAILURE {
 			return nil, errors.Wrapf(st.getError(), "%d.getNumElementsInArray", i)
 		}
+		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		re := reflect.ValueOf(dest).Elem()
 		re.Set(re.Slice(0, 0))
 		if n == 0 {

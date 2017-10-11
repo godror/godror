@@ -320,20 +320,21 @@ END test_pkg;
 	} {
 		tC := tC
 		t.Run("inout_"+tC.Name, func(t *testing.T) {
-			in := copySlice(tC.In)
-			t.Logf("%s=%s", tC.Name, in)
+			t.Logf("%s=%s", tC.Name, tC.In)
 			qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
+			dst := copySlice(tC.In)
 			if _, err := testDb.ExecContext(ctx, qry,
 				goracle.PlSQLArrays,
-				sql.Out{Dest: &(in), In: true},
+				sql.Out{Dest: dst, In: true},
 			); err != nil {
 				t.Fatalf("%s\n%+v", qry, err)
 			}
 
-			if cmp.Equal(in, tC.Want, opts...) {
+			got := reflect.ValueOf(dst).Elem().Interface()
+			if cmp.Equal(got, tC.Want, opts...) {
 				return
 			}
-			t.Errorf("%s: %s", tC.Name, cmp.Diff(in, tC.Want))
+			t.Errorf("%s: %s", tC.Name, cmp.Diff(got, tC.Want))
 			var buf bytes.Buffer
 			if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
 				t.Error(err)
@@ -699,11 +700,12 @@ func TestReadWriteLob(t *testing.T) {
 
 func copySlice(orig interface{}) interface{} {
 	ro := reflect.ValueOf(orig)
-	rc := reflect.MakeSlice(ro.Type(), ro.Len(), ro.Cap())
+	rc := reflect.New(reflect.TypeOf(orig)).Elem() // *[]s
+	rc.Set(reflect.MakeSlice(ro.Type(), ro.Len(), ro.Cap()))
 	for i := 0; i < ro.Len(); i++ {
 		rc.Index(i).Set(ro.Index(i))
 	}
-	return rc.Interface()
+	return rc.Addr().Interface()
 }
 
 func TestObject(t *testing.T) {
