@@ -237,6 +237,18 @@ func (n *Number) Scan(v interface{}) error {
 	return nil
 }
 
+type Numbers []Number
+
+func NumbersFromStrings(s []string) []Number {
+	if cap(s) == 0 {
+		return nil
+	}
+	return (*(*[1 << 27]Number)(unsafe.Pointer(&(s[:1][0]))))[:len(s):len(s)]
+}
+func (n Numbers) ToStrings() []string {
+	return (*(*[1 << 27]string)(unsafe.Pointer(&(n[:1][0]))))[:len(n):len(n)]
+}
+
 // Log function
 var Log = func(...interface{}) error { return nil }
 
