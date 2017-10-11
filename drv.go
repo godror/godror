@@ -239,11 +239,11 @@ func (n *Number) Scan(v interface{}) error {
 
 type Numbers []Number
 
-func NumbersFromStrings(s []string) []Number {
-	if cap(s) == 0 {
-		return []Number{}
+func NumbersFromStrings(s *[]string) *[]Number {
+	if s == nil || cap(*s) == 0 {
+		return nil
 	}
-	return (*(*[1 << 27]Number)(unsafe.Pointer(&(s[:1][0]))))[:len(s):cap(s)]
+	return (*[]Number)(unsafe.Pointer(s))
 }
 func (n Numbers) ToStrings() []string {
 	if cap(n) == 0 {
