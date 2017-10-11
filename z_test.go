@@ -281,14 +281,14 @@ END test_pkg;
 		}
 	}
 
-	intgr := []int32{3, 1, 4}
+	intgr := []int32{3, 1, 4, 0, 0}[:3]
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	_ = intgrWant
-	num := []goracle.Number{"3.14", "-2.48"}
+	num := []goracle.Number{"3.14", "-2.48", ""}[:2]
 	numWant := []goracle.Number{"1.57", "-1.24", "2"}
-	vc := []string{"string", "bring"}
+	vc := []string{"string", "bring", ""}[:2]
 	vcWant := []string{"string +", "bring +", "2"}
-	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}}
+	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}, time.Time{}}[:2]
 	today := time.Now().Truncate(24 * time.Hour)
 	today = time.Date(today.Year(), today.Month(), today.Day(), today.Hour(), today.Minute(), today.Second(), 0, time.Local)
 	dtWant := []time.Time{
@@ -318,55 +318,60 @@ END test_pkg;
 		{Name: "dt", In: dt, Want: dtWant},
 		//{Name: "int", In: intgr, Want: intgrWant},
 	} {
-		in := copySlice(tC.In)
-		t.Logf("%s=%s", tC.Name, in)
-		qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
-		if _, err := testDb.ExecContext(ctx, qry,
-			goracle.PlSQLArrays,
-			sql.Out{Dest: &(in), In: true},
-		); err != nil {
-			t.Fatalf("%s\n%+v", qry, err)
-		}
+		tC := tC
+		t.Run("inout_"+tC.Name, func(t *testing.T) {
+			in := copySlice(tC.In)
+			t.Logf("%s=%s", tC.Name, in)
+			qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
+			if _, err := testDb.ExecContext(ctx, qry,
+				goracle.PlSQLArrays,
+				sql.Out{Dest: &(in), In: true},
+			); err != nil {
+				t.Fatalf("%s\n%+v", qry, err)
+			}
 
-		if cmp.Equal(in, tC.Want, opts...) {
-			continue
-		}
-		t.Errorf("%s: %s", tC.Name, cmp.Diff(in, tC.Want))
-		var buf bytes.Buffer
-		if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
-			t.Error(err)
-		}
-		t.Log("OUTPUT:", buf.String())
-		return
+			if cmp.Equal(in, tC.Want, opts...) {
+				return
+			}
+			t.Errorf("%s: %s", tC.Name, cmp.Diff(in, tC.Want))
+			var buf bytes.Buffer
+			if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+				t.Error(err)
+			}
+			t.Log("OUTPUT:", buf.String())
+			return
+		})
 	}
 
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
-	if _, err := testDb.ExecContext(ctx,
-		"BEGIN test_pkg.p2(:1, :2, :3); END;",
-		goracle.PlSQLArrays,
-		//sql.Out{Dest: &intgr, In: true},
-		sql.Out{Dest: &num, In: true},
-		sql.Out{Dest: &vc, In: true},
-		sql.Out{Dest: &dt, In: true},
-		//sql.Out{Dest: &lob, In: true},
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
-	//if d := cmp.Diff(intgr, intgrWant); d != "" {
-	//	t.Errorf("int: %s", d)
-	//}
-	if d := cmp.Diff(num, numWant); d != "" {
-		t.Errorf("num: %s", d)
-	}
-	if d := cmp.Diff(vc, vcWant); d != "" {
-		t.Errorf("vc: %s", d)
-	}
-	if !cmp.Equal(dt, dtWant, opts...) {
-		if d := cmp.Diff(dt, dtWant); d != "" {
-			t.Errorf("dt: %s", d)
+	t.Run("p2", func(t *testing.T) {
+		if _, err := testDb.ExecContext(ctx,
+			"BEGIN test_pkg.p2(:1, :2, :3); END;",
+			goracle.PlSQLArrays,
+			//sql.Out{Dest: &intgr, In: true},
+			sql.Out{Dest: &num, In: true},
+			sql.Out{Dest: &vc, In: true},
+			sql.Out{Dest: &dt, In: true},
+			//sql.Out{Dest: &lob, In: true},
+		); err != nil {
+			t.Fatal(err)
 		}
-	}
+		t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
+		//if d := cmp.Diff(intgr, intgrWant); d != "" {
+		//	t.Errorf("int: %s", d)
+		//}
+		if d := cmp.Diff(num, numWant); d != "" {
+			t.Errorf("num: %s", d)
+		}
+		if d := cmp.Diff(vc, vcWant); d != "" {
+			t.Errorf("vc: %s", d)
+		}
+		if !cmp.Equal(dt, dtWant, opts...) {
+			if d := cmp.Diff(dt, dtWant); d != "" {
+				t.Errorf("dt: %s", d)
+			}
+		}
+	})
 }
 
 func TestOutParam(t *testing.T) {
