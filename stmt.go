@@ -214,11 +214,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 	close(done)
-	if err := <-ctxErr; err != nil {
-		return nil, err
-	}
 	if err != nil {
 		return nil, maybeBadConn(errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen))
+	}
+	if err = <-ctxErr; err != nil {
+		return nil, err
 	}
 	//Log("gets", st.gets)
 	for i, get := range st.gets {
@@ -636,7 +636,6 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 
 		n := doManyCount
 		if st.PlSQLArrays && st.isSlice[i] {
-			n = maxArraySize
 			if info.isOut {
 				n = rv.Cap()
 			} else {

@@ -189,13 +189,13 @@ func (c *conn) endTran(isCommit bool) error {
 	c.inTransaction = false
 
 	var err error
-	msg := "Commit"
+	//msg := "Commit"
 	if isCommit {
 		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = errors.Wrap(c.getError(), msg)
+			err = errors.Wrap(c.getError(), "Commit")
 		}
 	} else {
-		msg = "Rollback"
+		//msg = "Rollback"
 		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
 			err = errors.Wrap(c.getError(), "Rollback")
 		}

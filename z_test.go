@@ -340,7 +340,6 @@ END test_pkg;
 				t.Error(err)
 			}
 			t.Log("OUTPUT:", buf.String())
-			return
 		})
 	}
 
@@ -436,7 +435,6 @@ func TestSelectRefCursor(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	const num = 1000
 	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM < 1000) FROM DUAL")
 	if err != nil {
 		t.Fatal(err)

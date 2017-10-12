@@ -186,7 +186,7 @@ func (t *ObjectType) Attributes() ([]ObjectAttribute, error) {
 		t.attributes = []ObjectAttribute{}
 		return t.attributes, nil
 	}
-	t.attributes = make([]ObjectAttribute, int(info.NumAttributes()))
+	t.attributes = make([]ObjectAttribute, info.NumAttributes())
 	attrs := make([]*C.dpiObjectAttr, len(t.attributes))
 	if C.dpiObjectType_getAttributes(t.dpiObjectType,
 		C.uint16_t(len(attrs)),

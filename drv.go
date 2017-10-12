@@ -145,7 +145,7 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		if x == "" {
 			return 0, nil
 		}
-		return strconv.ParseInt(string(x), 10, 64)
+		return strconv.ParseInt(x, 10, 64)
 	case Number:
 		if x == "" {
 			return 0, nil
@@ -178,7 +178,7 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		if x == "" {
 			return 0, nil
 		}
-		return strconv.ParseFloat(string(x), 64)
+		return strconv.ParseFloat(x, 64)
 	case Number:
 		if x == "" {
 			return 0, nil
@@ -199,7 +199,7 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 		if x == "" {
 			return 0, nil
 		}
-		return string(x), nil
+		return x, nil
 	case Number:
 		if x == "" {
 			return 0, nil

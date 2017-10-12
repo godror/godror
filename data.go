@@ -181,5 +181,4 @@ func (d *Data) Get() interface{} {
 	default:
 		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
 	}
-	return nil
 }
