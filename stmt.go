@@ -374,6 +374,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 		}
 		st.dests[i] = value
 		if info.isOut {
+			//fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
 			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
 				value = rv.Elem().Interface()
 			}
@@ -398,7 +399,7 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			}
 		}
 
-		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", value, value))
+		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
 	}
 
 	if maxArrLen > maxArraySize {
@@ -420,8 +421,10 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 	for i := range args {
 		info := &(infos[i])
 		value := st.dests[i]
-		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
-			value = rv.Elem().Interface()
+		if _, ok := value.(*driver.Rows); !ok {
+			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
+				value = rv.Elem().Interface()
+			}
 		}
 		switch v := value.(type) {
 		case Lob, []Lob:
@@ -440,6 +443,16 @@ func (st *statement) bindVars(args []driver.NamedValue) error {
 			if info.isOut {
 				st.gets[i] = st.dataGetLOB
 				//st.dests[i] = v
+			}
+		case *driver.Rows:
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT
+			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
+				data.isNull = 1
+				return nil
+			}
+			//info.set = st.dataSetStmt
+			if info.isOut {
+				st.gets[i] = st.dataGetStmt
 			}
 
 		case int, []int:
@@ -894,6 +907,20 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 	default:
 		return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", v, v)
 	}
+	return nil
+}
+
+func (c *conn) dataGetStmt(v interface{}, data *C.dpiData) error {
+	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
+	var n C.uint32_t
+	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
+		return errors.Wrap(c.getError(), "getNumQueryColumns")
+	}
+	rows, err := st.openRows(int(n))
+	if err != nil {
+		return err
+	}
+	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(rows))
 	return nil
 }
 
