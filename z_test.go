@@ -48,7 +48,9 @@ var (
 )
 
 func init() {
-	goracle.Log = tl.GetLog()
+	if os.Getenv("VERBOSE") == "1" {
+		goracle.Log = tl.GetLog()
+	}
 
 	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
 		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
@@ -526,7 +528,8 @@ func TestExecuteMany(t *testing.T) {
 	floats := make([]float64, num)
 	strs := make([]string, num)
 	dates := make([]time.Time, num)
-	now := time.Now()
+	// This is instead of now: a nice moment in time right before the summer time shift
+	now := time.Date(2017, 10, 29, 1, 27, 53, 0, time.Local).Truncate(time.Second)
 	ids := make([]int, num)
 	for i := range nums {
 		ids[i] = i
@@ -615,7 +618,8 @@ func TestExecuteMany(t *testing.T) {
 		if vc != strs[i] {
 			t.Errorf("%d. VC got %q, wanted %q.", i, vc, strs[i])
 		}
-		if dt != dates[i].Truncate(time.Second) {
+		t.Logf("%d. dt=%v", i, dt)
+		if dt != dates[i] {
 			t.Errorf("%d. got DT %v, wanted %v.", i, dt, dates[i])
 		}
 		i++
