@@ -895,7 +895,9 @@ func (c *conn) dataGetStmt(v interface{}, data *C.dpiData) error {
 	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
-		reflect.ValueOf(v).Elem().Set(reflect.ValueOf(&rows{err: errors.Wrap(c.getError(), "getNumQueryColumns")}))
+		reflect.ValueOf(v).Elem().Set(reflect.ValueOf(&rows{
+			err: errors.Wrapf(io.EOF, "getNumQueryColumns: %v", c.getError()),
+		}))
 		return nil
 	}
 	rows, err := st.openRows(int(n))
