@@ -120,7 +120,7 @@ func (d *Data) SetStmt(s *statement) {
 }
 func (d *Data) GetTime() time.Time {
 	ts := C.dpiData_getTimestamp(d.dpiData)
-	tz := time.Local
+	tz := time.UTC
 	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
 		tz = time.FixedZone(
 			fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
