@@ -51,6 +51,7 @@ type rows struct {
 	finished       bool
 	vars           []*C.dpiVar
 	data           [][]C.dpiData
+	err            error
 }
 
 // Columns returns the names of the columns. The number of
@@ -70,7 +71,7 @@ func (r *rows) Close() error {
 	for _, v := range r.vars {
 		C.dpiVar_release(v)
 	}
-	if r.statement.dpiStmt == nil {
+	if r.statement == nil || r.statement.dpiStmt == nil {
 		return nil
 	}
 	if C.dpiStmt_release(r.statement.dpiStmt) == C.DPI_FAILURE {
@@ -250,6 +251,9 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 //
 // Next should return io.EOF when there are no more rows.
 func (r *rows) Next(dest []driver.Value) error {
+	if r.err != nil {
+		return r.err
+	}
 	if r.finished {
 		return io.EOF
 	}
