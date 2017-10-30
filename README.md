@@ -17,6 +17,25 @@ with OUT parameters, or sending/retrieving PL/SQL array types - just give a
 
 Connections are pooled by default (except `AS SYSOPER` or `AS SYSDBA`).
 
+## Speed ##
+Correctness and simplicity is more important than speed, but the underlying ODPI-C library
+helps a lot with the lower levels, so the performance is not bad.
+
+Queries are prefetched (128 rows), but you can speed up INSERT/UPDATE/DELETE statements
+by providing all the subsequent parameters at once, by putting each param's subsequent
+elements in a separate slice:
+
+Instead of
+
+    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 1, "a")
+    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 2, "b")
+
+do
+
+    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", []int{1, 2}, []string{"a", "b"})
+
+.
+
 # Install #
 Just
 
@@ -60,4 +79,8 @@ If you want to refresh ODPI-C, you can:
 	git add odpi
 	git commit -m 'upgrade odpi to <git commit hash of odpi>' odpi
 
-.
+# Third-party #
+
+  * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
+  The "goracall" branch uses this library as the underying driver.
+
