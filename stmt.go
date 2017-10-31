@@ -165,6 +165,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	Log := ctxGetLog(ctx)
 
 	st.Lock()
 	defer st.Unlock()
@@ -177,7 +178,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 
 	// bind variables
-	if err := st.bindVars(args); err != nil {
+	if err := st.bindVars(args, Log); err != nil {
 		return nil, err
 	}
 
@@ -273,6 +274,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	Log := ctxGetLog(ctx)
 
 	st.Lock()
 	defer st.Unlock()
@@ -286,7 +288,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
-	if err := st.bindVars(args); err != nil {
+	if err := st.bindVars(args, Log); err != nil {
 		return nil, err
 	}
 
@@ -310,7 +312,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 }
 
 // bindVars binds the given args into new variables.
-func (st *statement) bindVars(args []driver.NamedValue) error {
+func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	Log("enter", "bindVars", "args", args)
 	var named bool
 	if cap(st.vars) < len(args) {

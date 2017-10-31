@@ -72,6 +72,7 @@ package goracle
 import "C"
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
@@ -580,4 +581,17 @@ func (V VersionInfo) String() string {
 		s = " [" + V.ServerRelease + "]"
 	}
 	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
+}
+
+type ctxKey string
+
+const LogCtxKey = ctxKey("goracle.Log")
+
+type logFunc func(...interface{}) error
+
+func ctxGetLog(ctx context.Context) logFunc {
+	if lgr, ok := ctx.Value(LogCtxKey).(logFunc); ok {
+		return lgr
+	}
+	return Log
 }
