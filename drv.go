@@ -590,7 +590,7 @@ const LogCtxKey = ctxKey("goracle.Log")
 type logFunc func(...interface{}) error
 
 func ctxGetLog(ctx context.Context) logFunc {
-	if lgr, ok := ctx.Value(LogCtxKey).(logFunc); ok {
+	if lgr, ok := ctx.Value(LogCtxKey).(func(...interface{}) error); ok {
 		return lgr
 	}
 	return Log
