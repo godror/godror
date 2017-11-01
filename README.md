@@ -41,7 +41,7 @@ Goracle uses `github.com/go-kit/kit/log`'s concept of a `Log` function.
 Either set `goracle.Log` to a logging function globally,
 or (better) set the logger in the Context of ExecContext or QueryContext:
 
-    db.QueryContext(context.WithValue(ctx, goracle.LogCtxKey, logger.Log), qry)
+    db.QueryContext(goracle.ContextWithLog(ctx, logger.Log), qry)
 
 # Install #
 Just
