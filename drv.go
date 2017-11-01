@@ -585,13 +585,17 @@ func (V VersionInfo) String() string {
 
 type ctxKey string
 
-const LogCtxKey = ctxKey("goracle.Log")
+const logCtxKey = ctxKey("goracle.Log")
 
 type logFunc func(...interface{}) error
 
 func ctxGetLog(ctx context.Context) logFunc {
-	if lgr, ok := ctx.Value(LogCtxKey).(func(...interface{}) error); ok {
+	if lgr, ok := ctx.Value(logCtxKey).(func(...interface{}) error); ok {
 		return lgr
 	}
 	return Log
+}
+
+func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
+	return context.WithValue(ctx, logCtxKey, logF)
 }
