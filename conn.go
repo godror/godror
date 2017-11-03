@@ -225,6 +225,10 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 	) == C.DPI_FAILURE {
 		return nil, nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, arraySize=%d, bufSize=%d)", typ, natTyp, arraySize, bufSize)
 	}
+	if arraySize > maxArraySize {
+		C.dpiVar_release(v)
+		return nil, nil, errors.Errorf("maximum array size allowed is %d", maxArraySize)
+	}
 	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
 	/*
 		var theCArray *C.YourType = C.getTheArray()

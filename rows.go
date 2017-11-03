@@ -34,7 +34,7 @@ import (
 )
 
 const fetchRowCount = 1 << 7
-const maxArraySize = 1 << 10
+const maxArraySize = 32 << 10
 
 var _ = driver.Rows((*rows)(nil))
 var _ = driver.RowsColumnTypeDatabaseTypeName((*rows)(nil))
