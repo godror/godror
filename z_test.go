@@ -321,11 +321,14 @@ END test_pkg;
 		{Name: "num", In: num, Want: numWant},
 		{Name: "dt", In: dt, Want: dtWant},
 		//{Name: "int", In: intgr, Want: intgrWant},
+		{Name: "vc-1", In: vc[:1], Want: []string{"string +", "1"}},
+		{Name: "vc-0", In: vc[:0], Want: []string{"0"}},
 	} {
 		tC := tC
 		t.Run("inout_"+tC.Name, func(t *testing.T) {
 			t.Logf("%s=%s", tC.Name, tC.In)
-			qry = "BEGIN test_pkg.inout_" + tC.Name + "(:1); END;"
+			nm := strings.SplitN(tC.Name, "-", 2)[0]
+			qry = "BEGIN test_pkg.inout_" + nm + "(:1); END;"
 			dst := copySlice(tC.In)
 			if _, err := testDb.ExecContext(ctx, qry,
 				goracle.PlSQLArrays,

@@ -209,7 +209,7 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 		return nil, nil, errors.New("connection is nil")
 	}
 	isArray := C.int(0)
-	if isPlSQLArray && arraySize > 1 {
+	if isPlSQLArray {
 		isArray = 1
 	} else if arraySize < 0 {
 		arraySize = 1
