@@ -314,6 +314,13 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	Log("enter", "bindVars", "args", args)
+	for i, v := range st.vars {
+		if v == nil {
+			continue
+		}
+		C.dpiVar_release(v)
+		st.vars[i] = nil
+	}
 	var named bool
 	if cap(st.vars) < len(args) {
 		st.vars = make([]*C.dpiVar, len(args))
