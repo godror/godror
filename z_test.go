@@ -64,13 +64,15 @@ func init() {
 		//panic(err)
 	}
 
-	if clientVersion, err = goracle.ClientVersion(testDb); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
-	}
-	if serverVersion, err = goracle.ServerVersion(testDb); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
+	if testDb != nil {
+		if clientVersion, err = goracle.ClientVersion(testDb); err != nil {
+			fmt.Printf("ERROR: %+v\n", err)
+			return
+		}
+		if serverVersion, err = goracle.ServerVersion(testDb); err != nil {
+			fmt.Printf("ERROR: %+v\n", err)
+			return
+		}
 	}
 }
 

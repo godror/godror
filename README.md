@@ -9,6 +9,12 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 
 At least Go 1.9 is required!
 
+## Connect ##
+In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@sid"
+as connString, or an URL like "oracle://user:passw@sid".
+
+You can provide all possible options with `ConnectionParams`.
+
 ## Rationale ##
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard *database/sql* library. Even calling stored procedures

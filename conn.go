@@ -42,7 +42,7 @@ var _ = driver.Pinger((*conn)(nil))
 type conn struct {
 	sync.Mutex
 	dpiConn       *C.dpiConn
-	connParams    connectionParams
+	connParams    ConnectionParams
 	inTransaction bool
 	serverVersion VersionInfo
 	*drv

@@ -293,7 +293,7 @@ func (d *drv) ClientVersion() (VersionInfo, error) {
 	return d.clientVersion, nil
 }
 
-func (d *drv) openConn(P connectionParams) (*conn, error) {
+func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	c := conn{drv: d, connParams: P}
 	connString := P.StringNoClass()
 
@@ -419,38 +419,49 @@ func (d *drv) openConn(P connectionParams) (*conn, error) {
 	return d.openConn(P)
 }
 
-type connectionParams struct {
+// ConnectionParams holds the params for a connection (pool).
+// You can use ConnectionParams{...}.String() as a connection string
+// in sql.Open.
+type ConnectionParams struct {
 	Username, Password, SID, ConnClass      string
 	IsSysDBA, IsSysOper                     bool
 	MinSessions, MaxSessions, PoolIncrement int
 }
 
-func (P connectionParams) StringNoClass() string {
+func (P ConnectionParams) StringNoClass() string {
 	return P.string(false)
 }
-func (P connectionParams) String() string {
+func (P ConnectionParams) String() string {
 	return P.string(true)
 }
 
-func (P connectionParams) string(class bool) string {
+func (P ConnectionParams) string(class bool) string {
+	host, path := P.SID, ""
+	if i := strings.IndexByte(host, '/'); i >= 0 {
+		host, path = host[:i], host[i:]
+	}
 	cc := ""
 	if class {
 		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
 	}
 	// params should be sorted lexicographically
-	return fmt.Sprintf("oracle://%s:%s@%s/?"+
-		cc+
-		"poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
-		"sysdba=%d&sysoper=%d",
-		P.Username, P.Password, P.SID,
-		P.PoolIncrement, P.MaxSessions, P.MinSessions,
-		b2i(P.IsSysDBA), b2i(P.IsSysOper),
-	)
+	return (&url.URL{
+		Scheme: "oracle",
+		User:   url.UserPassword(P.Username, P.Password),
+		Host:   host,
+		Path:   path,
+		RawQuery: cc +
+			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
+				"sysdba=%d&sysoper=%d",
+				P.PoolIncrement, P.MaxSessions, P.MinSessions,
+				b2i(P.IsSysDBA), b2i(P.IsSysOper),
+			),
+	}).String()
 }
 
 // ParseConnString parses the given connection string into a struct.
-func ParseConnString(connString string) (connectionParams, error) {
-	P := connectionParams{
+func ParseConnString(connString string) (ConnectionParams, error) {
+	P := ConnectionParams{
 		MinSessions:   DefaultPoolMinSessions,
 		MaxSessions:   DefaultPoolMaxSessions,
 		PoolIncrement: DefaultPoolIncrement,
@@ -483,7 +494,7 @@ func ParseConnString(connString string) (connectionParams, error) {
 	}
 	u, err := url.Parse(connString)
 	if err != nil {
-		return P, err
+		return P, errors.Wrap(err, connString)
 	}
 	if usr := u.User; usr != nil {
 		P.Username = usr.Username()
@@ -492,6 +503,9 @@ func ParseConnString(connString string) (connectionParams, error) {
 	P.SID = u.Hostname()
 	if u.Port() != "" {
 		P.SID += ":" + u.Port()
+	}
+	if u.Path != "" && u.Path != "/" {
+		P.SID += u.Path
 	}
 	q := u.Query()
 	if vv, ok := q["connectionClass"]; ok {
