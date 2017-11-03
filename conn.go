@@ -204,30 +204,38 @@ func (c *conn) endTran(isCommit bool) error {
 	//fmt.Printf("%p.%s\n", c, msg)
 	return err
 }
-func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNativeTypeNum, arraySize int, bufSize int) (*C.dpiVar, []C.dpiData, error) {
+
+type varInfo struct {
+	IsPLSArray        bool
+	Typ               C.dpiOracleTypeNum
+	NatTyp            C.dpiNativeTypeNum
+	SliceLen, BufSize int
+}
+
+func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	if c == nil || c.dpiConn == nil {
 		return nil, nil, errors.New("connection is nil")
 	}
 	isArray := C.int(0)
-	if isPlSQLArray {
+	if vi.IsPLSArray {
 		isArray = 1
-	} else if arraySize < 0 {
-		arraySize = 1
+	} else if vi.SliceLen < 0 {
+		vi.SliceLen = 1
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(typ), "natTyp", int(natTyp), "arraySize", arraySize, "bufSize", bufSize, "isArray", isArray, "v", v)
+	Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "v", v)
 	if C.dpiConn_newVar(
-		c.dpiConn, typ, natTyp, C.uint32_t(arraySize),
-		C.uint32_t(bufSize), 1,
+		c.dpiConn, vi.Typ, vi.NatTyp, C.uint32_t(vi.SliceLen),
+		C.uint32_t(vi.BufSize), 1,
 		isArray, nil,
 		&v, &dataArr,
 	) == C.DPI_FAILURE {
-		return nil, nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, arraySize=%d, bufSize=%d)", typ, natTyp, arraySize, bufSize)
+		return nil, nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d)", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize)
 	}
-	if arraySize > maxArraySize {
+	if vi.SliceLen > MaxArraySize {
 		C.dpiVar_release(v)
-		return nil, nil, errors.Errorf("maximum array size allowed is %d", maxArraySize)
+		return nil, nil, errors.Errorf("maximum array size allowed is %d", MaxArraySize)
 	}
 	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
 	/*
@@ -235,7 +243,7 @@ func (c *conn) newVar(isPlSQLArray bool, typ C.dpiOracleTypeNum, natTyp C.dpiNat
 		length := C.getTheArrayLength()
 		slice := (*[1 << 30]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
 	*/
-	data := ((*[maxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:arraySize:arraySize]
+	data := ((*[MaxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
 	return v, data, nil
 }
 

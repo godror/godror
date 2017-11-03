@@ -33,8 +33,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-const fetchRowCount = 1 << 7
-const maxArraySize = 32 << 10
+// FetchRowCount is the number of prefetched rows.
+const FetchRowCount = 1 << 8
+
+// MaxArraySize is the length of the maximum PL/SQL array.
+const MaxArraySize = 32 << 10
 
 var _ = driver.Rows((*rows)(nil))
 var _ = driver.RowsColumnTypeDatabaseTypeName((*rows)(nil))
@@ -259,7 +262,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	if r.fetched == 0 {
 		var moreRows C.int
-		if C.dpiStmt_fetchRows(r.dpiStmt, fetchRowCount, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
+		if C.dpiStmt_fetchRows(r.dpiStmt, FetchRowCount, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
 			return errors.Wrap(r.getError(), "Next")
 		}
 		//fmt.Printf("bri=%d fetched=%d, moreRows=%d\n", r.bufferRowIndex, r.fetched, moreRows)
@@ -276,7 +279,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				if C.dpiVar_getData(r.vars[i], &n, &data) == C.DPI_FAILURE {
 					return errors.Wrapf(r.getError(), "getData[%d]", i)
 				}
-				r.data[i] = (*[fetchRowCount]C.dpiData)(unsafe.Pointer(data))[:n:n]
+				r.data[i] = (*[FetchRowCount]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
 			}
 		}
