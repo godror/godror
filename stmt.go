@@ -1018,7 +1018,7 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 }
 
 func (st *statement) openRows(colCount int) (*rows, error) {
-	C.dpiStmt_setFetchArraySize(st.dpiStmt, fetchRowCount)
+	C.dpiStmt_setFetchArraySize(st.dpiStmt, FetchRowCount)
 
 	r := rows{
 		statement: st,
@@ -1063,7 +1063,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
 		if r.vars[i], r.data[i], err = st.newVar(varInfo{
-			Typ: ti.oracleTypeNum, NatTyp: ti.defaultNativeTypeNum, SliceLen: fetchRowCount, BufSize: bufSize,
+			Typ: ti.oracleTypeNum, NatTyp: ti.defaultNativeTypeNum,
+			SliceLen: FetchRowCount, BufSize: bufSize,
 		}); err != nil {
 			return nil, err
 		}
