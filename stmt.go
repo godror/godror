@@ -635,10 +635,10 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			if info.isOut {
 				n = rv.Cap()
 			} else {
-				n = max(rv.Len(), min(rv.Cap(), 2))
+				n = rv.Len()
 			}
 		}
-		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "isOut", info.isOut, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
+		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
 		//i, st.PlSQLArrays, info.typ, info.natTyp dataSliceLen, info.bufSize)
 		if st.vars[i], st.data[i], err = st.newVar(
 			st.PlSQLArrays && st.isSlice[i], info.typ, info.natTyp, n, info.bufSize,
@@ -1069,17 +1069,4 @@ type Column struct {
 	Scale      C.int8_t
 	Nullable   bool
 	ObjectType *C.dpiObjectType
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
