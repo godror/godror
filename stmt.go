@@ -319,7 +319,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		for i, v := range st.vars {
 			if v != nil {
 				C.dpiVar_release(v)
-				st.vars[i] = nil
+				st.vars[i], st.varInfos[i] = nil, varInfo{}
 			}
 		}
 	}
@@ -646,10 +646,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 		n := doManyCount
 		if st.PlSQLArrays && st.isSlice[i] {
+			n = rv.Len()
 			if info.isOut {
 				n = rv.Cap()
-			} else {
-				n = rv.Len()
 			}
 		}
 		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
@@ -1026,6 +1025,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
 	}
+	vi := varInfo{SliceLen: FetchRowCount}
+
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo
 	for i := 0; i < colCount; i++ {
@@ -1062,10 +1063,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
-		if r.vars[i], r.data[i], err = st.newVar(varInfo{
-			Typ: ti.oracleTypeNum, NatTyp: ti.defaultNativeTypeNum,
-			SliceLen: FetchRowCount, BufSize: bufSize,
-		}); err != nil {
+		vi.Typ, vi.NatTyp, vi.BufSize = ti.oracleTypeNum, ti.defaultNativeTypeNum, bufSize
+		if r.vars[i], r.data[i], err = st.newVar(vi); err != nil {
 			return nil, err
 		}
 
