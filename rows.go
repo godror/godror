@@ -287,7 +287,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	for i, col := range r.columns {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
-		Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "data", fmt.Sprintf("%+v", d), "typ", typ)
+		Log("msg", "Next", "i", i, "row", r.bufferRowIndex) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
 		isNull := d.isNull == 1
 
 		switch typ {
@@ -332,7 +332,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
 				Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 			}
-			Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
+			Log("msg", "num", "t", col.NativeType, "i", i) //, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,
 			C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:

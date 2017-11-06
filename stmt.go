@@ -470,7 +470,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		}
 
-		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
+		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut) //, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
 	}
 
 	if maxArrLen > maxArraySize {
@@ -679,7 +679,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 						int(ts.year), time.Month(ts.month), int(ts.day),
 						int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 						tz)
-					Log("msg", "get", "t", t.Format(time.RFC3339), "dest", fmt.Sprintf("%T", v), "tz", ts.tzHourOffset)
+					Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
 					switch x := v.(type) {
 					case *time.Time:
 						*x = t
@@ -739,7 +739,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 
 		if !st.isSlice[i] {
-			Log("msg", "set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
+			Log("msg", "set", "i", i) //, "value", fmt.Sprintf("%T=%#v", value, value))
 			if err := info.set(dv, 0, &data[0], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
@@ -759,7 +759,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		for j := 0; j < n; j++ {
 			//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
 			v := rv.Index(j).Interface()
-			Log("msg", "set", "i", i, "j", j, "n", n, "v", fmt.Sprintf("%T=%#v", v, v))
+			Log("msg", "set", "i", i, "j", j, "n", n) //, "v", fmt.Sprintf("%T=%#v", v, v))
 			//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
 			if err := info.set(dv, j, &data[j], v); err != nil {
 				//v := rArgs[i].Index(j).Interface()
