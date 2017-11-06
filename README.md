@@ -21,13 +21,18 @@ achieved with the standard *database/sql* library. Even calling stored procedure
 with OUT parameters, or sending/retrieving PL/SQL array types - just give a
 `goracle.PlSQLArrays` Option within the parameters of `Exec`!
 
+The array size of the returned PL/SQL arrays can be set with `goracle.ArraySize(2000)`
+- the default is 1024.
+
 Connections are pooled by default (except `AS SYSOPER` or `AS SYSDBA`).
 
 ## Speed ##
 Correctness and simplicity is more important than speed, but the underlying ODPI-C library
 helps a lot with the lower levels, so the performance is not bad.
 
-Queries are prefetched (128 rows), but you can speed up INSERT/UPDATE/DELETE statements
+Queries are prefetched (256 rows by default, can be changed by adding a
+`goracle.FetchRowCount(1000)` argument to the call of Query),
+but you can speed up INSERT/UPDATE/DELETE statements
 by providing all the subsequent parameters at once, by putting each param's subsequent
 elements in a separate slice:
 

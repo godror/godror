@@ -65,11 +65,17 @@ var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
 
 // FetchRowCount returns an option to set the rows to be fetched.
 func FetchRowCount(rowCount int) Option {
+	if rowCount <= 0 {
+		return nil
+	}
 	return func(o *stmtOptions) { o.fetchRowCount = rowCount }
 }
 
 // ArraySize returns an option to set the array size to be used.
 func ArraySize(arraySize int) Option {
+	if arraySize <= 0 {
+		return nil
+	}
 	return func(o *stmtOptions) { o.arraySize = arraySize }
 }
 
@@ -1044,8 +1050,8 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	if nv == nil {
 		return nil
 	}
-	if o, ok := nv.Value.(Option); ok {
-		o(&st.stmtOptions)
+	if apply, ok := nv.Value.(Option); ok && apply != nil {
+		apply(&st.stmtOptions)
 		return driver.ErrRemoveArgument
 	}
 	return nil

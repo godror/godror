@@ -88,14 +88,14 @@ import (
 )
 
 // Version of this driver
-const Version = "v2.1.5"
+const Version = "v2.1.6"
 
 const (
 	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through ContextWithFetchRowCount).
 	DefaultFetchRowCount = 1 << 8
 
 	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ContextWithArraySize).
-	DefaultArraySize = 32 << 10
+	DefaultArraySize = 1 << 10
 )
 
 const (
