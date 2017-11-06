@@ -1,6 +1,7 @@
 package goracle_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -98,10 +99,20 @@ END tst_bench_25;`,
 		regions[i] = "region"
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer tx.Rollback()
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := testDb.Exec(qry, goracle.PlSQLArrays, dates, keys, ips, zones, plans, banners, referrers, countries, regions)
-		if err != nil {
+		if _, err := tx.ExecContext(ctx, qry,
+			goracle.PlSQLArrays,
+			dates, keys, ips, zones, plans, banners, referrers, countries, regions,
+		); err != nil {
 			if strings.Contains(err.Error(), "PLS-00905") || strings.Contains(err.Error(), "ORA-06508") {
 				b.Log(goracle.GetCompileErrors(testDb, false))
 			}
@@ -109,6 +120,7 @@ END tst_bench_25;`,
 			b.Fatal(err)
 		}
 	}
+	b.StopTimer()
 }
 
 func shortenFloat(s string) string {
