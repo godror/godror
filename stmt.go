@@ -203,17 +203,29 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
 	var err error
-	if !st.PlSQLArrays && st.arrLen > 0 {
-		Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
-		if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
-			err = st.getError()
+	for i := 0; i < 3; i++ {
+		if !st.PlSQLArrays && st.arrLen > 0 {
+			Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
+			if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
+				err = st.getError()
+			}
+		} else {
+			var colCount C.uint32_t
+			Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
+			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
+				err = st.getError()
+			}
 		}
-	} else {
-		var colCount C.uint32_t
-		Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
-		if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
-			err = st.getError()
+		if err == nil {
+			break
 		}
+		if err.(interface {
+			Code() int
+		}).Code() != 4068 {
+			break
+		}
+		// ORA-04068: "existing state of packages has been discarded"
+		continue
 	}
 	close(done)
 	if err != nil {
@@ -303,11 +315,22 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			return
 		}
 	}()
+	var err error
 	var colCount C.uint32_t
-	res := C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount)
+	for i := 0; i < 3; i++ {
+		if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount) == C.DPI_FAILURE {
+			err = st.getError()
+			if err.(interface {
+				Code() int
+			}).Code() == 4068 {
+				continue
+			}
+		}
+		break
+	}
 	done <- struct{}{}
-	if res == C.DPI_FAILURE {
-		return nil, maybeBadConn(errors.Wrapf(st.getError(), "dpiStmt_execute"))
+	if err != nil {
+		return nil, maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
 	}
 	return st.openRows(int(colCount))
 }
