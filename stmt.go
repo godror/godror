@@ -37,12 +37,41 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Option for NamedArgs
-type Option uint8
+type stmtOptions struct {
+	plSQLArrays   bool
+	fetchRowCount int
+	arraySize     int
+}
+
+func (o stmtOptions) ArraySize() int {
+	if o.arraySize <= 0 || o.arraySize > 32<<10 {
+		return DefaultArraySize
+	}
+	return o.arraySize
+}
+func (o stmtOptions) FetchRowCount() int {
+	if o.fetchRowCount <= 0 {
+		return DefaultFetchRowCount
+	}
+	return o.fetchRowCount
+}
+func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
+
+type Option func(*stmtOptions)
 
 // PlSQLArrays is to signal that the slices given in arguments of Exec to
 // be left as is - the default is to treat them as arguments for ExecMany.
-const PlSQLArrays = Option(1)
+var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
+
+// FetchRowCount returns an option to set the rows to be fetched.
+func FetchRowCount(rowCount int) Option {
+	return func(o *stmtOptions) { o.fetchRowCount = rowCount }
+}
+
+// ArraySize returns an option to set the array size to be used.
+func ArraySize(arraySize int) Option {
+	return func(o *stmtOptions) { o.arraySize = arraySize }
+}
 
 const minChunkSize = 1 << 16
 
@@ -56,17 +85,17 @@ const sizeofDpiData = C.sizeof_dpiData
 type statement struct {
 	sync.Mutex
 	*conn
-	dpiStmt     *C.dpiStmt
-	query       string
-	data        [][]C.dpiData
-	vars        []*C.dpiVar
-	varInfos    []varInfo
-	gets        []dataGetter
-	dests       []interface{}
-	isSlice     []bool
-	PlSQLArrays bool
-	arrLen      int
-	columns     []Column
+	dpiStmt  *C.dpiStmt
+	query    string
+	data     [][]C.dpiData
+	vars     []*C.dpiVar
+	varInfos []varInfo
+	gets     []dataGetter
+	dests    []interface{}
+	isSlice  []bool
+	arrLen   int
+	columns  []Column
+	stmtOptions
 }
 type dataGetter func(v interface{}, data *C.dpiData) error
 
@@ -204,7 +233,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	var err error
 	for i := 0; i < 3; i++ {
-		if !st.PlSQLArrays && st.arrLen > 0 {
+		if !st.PlSQLArrays() && st.arrLen > 0 {
 			Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
 			if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
 				err = st.getError()
@@ -382,6 +411,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	minArrLen, maxArrLen := -1, -1
 
 	st.arrLen = minArrLen
+	maxArraySize := st.ArraySize()
 
 	type argInfo struct {
 		isIn, isOut bool
@@ -402,8 +432,8 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		info.isIn = true
 		value := a.Value
 		if out, ok := value.(sql.Out); ok {
-			if !st.PlSQLArrays && st.arrLen > 1 {
-				st.arrLen = MaxArraySize
+			if !st.PlSQLArrays() && st.arrLen > 1 {
+				st.arrLen = maxArraySize
 			}
 			info.isIn, info.isOut = out.In, true
 			value = out.Dest
@@ -423,7 +453,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 		if _, isByteSlice := value.([]byte); !isByteSlice {
 			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice
-			if !st.PlSQLArrays && st.isSlice[i] {
+			if !st.PlSQLArrays() && st.isSlice[i] {
 				n := rArgs[i].Len()
 				if minArrLen == -1 || n < minArrLen {
 					minArrLen = n
@@ -437,11 +467,11 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
 	}
 
-	if maxArrLen > MaxArraySize {
-		return errors.Errorf("slice is bigger (%d) than the maximum (%d)", maxArrLen, MaxArraySize)
+	if maxArrLen > maxArraySize {
+		return errors.Errorf("slice is bigger (%d) than the maximum (%d)", maxArrLen, maxArraySize)
 	}
 	doManyCount := 1
-	doExecMany := !st.PlSQLArrays
+	doExecMany := !st.PlSQLArrays()
 	if doExecMany {
 		if minArrLen != -1 && minArrLen != maxArrLen {
 			return errors.Errorf("PlSQLArrays is not set, but has different lengthed slices (min=%d < %d=max)", minArrLen, maxArrLen)
@@ -488,7 +518,6 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			if info.isOut {
 				st.gets[i] = st.dataGetStmt
 			}
-
 		case int, []int:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
 			info.set = dataSetNumber
@@ -668,15 +697,18 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 
 		n := doManyCount
-		if st.PlSQLArrays && st.isSlice[i] {
+		if st.PlSQLArrays() && st.isSlice[i] {
 			n = rv.Len()
 			if info.isOut {
 				n = rv.Cap()
 			}
 		}
-		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays, "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
-		//i, st.PlSQLArrays, info.typ, info.natTyp dataSliceLen, info.bufSize)
-		vi := varInfo{IsPLSArray: st.PlSQLArrays && st.isSlice[i], Typ: info.typ, NatTyp: info.natTyp, SliceLen: n, BufSize: info.bufSize}
+		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays(), "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
+		//i, st.PlSQLArrays(), info.typ, info.natTyp dataSliceLen, info.bufSize)
+		vi := varInfo{IsPLSArray: st.PlSQLArrays() && st.isSlice[i], Typ: info.typ, NatTyp: info.natTyp, SliceLen: n, BufSize: info.bufSize}
+		if vi.IsPLSArray && vi.SliceLen > maxArraySize {
+			return errors.Errorf("maximum array size allowed is %d", maxArraySize)
+		}
 		if st.vars[i] == nil || st.data[i] == nil || st.varInfos[i] != vi {
 			if st.vars[i] != nil {
 				C.dpiVar_release(st.vars[i])
@@ -691,7 +723,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		// Have to setNumElementsInArray for the actual lengths for PL/SQL arrays
 		dv, data := st.vars[i], st.data[i]
 		if !info.isIn {
-			if st.PlSQLArrays {
+			if st.PlSQLArrays() {
 				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
 				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) == C.DPI_FAILURE {
 					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, 0)
@@ -709,7 +741,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 
 		n = doManyCount
-		if st.PlSQLArrays {
+		if st.PlSQLArrays() {
 			n = rv.Len()
 
 			Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
@@ -1012,8 +1044,8 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	if nv == nil {
 		return nil
 	}
-	if nv.Value == PlSQLArrays {
-		st.PlSQLArrays = true
+	if o, ok := nv.Value.(Option); ok {
+		o(&st.stmtOptions)
 		return driver.ErrRemoveArgument
 	}
 	return nil
@@ -1040,7 +1072,7 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 }
 
 func (st *statement) openRows(colCount int) (*rows, error) {
-	C.dpiStmt_setFetchArraySize(st.dpiStmt, FetchRowCount)
+	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchRowCount()))
 
 	r := rows{
 		statement: st,
@@ -1048,7 +1080,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
 	}
-	vi := varInfo{SliceLen: FetchRowCount}
+	vi := varInfo{SliceLen: st.FetchRowCount()}
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo

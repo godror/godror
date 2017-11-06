@@ -233,17 +233,13 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	) == C.DPI_FAILURE {
 		return nil, nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d)", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize)
 	}
-	if vi.SliceLen > MaxArraySize {
-		C.dpiVar_release(v)
-		return nil, nil, errors.Errorf("maximum array size allowed is %d", MaxArraySize)
-	}
 	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
 	/*
 		var theCArray *C.YourType = C.getTheArray()
 		length := C.getTheArrayLength()
 		slice := (*[1 << 30]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
 	*/
-	data := ((*[MaxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
+	data := ((*[1 << 30]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
 	return v, data, nil
 }
 
