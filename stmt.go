@@ -793,9 +793,11 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			continue
 		}
 		_, z := t.Zone()
+		Y, M, D := t.Date()
+		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],
-			C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
-			C.uint8_t(t.Hour()), C.uint8_t(t.Minute()), C.uint8_t(t.Second()), C.uint32_t(t.Nanosecond()),
+			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
+			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),
 			C.int8_t(z/3600), C.int8_t((z%3600)/60),
 		)
 	}
