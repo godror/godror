@@ -518,11 +518,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		case *driver.Rows:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT
-			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
-				data.isNull = 1
-				return nil
-			}
-			//info.set = st.dataSetStmt
+			info.set = dataSetNull
 			if info.isOut {
 				st.gets[i] = st.dataGetStmt
 			}
@@ -582,12 +578,14 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		case bool, []bool:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
+			info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 				b := C.int(0)
-				if v.(bool) {
-					b = 1
+				for i, v := range vv.([]bool) {
+					if v {
+						b = 1
+					}
+					C.dpiData_setBool(&data[i], b)
 				}
-				C.dpiData_setBool(data, b)
 				return nil
 			}
 			if info.isOut {
@@ -652,21 +650,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 		case time.Time, []time.Time:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
-			info.set = func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
-				t := v.(time.Time)
-				if t.IsZero() {
-					data.isNull = 1
-					return nil
-				}
-
-				_, z := t.Zone()
-				C.dpiData_setTimestamp(data,
-					C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
-					C.uint8_t(t.Hour()), C.uint8_t(t.Minute()), C.uint8_t(t.Second()), C.uint32_t(t.Nanosecond()),
-					C.int8_t(z/3600), C.int8_t((z%3600)/60),
-				)
-				return nil
-			}
+			info.set = dataSetTime
 			if info.isOut {
 				st.gets[i] = func(v interface{}, data *C.dpiData) error {
 					ts := C.dpiData_getTimestamp(data)
@@ -742,7 +726,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 		if !st.isSlice[i] {
 			Log("msg", "set", "i", i) //, "value", fmt.Sprintf("%T=%#v", value, value))
-			if err := info.set(dv, 0, &data[0], value); err != nil {
+			if err := info.set(dv, data[:1], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
 			continue
@@ -758,17 +742,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		}
 		//fmt.Println("n:", len(st.data[i]))
-		for j := 0; j < n; j++ {
-			//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
-			v := rv.Index(j).Interface()
-			//Log("msg", "set", "i", i, "j", j, "n", n) //, "v", fmt.Sprintf("%T=%#v", v, v))
-			//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
-			if err := info.set(dv, j, &data[j], v); err != nil {
-				//v := rArgs[i].Index(j).Interface()
-				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, j, v, v)
-			}
+		if err := info.set(dv, data, value); err != nil {
+			return err
 		}
-		//fmt.Printf("data[%d]: %#v\n", i, st.data[i])
 	}
 
 	if !named {
@@ -796,7 +772,35 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	return nil
 }
 
-type dataSetter func(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error
+type dataSetter func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
+
+func dataSetNull(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	for i := range data {
+		data[i].isNull = 1
+	}
+	return nil
+}
+func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	times := []time.Time{time.Time{}}
+	if t, ok := vv.(time.Time); ok {
+		times[0] = t
+	} else {
+		times = vv.([]time.Time)
+	}
+	for i, t := range times {
+		if t.IsZero() {
+			data[i].isNull = 1
+			continue
+		}
+		_, z := t.Zone()
+		C.dpiData_setTimestamp(&data[i],
+			C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
+			C.uint8_t(t.Hour()), C.uint8_t(t.Minute()), C.uint8_t(t.Second()), C.uint32_t(t.Nanosecond()),
+			C.int8_t(z/3600), C.int8_t((z%3600)/60),
+		)
+	}
+	return nil
+}
 
 func dataGetNumber(v interface{}, data *C.dpiData) error {
 	switch x := v.(type) {
@@ -839,41 +843,102 @@ func dataGetNumber(v interface{}, data *C.dpiData) error {
 	return nil
 }
 
-func dataSetNumber(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
-	switch x := v.(type) {
+func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+	switch slice := vv.(type) {
 	case int:
-		C.dpiData_setInt64(data, C.int64_t(x))
+		i, x := 0, slice
+		C.dpiData_setInt64(&data[i], C.int64_t(x))
+	case []int:
+		for i, x := range slice {
+			C.dpiData_setInt64(&data[i], C.int64_t(x))
+		}
 	case int32:
-		C.dpiData_setInt64(data, C.int64_t(x))
+		i, x := 0, slice
+		C.dpiData_setInt64(&data[i], C.int64_t(x))
+	case []int32:
+		for i, x := range slice {
+			C.dpiData_setInt64(&data[i], C.int64_t(x))
+		}
 	case int64:
-		C.dpiData_setInt64(data, C.int64_t(x))
+		i, x := 0, slice
+		C.dpiData_setInt64(&data[i], C.int64_t(x))
+	case []int64:
+		for i, x := range slice {
+			C.dpiData_setInt64(&data[i], C.int64_t(x))
+		}
 	case sql.NullInt64:
+		i, x := 0, slice
 		if x.Valid {
-			C.dpiData_setInt64(data, C.int64_t(x.Int64))
+			C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
 		} else {
-			data.isNull = 1
+			data[i].isNull = 1
+		}
+	case []sql.NullInt64:
+		for i, x := range slice {
+			if x.Valid {
+				C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
+			} else {
+				data[i].isNull = 1
+			}
 		}
 	case sql.NullFloat64:
+		i, x := 0, slice
 		if x.Valid {
-			C.dpiData_setDouble(data, C.double(x.Float64))
+			C.dpiData_setDouble(&data[i], C.double(x.Float64))
 		} else {
-			data.isNull = 1
+			data[i].isNull = 1
+		}
+	case []sql.NullFloat64:
+		for i, x := range slice {
+			if x.Valid {
+				C.dpiData_setDouble(&data[i], C.double(x.Float64))
+			} else {
+				data[i].isNull = 1
+			}
 		}
 
 	case uint:
-		C.dpiData_setUint64(data, C.uint64_t(x))
+		i, x := 0, slice
+		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+	case []uint:
+		for i, x := range slice {
+			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		}
 	case uint32:
-		C.dpiData_setUint64(data, C.uint64_t(x))
+		i, x := 0, slice
+		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+	case []uint32:
+		for i, x := range slice {
+			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		}
 	case uint64:
-		C.dpiData_setUint64(data, C.uint64_t(x))
+		i, x := 0, slice
+		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+	case []uint64:
+		for i, x := range slice {
+			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		}
 
 	case float32:
-		C.dpiData_setFloat(data, C.float(x))
+		i, x := 0, slice
+		C.dpiData_setFloat(&data[i], C.float(x))
+	case []float32:
+		for i, x := range slice {
+			C.dpiData_setFloat(&data[i], C.float(x))
+		}
 	case float64:
-		C.dpiData_setDouble(data, C.double(x))
+		i, x := 0, slice
+		C.dpiData_setDouble(&data[i], C.double(x))
+	case []float64:
+		for i, x := range slice {
+			C.dpiData_setDouble(&data[i], C.double(x))
+		}
 
 	default:
-		return errors.Errorf("unknown number [%T] %#v", v, v)
+		return errors.Errorf("unknown number slice [%T] %#v", vv, vv)
 	}
 
 	//fmt.Printf("setInt64(%#v, %#v)\n", data, C.int64_t(int64(v.(int))))
@@ -940,37 +1005,67 @@ func dataGetBytes(v interface{}, data *C.dpiData) error {
 	return nil
 }
 
-func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
+func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+
 	var p *C.char
-	switch x := v.(type) {
+	switch slice := vv.(type) {
 	case []byte:
+		i, x := 0, slice
 		if len(x) > 0 {
 			p = (*C.char)(unsafe.Pointer(&x[0]))
 		}
 		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
-		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(x)))
+		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
+	case [][]byte:
+		for i, x := range slice {
+			if len(x) > 0 {
+				p = (*C.char)(unsafe.Pointer(&x[0]))
+			}
+			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
+			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
+		}
 
 	case Number:
+		i, x := 0, slice
 		b := []byte(x)
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
 		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
-		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
+		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+	case []Number:
+		for i, x := range slice {
+			b := []byte(x)
+			if len(b) > 0 {
+				p = (*C.char)(unsafe.Pointer(&b[0]))
+			}
+			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+		}
 
 	case string:
+		i, x := 0, slice
 		b := []byte(x)
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
 		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
-		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
-
-	case nil:
-		data.isNull = 1
+		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+	case []string:
+		for i, x := range slice {
+			b := []byte(x)
+			if len(b) > 0 {
+				p = (*C.char)(unsafe.Pointer(&b[0]))
+			}
+			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+		}
 
 	default:
-		return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", v, v)
+		return errors.Errorf("awaited [][]byte/[]string/[]Number, got %T (%#v)", vv, vv)
 	}
 	return nil
 }
@@ -1002,39 +1097,54 @@ func (c *conn) dataGetLOB(v interface{}, data *C.dpiData) error {
 	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
 	return nil
 }
-func (c *conn) dataSetLOB(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
-	L := v.(Lob)
-	if v == nil || L.Reader == nil {
-		data.isNull = 1
+func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if len(data) == 0 {
 		return nil
 	}
-	typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
-	if L.IsClob {
-		typ = C.DPI_ORACLE_TYPE_CLOB
+
+	lobs := []Lob{Lob{}}
+	if L, ok := vv.(Lob); ok {
+		lobs[0] = L
+	} else {
+		lobs = vv.([]Lob)
 	}
-	var lob *C.dpiLob
-	if C.dpiConn_newTempLob(c.dpiConn, typ, &lob) == C.DPI_FAILURE {
-		return errors.Wrapf(c.getError(), "newTempLob(typ=%d)", typ)
-	}
-	var chunkSize C.uint32_t
-	_ = C.dpiLob_getChunkSize(lob, &chunkSize)
-	if chunkSize == 0 {
-		chunkSize = 8192
-	}
-	for chunkSize < minChunkSize {
-		chunkSize <<= 1
-	}
-	lw := &dpiLobWriter{dpiLob: lob, conn: c, isClob: L.IsClob}
-	_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
-	//fmt.Printf("%p written %d with chunkSize=%d\n", lob, n, chunkSize)
-	if closeErr := lw.Close(); closeErr != nil {
-		if err == nil {
-			err = closeErr
+	var firstErr error
+	for i, L := range lobs {
+		if L.Reader == nil {
+			data[i].isNull = 1
+			return nil
 		}
-		//fmt.Printf("close %p: %+v\n", lob, closeErr)
+		typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
+		if L.IsClob {
+			typ = C.DPI_ORACLE_TYPE_CLOB
+		}
+		var lob *C.dpiLob
+		if C.dpiConn_newTempLob(c.dpiConn, typ, &lob) == C.DPI_FAILURE {
+			return errors.Wrapf(c.getError(), "newTempLob(typ=%d)", typ)
+		}
+		var chunkSize C.uint32_t
+		_ = C.dpiLob_getChunkSize(lob, &chunkSize)
+		if chunkSize == 0 {
+			chunkSize = 8192
+		}
+		for chunkSize < minChunkSize {
+			chunkSize <<= 1
+		}
+		lw := &dpiLobWriter{dpiLob: lob, conn: c, isClob: L.IsClob}
+		_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
+		//fmt.Printf("%p written %d with chunkSize=%d\n", lob, n, chunkSize)
+		if closeErr := lw.Close(); closeErr != nil {
+			if err == nil {
+				err = closeErr
+			}
+			//fmt.Printf("close %p: %+v\n", lob, closeErr)
+		}
+		C.dpiVar_setFromLob(dv, C.uint32_t(i), lob)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	C.dpiVar_setFromLob(dv, C.uint32_t(pos), lob)
-	return err
+	return firstErr
 }
 
 // CheckNamedValue is called before passing arguments to the driver

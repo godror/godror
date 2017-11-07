@@ -56,10 +56,12 @@ PROCEDURE P_BULK_INSERT_IMP (VIMP_DATES       cx_array_date,
 BEGIN
   i := vimp_dates.FIRST;
   WHILE i IS NOT NULL LOOP
+  /*
     INSERT INTO tst_bench_25_tbl
 	  (dt, st, ip, zone, plan, banner, referrer, country, region)
 	  VALUES (vimp_dates(i), vimp_keys(i), vimp_ip(i), vimp_zone(i), vimp_plan(i),
 	          vimp_banner(i), vimp_referrer(i), vimp_country(i), vimp_region(i));
+  */
     i := vimp_dates.NEXT(i);
   END LOOP;
 
@@ -111,7 +113,7 @@ END tst_bench_25;`,
 	defer tx.Rollback()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < b.N; i += n {
 		if _, err := tx.ExecContext(ctx, qry,
 			goracle.PlSQLArrays,
 			dates, keys, ips, zones, plans, banners, referrers, countries, regions,
