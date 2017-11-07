@@ -445,17 +445,19 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			value = out.Dest
 		}
 		st.dests[i] = value
+		rv := reflect.ValueOf(value)
 		if info.isOut {
 			//fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
-			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
-				value = rv.Elem().Interface()
+			if rv.Kind() == reflect.Ptr {
+				rv = rv.Elem()
+				value = rv.Interface()
 			}
 		}
 		st.isSlice[i] = false
-		rArgs[i] = reflect.ValueOf(value)
-		if rArgs[i].Kind() == reflect.Ptr {
-			rArgs[i] = rArgs[i].Elem()
-			//value = rArgs[i].Interface() // deref pointer
+		rArgs[i] = rv
+		if rv.Kind() == reflect.Ptr {
+			// deref in rArgs, but NOT value!
+			rArgs[i] = rv.Elem()
 		}
 		if _, isByteSlice := value.([]byte); !isByteSlice {
 			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice
@@ -759,7 +761,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		for j := 0; j < n; j++ {
 			//fmt.Printf("d[%d]=%p\n", j, st.data[i][j])
 			v := rv.Index(j).Interface()
-			Log("msg", "set", "i", i, "j", j, "n", n) //, "v", fmt.Sprintf("%T=%#v", v, v))
+			//Log("msg", "set", "i", i, "j", j, "n", n) //, "v", fmt.Sprintf("%T=%#v", v, v))
 			//if err := set(dv, j, &data[j], rArgs[i].Index(j).Interface()); err != nil {
 			if err := info.set(dv, j, &data[j], v); err != nil {
 				//v := rArgs[i].Index(j).Interface()
@@ -771,7 +773,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 	if !named {
 		for i, v := range st.vars {
-			Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v)
+			//Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v)
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
 				return errors.Wrapf(st.getError(), "bindByPos[%d]", i)
 			}
@@ -945,7 +947,7 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		if len(x) > 0 {
 			p = (*C.char)(unsafe.Pointer(&x[0]))
 		}
-		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
+		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(x)))
 
 	case Number:
@@ -953,7 +955,7 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
-		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
 
 	case string:
@@ -961,7 +963,7 @@ func dataSetBytes(dv *C.dpiVar, pos int, data *C.dpiData, v interface{}) error {
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
-		Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
 		C.dpiVar_setFromBytes(dv, C.uint32_t(pos), p, C.uint32_t(len(b)))
 
 	case nil:

@@ -11,6 +11,8 @@ import (
 	goracle "gopkg.in/goracle.v2"
 )
 
+// go install && go test -c && ./goracle.v2.test -test.run=^$ -test.bench=Insert25 -test.cpuprofile=/tmp/cpu.prof && go tool pprof ./goracle.v2.test /tmp/cpu.prof
+
 func BenchmarkPlSQLArrayInsert25(b *testing.B) {
 	defer func() {
 		testDb.Exec("DROP TABLE tst_bench_25_tbl")
@@ -101,6 +103,7 @@ END tst_bench_25;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	ctx = goracle.ContextWithLog(ctx, func(...interface{}) error { return nil })
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
