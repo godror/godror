@@ -147,6 +147,8 @@ func (st *statement) NumInput() int {
 		}
 		return 0
 	}
+	return -1 // can't account for Options - see https://github.com/golang/go/issues/22630
+
 	st.Lock()
 	defer st.Unlock()
 	var cnt C.uint32_t
@@ -1334,8 +1336,10 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	if nv == nil {
 		return nil
 	}
-	if apply, ok := nv.Value.(Option); ok && apply != nil {
-		apply(&st.stmtOptions)
+	if apply, ok := nv.Value.(Option); ok {
+		if  apply != nil {
+			apply(&st.stmtOptions)
+		}
 		return driver.ErrRemoveArgument
 	}
 	return nil
