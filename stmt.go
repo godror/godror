@@ -103,7 +103,7 @@ type statement struct {
 	columns  []Column
 	stmtOptions
 }
-type dataGetter func(v interface{}, data *C.dpiData) error
+type dataGetter func(v interface{}, data []C.dpiData) error
 
 // Close closes the statement.
 //
@@ -282,7 +282,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 		*/
 		if !st.isSlice[i] {
-			if err := get(dest, &st.data[i][0]); err != nil {
+			if err := get(dest, st.data[i]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, 0)
 			}
 			continue
@@ -292,20 +292,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil, errors.Wrapf(st.getError(), "%d.getNumElementsInArray", i)
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
-		re := reflect.ValueOf(dest).Elem()
-		re.Set(re.Slice(0, 0))
-		if n == 0 {
-			continue
-		}
-		if n := int(n); re.Cap() >= n {
-			re.Set(re.Slice(0, n))
-		} else {
-			re.Set(reflect.MakeSlice(re.Type(), n, n))
-		}
-		for j := 0; j < int(n); j++ {
-			if err := get(re.Index(j).Addr().Interface(), &st.data[i][j]); err != nil {
-				return nil, errors.Wrapf(err, "%d. get[%d]", i, j)
-			}
+		if err := get(dest, st.data[i][:n]); err != nil {
+			return nil, errors.Wrapf(err, "%d. get", i)
 		}
 	}
 	var count C.uint64_t
@@ -578,20 +566,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		case bool, []bool:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-			info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-				b := C.int(0)
-				for i, v := range vv.([]bool) {
-					if v {
-						b = 1
-					}
-					C.dpiData_setBool(&data[i], b)
-				}
-				return nil
-			}
+			info.set = dataSetBool
 			if info.isOut {
-				st.gets[i] = func(v interface{}, data *C.dpiData) error {
-					return nil
-				}
+				st.gets[i] = dataGetBool
 			}
 
 		case []byte, [][]byte:
@@ -652,30 +629,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 			info.set = dataSetTime
 			if info.isOut {
-				st.gets[i] = func(v interface{}, data *C.dpiData) error {
-					ts := C.dpiData_getTimestamp(data)
-					tz := time.Local
-					if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
-						tz = time.FixedZone(
-							fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
-							int(ts.tzHourOffset)*3600+int(ts.tzMinuteOffset)*60,
-						)
-					}
-					t := time.Date(
-						int(ts.year), time.Month(ts.month), int(ts.day),
-						int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-						tz)
-					Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
-					switch x := v.(type) {
-					case *time.Time:
-						*x = t
-					case *interface{}:
-						*x = t
-					default:
-						return errors.Errorf("%d. arg: wanted time.Time, got %T", i+1, v)
-					}
-					return nil
-				}
+				st.gets[i] = dataGetTime
 			}
 
 		default:
@@ -780,6 +734,72 @@ func dataSetNull(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	}
 	return nil
 }
+func dataGetBool(v interface{}, data []C.dpiData) error {
+	if b, ok := v.(*bool); ok {
+		*b = C.dpiData_getBool(data) == 1
+		return nil
+	}
+	slice := v.(*[]bool)
+	*slice = (*slice)[:0]
+	for i, d := range data {
+		*slice = append(*slice, C.dpiData_getBool(d) == 1)
+	}
+	return nil
+}
+func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	b := C.int(0)
+	for i, v := range vv.([]bool) {
+		if v {
+			b = 1
+		}
+		C.dpiData_setBool(&data[i], b)
+	}
+	return nil
+}
+func dataGetTime(v interface{}, data []C.dpiData) error {
+	if x, ok := v.(*time.Time); ok {
+		dataGetTimeC(x, &data[0])
+		return nil
+	}
+	slice := v.(*[]time.Time)
+	n := len(data)
+	if cap(*slice) >= n {
+		*slice = (*slice)[:n]
+	} else {
+		*slice = make([]time.Time, n)
+	}
+	for i := range data {
+		dataGetTimeC(&((*slice)[i]), &data[i])
+	}
+	return nil
+}
+
+func dataGetTimeC(t *time.Time, data *C.dpiData) {
+	ts := C.dpiData_getTimestamp(data)
+	tz := time.Local
+	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
+		tz = time.FixedZone(
+			fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
+			int(ts.tzHourOffset)*3600+int(ts.tzMinuteOffset)*60,
+		)
+	}
+	*t = time.Date(
+		int(ts.year), time.Month(ts.month), int(ts.day),
+		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
+		tz)
+	//Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
+	/*
+		switch x := v.(type) {
+		case *time.Time:
+			*x = t
+		case *interface{}:
+			*x = t
+		default:
+			return errors.Errorf("%d. arg: wanted time.Time, got %T", v)
+		}
+		return nil
+	*/
+}
 func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	times := []time.Time{time.Time{}}
 	if t, ok := vv.(time.Time); ok {
@@ -804,38 +824,97 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	return nil
 }
 
-func dataGetNumber(v interface{}, data *C.dpiData) error {
+func dataGetNumber(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *int:
-		*x = int(C.dpiData_getInt64(data))
+		*x = int(C.dpiData_getInt64(&data[0]))
+	case *[]int:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, int(C.dpiData_getInt64(&data[i])))
+		}
 	case *int32:
-		*x = int32(C.dpiData_getInt64(data))
+		*x = int32(C.dpiData_getInt64(&data[0]))
+	case *[]int32:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, int32(C.dpiData_getInt64(*data[i])))
+		}
 	case *int64:
-		*x = int64(C.dpiData_getInt64(data))
+		*x = int64(C.dpiData_getInt64(&data[0]))
+	case *[]int64:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, int64(C.dpiData_getInt64(&data[i])))
+		}
 	case *sql.NullInt64:
-		if data.isNull == 1 {
+		if data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(data))
+			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(&data[0]))
+		}
+	case *[]sql.NullInt64:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, sql.NullInt64{Valid: false})
+			} else {
+				*x = append(*x, sql.NullInt64{Valid: true,
+					Int64: int64(C.dpiData_getInt64(&data[i]))})
+			}
 		}
 	case *sql.NullFloat64:
-		if data.isNull == 1 {
+		if data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Float64 = true, float64(C.dpiData_getDouble(data))
+			x.Valid, x.Float64 = true, float64(C.dpiData_getDouble(&data[0]))
+		}
+	case *[]sql.NullFloat64:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, sql.NullFloat64{Valid: false})
+			} else {
+				*x = append(*x, sql.NullFloat64{Valud: true, Float64: float64(C.dpiData_getDouble(&data[i]))})
+			}
 		}
 
 	case *uint:
-		*x = uint(C.dpiData_getUint64(data))
+		*x = uint(C.dpiData_getUint64(&data[0]))
+	case *[]uint:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+		}
 	case *uint32:
-		*x = uint32(C.dpiData_getUint64(data))
+		*x = uint32(C.dpiData_getUint64(&data[0]))
+	case *[]uint32:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
+		}
 	case *uint64:
-		*x = uint64(C.dpiData_getUint64(data))
+		*x = uint64(C.dpiData_getUint64(&data[0]))
+	case *[]uint64:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, uint64(C.dpiData_getUint64(&data[i])))
+		}
 
 	case *float32:
-		*x = float32(C.dpiData_getFloat(data))
+		*x = float32(C.dpiData_getFloat(&data[0]))
+	case *[]float32:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, float32(C.dpiData_getFloat(&data[i])))
+		}
 	case *float64:
-		*x = float64(C.dpiData_getDouble(data))
+		*x = float64(C.dpiData_getDouble(&data[0]))
+	case *[]float64:
+		*x = (*x)[:0]
+		for i := range data {
+			*x = append(*x, float64(C.dpiData_getDouble(&data[i])))
+		}
 
 	default:
 		return errors.Errorf("unknown number [%T] %#v", v, v)
@@ -947,7 +1026,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	return nil
 }
 
-func dataGetBytes(v interface{}, data *C.dpiData) error {
+func dataGetBytes(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *[]byte:
 		if data.isNull == 1 {
@@ -1072,7 +1151,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	return nil
 }
 
-func (c *conn) dataGetStmt(v interface{}, data *C.dpiData) error {
+func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
 	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
@@ -1089,16 +1168,32 @@ func (c *conn) dataGetStmt(v interface{}, data *C.dpiData) error {
 	return nil
 }
 
-func (c *conn) dataGetLOB(v interface{}, data *C.dpiData) error {
-	L := v.(*Lob)
+func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
+	if L, ok := v.(*Lob); ok {
+		c.dataGetLOBC(L, &data[0])
+		return nil
+	}
+	slice := v.(*[]Lob)
+	n := len(data)
+	if cap(*slice) >= n {
+		*slice = (*slice)[:n]
+	} else {
+		*slice = make([]Lob, n)
+	}
+	for i := range data {
+		c.dataGetLOBC(&slice[i], *data[i])
+	}
+	return nil
+}
+func (c *conn) dataGetLOBC(*Lob, *C.dpiData) {
 	lob := C.dpiData_getLOB(data)
 	if lob == nil {
 		L.Reader = nil
 		return nil
 	}
 	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
-	return nil
 }
+
 func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if len(data) == 0 {
 		return nil
