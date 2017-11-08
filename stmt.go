@@ -736,13 +736,17 @@ func dataSetNull(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 }
 func dataGetBool(v interface{}, data []C.dpiData) error {
 	if b, ok := v.(*bool); ok {
-		*b = C.dpiData_getBool(data) == 1
+		*b = C.dpiData_getBool(&data[0]) == 1
 		return nil
 	}
 	slice := v.(*[]bool)
-	*slice = (*slice)[:0]
-	for i, d := range data {
-		*slice = append(*slice, C.dpiData_getBool(d) == 1)
+	if cap(*slice) >= len(data) {
+		*slice = (*slice)[:len(data)]
+	} else {
+		*slice = make([]bool, len(data))
+	}
+	for i := range data {
+		(*slice)[i] = C.dpiData_getBool(&data[i]) == 1
 	}
 	return nil
 }
@@ -774,19 +778,37 @@ func dataGetTime(v interface{}, data []C.dpiData) error {
 	return nil
 }
 
+var timezones map[[2]C.int8_t]*time.Location
+var timezonesMu sync.RWMutex
+
+func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
+	if hourOffset == 0 && minuteOffset == 0 {
+		return time.Local // ?time.UTC?
+	}
+	key := [2]C.int8_t{hourOffset, minuteOffset}
+	timezonesMu.RLock()
+	tz := timezones[key]
+	timezonesMu.RUnlock()
+	if tz == nil {
+		timezonesMu.Lock()
+		if tz = timezones[key]; tz == nil {
+			tz = time.FixedZone(
+				fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset),
+				int(hourOffset)*3600+int(minuteOffset)*60,
+			)
+			timezones[key] = tz
+		}
+	}
+	timezonesMu.Unlock()
+	return tz
+}
+
 func dataGetTimeC(t *time.Time, data *C.dpiData) {
 	ts := C.dpiData_getTimestamp(data)
-	tz := time.Local
-	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
-		tz = time.FixedZone(
-			fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
-			int(ts.tzHourOffset)*3600+int(ts.tzMinuteOffset)*60,
-		)
-	}
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		tz)
+		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset))
 	//Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
 	/*
 		switch x := v.(type) {
@@ -838,7 +860,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 	case *[]int32:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, int32(C.dpiData_getInt64(*data[i])))
+			*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
 		}
 	case *int64:
 		*x = int64(C.dpiData_getInt64(&data[0]))
@@ -875,7 +897,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, sql.NullFloat64{Valid: false})
 			} else {
-				*x = append(*x, sql.NullFloat64{Valud: true, Float64: float64(C.dpiData_getDouble(&data[i]))})
+				*x = append(*x, sql.NullFloat64{Valid: true, Float64: float64(C.dpiData_getDouble(&data[i]))})
 			}
 		}
 
@@ -1029,52 +1051,88 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 func dataGetBytes(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *[]byte:
-		if data.isNull == 1 {
+		if data[0].isNull == 1 {
 			*x = nil
 			return nil
 		}
-		b := C.dpiData_getBytes(data)
+		b := C.dpiData_getBytes(&data[0])
 
 		*x = ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
+	case *[][]byte:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, nil)
+				continue
+			}
+			b := C.dpiData_getBytes(&data[i])
+			*x = append(*x, ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+		}
 
 	case *Number:
-		if data.isNull == 1 {
+		if data[0].isNull == 1 {
 			*x = ""
 			return nil
 		}
-		b := C.dpiData_getBytes(data)
+		b := C.dpiData_getBytes(&data[0])
 		*x = Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+	case *[]Number:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, "")
+				continue
+			}
+			b := C.dpiData_getBytes(&data[i])
+			*x = append(*x, Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
+		}
 
 	case *string:
-		if data.isNull == 1 {
+		if data[0].isNull == 1 {
 			*x = ""
 			return nil
 		}
-		b := C.dpiData_getBytes(data)
+		b := C.dpiData_getBytes(&data[0])
 		*x = string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+	case *[]string:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, "")
+				continue
+			}
+			b := C.dpiData_getBytes(&data[i])
+			*x = append(*x, string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
+		}
 
 	case *interface{}:
 		switch y := (*x).(type) {
 		case []byte:
-			if err := dataGetBytes(&y, data); err != nil {
-				return err
-			}
+			err := dataGetBytes(&y, data[:1])
 			*x = y
-			return nil
+			return err
+		case [][]byte:
+			err := dataGetBytes(&y, data)
+			*x = y
+			return err
 
 		case Number:
-			if err := dataGetBytes(&y, data); err != nil {
-				return err
-			}
+			err := dataGetBytes(&y, data[:1])
 			*x = y
-			return nil
+			return err
+		case []Number:
+			err := dataGetBytes(&y, data)
+			*x = y
+			return err
 
 		case string:
-			if err := dataGetBytes(&y, data); err != nil {
-				return err
-			}
+			err := dataGetBytes(&y, data[:1])
 			*x = y
-			return nil
+			return err
+		case []string:
+			err := dataGetBytes(&y, data)
+			*x = y
+			return err
 
 		default:
 			return errors.Errorf("awaited []byte/string/Number, got %T (%#v)", x, x)
@@ -1123,7 +1181,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			if len(b) > 0 {
 				p = (*C.char)(unsafe.Pointer(&b[0]))
 			}
-			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", i, "p", p, "len", len(b))
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 		}
 
@@ -1152,20 +1210,37 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 }
 
 func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
+	if row, ok := v.(*driver.Rows); ok {
+		return c.dataGetStmtC(row, &data[0])
+	}
+	rows := v.(*[]driver.Rows)
+	if cap(*rows) >= len(data) {
+		*rows = (*rows)[:len(data)]
+	} else {
+		*rows = make([]driver.Rows, len(data))
+	}
+	var firstErr error
+	for i := range data {
+		if err := c.dataGetStmtC(&((*rows)[i]), &data[i]); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (c *conn) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
+
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
-		reflect.ValueOf(v).Elem().Set(reflect.ValueOf(&rows{
+		*row = &rows{
 			err: errors.Wrapf(io.EOF, "getNumQueryColumns: %v", c.getError()),
-		}))
+		}
 		return nil
 	}
-	rows, err := st.openRows(int(n))
-	if err != nil {
-		return err
-	}
-	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(rows))
-	return nil
+	var err error
+	*row, err = st.openRows(int(n))
+	return err
 }
 
 func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
@@ -1181,15 +1256,15 @@ func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
 		*slice = make([]Lob, n)
 	}
 	for i := range data {
-		c.dataGetLOBC(&slice[i], *data[i])
+		c.dataGetLOBC(&((*slice)[i]), &data[i])
 	}
 	return nil
 }
-func (c *conn) dataGetLOBC(*Lob, *C.dpiData) {
+func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
 	lob := C.dpiData_getLOB(data)
 	if lob == nil {
 		L.Reader = nil
-		return nil
+		return
 	}
 	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
 }

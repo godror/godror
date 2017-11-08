@@ -770,8 +770,8 @@ func TestOpenBadMemory(t *testing.T) {
 	}
 	d := mem.Alloc - zero
 	t.Logf("atlast: %d", d)
-	if d > 1<<15 {
-		t.Errorf("Consumed more than 32KiB of memory: %d", d)
+	if d > 64<<10 {
+		t.Errorf("Consumed more than 64KiB of memory: %d", d)
 	}
 }
 

@@ -383,10 +383,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			ts := C.dpiData_getTimestamp(d)
 			tz := time.Local
 			if col.OracleType != C.DPI_ORACLE_TYPE_TIMESTAMP && col.OracleType != C.DPI_ORACLE_TYPE_DATE {
-				tz = time.FixedZone(
-					fmt.Sprintf("%02d:%02d", ts.tzHourOffset, ts.tzMinuteOffset),
-					int(ts.tzHourOffset)*3600+int(ts.tzMinuteOffset)*60,
-				)
+				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
 			}
 			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
 		case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
