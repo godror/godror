@@ -780,37 +780,13 @@ func dataGetTime(v interface{}, data []C.dpiData) error {
 	return nil
 }
 
-var timezones map[[2]C.int8_t]*time.Location
-var timezonesMu sync.RWMutex
-
-func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
-	if hourOffset == 0 && minuteOffset == 0 {
-		return time.Local // ?time.UTC?
-	}
-	key := [2]C.int8_t{hourOffset, minuteOffset}
-	timezonesMu.RLock()
-	tz := timezones[key]
-	timezonesMu.RUnlock()
-	if tz == nil {
-		timezonesMu.Lock()
-		if tz = timezones[key]; tz == nil {
-			tz = time.FixedZone(
-				fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset),
-				int(hourOffset)*3600+int(minuteOffset)*60,
-			)
-			timezones[key] = tz
-		}
-	}
-	timezonesMu.Unlock()
-	return tz
-}
-
 func dataGetTimeC(t *time.Time, data *C.dpiData) {
 	ts := C.dpiData_getTimestamp(data)
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset))
+		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset),
+	)
 	//Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
 	/*
 		switch x := v.(type) {
@@ -1337,7 +1313,7 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 		return nil
 	}
 	if apply, ok := nv.Value.(Option); ok {
-		if  apply != nil {
+		if apply != nil {
 			apply(&st.stmtOptions)
 		}
 		return driver.ErrRemoveArgument

@@ -82,6 +82,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -603,6 +604,31 @@ func (V VersionInfo) String() string {
 		s = " [" + V.ServerRelease + "]"
 	}
 	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
+}
+
+var timezones map[[2]C.int8_t]*time.Location
+var timezonesMu sync.RWMutex
+
+func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
+	if hourOffset == 0 && minuteOffset == 0 {
+		return time.UTC
+	}
+	key := [2]C.int8_t{hourOffset, minuteOffset}
+	timezonesMu.RLock()
+	tz := timezones[key]
+	timezonesMu.RUnlock()
+	if tz == nil {
+		timezonesMu.Lock()
+		if tz = timezones[key]; tz == nil {
+			tz = time.FixedZone(
+				fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset),
+				int(hourOffset)*3600+int(minuteOffset)*60,
+			)
+			timezones[key] = tz
+		}
+	}
+	timezonesMu.Unlock()
+	return tz
 }
 
 type ctxKey string
