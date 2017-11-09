@@ -135,12 +135,18 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		Log("ConvertValue", "Int64", "value", v)
 	}
 	switch x := v.(type) {
-	case int32:
+	case int8:
 		return int64(x), nil
-	case uint32:
+	case int16:
+		return int64(x), nil
+	case int32:
 		return int64(x), nil
 	case int64:
 		return x, nil
+	case uint16:
+		return int64(x), nil
+	case uint32:
+		return int64(x), nil
 	case uint64:
 		return int64(x), nil
 	case float32:
@@ -176,7 +182,13 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		Log("ConvertValue", "Float64", "value", v)
 	}
 	switch x := v.(type) {
+	case int8:
+		return float64(x), nil
+	case int16:
+		return float64(x), nil
 	case int32:
+		return float64(x), nil
+	case uint16:
 		return float64(x), nil
 	case uint32:
 		return float64(x), nil
@@ -221,7 +233,7 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 			return 0, nil
 		}
 		return string(x), nil
-	case int32, uint32, int64, uint64:
+	case int8, int16, int32, int64, uint16, uint32, uint64:
 		return fmt.Sprintf("%d", x), nil
 	case float32, float64:
 		return fmt.Sprintf("%f", x), nil
@@ -243,7 +255,7 @@ func (n *Number) Scan(v interface{}) error {
 		*n = Number(x)
 	case Number:
 		*n = x
-	case int32, uint32, int64, uint64:
+	case int8, int16, int32, int64, uint16, uint32, uint64:
 		*n = Number(fmt.Sprintf("%d", x))
 	case float32, float64:
 		*n = Number(fmt.Sprintf("%f", x))
