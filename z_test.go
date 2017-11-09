@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 
@@ -48,8 +49,10 @@ var (
 )
 
 func init() {
+	logger := &log.SwapLogger{}
+	goracle.Log = logger.Log
 	if os.Getenv("VERBOSE") == "1" {
-		goracle.Log = tl.GetLog()
+		logger.Swap(tl)
 	}
 
 	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
@@ -84,6 +87,9 @@ type testLogger struct {
 	beHelped []*testing.T
 }
 
+func (tl *testLogger) Log(args ...interface{}) error {
+	return tl.GetLog()(args)
+}
 func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
 	return func(keyvals ...interface{}) error {
 		buf := bufPool.Get().(*bytes.Buffer)

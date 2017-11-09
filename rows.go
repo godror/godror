@@ -287,7 +287,9 @@ func (r *rows) Next(dest []driver.Value) error {
 	for i, col := range r.columns {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
-		Log("msg", "Next", "i", i, "row", r.bufferRowIndex) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
+		if Log != nil {
+			Log("msg", "Next", "i", i, "row", r.bufferRowIndex) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
+		}
 		isNull := d.isNull == 1
 
 		switch typ {
@@ -304,7 +306,7 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			if isNull {
-				//Log("msg", "null", "i", i, "T", fmt.Sprintf("%T", dest[i]), "type", reflect.TypeOf(dest[i]))
+				//if Log != nil { Log("msg", "null", "i", i, "T", fmt.Sprintf("%T", dest[i]), "type", reflect.TypeOf(dest[i])); }
 				switch col.NativeType {
 				case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64,
 					C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
@@ -330,9 +332,13 @@ func (r *rows) Next(dest []driver.Value) error {
 			default:
 				b := C.dpiData_getBytes(d)
 				dest[i] = Number(C.GoStringN(b.ptr, C.int(b.length)))
-				Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
+				if Log != nil {
+					Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
+				}
 			}
-			Log("msg", "num", "t", col.NativeType, "i", i) //, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
+			if Log != nil {
+				Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
+			}
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,
 			C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
@@ -467,7 +473,9 @@ type directRow struct {
 }
 
 func (dr *directRow) Columns() []string {
-	Log("directRow", "Columns")
+	if Log != nil {
+		Log("directRow", "Columns")
+	}
 	switch dr.query {
 	case getConnection:
 		return []string{"CONNECTION"}
@@ -490,7 +498,9 @@ func (dr *directRow) Close() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (dr *directRow) Next(dest []driver.Value) error {
-	Log("directRow", "Next", "query", dr.query, "dest", dest)
+	if Log != nil {
+		Log("directRow", "Next", "query", dr.query, "dest", dest)
+	}
 	switch dr.query {
 	case getConnection:
 		*(dest[0].(*interface{})) = dr.result[0]

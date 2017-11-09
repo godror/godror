@@ -171,7 +171,9 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryId) == C.DPI_FAILURE {
 		return errors.Wrap(s.getError(), "getSubscrQueryId")
 	}
-	Log("msg", "subscribed", "query", qry, "id", queryId)
+	if Log != nil {
+		Log("msg", "subscribed", "query", qry, "id", queryId)
+	}
 
 	return nil
 }

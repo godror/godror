@@ -161,7 +161,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	c.Lock()
 	defer c.Unlock()
 	if query == getConnection {
-		Log("msg", "PrepareContext", "shortcut", query)
+		if Log != nil {
+			Log("msg", "PrepareContext", "shortcut", query)
+		}
 		return &statement{conn: c, query: query}, nil
 	}
 
@@ -224,7 +226,9 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "v", v)
+	if Log != nil {
+		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "v", v)
+	}
 	if C.dpiConn_newVar(
 		c.dpiConn, vi.Typ, vi.NatTyp, C.uint32_t(vi.SliceLen),
 		C.uint32_t(vi.BufSize), 1,

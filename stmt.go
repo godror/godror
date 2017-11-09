@@ -242,13 +242,17 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	var err error
 	for i := 0; i < 3; i++ {
 		if !st.PlSQLArrays() && st.arrLen > 0 {
-			Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
+			if Log != nil {
+				Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
+			}
 			if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
 				err = st.getError()
 			}
 		} else {
 			var colCount C.uint32_t
-			Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
+			if Log != nil {
+				Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
+			}
 			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
 				err = st.getError()
 			}
@@ -271,7 +275,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err = <-ctxErr; err != nil {
 		return nil, err
 	}
-	//Log("gets", st.gets)
+	//if Log != nil {Log("gets", st.gets) }
 	for i, get := range st.gets {
 		if get == nil {
 			continue
@@ -320,7 +324,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	defer st.conn.Unlock()
 
 	if st.query == getConnection {
-		Log("msg", "QueryContext", "args", args)
+		if Log != nil {
+			Log("msg", "QueryContext", "args", args)
+		}
 		return &directRow{conn: st.conn, query: st.query, result: []interface{}{st.conn}}, nil
 	}
 
@@ -362,7 +368,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
-	Log("enter", "bindVars", "args", args)
+	if Log != nil {
+		Log("enter", "bindVars", "args", args)
+	}
 	if cap(st.vars) < len(args) || cap(st.varInfos) < len(args) {
 		for i, v := range st.vars {
 			if v != nil {
@@ -462,7 +470,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		}
 
-		Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut) //, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
+		if Log != nil {
+			Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
+		}
 	}
 
 	if maxArrLen > maxArraySize {
@@ -479,7 +489,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			doManyCount = st.arrLen
 		}
 	}
-	Log("doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
+	if Log != nil {
+		Log("doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
+	}
 
 	for i := range args {
 		info := &(infos[i])
@@ -651,7 +663,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 				n = rv.Cap()
 			}
 		}
-		Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays(), "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
+		if Log != nil {
+			Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays(), "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
+		}
 		//i, st.PlSQLArrays(), info.typ, info.natTyp dataSliceLen, info.bufSize)
 		vi := varInfo{IsPLSArray: st.PlSQLArrays() && st.isSlice[i], Typ: info.typ, NatTyp: info.natTyp, SliceLen: n, BufSize: info.bufSize}
 		if vi.IsPLSArray && vi.SliceLen > maxArraySize {
@@ -672,7 +686,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		dv, data := st.vars[i], st.data[i]
 		if !info.isIn {
 			if st.PlSQLArrays() {
-				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
+				if Log != nil {
+					Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
+				}
 				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) == C.DPI_FAILURE {
 					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, 0)
 				}
@@ -681,7 +697,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 
 		if !st.isSlice[i] {
-			Log("msg", "set", "i", i) //, "value", fmt.Sprintf("%T=%#v", value, value))
+			if Log != nil {
+				Log("msg", "set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
+			}
 			if err := info.set(dv, data[:1], value); err != nil {
 				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
 			}
@@ -692,7 +710,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		if st.PlSQLArrays() {
 			n = rv.Len()
 
-			Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
+			if Log != nil {
+				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
+			}
 			if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
 				return errors.Wrapf(st.getError(), "%+v.setNumElementsInArray[%d](%d)", dv, i, n)
 			}
@@ -705,7 +725,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 	if !named {
 		for i, v := range st.vars {
-			//Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v)
+			//if Log != nil {Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v) }
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
 				return errors.Wrapf(st.getError(), "bindByPos[%d]", i)
 			}
@@ -787,18 +807,6 @@ func dataGetTimeC(t *time.Time, data *C.dpiData) {
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset),
 	)
-	//Log("msg", "get", "t", t.Format(time.RFC3339), "tz", ts.tzHourOffset) //, "dest", fmt.Sprintf("%T", v), )
-	/*
-		switch x := v.(type) {
-		case *time.Time:
-			*x = t
-		case *interface{}:
-			*x = t
-		default:
-			return errors.Errorf("%d. arg: wanted time.Time, got %T", v)
-		}
-		return nil
-	*/
 }
 func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	times := []time.Time{time.Time{}}
@@ -1134,14 +1142,14 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		if len(x) > 0 {
 			p = (*C.char)(unsafe.Pointer(&x[0]))
 		}
-		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
+		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
 	case [][]byte:
 		for i, x := range slice {
 			if len(x) > 0 {
 				p = (*C.char)(unsafe.Pointer(&x[0]))
 			}
-			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x))
+			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x)) }
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
 		}
 
@@ -1151,7 +1159,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
-		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 	case []Number:
 		for i, x := range slice {
@@ -1159,7 +1167,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			if len(b) > 0 {
 				p = (*C.char)(unsafe.Pointer(&b[0]))
 			}
-			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", i, "p", p, "len", len(b))
+			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", i, "p", p, "len", len(b)) }
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 		}
 
@@ -1169,7 +1177,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		if len(b) > 0 {
 			p = (*C.char)(unsafe.Pointer(&b[0]))
 		}
-		//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 	case []string:
 		for i, x := range slice {
@@ -1177,7 +1185,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			if len(b) > 0 {
 				p = (*C.char)(unsafe.Pointer(&b[0]))
 			}
-			//Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b))
+			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 		}
 
@@ -1337,7 +1345,9 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 			c = Num
 		}
 	}
-	Log("msg", "ColumnConverter", "c", c)
+	if Log != nil {
+		Log("msg", "ColumnConverter", "c", c)
+	}
 	return driver.Null{Converter: c}
 }
 
@@ -1360,8 +1370,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
-		//Log("msg", "openRows", "col", i, "info", ti)
-		//Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER)
+		//if Log != nil {Log("msg", "openRows", "col", i, "info", ti) }
+		//if Log != nil {Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER) }
 		switch ti.oracleTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			switch ti.defaultNativeTypeNum {

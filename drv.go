@@ -131,7 +131,9 @@ type intType struct{}
 
 func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
-	Log("ConvertValue", "Int64", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Int64", "value", v)
+	}
 	switch x := v.(type) {
 	case int32:
 		return int64(x), nil
@@ -170,7 +172,9 @@ type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
-	Log("ConvertValue", "Float64", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Float64", "value", v)
+	}
 	switch x := v.(type) {
 	case int32:
 		return float64(x), nil
@@ -203,7 +207,9 @@ type numType struct{}
 
 func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
-	Log("ConvertValue", "Num", "value", v)
+	if Log != nil {
+		Log("ConvertValue", "Num", "value", v)
+	}
 	switch x := v.(type) {
 	case string:
 		if x == "" {
@@ -247,8 +253,10 @@ func (n *Number) Scan(v interface{}) error {
 	return nil
 }
 
-// Log function
-var Log = func(...interface{}) error { return nil }
+// Log function. By default, it's nil, and thus logs nothing.
+// If you want to change this, change it to a github.com/go-kit/kit/log.Swapper.Log
+// or analog to be race-free.
+var Log func(...interface{}) error
 
 func init() {
 	d, err := newDrv()
@@ -306,7 +314,13 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	c := conn{drv: d, connParams: P}
 	connString := P.StringNoClass()
 
-	defer func() { d.poolsMu.Lock(); Log("pools", d.pools, "conn", P.String()); d.poolsMu.Unlock() }()
+	defer func() {
+		d.poolsMu.Lock()
+		if Log != nil {
+			Log("pools", d.pools, "conn", P.String())
+		}
+		d.poolsMu.Unlock()
+	}()
 	authMode := C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
 	if P.IsSysDBA {
 		authMode |= C.DPI_MODE_AUTH_SYSDBA
@@ -333,7 +347,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		d.poolsMu.Unlock()
 		if dp != nil {
 			dc := C.malloc(C.sizeof_void)
-			Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
+			if Log != nil {
+				Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
+			}
 			if C.dpiPool_acquireConnection(
 				dp,
 				nil, 0, nil, 0, &connCreateParams,
@@ -375,7 +391,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 	if P.IsSysDBA || P.IsSysOper {
 		dc := C.malloc(C.sizeof_void)
-		Log("C", "dpiConn_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
+		if Log != nil {
+			Log("C", "dpiConn_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
+		}
 		if C.dpiConn_create(
 			d.dpiContext,
 			cUserName, C.uint32_t(len(P.Username)),
@@ -404,7 +422,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
 
 	var dp *C.dpiPool
-	Log("C", "dpiPool_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
+	if Log != nil {
+		Log("C", "dpiPool_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
+	}
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(P.Username)),

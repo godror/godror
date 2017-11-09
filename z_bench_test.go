@@ -106,7 +106,7 @@ END tst_bench_25;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = goracle.ContextWithLog(ctx, func(...interface{}) error { return nil })
+	ctx = goracle.ContextWithLog(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
@@ -220,7 +220,7 @@ END tst_bench_inout;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = goracle.ContextWithLog(ctx, func(...interface{}) error { return nil })
+	ctx = goracle.ContextWithLog(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
