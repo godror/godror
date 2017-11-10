@@ -758,6 +758,10 @@ func dataSetNull(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 }
 func dataGetBool(v interface{}, data []C.dpiData) error {
 	if b, ok := v.(*bool); ok {
+		if data[0].isNull == 1 {
+			*b = false
+			return nil
+		}
 		*b = C.dpiData_getBool(&data[0]) == 1
 		return nil
 	}
@@ -768,6 +772,10 @@ func dataGetBool(v interface{}, data []C.dpiData) error {
 		*slice = make([]bool, len(data))
 	}
 	for i := range data {
+		if data[i].isNull == 1 {
+			(*slice)[i] = false
+			continue
+		}
 		(*slice)[i] = C.dpiData_getBool(&data[i]) == 1
 	}
 	return nil
@@ -801,6 +809,10 @@ func dataGetTime(v interface{}, data []C.dpiData) error {
 }
 
 func dataGetTimeC(t *time.Time, data *C.dpiData) {
+	if data.isNull == 1 {
+		*t = time.Time{}
+		return
+	}
 	ts := C.dpiData_getTimestamp(data)
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
@@ -835,25 +847,45 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 func dataGetNumber(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *int:
-		*x = int(C.dpiData_getInt64(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = int(C.dpiData_getInt64(&data[0]))
+		}
 	case *[]int:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, int(C.dpiData_getInt64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, int(C.dpiData_getInt64(&data[i])))
+			}
 		}
 	case *int32:
 		*x = int32(C.dpiData_getInt64(&data[0]))
 	case *[]int32:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+			}
 		}
 	case *int64:
-		*x = int64(C.dpiData_getInt64(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = int64(C.dpiData_getInt64(&data[0]))
+		}
 	case *[]int64:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, int64(C.dpiData_getInt64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, int64(C.dpiData_getInt64(&data[i])))
+			}
 		}
 	case *sql.NullInt64:
 		if data[0].isNull == 1 {
@@ -888,40 +920,80 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		}
 
 	case *uint:
-		*x = uint(C.dpiData_getUint64(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = uint(C.dpiData_getUint64(&data[0]))
+		}
 	case *[]uint:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+			}
 		}
 	case *uint32:
-		*x = uint32(C.dpiData_getUint64(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = uint32(C.dpiData_getUint64(&data[0]))
+		}
 	case *[]uint32:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
+			}
 		}
 	case *uint64:
-		*x = uint64(C.dpiData_getUint64(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = uint64(C.dpiData_getUint64(&data[0]))
+		}
 	case *[]uint64:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, uint64(C.dpiData_getUint64(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, uint64(C.dpiData_getUint64(&data[i])))
+			}
 		}
 
 	case *float32:
-		*x = float32(C.dpiData_getFloat(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = float32(C.dpiData_getFloat(&data[0]))
+		}
 	case *[]float32:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, float32(C.dpiData_getFloat(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, float32(C.dpiData_getFloat(&data[i])))
+			}
 		}
 	case *float64:
-		*x = float64(C.dpiData_getDouble(&data[0]))
+		if data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = float64(C.dpiData_getDouble(&data[0]))
+		}
 	case *[]float64:
 		*x = (*x)[:0]
 		for i := range data {
-			*x = append(*x, float64(C.dpiData_getDouble(&data[i])))
+			if data[i].isNull == 1 {
+				*x = append(*x, 0)
+			} else {
+				*x = append(*x, float64(C.dpiData_getDouble(&data[i])))
+			}
 		}
 
 	default:
@@ -1215,6 +1287,10 @@ func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
 }
 
 func (c *conn) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
+	if data.isNull == 1 {
+		*row = nil
+		return nil
+	}
 	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
 
 	var n C.uint32_t
@@ -1247,9 +1323,12 @@ func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
 	return nil
 }
 func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
+	L.Reader = nil
+	if data.isNull == 1 {
+		return
+	}
 	lob := C.dpiData_getLOB(data)
 	if lob == nil {
-		L.Reader = nil
 		return
 	}
 	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
