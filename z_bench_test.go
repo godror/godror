@@ -1,9 +1,25 @@
+// Copyright 2017 Tamás Gulácsi
+//
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 package goracle_test
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -286,3 +302,169 @@ func BenchmarkAppendFloat(b *testing.B) {
 	}
 }
 */
+
+func createGeoTable(tableName string, rowCount int) error {
+	var cnt int64
+	if err := testDb.QueryRow("SELECT COUNT(0) FROM " + tableName).Scan(&cnt); err == nil && cnt == int64(rowCount) {
+		return nil
+	}
+	testDb.Exec("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'")
+	testDb.Exec("DROP TABLE " + tableName)
+	if _, err := testDb.Exec(`CREATE TABLE ` + tableName + ` (
+		id NUMBER(3) NOT NULL,
+	"RECORD_ID" NUMBER(*,0) NOT NULL ENABLE,
+	"PERSON_ID" NUMBER(*,0),
+	"PERSON_ACCOUNT_ID" NUMBER(*,0),
+	"ORGANIZATION_ID" NUMBER(*,0),
+	"ORGANIZATION_MEMBERSHIP_ID" NVARCHAR2(45),
+	"LOCATION" NVARCHAR2(2000) NOT NULL ENABLE,
+	"DEVICE_ID" NVARCHAR2(45),
+	"DEVICE_REGISTRATION_ID" NVARCHAR2(500),
+	"DEVICE_NAME" NVARCHAR2(45),
+	"DEVICE_TYPE" NVARCHAR2(45),
+	"DEVICE_OS_NAME" NVARCHAR2(45),
+	"DEVICE_TOKEN" NVARCHAR2(45),
+	"DEVICE_OTHER_DETAILS" NVARCHAR2(100)
+	)`,
+	); err != nil {
+		return err
+	}
+	testData := [][]string{
+		{"1", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518407 104.0685472)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"2", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5520498 104.0686355)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"3", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5517747 104.0684895)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"4", "8.64522675633357E16", "8.64522734353613E16", "", "1220457", "POINT(30.55187 104.06856)", "3A9D1838-3B2D-4119-9E07-77C6CDAC53C5", "noUwBnWojdY:APA91bE8aGLEECS9_Q1EKrp8i2B36H1X8GwIj3v58KUcuXglhf0rXJb8Ez5meQ6D5MgTAQghYEe3s9vOntU3pYPQoc6ASNw3QzhzQevAqlMQC2ukUMNyLD8Rve-IA1-6lttsCXYsYIKh", "User3’s iPhone", "iPhone", "iPhone OS", "", "DeviceID:3A9D1838-3B2D-4119-9E07-77C6CDAC53C5, SystemVersion:8.4, LocalizedModel:iPhone"},
+		{"5", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5517458 104.0685809)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"6", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.551802 104.0685301)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"7", "8.64522675633357E16", "8.64522734353613E16", "", "1220457", "POINT(30.55187 104.06856)", "3A9D1838-3B2D-4119-9E07-77C6CDAC53C5", "noUwBnWojdY:APA91bE8aGLEECS9_Q1EKrp8i2B36H1X8GwIj3v58KUcuXglhf0rXJb8Ez5meQ6D5MgTAQghYEe3s9vOnt,3pYPQoc6ASNw3QzhzQevAqlMQC2ukUMNyLD8Rve-IA1-6lttsCXYsYIKh", "User3’s iPhone", "iPhone", "iPhone OS", "", "DeviceID:3A9D1838-3B2D-4119-9E07-77C6CDAC53C5, SystemVersion:8.4, LocalizedModel:iPhone"},
+		{"8", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.551952 104.0685893)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"9", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+		{"10", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
+	}
+	dataI := make([][]interface{}, len(testData))
+	for i, data := range testData {
+		dataI[i] = make([]interface{}, 1, len(data)+1)
+		for _, d := range data {
+			dataI[i] = append(dataI[i], d)
+		}
+	}
+
+	stmt, err := testDb.Prepare("INSERT INTO " + tableName + `
+  (ID,RECORD_ID,PERSON_ID,PERSON_ACCOUNT_ID,ORGANIZATION_ID,ORGANIZATION_MEMBERSHIP_ID,
+   LOCATION,DEVICE_ID,DEVICE_REGISTRATION_ID,DEVICE_NAME,DEVICE_TYPE,
+   DEVICE_OS_NAME,DEVICE_TOKEN,DEVICE_OTHER_DETAILS)
+   VALUES (:1,:2,:3,:4,:5,
+           :6,:7,:8,:9,:10,
+		   :11,:12, :13, :14)`)
+	if err != nil {
+		return err
+	}
+Loop:
+	for rn := 0; rn < rowCount; {
+		for i, data := range dataI {
+			data[0] = strconv.Itoa(rn)
+			if _, err := stmt.Exec(data...); err != nil {
+				return fmt.Errorf("%d. %v\n%q", i, err, data)
+			}
+			rn++
+			if rn == rowCount {
+				break Loop
+			}
+		}
+	}
+	return nil
+}
+
+func TestSelectOrder(t *testing.T) {
+	t.Parallel()
+	const limit = 1013
+	var cnt int64
+	tbl := "user_objects"
+	start := time.Now()
+	if err := testDb.QueryRow("SELECT count(0) FROM " + tbl).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s rowcount=%d (%s)", tbl, cnt, time.Since(start))
+	if cnt == 0 {
+		cnt = 10
+		tbl = "(SELECT 1 FROM DUAL " + strings.Repeat("\nUNION ALL SELECT 1 FROM DUAL ", int(cnt)-1) + ")"
+	}
+	qry := "SELECT ROWNUM FROM " + tbl
+	for i := cnt; i < limit; i *= cnt {
+		qry += ", " + tbl
+	}
+	t.Logf("qry=%s", qry)
+	rows, err := testDb.Query(qry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	i := 0
+	for rows.Next() {
+		var rn int
+		if err = rows.Scan(&rn); err != nil {
+			t.Fatal(err)
+		}
+		i++
+		if rn != i {
+			t.Errorf("got %d, wanted %d.", rn, i)
+		}
+		if i > limit {
+			break
+		}
+	}
+	for rows.Next() {
+	}
+}
+
+// go test -c && ./goracle.v2.test -test.run=^$ -test.bench=Date -test.cpuprofile=/tmp/cpu.prof && go tool pprof goracle.v2.test /tmp/cpu.prof
+func BenchmarkSelectDate(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; {
+		b.StopTimer()
+		rows, err := testDb.Query("SELECT CAST(TO_DATE('2006-01-02 15:04:05', 'YYYY-MM-DD HH24:MI:SS') AS DATE) dt FROM user_objects, (select 1 from dual)")
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		for rows.Next() && i < b.N {
+			var dt time.Time
+			if err = rows.Scan(&dt); err != nil {
+				rows.Close()
+				b.Fatal(err)
+			}
+			i++
+		}
+		b.StopTimer()
+		rows.Close()
+	}
+}
+
+func BenchmarkSelect(b *testing.B) {
+	const geoTableName = "test_geo"
+	const geoTableRowCount = 1000
+	if err := createGeoTable(geoTableName, geoTableRowCount); err != nil {
+		b.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE " + geoTableName)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; {
+		b.StopTimer()
+		rows, err := testDb.Query("SELECT record_id FROM " + geoTableName)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		for rows.Next() && i < b.N {
+			var id int
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				b.Fatal(err)
+			}
+			i++
+		}
+		b.StopTimer()
+		rows.Close()
+	}
+}
