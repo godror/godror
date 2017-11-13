@@ -227,10 +227,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		defer close(ctxErr)
 		select {
 		case <-done:
-			return
 		case <-ctx.Done():
-			ctxErr <- ctx.Err()
-			_ = st.Break()
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+			default:
+				ctxErr <- ctx.Err()
+				_ = st.Break()
+			}
 		}
 	}()
 
@@ -337,13 +341,17 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 
 	// execute
-	done := make(chan struct{}, 1)
+	done := make(chan struct{})
 	go func() {
 		select {
-		case <-ctx.Done():
-			_ = st.Break()
 		case <-done:
-			return
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+			default:
+				_ = st.Break()
+			}
 		}
 	}()
 	var err error
@@ -359,7 +367,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 		}
 		break
 	}
-	done <- struct{}{}
+	close(done)
 	if err != nil {
 		return nil, maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
 	}
