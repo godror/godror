@@ -64,12 +64,17 @@ func (c *conn) Ping(ctx context.Context) error {
 	}
 	c.Lock()
 	defer c.Unlock()
-	done := make(chan struct{}, 1)
+	done := make(chan struct{})
 	go func() {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			_ = c.Break()
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+			default:
+				_ = c.Break()
+			}
 		}
 	}()
 	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
