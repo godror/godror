@@ -832,6 +832,7 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			data[i].isNull = 1
 			continue
 		}
+		data[i].isNull = 0
 		_, z := t.Zone()
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
@@ -1033,6 +1034,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	case sql.NullInt64:
 		i, x := 0, slice
 		if x.Valid {
+			data[i].isNull = 0
 			C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
 		} else {
 			data[i].isNull = 1
@@ -1040,6 +1042,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	case []sql.NullInt64:
 		for i, x := range slice {
 			if x.Valid {
+				data[i].isNull = 0
 				C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
 			} else {
 				data[i].isNull = 1
@@ -1048,6 +1051,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	case sql.NullFloat64:
 		i, x := 0, slice
 		if x.Valid {
+			data[i].isNull = 0
 			C.dpiData_setDouble(&data[i], C.double(x.Float64))
 		} else {
 			data[i].isNull = 1
@@ -1055,6 +1059,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	case []sql.NullFloat64:
 		for i, x := range slice {
 			if x.Valid {
+				data[i].isNull = 0
 				C.dpiData_setDouble(&data[i], C.double(x.Float64))
 			} else {
 				data[i].isNull = 1
@@ -1211,54 +1216,72 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	switch slice := vv.(type) {
 	case []byte:
 		i, x := 0, slice
-		if len(x) > 0 {
-			p = (*C.char)(unsafe.Pointer(&x[0]))
+		if len(x) == 0 {
+			data[i].isNull = 1
+			return nil
 		}
+		data[i].isNull = 0
+		p = (*C.char)(unsafe.Pointer(&x[0]))
 		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
 	case [][]byte:
 		for i, x := range slice {
-			if len(x) > 0 {
-				p = (*C.char)(unsafe.Pointer(&x[0]))
+			if len(x) == 0 {
+				data[i].isNull = 1
+				continue
 			}
+			data[i].isNull = 0
+			p = (*C.char)(unsafe.Pointer(&x[0]))
 			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(x)) }
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(x)))
 		}
 
 	case Number:
 		i, x := 0, slice
-		b := []byte(x)
-		if len(b) > 0 {
-			p = (*C.char)(unsafe.Pointer(&b[0]))
+		if len(x) == 0 {
+			data[i].isNull = 1
+			return nil
 		}
+		data[i].isNull = 0
+		b := []byte(x)
+		p = (*C.char)(unsafe.Pointer(&b[0]))
 		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 	case []Number:
 		for i, x := range slice {
-			b := []byte(x)
-			if len(b) > 0 {
-				p = (*C.char)(unsafe.Pointer(&b[0]))
+			if len(x) == 0 {
+				data[i].isNull = 1
+				continue
 			}
+			data[i].isNull = 0
+			b := []byte(x)
+			p = (*C.char)(unsafe.Pointer(&b[0]))
 			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", i, "p", p, "len", len(b)) }
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 		}
 
 	case string:
 		i, x := 0, slice
-		b := []byte(x)
-		if len(b) > 0 {
-			p = (*C.char)(unsafe.Pointer(&b[0]))
+		if len(x) == 0 {
+			data[i].isNull = 1
+			return nil
 		}
+		data[i].isNull = 0
+		b := []byte(x)
+		p = (*C.char)(unsafe.Pointer(&b[0]))
 		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
 	case []string:
 		for i, x := range slice {
-			b := []byte(x)
-			if len(b) > 0 {
-				p = (*C.char)(unsafe.Pointer(&b[0]))
+			if len(x) == 0 {
+				data[i].isNull = 1
+				continue
 			}
-			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
+			data[i].isNull = 0
+			b := []byte(x)
+			p = (*C.char)(unsafe.Pointer(&b[0]))
 			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
 		}
 
 	default:
@@ -1351,6 +1374,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 			data[i].isNull = 1
 			return nil
 		}
+		data[i].isNull = 0
 		typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
 		if L.IsClob {
 			typ = C.DPI_ORACLE_TYPE_CLOB
