@@ -302,6 +302,10 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			b := C.dpiData_getBytes(d)
+			if b.length == 0 {
+				dest[i] = ""
+				continue
+			}
 			dest[i] = C.GoStringN(b.ptr, C.int(b.length))
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
@@ -346,36 +350,35 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("RAW\n")
 			b := C.dpiData_getBytes(d)
+			if b.length == 0 {
+				dest[i] = []byte{}
+				continue
+			}
 			dest[i] = C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.length))
 		case C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("FLOAT\n")
 			dest[i] = float32(C.dpiData_getFloat(d))
 		case C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("DOUBLE\n")
 			dest[i] = float64(C.dpiData_getDouble(d))
 		case C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("INT\n")
 			dest[i] = int64(C.dpiData_getInt64(d))
 		case C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("UINT\n")
 			dest[i] = uint64(C.dpiData_getUint64(d))
 		case C.DPI_ORACLE_TYPE_TIMESTAMP,
 			C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
@@ -385,7 +388,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = time.Time{}
 				continue
 			}
-			//fmt.Printf("TS\n")
 			ts := C.dpiData_getTimestamp(d)
 			tz := time.Local
 			if col.OracleType != C.DPI_ORACLE_TYPE_TIMESTAMP && col.OracleType != C.DPI_ORACLE_TYPE_DATE {
@@ -397,7 +399,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = time.Time{}
 				continue
 			}
-			fmt.Printf("INTERVAL_DS\n")
 			ds := C.dpiData_getIntervalDS(d)
 			dest[i] = time.Duration(ds.days)*24*time.Hour +
 				time.Duration(ds.hours)*time.Hour +
@@ -409,7 +410,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("INTERVAL_YM\n")
 			ym := C.dpiData_getIntervalYM(d)
 			dest[i] = fmt.Sprintf("%dy%dm", ym.years, ym.months)
 		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
@@ -420,7 +420,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			//fmt.Printf("LOB\n")
 			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn,
 				IsClob: typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB}
 			dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}
@@ -429,7 +428,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			//fmt.Printf("STMT\n")
 			st := &statement{conn: r.conn, dpiStmt: C.dpiData_getStmt(d)}
 			var colCount C.uint32_t
 			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
@@ -447,11 +445,9 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			fmt.Printf("BOOL\n")
 			dest[i] = C.dpiData_getBool(d) == 1
 			//case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
 		default:
-			fmt.Printf("OTHER(%d)\n", typ)
 			return errors.Errorf("unsupported column type %d", typ)
 		}
 

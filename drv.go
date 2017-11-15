@@ -89,7 +89,7 @@ import (
 )
 
 // Version of this driver
-const Version = "v2.1.8"
+const Version = "v2.1.9"
 
 const (
 	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through ContextWithFetchRowCount).
