@@ -131,45 +131,6 @@ func (st *statement) Close() error {
 	return nil
 }
 
-// NumInput returns the number of placeholder parameters.
-//
-// If NumInput returns >= 0, the sql package will sanity check
-// argument counts from callers and return errors to the caller
-// before the statement's Exec or Query methods are called.
-//
-// NumInput may also return -1, if the driver doesn't know
-// its number of placeholders. In that case, the sql package
-// will not sanity check Exec or Query argument counts.
-func (st *statement) NumInput() int {
-	if st.dpiStmt == nil {
-		if st.query == getConnection {
-			return 1
-		}
-		return 0
-	}
-	return -1 // can't account for Options - see https://github.com/golang/go/issues/22630
-
-	st.Lock()
-	defer st.Unlock()
-	var cnt C.uint32_t
-	//defer func() { fmt.Printf("%p.NumInput=%d (%q)\n", st, cnt, st.query) }()
-	if C.dpiStmt_getBindCount(st.dpiStmt, &cnt) == C.DPI_FAILURE {
-		return -1
-	}
-	if cnt < 2 { // 1 can't decrease...
-		return int(cnt)
-	}
-	names := make([]*C.char, int(cnt))
-	lengths := make([]C.uint32_t, int(cnt))
-	if C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) == C.DPI_FAILURE {
-		return -1
-	}
-	//fmt.Printf("%p.NumInput=%d\n", st, cnt)
-
-	// return the number of *unique* arguments
-	return int(cnt)
-}
-
 // Exec executes a query that doesn't return rows, such
 // as an INSERT or UPDATE.
 //
