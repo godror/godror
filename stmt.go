@@ -264,12 +264,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if err == nil {
 			break
 		}
-		if err.(interface {
+		switch errors.Cause(err).(interface {
 			Code() int
-		}).Code() != 4068 {
+		}).Code() {
+		// ORA-04068: "existing state of packages has been discarded"
+		case 4068, 4065, 4061:
+		default:
 			break
 		}
-		// ORA-04068: "existing state of packages has been discarded"
 		continue
 	}
 	close(done)
