@@ -226,7 +226,8 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	isArray := C.int(0)
 	if vi.IsPLSArray {
 		isArray = 1
-	} else if vi.SliceLen < 0 {
+	}
+	if vi.SliceLen < 1 {
 		vi.SliceLen = 1
 	}
 	var dataArr *C.dpiData

@@ -145,6 +145,136 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 	}
 }
 
+func TestInputArray(t *testing.T) {
+	t.Parallel()
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	qry := `CREATE OR REPLACE PACKAGE test_in_pkg AS
+TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
+TYPE num_tab_typ IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+TYPE vc_tab_typ IS TABLE OF VARCHAR2(100) INDEX BY PLS_INTEGER;
+TYPE dt_tab_typ IS TABLE OF DATE INDEX BY PLS_INTEGER;
+--TYPE lob_tab_typ IS TABLE OF CLOB INDEX BY PLS_INTEGER;
+
+FUNCTION in_int(p_int IN int_tab_typ) RETURN VARCHAR2;
+FUNCTION in_num(p_num IN num_tab_typ) RETURN VARCHAR2;
+FUNCTION in_vc(p_vc IN vc_tab_typ) RETURN VARCHAR2;
+FUNCTION in_dt(p_dt IN dt_tab_typ) RETURN VARCHAR2;
+END;
+`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err, qry)
+	}
+	defer testDb.Exec("DROP PACKAGE test_in_pkg")
+
+	qry = `CREATE OR REPLACE PACKAGE BODY test_in_pkg AS
+FUNCTION in_int(p_int IN int_tab_typ) RETURN VARCHAR2 IS
+  v_idx PLS_INTEGER;
+  v_res VARCHAR2(32767);
+BEGIN
+  v_idx := p_int.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_res := v_res||v_idx||':'||p_int(v_idx)||CHR(10);
+    v_idx := p_int.NEXT(v_idx);
+  END LOOP;
+  RETURN(v_res);
+END;
+
+FUNCTION in_num(p_num IN num_tab_typ) RETURN VARCHAR2 IS
+  v_idx PLS_INTEGER;
+  v_res VARCHAR2(32767);
+BEGIN
+  v_idx := p_num.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_res := v_res||v_idx||':'||p_num(v_idx)||CHR(10);
+    v_idx := p_num.NEXT(v_idx);
+  END LOOP;
+  RETURN(v_res);
+END;
+
+FUNCTION in_vc(p_vc IN vc_tab_typ) RETURN VARCHAR2 IS
+  v_idx PLS_INTEGER;
+  v_res VARCHAR2(32767);
+BEGIN
+  v_idx := p_vc.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_res := v_res||v_idx||':'||p_vc(v_idx)||CHR(10);
+    v_idx := p_vc.NEXT(v_idx);
+  END LOOP;
+  RETURN(v_res);
+END;
+FUNCTION in_dt(p_dt IN dt_tab_typ) RETURN VARCHAR2 IS
+  v_idx PLS_INTEGER;
+  v_res VARCHAR2(32767);
+BEGIN
+  v_idx := p_dt.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_res := v_res||v_idx||':'||TO_CHAR(p_dt(v_idx), 'YYYY-MM-DD"T"HH24:MI:SS')||CHR(10);
+    v_idx := p_dt.NEXT(v_idx);
+  END LOOP;
+  RETURN(v_res);
+END;
+END test_in_pkg;
+`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err, qry)
+	}
+	compileErrors, err := goracle.GetCompileErrors(testDb, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compileErrors) != 0 {
+		t.Logf("compile errors: %v", compileErrors)
+		for _, ce := range compileErrors {
+			if strings.Contains(ce.Error(), "TEST_PKG") {
+				t.Fatal(ce)
+			}
+		}
+	}
+
+	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
+	for name, tC := range map[string]struct {
+		In   interface{}
+		Want string
+	}{
+		//"int_0":{In:[]int32{}, Want:""},
+		"num_0": {In: []goracle.Number{}, Want: ""},
+		"vc_0":  {In: []string{}, Want: ""},
+		"dt_0":  {In: []time.Time{}, Want: ""},
+
+		"num_3": {
+			In:   []goracle.Number{"1", "2.72", "-3.14"},
+			Want: "1:1\n2:2.72\n3:-3.14\n",
+		},
+		"vc_3": {
+			In:   []string{"a", "", "cCc"},
+			Want: "1:a\n2:\n3:cCc\n",
+		},
+		"dt_3": {
+			In:   []time.Time{epoch, epoch.AddDate(0, 0, -1), epoch.AddDate(0, 0, -2)},
+			Want: "1:2017-11-20T12:14:21\n2:2017-11-19T12:14:21\n3:2017-11-18T12:14:21\n",
+		},
+	} {
+		typ := strings.SplitN(name, "_", 2)[0]
+		qry := "BEGIN :1 := test_in_pkg.in_" + typ + "(:2); END;"
+		var res string
+		if _, err := testDb.ExecContext(ctx, qry, goracle.PlSQLArrays,
+			sql.Out{Dest: &res}, tC.In,
+		); err != nil {
+			t.Error(errors.Wrapf(err, "%q. %s %+v", name, qry, tC.In))
+		}
+		t.Logf("%q. %q", name, res)
+		if typ == "num" {
+			res = strings.Replace(res, ",", ".", -1)
+		}
+		if res != tC.Want {
+			t.Errorf("%q. got %q, wanted %q.", name, res, tC.Want)
+		}
+	}
+}
+
 func TestDbmsOutput(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
