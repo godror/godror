@@ -273,6 +273,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	}
 }
 
+// ClientVersion returns the VersionInfo from the DB.
 func ClientVersion(ex execer) (VersionInfo, error) {
 	c, err := getConn(ex)
 	if err != nil {
@@ -280,6 +281,8 @@ func ClientVersion(ex execer) (VersionInfo, error) {
 	}
 	return c.drv.ClientVersion()
 }
+
+// ServerVersion returns the VersionInfo of the client.
 func ServerVersion(ex execer) (VersionInfo, error) {
 	c, err := getConn(ex)
 	if err != nil {

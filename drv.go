@@ -112,7 +112,7 @@ const (
 	DefaultPoolMinSessions = 1
 	// DefaultPoolMaxSessions specifies the default value for maxSessions for pool creation.
 	DefaultPoolMaxSessions = 1000
-	// DefaultPoolInrement specifies the default value for increment for pool creation.
+	// DefaultPoolIncrement specifies the default value for increment for pool creation.
 	DefaultPoolIncrement = 1
 	// DefaultConnectionClass is the defailt connectionClass
 	DefaultConnectionClass = "GORACLE"
@@ -122,9 +122,12 @@ const (
 type Number string
 
 var (
-	Int64   = intType{}
+	// Int64 for converting to-from int64.
+	Int64 = intType{}
+	// Float64 for converting to-from float64.
 	Float64 = floatType{}
-	Num     = numType{}
+	// Num for converting to-from Number (string)
+	Num = numType{}
 )
 
 type intType struct{}
@@ -242,9 +245,13 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 }
 func (n Number) String() string { return string(n) }
+
+// Value returns the Number as driver.Value
 func (n Number) Value() (driver.Value, error) {
 	return string(n), nil
 }
+
+// Scan into the Number from a driver.Value.
 func (n *Number) Scan(v interface{}) error {
 	if v == nil {
 		*n = ""
@@ -469,6 +476,7 @@ type ConnectionParams struct {
 	MinSessions, MaxSessions, PoolIncrement int
 }
 
+// StringNoClass returns the string representation of ConnectionParams, without class info.
 func (P ConnectionParams) StringNoClass() string {
 	return P.string(false)
 }
@@ -617,6 +625,7 @@ func b2i(b bool) uint8 {
 	return 0
 }
 
+// VersionInfo holds version info returned by Oracle DB.
 type VersionInfo struct {
 	Version, Release, Update, PortRelease, PortUpdate, Full int
 	ServerRelease                                           string
@@ -676,6 +685,7 @@ func ctxGetLog(ctx context.Context) logFunc {
 	return Log
 }
 
+// ContextWithLog returns a context with the given log function.
 func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
 	return context.WithValue(ctx, logCtxKey, logF)
 }

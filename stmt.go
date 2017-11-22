@@ -57,6 +57,7 @@ func (o stmtOptions) FetchRowCount() int {
 }
 func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
+// Option holds statement options.
 type Option func(*stmtOptions)
 
 // PlSQLArrays is to signal that the slices given in arguments of Exec to
@@ -85,8 +86,6 @@ var _ = driver.Stmt((*statement)(nil))
 var _ = driver.StmtQueryContext((*statement)(nil))
 var _ = driver.StmtExecContext((*statement)(nil))
 var _ = driver.NamedValueChecker((*statement)(nil))
-
-const sizeofDpiData = C.sizeof_dpiData
 
 type statement struct {
 	sync.Mutex
@@ -205,6 +204,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
 	var err error
+Loop:
 	for i := 0; i < 3; i++ {
 		if !st.PlSQLArrays() && st.arrLen > 0 {
 			if Log != nil {
@@ -231,7 +231,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		// ORA-04068: "existing state of packages has been discarded"
 		case 4068, 4065, 4061:
 		default:
-			break
+			break Loop
 		}
 		continue
 	}
@@ -677,7 +677,6 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			continue
 		}
 
-		n = doManyCount
 		if st.PlSQLArrays() {
 			n = rv.Len()
 

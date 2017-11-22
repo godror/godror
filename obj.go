@@ -26,11 +26,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Object represents a dpiObject.
 type Object struct {
 	dpiObject *C.dpiObject
 	*ObjectType
 }
 
+// GetAttribute gets the i-th attribute into data.
 func (O *Object) GetAttribute(data *Data, i int) error {
 	attr := O.attributes[i]
 	if data.NativeTypeNum == 0 {
@@ -41,6 +43,8 @@ func (O *Object) GetAttribute(data *Data, i int) error {
 	}
 	return nil
 }
+
+// SetAttribute sets the i-th attribute with data.
 func (O *Object) SetAttribute(i int, data *Data) error {
 	attr := O.attributes[i]
 	if data.NativeTypeNum == 0 {
@@ -52,13 +56,18 @@ func (O *Object) SetAttribute(i int, data *Data) error {
 	return nil
 }
 
+// ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
 	Object
 }
 
+// ErrNotCollection is returned when the Object is not a collection.
 var ErrNotCollection = errors.New("not collection")
+
+// ErrNotExist is returned when the collection's requested element does not exist.
 var ErrNotExist = errors.New("not exist")
 
+// Append data to the collection.
 func (O *ObjectCollection) Append(data *Data) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = O.info.(objectCollectionInfo).NativeTypeNum()
@@ -68,12 +77,16 @@ func (O *ObjectCollection) Append(data *Data) error {
 	}
 	return nil
 }
+
+// Delete i-th element of the collection.
 func (O *ObjectCollection) Delete(i int) error {
 	if C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i)) == C.DPI_FAILURE {
 		return O.getError()
 	}
 	return nil
 }
+
+// Get the i-th element of the collection into data.
 func (O *ObjectCollection) Get(data *Data, i int) error {
 	idx := C.int32_t(i)
 	var exists C.int
@@ -92,6 +105,7 @@ func (O *ObjectCollection) Get(data *Data, i int) error {
 	return nil
 }
 
+// Set the i-th element of the collection with data.
 func (O *ObjectCollection) Set(i int, data *Data) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = O.info.(objectCollectionInfo).NativeTypeNum()
@@ -102,6 +116,7 @@ func (O *ObjectCollection) Set(i int, data *Data) error {
 	return nil
 }
 
+// First returns the first element's index of the collection.
 func (O *ObjectCollection) First() (int, error) {
 	var exists C.int
 	var idx C.int32_t
@@ -113,6 +128,8 @@ func (O *ObjectCollection) First() (int, error) {
 	}
 	return 0, ErrNotExist
 }
+
+// Last returns the index of the last element.
 func (O *ObjectCollection) Last() (int, error) {
 	var exists C.int
 	var idx C.int32_t
@@ -124,6 +141,8 @@ func (O *ObjectCollection) Last() (int, error) {
 	}
 	return 0, ErrNotExist
 }
+
+// Next returns the succeeding index of i.
 func (O *ObjectCollection) Next(i int) (int, error) {
 	var exists C.int
 	var idx C.int32_t
@@ -135,6 +154,8 @@ func (O *ObjectCollection) Next(i int) (int, error) {
 	}
 	return 0, ErrNotExist
 }
+
+// Len returns the length of the collection.
 func (O *ObjectCollection) Len() (int, error) {
 	var size C.int32_t
 	if C.dpiObject_getSize(O.dpiObject, &size) == C.DPI_FAILURE {
@@ -142,6 +163,8 @@ func (O *ObjectCollection) Len() (int, error) {
 	}
 	return int(size), nil
 }
+
+// Trim the collection to n.
 func (O *ObjectCollection) Trim(n int) error {
 	if C.dpiObject_trim(O.dpiObject, C.uint32_t(n)) == C.DPI_FAILURE {
 		return O.getError()
@@ -149,6 +172,7 @@ func (O *ObjectCollection) Trim(n int) error {
 	return nil
 }
 
+// ObjectType holds type info of an Object.
 type ObjectType struct {
 	*drv
 	dpiObjectType *C.dpiObjectType
@@ -156,6 +180,7 @@ type ObjectType struct {
 	attributes    []ObjectAttribute
 }
 
+// GetObjectType returns the ObjectType of a name.
 func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
@@ -167,6 +192,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	return &ObjectType{dpiObjectType: objType}, nil
 }
 
+// NewObject returns a new Object with ObjectType type.
 func (t *ObjectType) NewObject() (*Object, error) {
 	obj := Object{ObjectType: t}
 	if C.dpiObjectType_createObject(t.dpiObjectType, (**C.dpiObject)(unsafe.Pointer(&obj.dpiObject))) == C.DPI_FAILURE {
@@ -174,6 +200,8 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	}
 	return &obj, nil
 }
+
+// Attributes of the ObjectType.
 func (t *ObjectType) Attributes() ([]ObjectAttribute, error) {
 	if t.attributes != nil {
 		return t.attributes, nil
@@ -226,6 +254,7 @@ func newDataTypeInfo(typ C.dpiDataTypeInfo) DataTypeInfo {
 	return dti
 }
 
+// Info returns ObjectInfo of the ObjectType.
 func (t *ObjectType) Info() (ObjectInfo, error) {
 	if t.info.Name() != "" {
 		return t.info, nil
@@ -249,12 +278,15 @@ func (t *ObjectType) Info() (ObjectInfo, error) {
 	return t.info, nil
 }
 
+// ObjectInfo holds Object type info.
 type ObjectInfo interface {
 	Schema() string
 	Name() string
 	NumAttributes() int
 	IsCollection() bool
 }
+
+// ObjectCollectionInfo holds type info of the collection.
 type ObjectCollectionInfo interface {
 	OracleTypeNum() C.dpiOracleTypeNum
 	NativeTypeNum() C.dpiNativeTypeNum
@@ -266,10 +298,17 @@ type objectCollectionInfo struct {
 	DataTypeInfo
 }
 
+// OracleTypeNum returns the Oracle Type of the elements of the collection.
 func (c objectCollectionInfo) OracleTypeNum() C.dpiOracleTypeNum { return c.DataTypeInfo.OracleTypeNum }
+
+// NativeTypeNum returns the native type number of the elements of the collection.
 func (c objectCollectionInfo) NativeTypeNum() C.dpiNativeTypeNum { return c.DataTypeInfo.NativeTypeNum }
-func (c objectCollectionInfo) ObjectType() *ObjectType           { return c.DataTypeInfo.ObjectType }
-func (c objectCollectionInfo) IsCollection() bool                { return true }
+
+// ObjectType of the collection.
+func (c objectCollectionInfo) ObjectType() *ObjectType { return c.DataTypeInfo.ObjectType }
+
+// IsCollection returns whether the object is a collection.
+func (c objectCollectionInfo) IsCollection() bool { return true }
 
 type objectInfo struct {
 	schema, name  string
@@ -281,12 +320,15 @@ func (i objectInfo) Name() string       { return i.name }
 func (i objectInfo) NumAttributes() int { return i.numAttributes }
 func (i objectInfo) IsCollection() bool { return false }
 
+// ObjectAttribute is an attribute of an Object.
 type ObjectAttribute struct {
 	*drv
 	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
 	DataTypeInfo
 }
+
+// DataTypeInfo holds type info for a Data.
 type DataTypeInfo struct {
 	OracleTypeNum                       C.dpiOracleTypeNum
 	NativeTypeNum                       C.dpiNativeTypeNum
@@ -297,6 +339,7 @@ type DataTypeInfo struct {
 	FsPrecision                         uint8
 }
 
+// Close the ObjectAttribute.
 func (A ObjectAttribute) Close() error {
 	attr := A.dpiObjectAttr
 	if attr == nil {
@@ -310,6 +353,7 @@ func (A ObjectAttribute) Close() error {
 	return nil
 }
 
+// GetObjectType returns the ObjectType for the name.
 func GetObjectType(ex execer, typeName string) (*ObjectType, error) {
 	c, err := getConn(ex)
 	if err != nil {

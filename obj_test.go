@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	testDrv                      *drv
 	testCon                      *conn
+	testDrv                      *drv
 	testOpenErr                  error
 	clientVersion, serverVersion VersionInfo
 	initOnce                     sync.Once
@@ -80,10 +80,10 @@ func TestObjectDirect(t *testing.T) {
   TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 END;`
-	if err := prepExec(ctx, qry); err != nil {
+	if err = prepExec(ctx, testCon, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
-	defer prepExec(ctx, "DROP PACKAGE test_pkg_obj")
+	defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
 
 	//defer tl.enableLogging(t)()
 	ot, err := testCon.GetObjectType("test_pkg_obj.tab_typ")
@@ -97,7 +97,7 @@ END;`
 	t.Log(ot)
 }
 
-func prepExec(ctx context.Context, qry string, args ...driver.NamedValue) error {
+func prepExec(ctx context.Context, testCon *conn, qry string, args ...driver.NamedValue) error {
 	stmt, err := testCon.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)

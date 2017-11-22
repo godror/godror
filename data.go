@@ -21,22 +21,29 @@ package goracle
 */
 import "C"
 import (
+	"database/sql/driver"
 	"fmt"
 	"time"
 	"unsafe"
 )
 
+// Data holds the data to/from Oracle.
 type Data struct {
 	NativeTypeNum C.dpiNativeTypeNum
 	dpiData       *C.dpiData
 }
 
+// IsNull returns whether the data is null.
 func (d *Data) IsNull() bool {
 	return d.dpiData.isNull == 1
 }
+
+// GetBool returns the bool data.
 func (d *Data) GetBool() bool {
 	return C.dpiData_getBool(d.dpiData) == 1
 }
+
+// SetBool sets the data as bool.
 func (d *Data) SetBool(b bool) {
 	var i C.int
 	if b {
@@ -44,6 +51,8 @@ func (d *Data) SetBool(b bool) {
 	}
 	C.dpiData_setBool(d.dpiData, i)
 }
+
+// GetBytes returns the []byte from the data.
 func (d *Data) GetBytes() []byte {
 	if d.IsNull() {
 		return nil
@@ -51,6 +60,8 @@ func (d *Data) GetBytes() []byte {
 	b := C.dpiData_getBytes(d.dpiData)
 	return ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
 }
+
+// SetBytes set the data as []byte.
 func (d *Data) SetBytes(b []byte) {
 	if b == nil {
 		d.dpiData.isNull = 1
@@ -58,25 +69,38 @@ func (d *Data) SetBytes(b []byte) {
 	}
 	C.dpiData_setBytes(d.dpiData, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
 }
+
+// GetFloat32 gets float32 from the data.
 func (d *Data) GetFloat32() float32 {
 	return float32(C.dpiData_getFloat(d.dpiData))
 }
+
+// SetFloat32 sets the data as float32.
 func (d *Data) SetFloat32(f float32) {
 	C.dpiData_setFloat(d.dpiData, C.float(f))
 }
 
+// GetFloat64 gets float64 from the data.
 func (d *Data) GetFloat64() float64 {
 	return float64(C.dpiData_getDouble(d.dpiData))
 }
+
+// SetFloat64 sets the data as float64.
 func (d *Data) SetFloat64(f float64) {
 	C.dpiData_setDouble(d.dpiData, C.double(f))
 }
+
+// GetInt64 gets int64 from the data.
 func (d *Data) GetInt64() int64 {
 	return int64(C.dpiData_getInt64(d.dpiData))
 }
+
+// SetInt64 sets the data as int64.
 func (d *Data) SetInt64(i int64) {
 	C.dpiData_setInt64(d.dpiData, C.int64_t(i))
 }
+
+// GetIntervalDS gets duration as interval date-seconds from data.
 func (d *Data) GetIntervalDS() time.Duration {
 	ds := C.dpiData_getIntervalDS(d.dpiData)
 	return time.Duration(ds.days)*24*time.Hour +
@@ -85,6 +109,8 @@ func (d *Data) GetIntervalDS() time.Duration {
 		time.Duration(ds.seconds)*time.Second +
 		time.Duration(ds.fseconds)
 }
+
+// SetIntervalDS sets the duration as interval date-seconds to data.
 func (d *Data) SetIntervalDS(dur time.Duration) {
 	C.dpiData_setIntervalDS(d.dpiData,
 		C.int32_t(int64(dur.Hours())/24),
@@ -92,13 +118,19 @@ func (d *Data) SetIntervalDS(dur time.Duration) {
 		C.int32_t(dur.Nanoseconds()),
 	)
 }
+
+// GetIntervalYM gets IntervalYM from the data.
 func (d *Data) GetIntervalYM() IntervalYM {
 	ym := C.dpiData_getIntervalYM(d.dpiData)
 	return IntervalYM{Years: int(ym.years), Months: int(ym.months)}
 }
+
+// SetIntervalYM sets IntervalYM to the data.
 func (d *Data) SetIntervalYM(ym IntervalYM) {
 	C.dpiData_setIntervalYM(d.dpiData, C.int32_t(ym.Years), C.int32_t(ym.Months))
 }
+
+// GetLob gets data as Lob.
 func (d *Data) GetLob() *Lob {
 	var L Lob
 	if !d.IsNull() {
@@ -106,18 +138,28 @@ func (d *Data) GetLob() *Lob {
 	}
 	return &L
 }
+
+// GetObject gets Object from data.
 func (d *Data) GetObject() *Object {
 	return &Object{dpiObject: C.dpiData_getObject(d.dpiData)}
 }
+
+// SetObject sets Object to data.
 func (d *Data) SetObject(o *Object) {
 	C.dpiData_setObject(d.dpiData, o.dpiObject)
 }
-func (d *Data) GetStmt() *statement {
+
+// GetStmt gets Stmt from data.
+func (d *Data) GetStmt() driver.Stmt {
 	return &statement{dpiStmt: C.dpiData_getStmt(d.dpiData)}
 }
+
+// SetStmt sets Stmt to data.
 func (d *Data) SetStmt(s *statement) {
 	C.dpiData_setStmt(d.dpiData, s.dpiStmt)
 }
+
+// GetTime gets Time from data.
 func (d *Data) GetTime() time.Time {
 	ts := C.dpiData_getTimestamp(d.dpiData)
 	return time.Date(
@@ -127,6 +169,8 @@ func (d *Data) GetTime() time.Time {
 	)
 
 }
+
+// SetTime sets Time to data.
 func (d *Data) SetTime(t time.Time) {
 	_, z := t.Zone()
 	C.dpiData_setTimestamp(d.dpiData,
@@ -135,17 +179,23 @@ func (d *Data) SetTime(t time.Time) {
 		C.int8_t(z/3600), C.int8_t((z%3600)/60),
 	)
 }
+
+// GetUint64 gets data as uint64.
 func (d *Data) GetUint64() uint64 {
 	return uint64(C.dpiData_getUint64(d.dpiData))
 }
+
+// SetUint64 sets data to uint64.
 func (d *Data) SetUint64(u uint64) {
 	C.dpiData_setUint64(d.dpiData, C.uint64_t(u))
 }
 
+// IntervalYM holds Years and Months as interval.
 type IntervalYM struct {
 	Years, Months int
 }
 
+// Get returns the contents of Data.
 func (d *Data) Get() interface{} {
 	switch d.NativeTypeNum {
 	case C.DPI_NATIVE_TYPE_BOOLEAN:
