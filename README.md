@@ -97,6 +97,36 @@ If you want to refresh ODPI-C, you can:
 	git add odpi
 	git commit -m 'upgrade odpi to <git commit hash of odpi>' odpi
 
+### pre-commit ###
+Add this to .git/hooks/pre-commit
+```
+#!/bin/sh
+set -e
+
+output="$(gofmt -l "$@")"
+
+if [ -n "$output" ]; then
+	echo >&2 "Go files must be formatted with gofmt. Please run:"
+	for f in $output; do
+		echo >&2 "  gofmt -w $PWD/$f"
+	done
+	exit 1
+fi
+
+for file in "$@"; do
+	go vet "$file"
+done
+
+gometalinter --vendor --disable-all \
+  --enable=deadcode \
+  --enable=ineffassign \
+  --enable=gosimple \
+  --enable=staticcheck \
+  --enable=unused \
+  --enable=vetshadow \
+  ./...
+```
+
 # Third-party #
 
   * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
