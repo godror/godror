@@ -453,8 +453,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Wrapf(d.getError(), "username=%q password=%q minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d",
-			P.Username, strings.Repeat("*", len(P.Password)),
+		return nil, errors.Wrapf(d.getError(), "username=%q password=%q SID=%q minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d ",
+			P.Username, strings.Repeat("*", len(P.Password)), P.SID,
 			P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
 	}
 	C.dpiPool_setTimeout(dp, 300)
