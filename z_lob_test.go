@@ -67,7 +67,7 @@ func (m *metricSet) Close() error {
 	if st == nil {
 		return nil
 	}
-	return m.stmt.Close()
+	return st.Close()
 }
 
 // Fetch methods implements the data gathering and data conversion to the right format
