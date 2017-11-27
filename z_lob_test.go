@@ -29,7 +29,7 @@ import (
 func TestStatWithLobs(t *testing.T) {
 	t.Parallel()
 	//defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	ms, err := newMetricSet(ctx, testDb)
@@ -38,15 +38,20 @@ func TestStatWithLobs(t *testing.T) {
 	}
 	defer ms.Close()
 
-	events, err := ms.Fetch(ctx)
-	t.Log("events:", events)
-	if err != nil {
-		t.Fatal(err)
+	for i := 0; i < 100; i++ {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		events, err := ms.Fetch(ctx)
+		t.Log("events:", len(events))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
 func newMetricSet(ctx context.Context, db *sql.DB) (*metricSet, error) {
-	qry := "select /* metricset: sqlstats */ inst_id, sql_fulltext, last_active_time from gv$sqlstats"
+	qry := "select /* metricset: sqlstats */ inst_id, sql_fulltext, last_active_time from gv$sqlstats WHERE ROWNUM < 11"
 	stmt, err := db.PrepareContext(ctx, qry)
 	if err != nil {
 		return nil, err
