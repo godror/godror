@@ -333,7 +333,7 @@ PROCEDURE p2(
 	p_num IN OUT num_tab_typ, p_vc IN OUT vc_tab_typ, p_dt IN OUT dt_tab_typ);
 END test_pkg;
 `
-	if _, err := conn.ExecContext(ctx, qry); err != nil {
+	if _, err = conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PACKAGE test_pkg")
@@ -404,7 +404,7 @@ BEGIN
 END p2;
 END test_pkg;
 `
-	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+	if _, err = testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 	compileErrors, err := goracle.GetCompileErrors(testDb, false)
@@ -535,7 +535,7 @@ BEGIN
   p_dt := NVL(p_dt + 1, SYSDATE);
   p_lob := NULL;
 END;`
-	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+	if _, err = testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PROCEDURE test_p1")
@@ -691,15 +691,15 @@ func TestExecuteMany(t *testing.T) {
 		{"f_vc", strs},
 		{"f_dt", dates},
 	} {
-		res, err := conn.ExecContext(ctx,
+		res, execErr := conn.ExecContext(ctx,
 			"INSERT INTO test_em ("+tc.Name+") VALUES (:1)",
 			tc.Value)
-		if err != nil {
-			t.Fatalf("%d. INSERT INTO test_em (%q) VALUES (%+v): %#v", i, tc.Name, tc.Value, err)
+		if execErr != nil {
+			t.Fatalf("%d. INSERT INTO test_em (%q) VALUES (%+v): %#v", i, tc.Name, tc.Value, execErr)
 		}
-		ra, err := res.RowsAffected()
-		if err != nil {
-			t.Error(err)
+		ra, raErr := res.RowsAffected()
+		if raErr != nil {
+			t.Error(raErr)
 		} else if ra != num {
 			t.Errorf("%d. %q: wanted %d rows, got %d", i, tc.Name, num, ra)
 		}
@@ -863,7 +863,7 @@ func TestObject(t *testing.T) {
   TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 END;`
-	if _, err := conn.ExecContext(ctx, qry); err != nil {
+	if _, err = conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
 	defer testDb.Exec("DROP PACKAGE test_pkg_obj")

@@ -793,12 +793,21 @@ func dataGetBool(v interface{}, data []C.dpiData) error {
 	return nil
 }
 func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
 	b := C.int(0)
-	for i, v := range vv.([]bool) {
-		if v {
-			b = 1
+	if bb, ok := vv.([]bool); ok {
+		for i, v := range bb {
+			if v {
+				b = 1
+			}
+			C.dpiData_setBool(&data[i], b)
 		}
-		C.dpiData_setBool(&data[i], b)
+	} else {
+		for i := range data {
+			data[i].isNull = 1
+		}
 	}
 	return nil
 }
@@ -833,11 +842,20 @@ func dataGetTimeC(t *time.Time, data *C.dpiData) {
 	)
 }
 func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
 	times := []time.Time{time.Time{}}
 	if t, ok := vv.(time.Time); ok {
 		times[0] = t
 	} else {
-		times = vv.([]time.Time)
+		var ok bool
+		if times, ok = vv.([]time.Time); !ok {
+			for i := range data {
+				data[i].isNull = 1
+			}
+			return nil
+		}
 	}
 	for i, t := range times {
 		if t.IsZero() {
@@ -1020,6 +1038,9 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if len(data) == 0 {
 		return nil
+	}
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
 	}
 	switch slice := vv.(type) {
 	case int:
@@ -1223,7 +1244,9 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if len(data) == 0 {
 		return nil
 	}
-
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
 	var p *C.char
 	switch slice := vv.(type) {
 	case []byte:
@@ -1372,6 +1395,9 @@ func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
 func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if len(data) == 0 {
 		return nil
+	}
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
 	}
 
 	lobs := []Lob{Lob{}}
