@@ -154,8 +154,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.New("already in transaction")
 	}
 	c.inTransaction = true
-	tt, _ := ctx.Value(traceTagCtxKey).(TraceTag)
-	c.setTraceTag(tt)
+	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+		c.setTraceTag(tt)
+	}
 	return c, nil
 }
 
@@ -168,8 +169,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 	c.Lock()
 	defer c.Unlock()
-	tt, _ := ctx.Value(traceTagCtxKey).(TraceTag)
-	c.setTraceTag(tt)
+	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+		c.setTraceTag(tt)
+	}
 	if query == getConnection {
 		if Log != nil {
 			Log("msg", "PrepareContext", "shortcut", query)
