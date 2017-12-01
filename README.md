@@ -54,6 +54,15 @@ or (better) set the logger in the Context of ExecContext or QueryContext:
 
     db.QueryContext(goracle.ContextWithLog(ctx, logger.Log), qry)
 
+## Tracing ##
+To set ClientIdentifier, ClientInfo, Module, Action and DbOp on the session,
+to be seen in the Database by the Admin, set goracle.TraceTag on the Context:
+
+	db.QueryContext(goracle.ContextWithTraceTag(goracle.TraceTag{
+		Module: "processing",
+		Action: "first",
+	}), qry)
+
 # Install #
 Just
 
