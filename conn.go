@@ -288,7 +288,7 @@ func maybeBadConn(err error) error {
 	}); ok {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
 		switch cd.Code() {
-		case 1012, 3113, 3114, 12170, 12528, 12545, 12547, 28547:
+		case 1012, 3113, 3114, 12170, 12528, 12545, 12547, 24315, 28547:
 			// ORA-01012: Not logged on
 			// ORA-03113: end-of-file on communication channel
 			// ORA-03114: not connected to ORACLE
@@ -296,6 +296,7 @@ func maybeBadConn(err error) error {
 			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 			// ORA-12545: Connect failed because target host or object does not exist
 			// ORA-12547: TNS:lost contact
+			// ORA-24315: illegal attribute type
 			// ORA-28547: connection to server failed, probable Oracle Net admin error
 			return driver.ErrBadConn
 		}
