@@ -110,6 +110,8 @@ func (c *conn) Close() error {
 		return nil
 	}
 	c.setTraceTag(TraceTag{})
+	// Just to be sure, break anything in progress.
+	C.dpiConn_breakExecution(c.dpiConn)
 	if C.dpiConn_release(dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Close")
 	}
