@@ -104,14 +104,14 @@ func (c *conn) Close() error {
 	}
 	c.Lock()
 	defer c.Unlock()
+	c.setTraceTag(TraceTag{})
 	dpiConn := c.dpiConn
 	c.dpiConn = nil
 	if dpiConn == nil {
 		return nil
 	}
-	c.setTraceTag(TraceTag{})
 	// Just to be sure, break anything in progress.
-	C.dpiConn_breakExecution(c.dpiConn)
+	C.dpiConn_breakExecution(dpiConn)
 	if C.dpiConn_release(dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Close")
 	}
