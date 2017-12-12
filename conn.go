@@ -310,6 +310,7 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 	if c.dpiConn == nil {
 		return nil
 	}
+	//fmt.Fprintf(os.Stderr, "setTraceTag %s\n", tt)
 	var err error
 	for nm, v := range map[string]*string{
 		"action":     &tt.Action,

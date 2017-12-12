@@ -886,6 +886,72 @@ END;`
 	t.Log(ot)
 }
 
+func TestOpenClose(t *testing.T) {
+	t.Parallel()
+	cs, err := goracle.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.MinSessions, cs.MaxSessions = 1, 5
+	t.Log(cs.String())
+	db, err := sql.Open("goracle", cs.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const module = "goracle.v2.test-OpenClose "
+	stmt, err := db.PrepareContext(ctx, "SELECT COUNT(0) FROM v$session WHERE module LIKE '"+module+"%'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+	sessCount := func() (int, error) {
+		var n int
+		qErr := stmt.QueryRowContext(ctx).Scan(&n)
+		return n, qErr
+	}
+	n, err := sessCount()
+	if err != nil {
+		t.Skip(err)
+	}
+	if n > 0 {
+		t.Logf("sessCount=%d at start!", n)
+	}
+	var tt goracle.TraceTag
+	for i := 0; i < 10; i++ {
+		tt.Module = fmt.Sprintf("%s%d", module, 2*i)
+		ctx = goracle.ContextWithTraceTag(ctx, tt)
+		tx1, err1 := db.BeginTx(ctx, nil)
+		if err1 != nil {
+			t.Fatal(err1)
+		}
+		tt.Module = fmt.Sprintf("%s%d", module, 2*i+1)
+		ctx = goracle.ContextWithTraceTag(ctx, tt)
+		tx2, err2 := db.BeginTx(ctx, nil)
+		if err2 != nil {
+			t.Fatal(err2)
+		}
+		if n, err = sessCount(); err != nil {
+			t.Log(err)
+		} else if n == 0 {
+			t.Error("sessCount=0, want at least 2")
+		} else {
+			t.Log(n)
+		}
+		tx1.Rollback()
+		tx2.Rollback()
+	}
+	if n, err = sessCount(); err != nil {
+		t.Log(err)
+	} else if n > 1 {
+		t.Error(n)
+	}
+}
+
 func TestOpenBadMemory(t *testing.T) {
 	var mem runtime.MemStats
 	runtime.GC()
