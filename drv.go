@@ -296,11 +296,11 @@ type drv struct {
 
 func newDrv() (*drv, error) {
 	var d drv
-	err := &oraErr{}
+	var errInfo *C.dpiErrorInfo
 	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
-		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &err.errInfo,
+		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), errInfo,
 	) == C.DPI_FAILURE {
-		return nil, err
+		return nil, fromErrorInfo(errInfo)
 	}
 	d.pools = make(map[string]*C.dpiPool)
 	return &d, nil
@@ -595,27 +595,46 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 }
 
 type oraErr struct {
-	errInfo C.dpiErrorInfo
+	code    int
+	message string
 }
 
-func (oe *oraErr) Code() int       { return int(oe.errInfo.code) }
-func (oe *oraErr) Message() string { return C.GoString(oe.errInfo.message) }
+func (oe *oraErr) Code() int       { return oe.code }
+func (oe *oraErr) Message() string { return oe.message }
 func (oe *oraErr) Error() string {
 	msg := oe.Message()
-	if oe.errInfo.code == 0 && msg == "" {
+	if oe.code == 0 && msg == "" {
 		return ""
 	}
-	prefix := fmt.Sprintf("ORA-%05d: ", oe.Code())
-	if strings.HasPrefix(msg, prefix) {
-		return msg
+	return fmt.Sprintf("ORA-%05d: %s", oe.code, oe.message)
+}
+func fromErrorInfo(errInfo *C.dpiErrorInfo) *oraErr {
+	oe := oraErr{
+		code:    int(errInfo.code),
+		message: strings.TrimSpace(C.GoString(errInfo.message)),
 	}
-	return prefix + msg
+	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
+		len(oe.message) > 9 && oe.message[9] == ':' {
+		if i, _ := strconv.Atoi(oe.message[4:9]); i > 0 {
+			oe.code = i
+		}
+	}
+	oe.message = strings.TrimPrefix(oe.message, fmt.Sprintf("ORA-%05d: ", oe.Code()))
+	return &oe
 }
 
+// newErrorInfo is just for testing: testing cannot use Cgo...
+func newErrorInfo(code int, message string) *C.dpiErrorInfo {
+	return &C.dpiErrorInfo{code: C.int(code), message: C.CString(message)}
+}
+
+// against deadcode
+var _ = newErrorInfo
+
 func (d *drv) getError() *oraErr {
-	var oe oraErr
-	C.dpiContext_getError(d.dpiContext, &oe.errInfo)
-	return &oe
+	var errInfo *C.dpiErrorInfo
+	C.dpiContext_getError(d.dpiContext, errInfo)
+	return fromErrorInfo(errInfo)
 }
 
 func b2i(b bool) uint8 {
