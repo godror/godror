@@ -296,9 +296,9 @@ type drv struct {
 
 func newDrv() (*drv, error) {
 	var d drv
-	var errInfo *C.dpiErrorInfo
+	var errInfo C.dpiErrorInfo
 	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
-		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), errInfo,
+		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &errInfo,
 	) == C.DPI_FAILURE {
 		return nil, fromErrorInfo(errInfo)
 	}
@@ -608,7 +608,7 @@ func (oe *oraErr) Error() string {
 	}
 	return fmt.Sprintf("ORA-%05d: %s", oe.code, oe.message)
 }
-func fromErrorInfo(errInfo *C.dpiErrorInfo) *oraErr {
+func fromErrorInfo(errInfo C.dpiErrorInfo) *oraErr {
 	oe := oraErr{
 		code:    int(errInfo.code),
 		message: strings.TrimSpace(C.GoString(errInfo.message)),
@@ -624,16 +624,16 @@ func fromErrorInfo(errInfo *C.dpiErrorInfo) *oraErr {
 }
 
 // newErrorInfo is just for testing: testing cannot use Cgo...
-func newErrorInfo(code int, message string) *C.dpiErrorInfo {
-	return &C.dpiErrorInfo{code: C.int(code), message: C.CString(message)}
+func newErrorInfo(code int, message string) C.dpiErrorInfo {
+	return C.dpiErrorInfo{code: C.int(code), message: C.CString(message)}
 }
 
 // against deadcode
 var _ = newErrorInfo
 
 func (d *drv) getError() *oraErr {
-	var errInfo *C.dpiErrorInfo
-	C.dpiContext_getError(d.dpiContext, errInfo)
+	var errInfo C.dpiErrorInfo
+	C.dpiContext_getError(d.dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)
 }
 

@@ -82,7 +82,7 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 	}
 	var err error
 	if message.errorInfo != nil {
-		err = fromErrorInfo(message.errorInfo)
+		err = fromErrorInfo(*message.errorInfo)
 	}
 
 	subscr.events <- Event{
