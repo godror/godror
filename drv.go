@@ -625,7 +625,7 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) *oraErr {
 
 // newErrorInfo is just for testing: testing cannot use Cgo...
 func newErrorInfo(code int, message string) C.dpiErrorInfo {
-	return C.dpiErrorInfo{code: C.int(code), message: C.CString(message)}
+	return C.dpiErrorInfo{code: C.int32_t(code), message: C.CString(message)}
 }
 
 // against deadcode
