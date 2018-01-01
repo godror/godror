@@ -1278,10 +1278,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 		data[i].isNull = 0
-		b := []byte(x)
-		p = (*C.char)(unsafe.Pointer(&b[0]))
-		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
-		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+		dpi_setFromString(dv, C.uint32_t(i), string(x))
 	case []Number:
 		for i, x := range slice {
 			if len(x) == 0 {
@@ -1289,10 +1286,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 				continue
 			}
 			data[i].isNull = 0
-			b := []byte(x)
-			p = (*C.char)(unsafe.Pointer(&b[0]))
-			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", i, "p", p, "len", len(b)) }
-			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+			dpi_setFromString(dv, C.uint32_t(i), string(x))
 		}
 
 	case string:
@@ -1302,10 +1296,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 		data[i].isNull = 0
-		b := []byte(x)
-		p = (*C.char)(unsafe.Pointer(&b[0]))
-		//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
-		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
+		dpi_setFromString(dv, C.uint32_t(i), x)
 	case []string:
 		for i, x := range slice {
 			if len(x) == 0 {
@@ -1313,10 +1304,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 				continue
 			}
 			data[i].isNull = 0
-			b := []byte(x)
-			p = (*C.char)(unsafe.Pointer(&b[0]))
-			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(b)))
-			//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
+			dpi_setFromString(dv, C.uint32_t(i), x)
 		}
 
 	default:

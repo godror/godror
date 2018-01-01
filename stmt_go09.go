@@ -17,4 +17,18 @@
 
 package goracle
 
+/*
+#include <stdlib.h>
+#include "dpiImpl.h"
+*/
+import "C"
+import "unsafe"
+
 const go10 = false
+
+func dpi_setFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
+	b := []byte(x)
+	p = (*C.char)(unsafe.Pointer(&b[0]))
+	//if Log != nil {Log("C", "dpiVar_setFromBytes", "dv", dv, "pos", pos, "p", p, "len", len(b)) }
+	C.dpiVar_setFromBytes(dv, pos, p, C.uint32_t(len(b)))
+}

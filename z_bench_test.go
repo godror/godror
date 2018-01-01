@@ -422,7 +422,7 @@ func BenchmarkSelectDate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; {
 		b.StopTimer()
-		rows, err := testDb.Query("SELECT CAST(TO_DATE('2006-01-02 15:04:05', 'YYYY-MM-DD HH24:MI:SS') AS DATE) dt FROM user_objects, (select 1 from dual)")
+		rows, err := testDb.Query("SELECT CAST(TO_DATE('2006-01-02 15:04:05', 'YYYY-MM-DD HH24:MI:SS') AS DATE) dt FROM user_objects, (select 1 from dual union all select 1 from dual union all select 1 from dual), (select 1 from dual union all select 1 from dual union all select 1 from dual)")
 		if err != nil {
 			b.Fatal(err)
 		}
