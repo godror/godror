@@ -341,11 +341,18 @@ func createGeoTable(tableName string, rowCount int) error {
 		{"9", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
 		{"10", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
 	}
-	dataI := make([][]interface{}, len(testData))
-	for i, data := range testData {
-		dataI[i] = make([]interface{}, 1, len(data)+1)
-		for _, d := range data {
-			dataI[i] = append(dataI[i], d)
+	cols := make([]interface{}, len(testData[0])+1)
+	for i := range cols {
+		cols[i] = make([]string, rowCount)
+	}
+	for i := 0; i < rowCount; i++ {
+		row := testData[i%len(testData)]
+		for j, col := range cols {
+			if j == 0 {
+				(col.([]string))[i] = strconv.Itoa(i)
+			} else {
+				(col.([]string))[i] = row[j-1]
+			}
 		}
 	}
 
@@ -359,18 +366,9 @@ func createGeoTable(tableName string, rowCount int) error {
 	if err != nil {
 		return err
 	}
-Loop:
-	for rn := 0; rn < rowCount; {
-		for i, data := range dataI {
-			data[0] = strconv.Itoa(rn)
-			if _, err := stmt.Exec(data...); err != nil {
-				return fmt.Errorf("%d. %v\n%q", i, err, data)
-			}
-			rn++
-			if rn == rowCount {
-				break Loop
-			}
-		}
+	defer stmt.Close()
+	if _, err := stmt.Exec(cols...); err != nil {
+		return fmt.Errorf("%v\n%q", err, cols)
 	}
 	return nil
 }
@@ -422,7 +420,11 @@ func BenchmarkSelectDate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; {
 		b.StopTimer()
-		rows, err := testDb.Query("SELECT CAST(TO_DATE('2006-01-02 15:04:05', 'YYYY-MM-DD HH24:MI:SS') AS DATE) dt FROM user_objects, (select 1 from dual union all select 1 from dual union all select 1 from dual), (select 1 from dual union all select 1 from dual union all select 1 from dual)")
+		rows, err := testDb.Query(`SELECT CAST(TO_DATE('2006-01-02 15:04:05', 'YYYY-MM-DD HH24:MI:SS') AS DATE) dt
+		FROM
+		(select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual),
+		(select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual union all select 1 from dual)
+		`)
 		if err != nil {
 			b.Fatal(err)
 		}
