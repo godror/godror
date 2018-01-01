@@ -21,11 +21,6 @@ install:
     - git clone --depth=50 --branch=master https://github.com/go-goracle/goracle.git goracle.v2
     - cd goracle.v2
     - git submodule update --init --recursive
-    - cd odpi
-    - make
-    - sudo cp -a lib/libodpic.so /usr/local/lib
-    - sudo ldconfig /usr/local/lib
-    - cd ..
     - go get -t .
 script:
     - export GORACLE_DRV_TEST_USERNAME=test
