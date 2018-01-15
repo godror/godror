@@ -594,22 +594,22 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	return P, nil
 }
 
-type oraErr struct {
+type OraErr struct {
 	code    int
 	message string
 }
 
-func (oe *oraErr) Code() int       { return oe.code }
-func (oe *oraErr) Message() string { return oe.message }
-func (oe *oraErr) Error() string {
+func (oe *OraErr) Code() int       { return oe.code }
+func (oe *OraErr) Message() string { return oe.message }
+func (oe *OraErr) Error() string {
 	msg := oe.Message()
 	if oe.code == 0 && msg == "" {
 		return ""
 	}
 	return fmt.Sprintf("ORA-%05d: %s", oe.code, oe.message)
 }
-func fromErrorInfo(errInfo C.dpiErrorInfo) *oraErr {
-	oe := oraErr{
+func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
+	oe := OraErr{
 		code:    int(errInfo.code),
 		message: strings.TrimSpace(C.GoString(errInfo.message)),
 	}
@@ -631,7 +631,7 @@ func newErrorInfo(code int, message string) C.dpiErrorInfo {
 // against deadcode
 var _ = newErrorInfo
 
-func (d *drv) getError() *oraErr {
+func (d *drv) getError() *OraErr {
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(d.dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)

@@ -23,7 +23,7 @@ func TestFromErrorInfo(t *testing.T) {
 	errInfo := newErrorInfo(0, "ORA-24315: érvénytelen attribútumtípus\n")
 	t.Log("errInfo", errInfo)
 	oe := fromErrorInfo(errInfo)
-	t.Log("oraErr", oe)
+	t.Log("OraErr", oe)
 	if oe.Code() != 24315 {
 		t.Errorf("got %d, wanted 24315", oe.Code())
 	}
