@@ -666,7 +666,7 @@ func (V VersionInfo) String() string {
 	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
 }
 
-var timezones map[[2]C.int8_t]*time.Location
+var timezones = make(map[[2]C.int8_t]*time.Location)
 var timezonesMu sync.RWMutex
 
 func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
