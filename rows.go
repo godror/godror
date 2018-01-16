@@ -267,6 +267,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		return r.err
 	}
 	if r.finished {
+		_ = r.Close()
 		return io.EOF
 	}
 	if r.fetched == 0 {
@@ -277,6 +278,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		//fmt.Printf("bri=%d fetched=%d, moreRows=%d\n", r.bufferRowIndex, r.fetched, moreRows)
 		if r.fetched == 0 {
 			r.finished = moreRows == 0
+			_ = r.Close()
 			return io.EOF
 		}
 		//fmt.Printf("data=%#v\n", r.data)

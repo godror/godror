@@ -1095,7 +1095,7 @@ func TestORA1000(t *testing.T) {
 	defer rows.Close()
 	for i := 0; i < 1000; i++ {
 		var n int64
-		if err := testDb.QueryRowContext(ctx, "SELECT /*"+strconv.Itoa(i)+"*/ COUNT(0) FROM DUAL WHERE EXISTS (SELECT 1 FROM user_objects)").Scan(&n); err != nil {
+		if err := testDb.QueryRowContext(ctx, "SELECT /*"+strconv.Itoa(i)+"*/ 1 FROM DUAL").Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 	}
