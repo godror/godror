@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
 	goracle "gopkg.in/goracle.v2"
 )
 
@@ -37,6 +39,13 @@ func TestStatWithLobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ms.Close()
+	if _, err = ms.Fetch(ctx); err != nil {
+		if c, ok := errors.Cause(err).(interface{ Code() int }); ok && c.Code() == 942 {
+			t.Skip(err)
+			return
+		}
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 100; i++ {
 		if err := ctx.Err(); err != nil {
