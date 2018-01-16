@@ -1084,3 +1084,13 @@ func TestPtrArg(t *testing.T) {
 	}
 	rows.Close()
 }
+func TestORA1000(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for i := 0; i < 10000; i++ {
+		var n int64
+		if err := testDb.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
