@@ -458,8 +458,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
 	}
 	C.dpiPool_setTimeout(dp, 300)
-	//C.dpiPool_setMaxLifetimeSession(dp, 3600)
-	C.dpiPool_setStmtCacheSize(dp, 1<<20)
+	C.dpiPool_setMaxLifetimeSession(dp, 3600)
+	C.dpiPool_setStmtCacheSize(dp, 40)
 	d.poolsMu.Lock()
 	d.pools[connString] = dp
 	d.poolsMu.Unlock()
