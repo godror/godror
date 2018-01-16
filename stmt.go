@@ -321,19 +321,30 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	var err error
 	var colCount C.uint32_t
 	for i := 0; i < 3; i++ {
-		if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount) == C.DPI_FAILURE {
-			err = st.getError()
-			if err.(interface {
-				Code() int
-			}).Code() == 4068 {
-				continue
-			}
+		if err = ctx.Err(); err != nil {
+			close(done)
+			return nil, err
 		}
-		break
+		if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount) != C.DPI_FAILURE {
+			break
+		}
+		if err = ctx.Err(); err != nil {
+			close(done)
+			return nil, err
+		}
+		err = st.getError()
+		if c, ok := err.(interface{ Code() int }); ok && c.Code() != 4068 {
+			break
+		}
 	}
 	close(done)
 	if err != nil {
-		return nil, maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			return nil, maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
+		}
 	}
 	return st.openRows(int(colCount))
 }

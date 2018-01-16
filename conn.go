@@ -27,6 +27,7 @@ import (
 	"database/sql/driver"
 	//"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -111,9 +112,18 @@ func (c *conn) Close() error {
 		return nil
 	}
 	// Just to be sure, break anything in progress.
-	C.dpiConn_breakExecution(dpiConn)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			C.dpiConn_breakExecution(dpiConn)
+		}
+	}()
+	rc := C.dpiConn_release(dpiConn)
+	close(done)
 	var err error
-	if C.dpiConn_release(dpiConn) == C.DPI_FAILURE {
+	if rc == C.DPI_FAILURE {
 		err = errors.Wrap(c.getError(), "Close")
 	}
 	return err
