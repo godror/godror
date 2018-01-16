@@ -686,8 +686,8 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
 			)
 			timezones[key] = tz
 		}
+		timezonesMu.Unlock()
 	}
-	timezonesMu.Unlock()
 	return tz
 }
 
