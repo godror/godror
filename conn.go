@@ -112,10 +112,11 @@ func (c *conn) Close() error {
 	}
 	// Just to be sure, break anything in progress.
 	C.dpiConn_breakExecution(dpiConn)
+	var err error
 	if C.dpiConn_release(dpiConn) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "Close")
+		err = errors.Wrap(c.getError(), "Close")
 	}
-	return nil
+	return err
 }
 
 // Begin starts and returns a new transaction.

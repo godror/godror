@@ -984,6 +984,7 @@ func TestSelectFloat(t *testing.T) {
   FLOAT_COL  NUMBER,
   EMPTY_INT_COL NUMBER
 )`
+	testDb.Exec("DROP TABLE test_numbers")
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
@@ -1087,9 +1088,14 @@ func TestPtrArg(t *testing.T) {
 func TestORA1000(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	for i := 0; i < 10000; i++ {
+	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for i := 0; i < 1000; i++ {
 		var n int64
-		if err := testDb.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&n); err != nil {
+		if err := testDb.QueryRowContext(ctx, "SELECT COUNT(0) FROM DUAL WHERE EXISTS (SELECT 1 FROM user_objects)").Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 	}

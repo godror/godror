@@ -117,17 +117,18 @@ func (st *statement) Close() error {
 	for _, v := range st.vars {
 		C.dpiVar_release(v)
 	}
-	if st.dpiStmt != nil && C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
-		return errors.Wrap(st.getError(), "dpiStmt_release")
-	}
 	st.data = nil
 	st.vars = nil
 	st.varInfos = nil
 	st.gets = nil
 	st.dests = nil
 	st.columns = nil
+	var err error
+	if st.dpiStmt != nil && C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
+		err = errors.Wrap(st.getError(), "statement/dpiStmt_release")
+	}
 	st.dpiStmt = nil
-	return nil
+	return err
 }
 
 // Exec executes a query that doesn't return rows, such

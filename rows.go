@@ -65,16 +65,31 @@ func (r *rows) Columns() []string {
 
 // Close closes the rows iterator.
 func (r *rows) Close() error {
+	if r == nil {
+		return nil
+	}
+	r.columns = nil
+	r.data = nil
 	for _, v := range r.vars {
 		C.dpiVar_release(v)
 	}
-	if r.statement == nil || r.statement.dpiStmt == nil {
+	r.vars = nil
+	if r.statement == nil {
 		return nil
 	}
-	if C.dpiStmt_release(r.statement.dpiStmt) == C.DPI_FAILURE {
-		return errors.Wrap(r.getError(), "Close")
+	st := r.statement
+	r.statement = nil
+
+	st.Lock()
+	defer st.Unlock()
+	if st.dpiStmt == nil {
+		return nil
 	}
-	return nil
+	var err error
+	if C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
+		err = errors.Wrap(r.getError(), "rows/dpiStmt_release")
+	}
+	return err
 }
 
 // ColumnTypeLength return the length of the column type if the column is a variable length type.
