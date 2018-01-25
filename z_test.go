@@ -24,6 +24,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -36,6 +37,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -48,6 +50,8 @@ var (
 	testConStr                   string
 )
 
+const maxSessions = 64
+
 func init() {
 	logger := &log.SwapLogger{}
 	goracle.Log = logger.Log
@@ -55,10 +59,11 @@ func init() {
 		logger.Swap(tl)
 	}
 
-	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=16&poolIncrement=1&connectionClass=POOLED",
+	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED",
 		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		os.Getenv("GORACLE_DRV_TEST_DB"),
+		maxSessions,
 	)
 	var err error
 	if testDb, err = sql.Open("goracle", testConStr); err != nil {
@@ -1098,5 +1103,91 @@ func TestORA1000(t *testing.T) {
 		if err := testDb.QueryRowContext(ctx, "SELECT /*"+strconv.Itoa(i)+"*/ 1 FROM DUAL").Scan(&n); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestRanaOraIssue244(t *testing.T) {
+	t.Parallel()
+	const tableName = "test_ora_issue_244"
+	qry := "CREATE TABLE " + tableName + " (FUND_ACCOUNT VARCHAR2(18) NOT NULL，FUND_CODE VARCHAR2(6) NOT NULL, BUSINESS_FLAG NUMBER(10) NOT NULL, MONEY_TYPE VARCHAR2(3) NOT NULL)"
+	testDb.Exec("DROP TABLE " + tableName)
+	if _, err := testDb.Exec(qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP TABLE " + tableName)
+	const bf = "143"
+	const sc = "270004"
+	qry = "INSERT INTO " + tableName + " (fund_account, fund_code, business_flag, money_type) VALUES (:1, :2, :3, :4)"
+	stmt, err := testDb.Prepare(qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	fas := []string{"14900666", "1868091", "1898964", "14900397"}
+	for _, v := range fas {
+		if _, err := stmt.Exec(v, sc, bf, "0"); err != nil {
+			stmt.Close()
+			t.Fatal(err)
+		}
+	}
+	stmt.Close()
+
+	dur := time.Minute
+	if testing.Short() {
+		dur = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dur)
+	defer cancel()
+
+	grp, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < maxSessions; i++ {
+		index := rand.Intn(len(fas))
+		grp.Go(func() error {
+			tx, err := testDb.BeginTx(ctx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+
+			const qry = `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3`
+			stmt, err := tx.Prepare(qry)
+			if err != nil {
+				return err
+			}
+			defer stmt.Close()
+
+			for {
+				index = (index + 1) % len(fas)
+				rows, err := stmt.Query(bf, sc, fas[index])
+				if err != nil {
+					return errors.Wrap(err, qry)
+				}
+
+				for rows.Next() {
+					if err = ctx.Err(); err != nil {
+						rows.Close()
+						return err
+					}
+					var acc, mt string
+					if err = rows.Scan(&acc, &mt); err != nil {
+						rows.Close()
+						return err
+					}
+
+					if acc != fas[index] {
+						rows.Close()
+						return errors.Errorf("got acc %q, wanted %q", acc, fas[index])
+					}
+					if mt != "0" {
+						rows.Close()
+						return errors.Errorf("got mt %q, wanted 0", mt)
+					}
+				}
+				rows.Close()
+			}
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil && err != context.DeadlineExceeded {
+		t.Error(err)
 	}
 }
