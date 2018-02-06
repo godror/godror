@@ -952,8 +952,8 @@ func TestOpenClose(t *testing.T) {
 	}
 	if n, err = sessCount(); err != nil {
 		t.Log(err)
-	} else if n > 1 {
-		t.Error(n)
+	} else if n > 4 {
+		t.Error("sessCount:", n)
 	}
 }
 
@@ -1139,7 +1139,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	defer cancel()
 
 	grp, ctx := errgroup.WithContext(ctx)
-	for i := 0; i < maxSessions; i++ {
+	for i := 0; i < maxSessions/2; i++ {
 		index := rand.Intn(len(fas))
 		grp.Go(func() error {
 			tx, err := testDb.BeginTx(ctx, nil)
