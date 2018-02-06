@@ -1139,7 +1139,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	defer cancel()
 
 	grp, ctx := errgroup.WithContext(ctx)
-	for i := 0; i < maxSessions; i++ {
+	for i := 0; i < maxSessions/2; i++ {
 		index := rand.Intn(len(fas))
 		grp.Go(func() error {
 			tx, err := testDb.BeginTx(ctx, nil)
