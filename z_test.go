@@ -952,8 +952,8 @@ func TestOpenClose(t *testing.T) {
 	}
 	if n, err = sessCount(); err != nil {
 		t.Log(err)
-	} else if n > 1 {
-		t.Error(n)
+	} else if n > 4 {
+		t.Error("sessCount:", n)
 	}
 }
 

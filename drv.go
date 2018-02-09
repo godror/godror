@@ -41,33 +41,11 @@ package goracle
 //go:generate git submodule update --init --recursive
 
 /*
-#cgo CFLAGS: -I./odpi/include -I./odpi/src
+#cgo CFLAGS: -I./odpi/include -I./odpi/src -I./odpi/embed
 
 #include <stdlib.h>
 
-#include "dpiImpl.h"
-#include "dpiConn.c"
-#include "dpiContext.c"
-#include "dpiData.c"
-#include "dpiDeqOptions.c"
-#include "dpiEnqOptions.c"
-#include "dpiEnv.c"
-#include "dpiError.c"
-#include "dpiGen.c"
-#include "dpiGlobal.c"
-#include "dpiLob.c"
-#include "dpiMsgProps.c"
-#include "dpiObject.c"
-#include "dpiObjectAttr.c"
-#include "dpiObjectType.c"
-#include "dpiOci.c"
-#include "dpiOracleType.c"
-#include "dpiPool.c"
-#include "dpiRowid.c"
-#include "dpiStmt.c"
-#include "dpiSubscr.c"
-#include "dpiUtils.c"
-#include "dpiVar.c"
+#include "dpi.c"
 */
 import "C"
 
@@ -101,9 +79,9 @@ const (
 
 const (
 	// DpiMajorVersion is the wanted major version of the underlying ODPI-C library.
-	DpiMajorVersion = 2
+	DpiMajorVersion = C.DPI_MAJOR_VERSION
 	// DpiMinorVersion is the wanted minor version of the underlying ODPI-C library.
-	DpiMinorVersion = 0
+	DpiMinorVersion = C.DPI_MINOR_VERSION
 
 	// DriverName is set on the connection to be seen in the DB
 	DriverName = "gopkg.in/goracle.v2 : " + Version
