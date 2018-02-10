@@ -64,7 +64,7 @@ type Option func(*stmtOptions)
 // be left as is - the default is to treat them as arguments for ExecMany.
 var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
 
-// FetchRowCount returns an option to set the rows to be fetched.
+// FetchRowCount returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
 func FetchRowCount(rowCount int) Option {
 	if rowCount <= 0 {
 		return nil
@@ -72,7 +72,7 @@ func FetchRowCount(rowCount int) Option {
 	return func(o *stmtOptions) { o.fetchRowCount = rowCount }
 }
 
-// ArraySize returns an option to set the array size to be used.
+// ArraySize returns an option to set the array size to be used, overriding DefaultArraySize.
 func ArraySize(arraySize int) Option {
 	if arraySize <= 0 {
 		return nil

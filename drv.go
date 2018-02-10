@@ -70,10 +70,10 @@ import (
 const Version = "v2.1.14"
 
 const (
-	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through ContextWithFetchRowCount).
+	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through FetchRowCount statement option).
 	DefaultFetchRowCount = 1 << 8
 
-	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ContextWithArraySize).
+	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ArraySize statement option).
 	DefaultArraySize = 1 << 10
 )
 
