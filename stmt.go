@@ -501,7 +501,10 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	}
 
 	if maxArrLen > maxArraySize {
-		return errors.Errorf("slice is bigger (%d) than the maximum (%d)", maxArrLen, maxArraySize)
+		if st.arrLen == maxArraySize {
+			st.arrLen = maxArrLen
+		}
+		maxArraySize = maxArrLen
 	}
 	doManyCount := 1
 	doExecMany := !st.PlSQLArrays()
