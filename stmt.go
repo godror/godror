@@ -41,6 +41,14 @@ type stmtOptions struct {
 	plSQLArrays   bool
 	fetchRowCount int
 	arraySize     int
+	execMode      C.dpiExecMode
+}
+
+func (o stmtOptions) ExecMode() C.dpiExecMode {
+	if o.execMode == 0 {
+		return C.DPI_MODE_EXEC_DEFAULT
+	}
+	return o.execMode
 }
 
 func (o stmtOptions) ArraySize() int {
@@ -78,6 +86,11 @@ func ArraySize(arraySize int) Option {
 		return nil
 	}
 	return func(o *stmtOptions) { o.arraySize = arraySize }
+}
+
+// ParseOnly returns an option to set the ExecMode to only Parse.
+func ParseOnly() Option {
+	return func(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DEFAULT | C.DPI_MODE_EXEC_PARSE_ONLY }
 }
 
 const minChunkSize = 1 << 16
@@ -199,7 +212,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}()
 
-	mode := C.dpiExecMode(C.DPI_MODE_EXEC_DEFAULT)
+	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
@@ -325,7 +338,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			close(done)
 			return nil, err
 		}
-		if C.dpiStmt_execute(st.dpiStmt, C.DPI_MODE_EXEC_DEFAULT, &colCount) != C.DPI_FAILURE {
+		if C.dpiStmt_execute(st.dpiStmt, st.ExecMode(), &colCount) != C.DPI_FAILURE {
 			break
 		}
 		if err = ctx.Err(); err != nil {

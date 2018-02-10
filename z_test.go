@@ -150,6 +150,33 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 	}
 }
 
+func TestParseOnly(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	const tbl = "test_not_exist"
+	cnt := func() int {
+		var cnt int64
+		if err := testDb.QueryRowContext(ctx, "SELECT COUNT(0) FROM user_tables WHERE table_name = UPPER('"+tbl+"')").Scan(&cnt); err != nil {
+			t.Fatal(err)
+		}
+		return int(cnt)
+	}
+
+	if cnt() != 0 {
+		if _, err := testDb.ExecContext(ctx, "DROP TABLE "+tbl); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+"(t VARCHAR2(1))", goracle.ParseOnly()); err != nil {
+		t.Fatal(err)
+	}
+	if got := cnt(); got != 1 {
+		t.Errorf("got %d, wanted 0", got)
+	}
+}
+
 func TestInputArray(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
