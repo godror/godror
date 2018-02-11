@@ -150,6 +150,19 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 	}
 }
 
+func TestDescribeQuery(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	const qry = "SELECT * FROM user_tab_cols"
+	cols, err := goracle.DescribeQuery(ctx, testDb, qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	t.Log(cols)
+}
+
 func TestParseOnly(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -87,11 +87,14 @@ func ArraySize(arraySize int) Option {
 	}
 	return func(o *stmtOptions) { o.arraySize = arraySize }
 }
+func parseOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_PARSE_ONLY }
 
 // ParseOnly returns an option to set the ExecMode to only Parse.
 func ParseOnly() Option {
-	return func(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DEFAULT | C.DPI_MODE_EXEC_PARSE_ONLY }
+	return parseOnly
 }
+
+func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 
 const minChunkSize = 1 << 16
 
