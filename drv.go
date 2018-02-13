@@ -250,6 +250,35 @@ func (n *Number) Scan(v interface{}) error {
 	return nil
 }
 
+func (n Number) MarshalText() ([]byte, error) { return []byte(n), nil }
+func (n *Number) UnmarshalText(p []byte) error {
+	var dotNum int
+	for i, c := range p {
+		if !(c == '-' && i == 0 || '0' <= c && c <= '9') {
+			if c == '.' {
+				dotNum++
+				if dotNum == 1 {
+					continue
+				}
+			}
+			return errors.Errorf("unknown char %c in %q", c, p)
+		}
+	}
+	*n = Number(p)
+	return nil
+}
+func (n Number) MarshalJSON() ([]byte, error) { return n.MarshalText() }
+func (n *Number) UnmarshalJSON(p []byte) error {
+	*n = Number("")
+	if len(p) == 0 {
+		return nil
+	}
+	if len(p) > 2 && p[0] == '"' && p[len(p)-1] == '"' {
+		p = p[1 : len(p)-1]
+	}
+	return n.UnmarshalText(p)
+}
+
 // Log function. By default, it's nil, and thus logs nothing.
 // If you want to change this, change it to a github.com/go-kit/kit/log.Swapper.Log
 // or analog to be race-free.
