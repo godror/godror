@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1230,4 +1231,27 @@ func TestRanaOraIssue244(t *testing.T) {
 	if err := grp.Wait(); err != nil && err != context.DeadlineExceeded {
 		t.Error(err)
 	}
+}
+
+func TestNumberMarshal(t *testing.T) {
+	var n goracle.Number
+	if err := testDb.QueryRow("SELECT 6000370006565900000073 FROM DUAL").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(n.String())
+	b, err := n.MarshalJSON()
+	t.Logf("%s", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte{'e'}) {
+		t.Errorf("got %q, wanted without scientific notation", b)
+	}
+	if b, err = json.Marshal(struct {
+		N goracle.Number
+	}{N: n},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s", b)
 }
