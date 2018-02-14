@@ -13,32 +13,33 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-package goracle
+package goracle_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/pkg/errors"
+	goracle "gopkg.in/goracle.v2"
 )
 
-func TestSubscr(t *testing.T) {
-	_, testCon, err := initConn()
+func TestQRCN(t *testing.T) {
+	c, err := goracle.DriverConn(testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cb := func(e Event) {
+	cb := func(e goracle.Event) {
 		t.Log(e)
 	}
-	s, err := testCon.NewSubscription("subscr", cb)
+	subscr, err := c.NewSubscription("test", cb)
 	if err != nil {
 		if strings.Contains(errors.Cause(err).Error(), "ORA-29970:") {
 			t.Skip(err.Error())
 		}
-		t.Fatalf("%+v", err)
+		t.Fatal(err)
 	}
-	defer s.Close()
-	if err := s.Register("SELECT object_name, TO_CHAR(last_ddl_time, 'YYYY-MM-DD HH24:MI:SS') last_ddl_time FROM user_objects"); err != nil {
+	defer subscr.Close()
+	if err := subscr.Register("SELECT object_name FROM user_objects"); err != nil {
 		t.Fatalf("%+v", err)
 	}
 }

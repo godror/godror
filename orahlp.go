@@ -257,6 +257,11 @@ func ServerVersion(ex execer) (VersionInfo, error) {
 	return c.ServerVersion()
 }
 
+// DriverConn returns the *goracle.conn of the databas/sql.Conn
+func DriverConn(ex execer) (*conn, error) {
+	return getConn(ex)
+}
+
 func getConn(ex execer) (*conn, error) {
 	var c interface{}
 	if _, err := ex.ExecContext(context.Background(), getConnection, sql.Out{Dest: &c}); err != nil {

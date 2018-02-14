@@ -23,6 +23,7 @@ void CallbackSubscr(void *context, dpiSubscrMessage *message);
 */
 import "C"
 import (
+	"log"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -31,6 +32,7 @@ import (
 // CallbackSubscr is the callback for C code on subscription event.
 //export CallbackSubscr
 func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
+	log.Printf("CB %p %+v", ctx, message)
 	if ctx == nil {
 		return
 	}
@@ -85,13 +87,13 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		err = fromErrorInfo(*message.errorInfo)
 	}
 
-	subscr.events <- Event{
+	subscr.callback(Event{
 		Err:     err,
 		Type:    EventType(message.eventType),
 		DB:      C.GoStringN(message.dbName, C.int(message.dbNameLength)),
 		Tables:  getTables(message.tables, message.numTables),
 		Queries: getQueries(message.queries, message.numQueries),
-	}
+	})
 }
 
 // Event for a subscription.
@@ -127,26 +129,26 @@ type RowEvent struct {
 type Subscription struct {
 	*conn
 	dpiSubscr *C.dpiSubscr
-	ID        C.uint64_t
-	events    chan<- Event
+	callback  func(Event)
 }
 
 // NewSubscription creates a new Subscription in the DB.
-func (c *conn) NewSubscription(events chan<- Event, name string) (*Subscription, error) {
-	subscr := Subscription{conn: c, events: events}
+func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
+	subscr := Subscription{conn: c, callback: cb}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
 	defer func() { C.free(unsafe.Pointer(params)) }()
 	C.dpiContext_initSubscrCreateParams(c.dpiContext, params)
 	//params.subscrNamespace = C.DPI_SUBSCR_NAMESPACE_DBCHANGE
-	//params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
-	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
+	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.operations = C.DPI_OPCODE_ALL_OPS
-	params.callbackContext = unsafe.Pointer(&subscr)
+	if name != "" {
+		params.name = C.CString(name)
+		params.nameLength = C.uint32_t(len(name))
+	}
 	// typedef void (*dpiSubscrCallback)(void* context, dpiSubscrMessage *message);
 	params.callback = C.dpiSubscrCallback(C.CallbackSubscr)
-	//params.name = C.CString(name)
-	//params.nameLength = C.uint32_t(len(name))
+	params.callbackContext = unsafe.Pointer(&subscr)
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
 	defer func() { C.free(unsafe.Pointer(dpiSubscr)) }()
@@ -154,7 +156,7 @@ func (c *conn) NewSubscription(events chan<- Event, name string) (*Subscription,
 	if C.dpiConn_newSubscription(c.dpiConn,
 		params,
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
-		&subscr.ID,
+		nil,
 	) == C.DPI_FAILURE {
 		return nil, errors.Wrap(c.getError(), "newSubscription")
 	}
@@ -193,7 +195,7 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 func (s *Subscription) Close() error {
 	dpiSubscr := s.dpiSubscr
 	s.dpiSubscr = nil
-	s.events = nil
+	s.callback = nil
 	if dpiSubscr == nil {
 		return nil
 	}

@@ -82,6 +82,8 @@ func init() {
 			fmt.Printf("ERROR: %+v\n", err)
 			return
 		}
+		fmt.Println("Server:", serverVersion)
+		fmt.Println("Client:", clientVersion)
 	}
 }
 
