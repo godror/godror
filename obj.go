@@ -354,7 +354,7 @@ func (A ObjectAttribute) Close() error {
 }
 
 // GetObjectType returns the ObjectType for the name.
-func GetObjectType(ex execer, typeName string) (*ObjectType, error) {
+func GetObjectType(ex Execer, typeName string) (*ObjectType, error) {
 	c, err := getConn(ex)
 	if err != nil {
 		return nil, err

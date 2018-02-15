@@ -63,12 +63,20 @@ to be seen in the Database by the Admin, set goracle.TraceTag on the Context:
 		Action: "first",
 	}), qry)
 
+## Extras ##
+To use the goracle-specific functions, you'll need a `*goracle.conn`.
+That's what `goracle.DriverConn` is for!
+See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
+[NewSubscription](https://godoc.org/gopkg.in/goracle.v2#Subscription).
+
 # Install #
 Just
 
 	go get gopkg.in/goracle.v2
 
 and you're ready to go!
+
+Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
 
 ## Contribute ##
 Just as with other Go projects, you don't want to change the import paths, but you can hack on the library
@@ -139,5 +147,4 @@ gometalinter --vendor --disable-all \
 # Third-party #
 
   * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
-  The "goracall" branch uses this library as the underying driver.
 

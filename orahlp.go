@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"io"
 
@@ -34,7 +35,8 @@ type QueryColumn struct {
 	//CharsetID, CharsetForm         int
 }
 
-type execer interface {
+// Execer is the ExecContext of sql.Conn.
+type Execer interface {
 	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 }
 
@@ -42,7 +44,7 @@ type execer interface {
 //
 // This can help using unknown-at-compile-time, a.k.a.
 // dynamic queries.
-func DescribeQuery(ctx context.Context, db execer, qry string) ([]QueryColumn, error) {
+func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, error) {
 	c, err := getConn(db)
 	if err != nil {
 		return nil, err
@@ -201,7 +203,7 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
 // This is required if you want to retrieve the output with ReadDbmsOutput later.
-func EnableDbmsOutput(ctx context.Context, conn execer) error {
+func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 	qry := "BEGIN DBMS_OUTPUT.enable(1000000); END;"
 	_, err := conn.ExecContext(ctx, qry)
 	return errors.Wrap(err, qry)
@@ -240,7 +242,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 }
 
 // ClientVersion returns the VersionInfo from the DB.
-func ClientVersion(ex execer) (VersionInfo, error) {
+func ClientVersion(ex Execer) (VersionInfo, error) {
 	c, err := getConn(ex)
 	if err != nil {
 		return VersionInfo{}, err
@@ -249,7 +251,7 @@ func ClientVersion(ex execer) (VersionInfo, error) {
 }
 
 // ServerVersion returns the VersionInfo of the client.
-func ServerVersion(ex execer) (VersionInfo, error) {
+func ServerVersion(ex Execer) (VersionInfo, error) {
 	c, err := getConn(ex)
 	if err != nil {
 		return VersionInfo{}, err
@@ -257,12 +259,25 @@ func ServerVersion(ex execer) (VersionInfo, error) {
 	return c.ServerVersion()
 }
 
+type Conn interface {
+	driver.Conn
+	driver.Pinger
+	Break() error
+	BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error)
+	PrepareContext(ctx context.Context, query string) (driver.Stmt, error)
+	Commit() error
+	Rollback() error
+	ServerVersion() (VersionInfo, error)
+	GetObjectType(name string) (*ObjectType, error)
+	NewSubscription(string, func(Event)) (*Subscription, error)
+}
+
 // DriverConn returns the *goracle.conn of the databas/sql.Conn
-func DriverConn(ex execer) (*conn, error) {
+func DriverConn(ex Execer) (Conn, error) {
 	return getConn(ex)
 }
 
-func getConn(ex execer) (*conn, error) {
+func getConn(ex Execer) (*conn, error) {
 	var c interface{}
 	if _, err := ex.ExecContext(context.Background(), getConnection, sql.Out{Dest: &c}); err != nil {
 		return nil, errors.Wrap(err, "getConnection")
