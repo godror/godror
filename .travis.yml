@@ -2,7 +2,7 @@ language: go
 sudo: required
 
 go:
-    - 1.10
+    - "1.10"
     - tip
 env:
     # alias travis='docker run --rm -v $PWD:/repo -v ~/.travis:/travis andredumas/travis-ci-cli'
