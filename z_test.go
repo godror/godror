@@ -475,7 +475,7 @@ END test_pkg;
 	numWant := []goracle.Number{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring", ""}[:2]
 	vcWant := []string{"string +", "bring +", "2"}
-	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), time.Time{}, time.Time{}}[:2]
+	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), {}, {}}[:2]
 	today := time.Now().Truncate(24 * time.Hour)
 	today = time.Date(today.Year(), today.Month(), today.Day(), today.Hour(), today.Minute(), today.Second(), 0, time.Local)
 	dtWant := []time.Time{
@@ -1227,7 +1227,6 @@ func TestRanaOraIssue244(t *testing.T) {
 				}
 				rows.Close()
 			}
-			return nil
 		})
 	}
 	if err := grp.Wait(); err != nil && err != context.DeadlineExceeded {

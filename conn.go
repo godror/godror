@@ -365,6 +365,8 @@ func ContextWithTraceTag(ctx context.Context, tt TraceTag) context.Context {
 	return context.WithValue(ctx, traceTagCtxKey, tt)
 }
 
+// TraceTag holds tracing information for the session. It can be set on the session
+// with ContextWithTraceTag.
 type TraceTag struct {
 	// ClientIdentifier - specifies an end user based on the logon ID, such as HR.HR
 	ClientIdentifier string

@@ -291,6 +291,7 @@ func BenchmarkSprintfFloat(b *testing.B) {
 		s = shortenFloat(s)
 		length += int64(len(s))
 	}
+	b.Logf("total length: %d", length)
 }
 
 /*

@@ -34,6 +34,6 @@ import "C"
 
 const go10 = true
 
-func dpi_setFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
+func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
 	C.goracle_setFromString(dv, pos, x)
 }

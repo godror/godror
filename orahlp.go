@@ -259,6 +259,7 @@ func ServerVersion(ex Execer) (VersionInfo, error) {
 	return c.ServerVersion()
 }
 
+// Conn is the interface for a connection, to be returned by DriverConn.
 type Conn interface {
 	driver.Conn
 	driver.Pinger

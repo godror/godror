@@ -250,7 +250,10 @@ func (n *Number) Scan(v interface{}) error {
 	return nil
 }
 
+// MarshalText marshals a Number to text.
 func (n Number) MarshalText() ([]byte, error) { return []byte(n), nil }
+
+// UnmarshalText parses text into a Number.
 func (n *Number) UnmarshalText(p []byte) error {
 	var dotNum int
 	for i, c := range p {
@@ -267,7 +270,11 @@ func (n *Number) UnmarshalText(p []byte) error {
 	*n = Number(p)
 	return nil
 }
+
+// MarshalJSON marshals a Number into a JSON string.
 func (n Number) MarshalJSON() ([]byte, error) { return n.MarshalText() }
+
+// UnmarshalJSON parses a JSON string into the Number.
 func (n *Number) UnmarshalJSON(p []byte) error {
 	*n = Number("")
 	if len(p) == 0 {
@@ -601,12 +608,18 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	return P, nil
 }
 
+// OraErr is an error holding the ORA-01234 code and the message.
 type OraErr struct {
 	code    int
 	message string
 }
 
-func (oe *OraErr) Code() int       { return oe.code }
+var _ = error((*OraErr)(nil))
+
+// Code returns the OraErr's error code.
+func (oe *OraErr) Code() int { return oe.code }
+
+// Message returns the OraErr's message.
 func (oe *OraErr) Message() string { return oe.message }
 func (oe *OraErr) Error() string {
 	msg := oe.Message()

@@ -26,7 +26,7 @@ import "unsafe"
 
 const go10 = false
 
-func dpi_setFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
+func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
 	b := []byte(x)
 	C.dpiVar_setFromBytes(dv, pos, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
 }

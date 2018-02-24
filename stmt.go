@@ -38,10 +38,10 @@ import (
 )
 
 type stmtOptions struct {
-	plSQLArrays   bool
 	fetchRowCount int
 	arraySize     int
 	execMode      C.dpiExecMode
+	plSQLArrays   bool
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -876,7 +876,7 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
 	}
-	times := []time.Time{time.Time{}}
+	times := []time.Time{{}}
 	if t, ok := vv.(time.Time); ok {
 		times[0] = t
 	} else {
@@ -1309,7 +1309,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 		data[i].isNull = 0
-		dpi_setFromString(dv, C.uint32_t(i), string(x))
+		dpiSetFromString(dv, C.uint32_t(i), string(x))
 	case []Number:
 		for i, x := range slice {
 			if len(x) == 0 {
@@ -1317,7 +1317,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 				continue
 			}
 			data[i].isNull = 0
-			dpi_setFromString(dv, C.uint32_t(i), string(x))
+			dpiSetFromString(dv, C.uint32_t(i), string(x))
 		}
 
 	case string:
@@ -1327,7 +1327,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 		data[i].isNull = 0
-		dpi_setFromString(dv, C.uint32_t(i), x)
+		dpiSetFromString(dv, C.uint32_t(i), x)
 	case []string:
 		for i, x := range slice {
 			if len(x) == 0 {
@@ -1335,7 +1335,7 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 				continue
 			}
 			data[i].isNull = 0
-			dpi_setFromString(dv, C.uint32_t(i), x)
+			dpiSetFromString(dv, C.uint32_t(i), x)
 		}
 
 	default:
@@ -1419,7 +1419,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		return dataSetNull(dv, data, nil)
 	}
 
-	lobs := []Lob{Lob{}}
+	lobs := []Lob{{}}
 	if L, ok := vv.(Lob); ok {
 		lobs[0] = L
 	} else {
