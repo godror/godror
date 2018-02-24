@@ -39,6 +39,7 @@
 package goracle
 
 //go:generate git submodule update --init --recursive
+//go:generate sh -c "rsync -a ./odpi-c/*.md ./odpi/"
 //go:generate rsync -a ./odpi-c/src/ ./odpi/src/
 //go:generate rsync -a ./odpi-c/include/ ./odpi/include/
 //go:generate rsync -a ./odpi-c/embed/ ./odpi/embed/
