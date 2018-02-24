@@ -70,9 +70,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Version of this driver
-const Version = "v2.1.16"
-
 const (
 	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through FetchRowCount statement option).
 	DefaultFetchRowCount = 1 << 8
