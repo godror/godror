@@ -131,10 +131,6 @@ if [ -n "$output" ]; then
 	exit 1
 fi
 
-for file in "$@"; do
-	go vet "$file"
-done
-
 gometalinter --vendor --disable-all \
   --enable=deadcode \
   --enable=ineffassign \
@@ -142,6 +138,11 @@ gometalinter --vendor --disable-all \
   --enable=staticcheck \
   --enable=unused \
   --enable=vetshadow \
+  --enable=maligned \
+  --enable=vet \
+  --enable=safesql \
+  --enable=unconvert \
+  --enable=gofmt \
   ./...
 ```
 
