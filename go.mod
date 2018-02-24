@@ -1,4 +1,4 @@
-module "github.com/go-goracle/goracle/v2"
+module "gopkg.in/goracle.v2/v2"
 
 require (
 	"github.com/go-kit/kit" v0.6.0
