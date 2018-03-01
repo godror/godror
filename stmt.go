@@ -42,6 +42,7 @@ type stmtOptions struct {
 	arraySize     int
 	execMode      C.dpiExecMode
 	plSQLArrays   bool
+	clobAsString  bool
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -63,7 +64,8 @@ func (o stmtOptions) FetchRowCount() int {
 	}
 	return o.fetchRowCount
 }
-func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
+func (o stmtOptions) PlSQLArrays() bool  { return o.plSQLArrays }
+func (o stmtOptions) ClobAsString() bool { return o.clobAsString }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -95,6 +97,11 @@ func ParseOnly() Option {
 }
 
 func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
+
+// ClobAsString returns an option to force fetching CLOB columns as strings.
+func ClobAsString() Option {
+	return func(o *stmtOptions) { o.clobAsString = true }
+}
 
 const minChunkSize = 1 << 16
 

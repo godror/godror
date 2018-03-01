@@ -839,25 +839,26 @@ func TestReadWriteLob(t *testing.T) {
 		{[]byte{0, 1, 2, 3, 4, 5}, "12345"},
 	} {
 
-		if _, err := stmt.Exec(tN*2, tC.Bytes, tC.String); err != nil {
+		if _, err = stmt.Exec(tN*2, tC.Bytes, tC.String); err != nil {
 			t.Errorf("%d/1. (%v, %q): %v", tN, tC.Bytes, tC.String, err)
 			continue
 		}
-		if _, err := stmt.Exec(tN*2+1,
+		if _, err = stmt.Exec(tN*2+1,
 			goracle.Lob{Reader: bytes.NewReader(tC.Bytes)},
 			goracle.Lob{Reader: strings.NewReader(tC.String), IsClob: true},
 		); err != nil {
 			t.Errorf("%d/2. (%v, %q): %v", tN, tC.Bytes, tC.String, err)
 		}
 
-		rows, err := conn.QueryContext(ctx, "SELECT F_id, F_blob, F_clob FROM test_lob WHERE F_id IN (:1, :2)", 2*tN, 2*tN+1)
+		var rows *sql.Rows
+		rows, err = conn.QueryContext(ctx, "SELECT F_id, F_blob, F_clob FROM test_lob WHERE F_id IN (:1, :2)", 2*tN, 2*tN+1)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
 		for rows.Next() {
 			var id, blob, clob interface{}
-			if err := rows.Scan(&id, &blob, &clob); err != nil {
+			if err = rows.Scan(&id, &blob, &clob); err != nil {
 				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
@@ -866,7 +867,8 @@ func TestReadWriteLob(t *testing.T) {
 			if clob, ok := clob.(*goracle.Lob); !ok {
 				t.Errorf("%d. %T is not LOB", id, blob)
 			} else {
-				got, err := ioutil.ReadAll(clob)
+				var got []byte
+				got, err = ioutil.ReadAll(clob)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				} else if got := string(got); got != tC.String {
@@ -876,7 +878,8 @@ func TestReadWriteLob(t *testing.T) {
 			if blob, ok := blob.(*goracle.Lob); !ok {
 				t.Errorf("%d. %T is not LOB", id, blob)
 			} else {
-				got, err := ioutil.ReadAll(blob)
+				var got []byte
+				got, err = ioutil.ReadAll(blob)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				} else if !bytes.Equal(got, tC.Bytes) {
@@ -885,6 +888,19 @@ func TestReadWriteLob(t *testing.T) {
 			}
 		}
 		rows.Close()
+	}
+
+	rows, err := conn.QueryContext(ctx, "SELECT F_clob FROM test_lob", goracle.ClobAsString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s string
+		if err = rows.Scan(&s); err != nil {
+			t.Error(err)
+		}
+		t.Logf("clobAsString: %q", s)
 	}
 }
 

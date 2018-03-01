@@ -27,6 +27,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -298,6 +299,8 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	//fmt.Printf("data=%#v\n", r.data)
 
+	var sb strings.Builder
+
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
 	//fmt.Printf("VC=%d\n", C.DPI_ORACLE_TYPE_VARCHAR)
@@ -433,13 +436,26 @@ func (r *rows) Next(dest []driver.Value) error {
 			C.DPI_ORACLE_TYPE_BLOB,
 			C.DPI_ORACLE_TYPE_BFILE,
 			C.DPI_NATIVE_TYPE_LOB:
+			isClob := typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB
 			if isNull {
-				dest[i] = nil
+				if isClob && r.ClobAsString() {
+					dest[i] = ""
+				} else {
+					dest[i] = nil
+				}
 				continue
 			}
-			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn,
-				IsClob: typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB}
+			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn, IsClob: isClob}
+			if isClob && r.ClobAsString() {
+				sb.Reset()
+				if _, err := io.Copy(&sb, rdr); err != nil {
+					return err
+				}
+				dest[i] = sb.String()
+				continue
+			}
 			dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}
+
 		case C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT:
 			if isNull {
 				dest[i] = nil
