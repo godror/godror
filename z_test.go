@@ -1168,7 +1168,7 @@ func TestORA1000(t *testing.T) {
 func TestRanaOraIssue244(t *testing.T) {
 	t.Parallel()
 	const tableName = "test_ora_issue_244"
-	qry := "CREATE TABLE " + tableName + " (FUND_ACCOUNT VARCHAR2(18) NOT NULL，FUND_CODE VARCHAR2(6) NOT NULL, BUSINESS_FLAG NUMBER(10) NOT NULL, MONEY_TYPE VARCHAR2(3) NOT NULL)"
+	qry := "CREATE TABLE " + tableName + " (FUND_ACCOUNT VARCHAR2(18) NOT NULL, FUND_CODE VARCHAR2(6) NOT NULL, BUSINESS_FLAG NUMBER(10) NOT NULL, MONEY_TYPE VARCHAR2(3) NOT NULL)"
 	testDb.Exec("DROP TABLE " + tableName)
 	if _, err := testDb.Exec(qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
