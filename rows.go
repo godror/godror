@@ -27,7 +27,6 @@ import (
 	"math"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -299,8 +298,6 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	//fmt.Printf("data=%#v\n", r.data)
 
-	var sb strings.Builder
-
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
 	//fmt.Printf("VC=%d\n", C.DPI_ORACLE_TYPE_VARCHAR)
@@ -447,11 +444,13 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn, IsClob: isClob}
 			if isClob && r.ClobAsString() {
-				sb.Reset()
-				if _, err := io.Copy(&sb, rdr); err != nil {
+				sb := stringBuilders.Get()
+				if _, err := io.Copy(sb, rdr); err != nil {
+					stringBuilders.Put(sb)
 					return err
 				}
 				dest[i] = sb.String()
+				stringBuilders.Put(sb)
 				continue
 			}
 			dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}

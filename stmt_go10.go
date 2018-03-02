@@ -31,9 +31,29 @@ void goracle_setFromString(dpiVar *dv, uint32_t pos, const _GoString_ value) {
 }
 */
 import "C"
+import (
+	"strings"
+	"sync"
+)
 
 const go10 = true
 
 func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
 	C.goracle_setFromString(dv, pos, x)
+}
+
+var stringBuilders = stringBuilderPool{
+	p: &sync.Pool{New: func() interface{} { return &strings.Builder{} }},
+}
+
+type stringBuilderPool struct {
+	p *sync.Pool
+}
+
+func (sb stringBuilderPool) Get() *strings.Builder {
+	return sb.p.Get().(*strings.Builder)
+}
+func (sb *stringBuilderPool) Put(b *strings.Builder) {
+	b.Reset()
+	sb.p.Put(b)
 }
