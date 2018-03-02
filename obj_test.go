@@ -40,11 +40,6 @@ func initConn() (*drv, *conn, error) {
 		if testDrv, testOpenErr = newDrv(); testOpenErr != nil {
 			return
 		}
-		clientVersion, testOpenErr = testDrv.ClientVersion()
-		if testOpenErr != nil {
-			return
-		}
-		fmt.Println("client:", clientVersion)
 		dc, err := testDrv.Open(
 			fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
 				os.Getenv("GORACLE_DRV_TEST_USERNAME"),
@@ -57,11 +52,6 @@ func initConn() (*drv, *conn, error) {
 			return
 		}
 		testCon = dc.(*conn)
-		serverVersion, testOpenErr = testCon.ServerVersion()
-		if err != nil {
-			return
-		}
-		fmt.Println("server:", serverVersion)
 	})
 	return testDrv, testCon, testOpenErr
 }

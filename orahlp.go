@@ -22,6 +22,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -278,7 +279,11 @@ func DriverConn(ex Execer) (Conn, error) {
 	return getConn(ex)
 }
 
+var getConnMu sync.Mutex
+
 func getConn(ex Execer) (*conn, error) {
+	getConnMu.Lock()
+	defer getConnMu.Unlock()
 	var c interface{}
 	if _, err := ex.ExecContext(context.Background(), getConnection, sql.Out{Dest: &c}); err != nil {
 		return nil, errors.Wrap(err, "getConnection")
