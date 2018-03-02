@@ -199,11 +199,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return driver.ResultNoRows, nil
 	}
 
-	// bind variables
-	if err := st.bindVars(args, Log); err != nil {
-		return nil, err
-	}
-
 	// execute
 	ctxErr := make(chan error, 1)
 	done := make(chan struct{})
@@ -216,11 +211,19 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			select {
 			case <-done:
 			default:
-				ctxErr <- ctx.Err()
+				if Log != nil {
+					Log("BREAK", fmt.Sprintf("%p:%q", st.dpiStmt, st.query))
+				}
 				_ = st.Break()
+				ctxErr <- ctx.Err()
 			}
 		}
 	}()
+
+	// bind variables
+	if err := st.bindVars(args, Log); err != nil {
+		return nil, err
+	}
 
 	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
@@ -249,11 +252,17 @@ Loop:
 		if err == nil {
 			break
 		}
-		switch errors.Cause(err).(interface {
+		if Log != nil {
+			Log("msg", "st.Execute", "error", err)
+		}
+		switch code := errors.Cause(err).(interface {
 			Code() int
-		}).Code() {
+		}).Code(); code {
 		// ORA-04068: "existing state of packages has been discarded"
-		case 4068, 4065, 4061:
+		case 4061, 4065, 4068:
+			if Log != nil {
+				Log("msg", "retry", "ora", code)
+			}
 		default:
 			break Loop
 		}
