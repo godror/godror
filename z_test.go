@@ -1201,6 +1201,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	grp, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < maxSessions/2; i++ {
 		index := rand.Intn(len(fas))
+		i := i
 		grp.Go(func() error {
 			tx, err := testDb.BeginTx(ctx, nil)
 			if err != nil {
@@ -1211,7 +1212,7 @@ func TestRanaOraIssue244(t *testing.T) {
 			const qry = `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3`
 			stmt, err := tx.Prepare(qry)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "%d.Prepare %q", i, err)
 			}
 			defer stmt.Close()
 
@@ -1219,7 +1220,7 @@ func TestRanaOraIssue244(t *testing.T) {
 				index = (index + 1) % len(fas)
 				rows, err := stmt.Query(bf, sc, fas[index])
 				if err != nil {
-					return errors.Wrap(err, qry)
+					return errors.Wrapf(err, "%d.tx=%p stmt=%p %q", i, tx, stmt, qry)
 				}
 
 				for rows.Next() {
@@ -1242,7 +1243,9 @@ func TestRanaOraIssue244(t *testing.T) {
 						return errors.Errorf("got mt %q, wanted 0", mt)
 					}
 				}
-				rows.Close()
+				if err = rows.Err(); err != nil {
+					return err
+				}
 			}
 		})
 	}

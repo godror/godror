@@ -191,14 +191,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.Lock()
 	defer st.Unlock()
-	st.conn.RLock()
-	defer st.conn.RUnlock()
-
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
 		return driver.ResultNoRows, nil
 	}
 
+	st.conn.RLock()
+	defer st.conn.RUnlock()
 	// execute
 	ctxErr := make(chan error, 1)
 	done := make(chan struct{})

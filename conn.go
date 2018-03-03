@@ -160,14 +160,19 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.Errorf("%v isolation level is not supported", sql.IsolationLevel(opts.Isolation))
 	}
 
-	c.Lock()
-	defer c.Unlock()
-	if c.inTransaction {
+	c.RLock()
+	inTran := c.inTransaction
+	c.RUnlock()
+	if inTran {
 		return nil, errors.New("already in transaction")
 	}
+	c.Lock()
 	c.inTransaction = true
+	c.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+		c.Lock()
 		c.setTraceTag(tt)
+		c.Unlock()
 	}
 	return c, nil
 }
@@ -179,13 +184,11 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	c.Lock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+		c.Lock()
 		c.setTraceTag(tt)
+		c.Unlock()
 	}
-	c.Unlock()
-	c.RLock()
-	defer c.RUnlock()
 	if query == getConnection {
 		if Log != nil {
 			Log("msg", "PrepareContext", "shortcut", query)
@@ -197,13 +200,14 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
+	c.RLock()
+	defer c.RUnlock()
 	var dpiStmt *C.dpiStmt
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
 	) == C.DPI_FAILURE {
 		return nil, maybeBadConn(errors.Wrap(c.getError(), "Prepare: "+query))
 	}
-	//fmt.Printf("%p.PrepareContext(inTran? %t; %q):%p\n", c, c.inTransaction, query, dpiStmt)
 	return &statement{conn: c, dpiStmt: dpiStmt, query: query}, nil
 }
 func (c *conn) Commit() error {
