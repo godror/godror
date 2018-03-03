@@ -41,7 +41,7 @@ var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
-	sync.Mutex
+	sync.RWMutex
 	dpiConn       *C.dpiConn
 	connParams    ConnectionParams
 	inTransaction bool
@@ -50,7 +50,8 @@ type conn struct {
 }
 
 func (c *conn) Break() error {
-	//fmt.Fprintf(os.Stderr, "\n%+v\n", errors.New("break"))
+	c.RLock()
+	defer c.RUnlock()
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Break")
 	}
@@ -61,8 +62,8 @@ func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -179,10 +180,12 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, err
 	}
 	c.Lock()
-	defer c.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
 		c.setTraceTag(tt)
 	}
+	c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 	if query == getConnection {
 		if Log != nil {
 			Log("msg", "PrepareContext", "shortcut", query)
@@ -274,20 +277,24 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 var _ = driver.Tx((*conn)(nil))
 
 func (c *conn) ServerVersion() (VersionInfo, error) {
-	c.Lock()
-	defer c.Unlock()
-	if c.serverVersion.Version != 0 {
-		return c.serverVersion, nil
+	c.RLock()
+	sv := c.serverVersion
+	c.RUnlock()
+	if sv.Version != 0 {
+		return sv, nil
 	}
 	var v C.dpiVersionInfo
 	var release *C.char
 	var releaseLen C.uint32_t
 	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-		return c.serverVersion, errors.Wrap(c.getError(), "getServerVersion")
+		return sv, errors.Wrap(c.getError(), "getServerVersion")
 	}
+	c.Lock()
 	c.serverVersion.set(&v)
 	c.serverVersion.ServerRelease = C.GoStringN(release, C.int(releaseLen))
-	return c.serverVersion, nil
+	sv = c.serverVersion
+	c.Unlock()
+	return sv, nil
 }
 
 func maybeBadConn(err error) error {

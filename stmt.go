@@ -191,8 +191,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.Lock()
 	defer st.Unlock()
-	st.conn.Lock()
-	defer st.conn.Unlock()
+	st.conn.RLock()
+	defer st.conn.RUnlock()
 
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
@@ -317,8 +317,8 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	st.Lock()
 	defer st.Unlock()
-	st.conn.Lock()
-	defer st.conn.Unlock()
+	st.conn.RLock()
+	defer st.conn.RUnlock()
 
 	if st.query == getConnection {
 		if Log != nil {
