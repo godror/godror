@@ -96,6 +96,7 @@ type testLogger struct {
 }
 
 func (tl *testLogger) Log(args ...interface{}) error {
+	fmt.Println(args)
 	return tl.GetLog()(args)
 }
 func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
@@ -1251,6 +1252,7 @@ func TestRanaOraIssue244(t *testing.T) {
 }
 
 func TestNumberMarshal(t *testing.T) {
+	t.Parallel()
 	var n goracle.Number
 	if err := testDb.QueryRow("SELECT 6000370006565900000073 FROM DUAL").Scan(&n); err != nil {
 		t.Fatal(err)
@@ -1271,4 +1273,18 @@ func TestNumberMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%s", b)
+}
+
+func TestExecHang(t *testing.T) {
+	//t.Parallel()
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	t.Log("Start")
+	_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 2/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
+	cancel()
+	if err != nil {
+		t.Log(err)
+	} else {
+		t.Fatal("wanted timeout, got nil")
+	}
 }

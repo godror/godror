@@ -211,9 +211,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			select {
 			case <-done:
 			default:
-				if Log != nil {
-					Log("BREAK", fmt.Sprintf("%p:%q", st.dpiStmt, st.query))
-				}
 				_ = st.Break()
 				ctxErr <- ctx.Err()
 			}
@@ -249,11 +246,11 @@ Loop:
 				err = st.getError()
 			}
 		}
-		if err == nil {
-			break
-		}
 		if Log != nil {
 			Log("msg", "st.Execute", "error", err)
+		}
+		if err == nil {
+			break
 		}
 		switch code := errors.Cause(err).(interface {
 			Code() int
