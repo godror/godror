@@ -1282,12 +1282,19 @@ func TestExecHang(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	t.Log("Start")
-	_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 2/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
-	cancel()
-	if err != nil {
-		t.Log(err)
-	} else {
-		t.Fatal("wanted timeout, got nil")
+	defer cancel()
+	var grp errgroup.Group
+	for i := 0; i < 3; i++ {
+		grp.Go(func() error {
+			_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 2/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
+			if err != nil {
+				t.Log(err)
+				return nil
+			}
+			return errors.Errorf("wanted timeout got %v", err)
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		t.Fatal(err)
 	}
 }
