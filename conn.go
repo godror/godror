@@ -310,7 +310,8 @@ func maybeBadConn(err error) error {
 	}); ok {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
 		switch cd.Code() {
-		case 1012, 3113, 3114, 12170, 12528, 12545, 12547, 24315, 28547:
+		case 12609, 1012, 3113, 3114, 12170, 12528, 12545, 12547, 24315, 28547, 03135:
+			// ORA-12609: TNS:Receive timeout occurred
 			// ORA-01012: Not logged on
 			// ORA-03113: end-of-file on communication channel
 			// ORA-03114: not connected to ORACLE
@@ -320,6 +321,7 @@ func maybeBadConn(err error) error {
 			// ORA-12547: TNS:lost contact
 			// ORA-24315: illegal attribute type
 			// ORA-28547: connection to server failed, probable Oracle Net admin error
+			// ORA-03135: connection lost contact
 			return driver.ErrBadConn
 		}
 	}
