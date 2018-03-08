@@ -137,6 +137,7 @@ func (st *statement) Close() error {
 	}
 	st.Lock()
 	defer st.Unlock()
+
 	for _, v := range st.vars {
 		C.dpiVar_release(v)
 	}
@@ -146,12 +147,18 @@ func (st *statement) Close() error {
 	st.gets = nil
 	st.dests = nil
 	st.columns = nil
-	var err error
-	if st.dpiStmt != nil && C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
-		err = errors.Wrap(st.getError(), "statement/dpiStmt_release")
-	}
+	dpiStmt := st.dpiStmt
 	st.dpiStmt = nil
-	return err
+	c := st.conn
+	st.conn = nil
+
+	if dpiStmt != nil && C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
+		return nil
+	}
+	if c == nil {
+		return driver.ErrBadConn
+	}
+	return errors.Wrap(c.getError(), "statement/dpiStmt_release")
 }
 
 // Exec executes a query that doesn't return rows, such
@@ -183,11 +190,20 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 // ExecContext executes a query that doesn't return rows, such as an INSERT or UPDATE.
 //
 // ExecContext must honor the context timeout and return when it is canceled.
-func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	if err := ctx.Err(); err != nil {
+func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) (res driver.Result, err error) {
+	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 	Log := ctxGetLog(ctx)
+
+	defer func() {
+		if err != nil && err == driver.ErrBadConn {
+			if Log != nil {
+				Log("error", driver.ErrBadConn)
+			}
+			st.Close()
+		}
+	}()
 
 	st.Lock()
 	defer st.Unlock()
@@ -199,92 +215,97 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	st.conn.RLock()
 	defer st.conn.RUnlock()
 	// execute
-	ctxErr := make(chan error, 1)
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	go func() {
-		defer close(ctxErr)
-		select {
-		case <-done:
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-			default:
-				_ = st.Break()
-				ctxErr <- ctx.Err()
-			}
+		defer close(done)
+		// bind variables
+		if err = st.bindVars(args, Log); err != nil {
+			done <- err
+			return
 		}
-	}()
 
-	// bind variables
-	if err := st.bindVars(args, Log); err != nil {
-		return nil, err
-	}
-
-	mode := st.ExecMode()
-	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
-	if !st.inTransaction {
-		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-	}
-	var err error
-Loop:
-	for i := 0; i < 3; i++ {
-		if !st.PlSQLArrays() && st.arrLen > 0 {
-			if Log != nil {
-				Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
-			}
-			if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
-				err = st.getError()
-			}
-		} else {
-			var colCount C.uint32_t
-			if Log != nil {
-				Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
-			}
-			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
-				err = st.getError()
-			}
+		mode := st.ExecMode()
+		//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
+		if !st.inTransaction {
+			mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 		}
-		if Log != nil {
-			Log("msg", "st.Execute", "error", err)
-		}
-		if err == nil {
+	Loop:
+		for i := 0; i < 3; i++ {
+			if err = ctx.Err(); err != nil {
+				done <- err
+				return
+			}
+			if !st.PlSQLArrays() && st.arrLen > 0 {
+				if Log != nil {
+					Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
+				}
+				if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
+					if err = ctx.Err(); err == nil {
+						err = st.getError()
+					}
+				}
+			} else {
+				var colCount C.uint32_t
+				if Log != nil {
+					Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
+				}
+				if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
+					if err = ctx.Err(); err == nil {
+						err = st.getError()
+					}
+				}
+			}
+			if Log != nil {
+				Log("msg", "st.Execute", "error", err)
+			}
+			if err == nil {
+				return
+			}
+			cdr, ok := errors.Cause(err).(interface {
+				Code() int
+			})
+			if !ok {
+				break
+			}
+			switch code := cdr.Code(); code {
+			// ORA-04068: "existing state of packages has been discarded"
+			case 4061, 4065, 4068:
+				if Log != nil {
+					Log("msg", "retry", "ora", code)
+				}
+				continue Loop
+			}
 			break
 		}
-		switch code := errors.Cause(err).(interface {
-			Code() int
-		}).Code(); code {
-		// ORA-04068: "existing state of packages has been discarded"
-		case 4061, 4065, 4068:
-			if Log != nil {
-				Log("msg", "retry", "ora", code)
-			}
-		default:
-			break Loop
+		done <- maybeBadConn(errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen))
+	}()
+
+	select {
+	case err = <-done:
+		if err != nil {
+			return nil, err
 		}
-		continue
+	case <-ctx.Done():
+		// select again to avoid race condition if both are done
+		select {
+		case err = <-done:
+			if err != nil {
+				return nil, err
+			}
+		case <-ctx.Done():
+			_ = st.Break()
+			return nil, driver.ErrBadConn
+		}
 	}
-	close(done)
-	if err != nil {
-		return nil, maybeBadConn(errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen))
-	}
-	if err = <-ctxErr; err != nil {
-		return nil, err
-	}
+
 	//if Log != nil {Log("gets", st.gets) }
 	for i, get := range st.gets {
 		if get == nil {
 			continue
 		}
 		dest := st.dests[i]
-		/*
-			dest := args[i].Value
-			if o, ok := dest.(sql.Out); ok {
-				dest = o.Dest
-			}
-		*/
 		if !st.isSlice[i] {
-			if err := get(dest, st.data[i]); err != nil {
+			if err = get(dest, st.data[i]); err != nil {
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, 0)
 			}
 			continue
@@ -294,7 +315,7 @@ Loop:
 			return nil, errors.Wrapf(st.getError(), "%d.getNumElementsInArray", i)
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
-		if err := get(dest, st.data[i][:n]); err != nil {
+		if err = get(dest, st.data[i][:n]); err != nil {
 			return nil, errors.Wrapf(err, "%d. get", i)
 		}
 	}
@@ -308,11 +329,17 @@ Loop:
 // QueryContext executes a query that may return rows, such as a SELECT.
 //
 // QueryContext must honor the context timeout and return when it is canceled.
-func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	if err := ctx.Err(); err != nil {
+func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
+	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 	Log := ctxGetLog(ctx)
+
+	defer func() {
+		if err != nil && err == driver.ErrBadConn {
+			st.Close()
+		}
+	}()
 
 	st.Lock()
 	defer st.Unlock()
@@ -328,50 +355,47 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
-	if err := st.bindVars(args, Log); err != nil {
+	if err = st.bindVars(args, Log); err != nil {
 		return nil, err
 	}
 
 	// execute
-	done := make(chan struct{})
+	var colCount C.uint32_t
+	done := make(chan error, 1)
 	go func() {
-		select {
-		case <-done:
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-			default:
-				_ = st.Break()
+		defer close(done)
+		for i := 0; i < 3; i++ {
+			if err = ctx.Err(); err != nil {
+				done <- err
+				return
+			}
+			if C.dpiStmt_execute(st.dpiStmt, st.ExecMode(), &colCount) != C.DPI_FAILURE {
+				break
+			}
+			if err = ctx.Err(); err == nil {
+				err = st.getError()
+				if c, ok := err.(interface{ Code() int }); ok && c.Code() != 4068 {
+					break
+				}
 			}
 		}
+		done <- maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
 	}()
-	var err error
-	var colCount C.uint32_t
-	for i := 0; i < 3; i++ {
-		if err = ctx.Err(); err != nil {
-			close(done)
+
+	select {
+	case err = <-done:
+		if err != nil {
 			return nil, err
 		}
-		if C.dpiStmt_execute(st.dpiStmt, st.ExecMode(), &colCount) != C.DPI_FAILURE {
-			break
-		}
-		if err = ctx.Err(); err != nil {
-			close(done)
-			return nil, err
-		}
-		err = st.getError()
-		if c, ok := err.(interface{ Code() int }); ok && c.Code() != 4068 {
-			break
-		}
-	}
-	close(done)
-	if err != nil {
+	case <-ctx.Done():
 		select {
+		case err = <-done:
+			if err != nil {
+				return nil, err
+			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-			return nil, maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
+			_ = st.Break()
+			return nil, driver.ErrBadConn
 		}
 	}
 	return st.openRows(int(colCount))

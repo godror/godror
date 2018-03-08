@@ -653,6 +653,9 @@ func newErrorInfo(code int, message string) C.dpiErrorInfo {
 var _ = newErrorInfo
 
 func (d *drv) getError() *OraErr {
+	if d == nil || d.dpiContext == nil {
+		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
+	}
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(d.dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)

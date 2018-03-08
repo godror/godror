@@ -32,8 +32,10 @@ void goracle_setFromString(dpiVar *dv, uint32_t pos, const _GoString_ value) {
 */
 import "C"
 import (
+	"context"
 	"strings"
 	"sync"
+	"time"
 )
 
 const go10 = true
@@ -56,4 +58,20 @@ func (sb stringBuilderPool) Get() *strings.Builder {
 func (sb *stringBuilderPool) Put(b *strings.Builder) {
 	b.Reset()
 	sb.p.Put(b)
+}
+
+// ResetSession is called while a connection is in the connection
+// pool. No queries will run on this connection until this method returns.
+//
+// If the connection is bad this should return driver.ErrBadConn to prevent
+// the connection from being returned to the connection pool. Any other
+// error will be discarded.
+func (c *conn) ResetSession(ctx context.Context) error {
+	if Log != nil {
+		Log("msg", "ResetSession", "conn", c.dpiConn)
+	}
+	subCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	err := c.Ping(subCtx)
+	cancel()
+	return err
 }

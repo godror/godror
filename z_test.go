@@ -1279,24 +1279,33 @@ func TestNumberMarshal(t *testing.T) {
 }
 
 func TestExecHang(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	var grp errgroup.Group
-	for i := 0; i < 3; i++ {
-		grp.Go(func() error {
-			_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 2/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
-			if err != nil {
-				t.Log(err)
-				return nil
+	done := make(chan error, 3)
+	var wg sync.WaitGroup
+	for i := 0; i < cap(done); i++ {
+		wg.Add(1)
+		i := i
+		go func() {
+			defer wg.Done()
+			if err := ctx.Err(); err != nil {
+				done <- err
+				return
 			}
-			return errors.Errorf("wanted timeout got %v", err)
-		})
+			_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 3/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
+			if err == nil {
+				done <- errors.Errorf("%d. wanted timeout got %v", i, err)
+			}
+			t.Logf("%d. %v", i, err)
+		}()
 	}
-	if err := grp.Wait(); err != nil {
+	wg.Wait()
+	close(done)
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+
 }
 
 func TestNumberNull(t *testing.T) {

@@ -25,6 +25,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"strings"
 	//"fmt"
 	"sync"
 	"time"
@@ -49,9 +50,19 @@ type conn struct {
 	*drv
 }
 
+func (c *conn) getError() error {
+	if c == nil || c.drv == nil {
+		return driver.ErrBadConn
+	}
+	return c.drv.getError()
+}
+
 func (c *conn) Break() error {
 	c.RLock()
 	defer c.RUnlock()
+	if Log != nil {
+		Log("msg", "Break", "dpiConn", c.dpiConn)
+	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "Break")
 	}
@@ -64,25 +75,30 @@ func (c *conn) Ping(ctx context.Context) error {
 	}
 	c.RLock()
 	defer c.RUnlock()
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	go func() {
-		select {
-		case <-done:
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-			default:
-				_ = c.Break()
-			}
+		defer close(done)
+		failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+		if failure {
+			done <- maybeBadConn(errors.Wrap(c.getError(), "Ping"))
+			return
 		}
+		done <- nil
 	}()
-	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
-	close(done)
-	if failure {
-		return maybeBadConn(errors.Wrap(c.getError(), "Ping"))
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		// select again to avoid race condition if both are done
+		select {
+		case err := <-done:
+			return err
+		default:
+			_ = c.Break()
+			return driver.ErrBadConn
+		}
 	}
-	return nil
 }
 
 // Prepare returns a prepared statement, bound to this connection.
@@ -310,6 +326,10 @@ func maybeBadConn(err error) error {
 	}); ok {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
 		switch cd.Code() {
+		case 0:
+			if strings.Contains(err.Error(), " DPI-1002: ") {
+				return driver.ErrBadConn
+			}
 		case 12609, 1012, 3113, 3114, 12170, 12528, 12545, 12547, 24315, 28547, 03135:
 			// ORA-12609: TNS:Receive timeout occurred
 			// ORA-01012: Not logged on

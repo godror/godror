@@ -108,7 +108,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
 		err := dlr.getError()
-		if dlr.finished = err.Code() == 1403; dlr.finished {
+		if dlr.finished = err.(interface{ Code() int }).Code() == 1403; dlr.finished {
 			dlr.offset += n
 			return int(n), io.EOF
 		}
