@@ -1,4 +1,4 @@
 package goracle
 
 // Version of this driver
-const Version = "v2.1.21"
+const Version = "v2.1.22"
