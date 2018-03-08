@@ -1298,3 +1298,48 @@ func TestExecHang(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNumberNull(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	testDb.Exec("DROP TABLE number_test")
+	qry := `CREATE TABLE number_test (
+	  precisionNum NUMBER(5),
+      precScaleNum NUMBER(5, 0),
+	  normalNum NUMBER
+	  )`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP TABLE number_test")
+
+	qry = `
+	  INSERT ALL
+	  INTO number_test (precisionNum, precScaleNum, normalNum) VALUES (4, 65, 123)
+	  INTO number_test (precisionNum, precScaleNum, normalNum) VALUES (NULL, NULL, NULL)
+	  SELECT 1 FROM DUAL`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	qry = "SELECT precisionNum, precScaleNum, normalNum FROM number_test"
+	rows, err := testDb.Query(qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var precisionNum, recScaleNum, normalNum sql.NullInt64
+		if err = rows.Scan(&precisionNum, &recScaleNum, &normalNum); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(precisionNum, recScaleNum, normalNum)
+		if precisionNum.Int64 == 0 && precisionNum.Valid {
+			t.Errorf("precisionNum=%v, wanted {0 false}", precisionNum)
+		}
+		if recScaleNum.Int64 == 0 && recScaleNum.Valid {
+			t.Errorf("recScaleNum=%v, wanted {0 false}", recScaleNum)
+		}
+	}
+}
