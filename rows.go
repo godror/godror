@@ -327,16 +327,8 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			if isNull {
-				//if Log != nil { Log("msg", "null", "i", i, "T", fmt.Sprintf("%T", dest[i]), "type", reflect.TypeOf(dest[i])); }
-				switch col.NativeType {
-				case C.DPI_NATIVE_TYPE_INT64, C.DPI_NATIVE_TYPE_UINT64,
-					C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
-					dest[i] = 0
-				case C.DPI_NATIVE_TYPE_BYTES:
-					dest[i] = nil //Number("")
-				default:
-					dest[i] = nil
-				}
+				//if Log != nil { Log("msg", "null", "i", i, "T", fmt.Sprintf("%T", dest[i]), "type", reflect.TypeOf(dest[i])) }
+				dest[i] = nil
 				continue
 			}
 			switch col.NativeType {
