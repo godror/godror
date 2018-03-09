@@ -1346,19 +1346,12 @@ func TestNumberNull(t *testing.T) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var (
-			precisionNum, recScaleNum, normalNum          sql.NullInt64
-			precisionNumStr, recScaleNumStr, normalNumStr string
-		)
+		var precisionNum, recScaleNum, normalNum sql.NullInt64
 		if err = rows.Scan(&precisionNum, &recScaleNum, &normalNum); err != nil {
-			t.Fatal(err)
-		}
-		if err = rows.Scan(&precisionNumStr, &recScaleNumStr, &normalNumStr); err != nil {
 			t.Fatal(err)
 		}
 
 		t.Log(precisionNum, recScaleNum, normalNum)
-		t.Log(precisionNumStr, recScaleNumStr, normalNumStr)
 
 		if precisionNum.Int64 == 0 && precisionNum.Valid {
 			t.Errorf("precisionNum=%v, wanted {0 false}", precisionNum)
@@ -1366,14 +1359,19 @@ func TestNumberNull(t *testing.T) {
 		if recScaleNum.Int64 == 0 && recScaleNum.Valid {
 			t.Errorf("recScaleNum=%v, wanted {0 false}", recScaleNum)
 		}
-		if fmt.Sprint(precisionNum.Int64) != precisionNumStr {
-			t.Errorf("precisionNum %v != precisionNumStr %v", precisionNum, precisionNumStr)
+	}
+
+	rows, err = testDb.Query(qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var precisionNumStr, recScaleNumStr, normalNumStr sql.NullString
+		if err = rows.Scan(&precisionNumStr, &recScaleNumStr, &normalNumStr); err != nil {
+			t.Fatal(err)
 		}
-		if fmt.Sprint(recScaleNum.Int64) != recScaleNumStr {
-			t.Errorf("recScaleNum %v != recScaleNumStr %v", recScaleNum, recScaleNumStr)
-		}
-		if fmt.Sprint(normalNum.Int64) != normalNumStr {
-			t.Errorf("normalNum %v != normalNumStr %v", normalNum, normalNumStr)
-		}
+		t.Log(precisionNumStr, recScaleNumStr, normalNumStr)
 	}
 }
