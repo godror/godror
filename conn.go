@@ -330,18 +330,66 @@ func maybeBadConn(err error) error {
 			if strings.Contains(err.Error(), " DPI-1002: ") {
 				return driver.ErrBadConn
 			}
-		case 12609, 1012, 3113, 3114, 12170, 12528, 12545, 12547, 24315, 28547, 03135:
-			// ORA-12609: TNS:Receive timeout occurred
-			// ORA-01012: Not logged on
-			// ORA-03113: end-of-file on communication channel
-			// ORA-03114: not connected to ORACLE
+			// cases by experience:
 			// ORA-12170: TNS:Connect timeout occurred
 			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 			// ORA-12545: Connect failed because target host or object does not exist
-			// ORA-12547: TNS:lost contact
 			// ORA-24315: illegal attribute type
 			// ORA-28547: connection to server failed, probable Oracle Net admin error
-			// ORA-03135: connection lost contact
+		case 12170, 12528, 12545, 24315, 28547:
+
+			//cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
+		case 22: // invalid session ID; access denied
+			fallthrough
+		case 28: // your session has been killed
+			fallthrough
+		case 31: // your session has been marked for kill
+			fallthrough
+		case 45: // your session has been terminated with no replay
+			fallthrough
+		case 378: // buffer pools cannot be created as specified
+			fallthrough
+		case 602: // internal programming exception
+			fallthrough
+		case 603: // ORACLE server session terminated by fatal error
+			fallthrough
+		case 609: // could not attach to incoming connection
+			fallthrough
+		case 1012: // not logged on
+			fallthrough
+		case 1041: // internal error. hostdef extension doesn't exist
+			fallthrough
+		case 1043: // user side memory corruption
+			fallthrough
+		case 1089: // immediate shutdown or close in progress
+			fallthrough
+		case 1092: // ORACLE instance terminated. Disconnection forced
+			fallthrough
+		case 2396: // exceeded maximum idle time, please connect again
+			fallthrough
+		case 3113: // end-of-file on communication channel
+			fallthrough
+		case 3114: // not connected to ORACLE
+			fallthrough
+		case 3122: // attempt to close ORACLE-side window on user side
+			fallthrough
+		case 3135: // connection lost contact
+			fallthrough
+		case 12153: // TNS:not connected
+			fallthrough
+		case 12537: // TNS:connection closed
+			fallthrough
+		case 12547: // TNS:lost contact
+			fallthrough
+		case 12570: // TNS:packet reader failure
+			fallthrough
+		case 12583: // TNS:no reader
+			fallthrough
+		case 27146: // post/wait initialization failed
+			fallthrough
+		case 28511: // lost RPC connection
+			fallthrough
+		case 56600: // an illegal OCI function call was issued
 			return driver.ErrBadConn
 		}
 	}
