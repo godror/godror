@@ -444,7 +444,7 @@ func BenchmarkSelectDate(b *testing.B) {
 }
 
 func BenchmarkSelect(b *testing.B) {
-	const geoTableName = "test_geo"
+	geoTableName := "test_geo" + tblSuffix
 	const geoTableRowCount = 1000
 	if err := createGeoTable(geoTableName, geoTableRowCount); err != nil {
 		b.Fatal(err)
