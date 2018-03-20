@@ -35,7 +35,6 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"time"
 )
 
 const go10 = true
@@ -70,8 +69,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession", "conn", c.dpiConn)
 	}
-	subCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	err := c.Ping(subCtx)
-	cancel()
-	return err
+	//subCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	//err := c.Ping(subCtx)
+	//cancel()
+	return c.Ping(ctx)
 }

@@ -298,7 +298,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 
-	//if Log != nil {Log("gets", st.gets) }
+	if Log != nil {
+		Log("gets", st.gets, "dests", st.dests)
+	}
 	for i, get := range st.gets {
 		if get == nil {
 			continue
@@ -306,16 +308,26 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		dest := st.dests[i]
 		if !st.isSlice[i] {
 			if err = get(dest, st.data[i]); err != nil {
+				if Log != nil {
+					Log("get", i, "error", err)
+				}
 				return nil, errors.Wrapf(err, "%d. get[%d]", i, 0)
 			}
 			continue
 		}
 		var n C.uint32_t = 1
 		if C.dpiVar_getNumElementsInArray(st.vars[i], &n) == C.DPI_FAILURE {
-			return nil, errors.Wrapf(st.getError(), "%d.getNumElementsInArray", i)
+			err = st.getError()
+			if Log != nil {
+				Log("msg", "getNumElementsInArray", "i", i, "error", err)
+			}
+			return nil, errors.Wrapf(err, "%d.getNumElementsInArray", i)
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		if err = get(dest, st.data[i][:n]); err != nil {
+			if Log != nil {
+				Log("msg", "get", "i", i, "n", n, "error", err)
+			}
 			return nil, errors.Wrapf(err, "%d. get", i)
 		}
 	}
