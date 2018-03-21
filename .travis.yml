@@ -2,9 +2,9 @@ language: go
 sudo: required
 
 go:
-    - "1.9"
+    #- "1.9"
     - "1.10"
-    - tip
+    #- tip
 env:
     # alias travis='docker run --rm -v $PWD:/repo -v ~/.travis:/travis andredumas/travis-ci-cli'
     # travis encrypt -r tgulacsi/ora  'AWS_ACCESS_KEY_ID=...' 'AWS_SECRET_ACCESS_KEY=...+hMtiMhFbmUhu2zB+UyjUdGveIMvWBRIV' 'GO_ORA_DRV_TEST_DB=host:port/sid' GO_ORA_DRV_TEST_USERNAME=... GO_ORA_DRV_TEST_PASSWORD=...
