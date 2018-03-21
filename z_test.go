@@ -1384,3 +1384,37 @@ func TestNumberNull(t *testing.T) {
 		t.Log(precisionNumStr, recScaleNumStr, normalNumStr)
 	}
 }
+
+func TestNullFloat(t *testing.T) {
+	t.Parallel()
+	testDb.Exec("DROP TABLE test_char")
+	if _, err := testDb.Exec(`CREATE TABLE test_char (
+		  CHARS VARCHAR2(10 BYTE),
+		  FLOATS NUMBER(10, 2)
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_char")
+
+	tx, err := testDb.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(
+		"INSERT INTO test_char VALUES(:CHARS, :FLOATS)",
+		[]string{"dog", "", "cat"},
+		/*[]sql.NullString{sql.NullString{"dog", true},
+		sql.NullString{"", false},
+		sql.NullString{"cat", true}},*/
+		[]sql.NullFloat64{
+			{Float64: 3.14, Valid: true},
+			{Float64: 12.36, Valid: true},
+			{Float64: 0.0, Valid: false},
+		},
+	)
+	if err != nil {
+		t.Error(err)
+	}
+}

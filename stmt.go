@@ -664,7 +664,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			if info.isOut {
 				st.gets[i] = dataGetNumber
 			}
-		case sql.NullFloat64:
+		case sql.NullFloat64, []sql.NullFloat64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
 			info.set = dataSetNumber
 			if info.isOut {
