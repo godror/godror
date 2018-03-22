@@ -71,6 +71,24 @@ That's what `goracle.DriverConn` is for!
 See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 [NewSubscription](https://godoc.org/gopkg.in/goracle.v2#Subscription).
 
+## Caveats ##
+### sql.NullString ###
+`sql.NullString` is not supported: Oracle DB does not differentiate between
+an empty string ("") and a NULL, so an
+
+	sql.NullString{String:"", Valid:true} == sql.NullString{String:"", Valid:false}
+
+and this would be more confusing than not supporting `sql.NullString` at all.
+
+Just use plain old `string` !
+
+### NUMBER ###
+`NUMBER`s are transferred as `goracle.Number` (which is a `string`) to Go under the hood.
+This ensures that we don't lose any precision (Oracle's NUMBER hs 38 decimal digits),
+and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string`, as you wish.
+
+For `PLS_INTEGER` and `BINARY_INTEGER`  (PL/SQL data types) you can use `int32`.
+
 # Install #
 Just
 
