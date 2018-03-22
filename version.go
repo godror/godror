@@ -1,4 +1,4 @@
-package goracle // import "gopkg.in/goracle.v2"
+package goracle
 
 // Version of this driver
 const Version = "v2.1.27"
