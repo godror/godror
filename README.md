@@ -84,7 +84,7 @@ Just use plain old `string` !
 
 ### NUMBER ###
 `NUMBER`s are transferred as `goracle.Number` (which is a `string`) to Go under the hood.
-This ensures that we don't lose any precision (Oracle's NUMBER hs 38 decimal digits),
+This ensures that we don't lose any precision (Oracle's NUMBER has 38 decimal digits),
 and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string`, as you wish.
 
 For `PLS_INTEGER` and `BINARY_INTEGER`  (PL/SQL data types) you can use `int32`.
