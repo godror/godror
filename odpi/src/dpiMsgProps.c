@@ -31,6 +31,35 @@ int dpiMsgProps__create(dpiMsgProps *options, dpiConn *conn, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
+// dpiMsgProps__extractMsgId() [INTERNAL]
+//   Extract bytes from the OCIRaw value containing the message id and store
+// them in allocated memory on the message properties instance. Then resize the
+// OCIRaw value so the memory can be reclaimed.
+//-----------------------------------------------------------------------------
+int dpiMsgProps__extractMsgId(dpiMsgProps *props, void *ociRaw,
+        const char **msgId, uint32_t *msgIdLength, dpiError *error)
+{
+    const char *rawPtr;
+
+    dpiOci__rawPtr(props->env->handle, ociRaw, (void**) &rawPtr);
+    dpiOci__rawSize(props->env->handle, ociRaw, msgIdLength);
+    if (*msgIdLength > props->bufferLength) {
+        if (props->buffer) {
+            dpiUtils__freeMemory(props->buffer);
+            props->buffer = NULL;
+        }
+        if (dpiUtils__allocateMemory(1, *msgIdLength, 0,
+                "allocate msgid buffer", (void**) &props->buffer, error) < 0)
+            return DPI_FAILURE;
+    }
+    memcpy(props->buffer, rawPtr, *msgIdLength);
+    *msgId = props->buffer;
+    dpiOci__rawResize(props->env->handle, &ociRaw, 0, error);
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiMsgProps__free() [INTERNAL]
 //   Free the memory for a message properties structure.
 //-----------------------------------------------------------------------------
@@ -43,6 +72,10 @@ void dpiMsgProps__free(dpiMsgProps *props, dpiError *error)
     if (props->conn) {
         dpiGen__setRefCount(props->conn, error, -1);
         props->conn = NULL;
+    }
+    if (props->buffer) {
+        dpiUtils__freeMemory(props->buffer);
+        props->buffer = NULL;
     }
     dpiUtils__freeMemory(props);
 }

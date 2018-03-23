@@ -202,7 +202,7 @@ int dpiObjectType_createObject(dpiObjectType *objType, dpiObject **obj)
             &error) < 0)
         return dpiGen__endPublicFn(objType, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(objType, obj)
-    status = dpiObject__allocate(objType, NULL, NULL, obj, &error);
+    status = dpiObject__allocate(objType, NULL, NULL, NULL, obj, &error);
     return dpiGen__endPublicFn(objType, status, &error);
 }
 

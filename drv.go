@@ -38,12 +38,6 @@
 // Thus you can cluster the session pool with classes, or ose POOLED for DRCP.
 package goracle
 
-//go:generate git submodule update --init --recursive
-//go:generate sh -c "rsync -a ./odpi-c/*.md ./odpi/"
-//go:generate rsync -a ./odpi-c/src/ ./odpi/src/
-//go:generate rsync -a ./odpi-c/include/ ./odpi/include/
-//go:generate rsync -a ./odpi-c/embed/ ./odpi/embed/
-
 /*
 #cgo CFLAGS: -I./odpi/include -I./odpi/src -I./odpi/embed
 

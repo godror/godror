@@ -596,7 +596,7 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         for (i = 0; i < stmt->numBindVars; i++) {
             var = stmt->bindVars[i].var;
             for (j = 0; j < var->maxArraySize; j++) {
-                if (dpiVar__getValue(var, j, &var->externalData[j],
+                if (dpiVar__getValue(var, j, &var->externalData[j], 0,
                         error) < 0)
                     return DPI_FAILURE;
             }
@@ -840,7 +840,7 @@ static int dpiStmt__postFetch(dpiStmt *stmt, dpiError *error)
     for (i = 0; i < stmt->numQueryVars; i++) {
         var = stmt->queryVars[i];
         for (j = 0; j < stmt->bufferRowCount; j++) {
-            if (dpiVar__getValue(var, j, &var->externalData[j], error) < 0)
+            if (dpiVar__getValue(var, j, &var->externalData[j], 1, error) < 0)
                 return DPI_FAILURE;
             if (var->type->requiresPreFetch)
                 var->requiresPreFetch = 1;
@@ -949,7 +949,7 @@ static int dpiStmt__reExecute(dpiStmt *stmt, uint32_t numIters,
     // so that it does not return with the invalid metadata; again, if this
     // cannot be done, let the original error propagate
     origHandle = stmt->handle;
-    status = dpiStmt__prepare(stmt, sql, sqlLength, NULL, 0, &localError);
+    status = dpiOci__stmtPrepare2(stmt, sql, sqlLength, NULL, 0, &localError);
     newHandle = stmt->handle;
     stmt->handle = origHandle;
     stmt->deleteFromCache = 1;

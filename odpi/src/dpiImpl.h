@@ -832,6 +832,8 @@ struct dpiObject {
     dpiObjectType *type;
     void *instance;
     void *indicator;
+    dpiObject *dependsOnObj;
+    int freeIndicator;
 };
 
 struct dpiRowid {
@@ -866,6 +868,8 @@ struct dpiMsgProps {
     dpiType_HEAD
     dpiConn *conn;
     void *handle;
+    char *buffer;
+    uint32_t bufferLength;
 };
 
 
@@ -1025,7 +1029,7 @@ void dpiVar__free(dpiVar *var, dpiError *error);
 int32_t dpiVar__inBindCallback(dpiVar *var, void *bindp, uint32_t iter,
         uint32_t index, void **bufpp, uint32_t *alenp, uint8_t *piecep,
         void **indpp);
-int dpiVar__getValue(dpiVar *var, uint32_t pos, dpiData *data,
+int dpiVar__getValue(dpiVar *var, uint32_t pos, dpiData *data, int inFetch,
         dpiError *error);
 int dpiVar__setValue(dpiVar *var, uint32_t pos, dpiData *data,
         dpiError *error);
@@ -1051,7 +1055,8 @@ int dpiLob__setFromBytes(dpiLob *lob, const char *value, uint64_t valueLength,
 // definition of internal dpiObject methods
 //-----------------------------------------------------------------------------
 int dpiObject__allocate(dpiObjectType *objType, void *instance,
-        void *indicator, dpiObject **obj, dpiError *error);
+        void *indicator, dpiObject *dependsOnObj, dpiObject **obj,
+        dpiError *error);
 void dpiObject__free(dpiObject *obj, dpiError *error);
 
 
@@ -1341,6 +1346,8 @@ int dpiOci__typeByFullName(dpiConn *conn, const char *name,
 // definition of internal dpiMsgProps methods
 //-----------------------------------------------------------------------------
 int dpiMsgProps__create(dpiMsgProps *props, dpiConn *conn, dpiError *error);
+int dpiMsgProps__extractMsgId(dpiMsgProps *props, void *ociRaw,
+        const char **msgId, uint32_t *msgIdLength, dpiError *error);
 void dpiMsgProps__free(dpiMsgProps *props, dpiError *error);
 
 

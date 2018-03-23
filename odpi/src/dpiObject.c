@@ -21,7 +21,8 @@
 //   Allocate and initialize an object structure.
 //-----------------------------------------------------------------------------
 int dpiObject__allocate(dpiObjectType *objType, void *instance,
-        void *indicator, dpiObject **obj, dpiError *error)
+        void *indicator, dpiObject *dependsOnObj, dpiObject **obj,
+        dpiError *error)
 {
     dpiObject *tempObj;
 
@@ -32,6 +33,10 @@ int dpiObject__allocate(dpiObjectType *objType, void *instance,
     tempObj->type = objType;
     tempObj->instance = instance;
     tempObj->indicator = indicator;
+    if (dependsOnObj) {
+        dpiGen__setRefCount(dependsOnObj, error, 1);
+        tempObj->dependsOnObj = dependsOnObj;
+    }
     if (!instance) {
         if (dpiOci__objectNew(tempObj, error) < 0) {
             dpiObject__free(tempObj, error);
@@ -73,7 +78,9 @@ static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
 {
     switch (oracleTypeNum) {
         case DPI_ORACLE_TYPE_CHAR:
+        case DPI_ORACLE_TYPE_NCHAR:
         case DPI_ORACLE_TYPE_VARCHAR:
+        case DPI_ORACLE_TYPE_NVARCHAR:
             if (buffer->asString)
                 dpiOci__stringResize(env->handle, &buffer->asString, 0, error);
             break;
@@ -105,13 +112,18 @@ static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
 void dpiObject__free(dpiObject *obj, dpiError *error)
 {
     if (obj->instance) {
-        dpiOci__objectFree(obj, error);
+        if (!obj->dependsOnObj)
+            dpiOci__objectFree(obj, error);
         obj->instance = NULL;
         obj->indicator = NULL;
     }
     if (obj->type) {
         dpiGen__setRefCount(obj->type, error, -1);
         obj->type = NULL;
+    }
+    if (obj->dependsOnObj) {
+        dpiGen__setRefCount(obj->dependsOnObj, error, -1);
+        obj->dependsOnObj = NULL;
     }
     dpiUtils__freeMemory(obj);
 }
@@ -209,14 +221,9 @@ static int dpiObject__fromOracleValue(dpiObject *obj, dpiError *error,
                 void *instance = (typeInfo->objectType->isCollection) ?
                         *value->asCollection : value->asRaw;
                 dpiObject *tempObj;
-                if (dpiObject__allocate(typeInfo->objectType, NULL, NULL,
-                        &tempObj, error) < 0)
+                if (dpiObject__allocate(typeInfo->objectType, instance,
+                        indicator, obj, &tempObj, error) < 0)
                     return DPI_FAILURE;
-                if (dpiOci__objectCopy(tempObj, instance, indicator,
-                        error) < 0) {
-                    dpiObject__free(tempObj, error);
-                    return DPI_FAILURE;
-                }
                 data->value.asObject = tempObj;
                 return DPI_SUCCESS;
             }
@@ -457,7 +464,7 @@ int dpiObject_copy(dpiObject *obj, dpiObject **copiedObj)
     if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, __func__, 1, &error) < 0)
         return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(obj, copiedObj)
-    if (dpiObject__allocate(obj->type, NULL, NULL, &tempObj, &error) < 0)
+    if (dpiObject__allocate(obj->type, NULL, NULL, NULL, &tempObj, &error) < 0)
         return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
     if (dpiOci__objectCopy(tempObj, obj->instance, obj->indicator,
             &error) < 0) {

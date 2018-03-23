@@ -266,15 +266,6 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
     source = (uint8_t*) oracleValue;
     length = *source++ - 1;
 
-    // a mantissa length of 0 implies a value of 0
-    if (length == 0) {
-        *isNegative = 0;
-        *decimalPointIndex = 1;
-        *numDigits = 1;
-        *digits = 0;
-        return DPI_SUCCESS;
-    }
-
     // a mantissa length longer than 20 signals corruption of some kind
     if (length > 20)
         return dpiError__set(error, "check mantissa length",
@@ -289,6 +280,21 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
         ociExponent = ~ociExponent;
     ociExponent -= 193;
     *decimalPointIndex = ociExponent * 2 + 2;
+
+    // a mantissa length of 0 implies a value of 0 (if positive)
+    // or -1e126 (if negative)
+    if (length == 0) {
+        if (*isNegative) {
+            *digits = 1;
+            *decimalPointIndex = 127;
+        }
+        else {
+            *decimalPointIndex = 1;
+            *digits = 0;
+        }
+        *numDigits = 1;
+        return DPI_SUCCESS;
+    }
 
     // check for the trailing 102 byte for negative numbers and if present,
     // reduce the number of mantissa digits
@@ -312,6 +318,11 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
         if (digit == 0 && i == 0) {
             (*numDigits)--;
             (*decimalPointIndex)--;
+        } else if (digit == 10) {
+            (*numDigits)++;
+            (*decimalPointIndex)++;
+            *digits++ = 1;
+            *digits++ = 0;
         } else *digits++ = digit;
 
         // process the second digit; trailing zeroes are ignored

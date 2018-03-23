@@ -2150,6 +2150,9 @@ int dpiOci__objectFree(dpiObject *obj, dpiError *error)
     DPI_OCI_LOAD_SYMBOL("OCIObjectFree", dpiOciSymbols.fnObjectFree)
     (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
             obj->instance, DPI_OCI_DEFAULT);
+    if (obj->freeIndicator)
+        (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
+                obj->indicator, DPI_OCI_DEFAULT);
     return DPI_SUCCESS;
 }
 

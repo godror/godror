@@ -1285,8 +1285,9 @@ int dpiConn_deqObject(dpiConn *conn, const char *queueName,
         }
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
-    dpiOci__rawPtr(conn->env->handle, ociMsgId, (void**) msgId);
-    dpiOci__rawSize(conn->env->handle, ociMsgId, msgIdLength);
+    if (dpiMsgProps__extractMsgId(props, ociMsgId, msgId, msgIdLength,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
@@ -1323,8 +1324,9 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
             payload->type->tdo, &payload->instance, &payload->indicator,
             &ociMsgId, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    dpiOci__rawPtr(conn->env->handle, ociMsgId, (void**) msgId);
-    dpiOci__rawSize(conn->env->handle, ociMsgId, msgIdLength);
+    if (dpiMsgProps__extractMsgId(props, ociMsgId, msgId, msgIdLength,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
