@@ -1,3 +1,0 @@
-[submodule "odpi"]
-	path = odpi-c
-	url = https://github.com/oracle/odpi
