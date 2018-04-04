@@ -312,7 +312,7 @@ func createGeoTable(tableName string, rowCount int) error {
 	testDb.Exec("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'")
 	testDb.Exec("DROP TABLE " + tableName)
 	if _, err := testDb.Exec(`CREATE TABLE ` + tableName + ` (
-		id NUMBER(3) NOT NULL,
+		id NUMBER(9) NOT NULL,
 	"RECORD_ID" NUMBER(*,0) NOT NULL ENABLE,
 	"PERSON_ID" NUMBER(*,0),
 	"PERSON_ACCOUNT_ID" NUMBER(*,0),
@@ -445,29 +445,39 @@ func BenchmarkSelectDate(b *testing.B) {
 
 func BenchmarkSelect(b *testing.B) {
 	geoTableName := "test_geo" + tblSuffix
-	const geoTableRowCount = 1000
+	const geoTableRowCount = 100000
 	if err := createGeoTable(geoTableName, geoTableRowCount); err != nil {
 		b.Fatal(err)
 	}
 	defer testDb.Exec("DROP TABLE " + geoTableName)
 
+	for _, i := range []int{1, 10, 100, 1000} {
+		b.Run(fmt.Sprintf("Prefetch%d", i), func(b *testing.B) { benchSelect(b, geoTableName, i) })
+	}
+}
+
+func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; {
 		b.StopTimer()
-		rows, err := testDb.Query("SELECT record_id FROM " + geoTableName)
+		rows, err := testDb.Query("SELECT location FROM "+geoTableName, goracle.FetchRowCount(prefetchLen))
 		if err != nil {
 			b.Fatal(err)
 		}
+		var readBytes, recNo int64
 		b.StartTimer()
 		for rows.Next() && i < b.N {
-			var id int
-			if err = rows.Scan(&id); err != nil {
+			var loc string
+			if err = rows.Scan(&loc); err != nil {
 				rows.Close()
 				b.Fatal(err)
 			}
 			i++
+			readBytes += int64(len(loc))
+			recNo++
 		}
 		b.StopTimer()
+		b.SetBytes(readBytes / recNo)
 		rows.Close()
 	}
 }
