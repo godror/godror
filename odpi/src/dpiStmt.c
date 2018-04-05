@@ -184,18 +184,13 @@ static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, int addReference,
     }
 
     // bind object, if applicable
-    if (var->objectIndicator && dpiOci__bindObject(var, bindHandle, error) < 0)
+    if (var->buffer.objectIndicator &&
+            dpiOci__bindObject(var, bindHandle, error) < 0)
         return DPI_FAILURE;
 
-    // setup dynamic bind, if applicable; reset actual array size to 0 as
-    // dynamic bind doesn't get called if there are no rows returned in a DML
-    // returning statement
-    if (dynamicBind) {
-        if (stmt->isReturning)
-            var->actualArraySize = 0;
-        if (dpiOci__bindDynamic(var, bindHandle, error) < 0)
-            return DPI_FAILURE;
-    }
+    // setup dynamic bind, if applicable
+    if (dynamicBind && dpiOci__bindDynamic(var, bindHandle, error) < 0)
+        return DPI_FAILURE;
 
     return DPI_SUCCESS;
 }
@@ -510,7 +505,7 @@ static int dpiStmt__define(dpiStmt *stmt, uint32_t pos, dpiVar *var,
     }
 
     // define objects, if applicable
-    if (var->objectIndicator && dpiOci__defineObject(var, defineHandle,
+    if (var->buffer.objectIndicator && dpiOci__defineObject(var, defineHandle,
             error) < 0)
         return DPI_FAILURE;
 
@@ -543,13 +538,13 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
     // buffer structures
     for (i = 0; i < stmt->numBindVars; i++) {
         var = stmt->bindVars[i].var;
-        for (j = 0; j < var->maxArraySize; j++) {
-            data = &var->externalData[j];
+        for (j = 0; j < var->buffer.maxArraySize; j++) {
+            data = &var->buffer.externalData[j];
             if (var->type->oracleTypeNum == DPI_ORACLE_TYPE_STMT &&
                     data->value.asStmt == stmt)
                 return dpiError__set(error, "bind to self",
                         DPI_ERR_NOT_SUPPORTED);
-            if (dpiVar__setValue(var, j, data, error) < 0)
+            if (dpiVar__setValue(var, &var->buffer, j, data, error) < 0)
                 return DPI_FAILURE;
         }
         if (stmt->isReturning || var->isDynamic)
@@ -595,9 +590,8 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
             stmt->statementType == DPI_STMT_TYPE_CALL) {
         for (i = 0; i < stmt->numBindVars; i++) {
             var = stmt->bindVars[i].var;
-            for (j = 0; j < var->maxArraySize; j++) {
-                if (dpiVar__getValue(var, j, &var->externalData[j], 0,
-                        error) < 0)
+            for (j = 0; j < var->buffer.maxArraySize; j++) {
+                if (dpiVar__getValue(var, &var->buffer, j, 0, error) < 0)
                     return DPI_FAILURE;
             }
             var->error = NULL;
@@ -606,6 +600,7 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
 
     // create query variables (if applicable)
     if (stmt->statementType == DPI_STMT_TYPE_SELECT &&
+            !(mode & DPI_MODE_EXEC_PARSE_ONLY) &&
             dpiStmt__createQueryVars(stmt, error) < 0)
         return DPI_FAILURE;
 
@@ -840,7 +835,7 @@ static int dpiStmt__postFetch(dpiStmt *stmt, dpiError *error)
     for (i = 0; i < stmt->numQueryVars; i++) {
         var = stmt->queryVars[i];
         for (j = 0; j < stmt->bufferRowCount; j++) {
-            if (dpiVar__getValue(var, j, &var->externalData[j], 1, error) < 0)
+            if (dpiVar__getValue(var, &var->buffer, j, 1, error) < 0)
                 return DPI_FAILURE;
             if (var->type->requiresPreFetch)
                 var->requiresPreFetch = 1;
@@ -883,10 +878,11 @@ static int dpiStmt__preFetch(dpiStmt *stmt, dpiError *error)
             dpiGen__setRefCount(var, error, -1);
         }
         var->error = error;
-        if (stmt->fetchArraySize > var->maxArraySize)
+        if (stmt->fetchArraySize > var->buffer.maxArraySize)
             return dpiError__set(error, "check array size",
-                    DPI_ERR_ARRAY_SIZE_TOO_SMALL, var->maxArraySize);
-        if (var->requiresPreFetch && dpiVar__extendedPreFetch(var, error) < 0)
+                    DPI_ERR_ARRAY_SIZE_TOO_SMALL, var->buffer.maxArraySize);
+        if (var->requiresPreFetch && dpiVar__extendedPreFetch(var,
+                &var->buffer, error) < 0)
             return DPI_FAILURE;
     }
 
@@ -1200,10 +1196,10 @@ int dpiStmt_executeMany(dpiStmt *stmt, dpiExecMode mode, uint32_t numIters)
     // ensure that all bind variables have a big enough maxArraySize to
     // support this operation
     for (i = 0; i < stmt->numBindVars; i++) {
-        if (stmt->bindVars[i].var->maxArraySize < numIters) {
+        if (stmt->bindVars[i].var->buffer.maxArraySize < numIters) {
             dpiError__set(&error, "check array size",
                     DPI_ERR_ARRAY_SIZE_TOO_SMALL,
-                    stmt->bindVars[i].var->maxArraySize);
+                    stmt->bindVars[i].var->buffer.maxArraySize);
             return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
         }
     }
@@ -1564,7 +1560,7 @@ int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     }
     *nativeTypeNum = var->nativeTypeNum;
-    *data = &var->externalData[stmt->bufferRowIndex - 1];
+    *data = &var->buffer.externalData[stmt->bufferRowIndex - 1];
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
 
@@ -1767,7 +1763,7 @@ int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize)
         arraySize = DPI_DEFAULT_FETCH_ARRAY_SIZE;
     for (i = 0; i < stmt->numQueryVars; i++) {
         var = stmt->queryVars[i];
-        if (var && var->maxArraySize < arraySize) {
+        if (var && var->buffer.maxArraySize < arraySize) {
             dpiError__set(&error, "check array size",
                     DPI_ERR_ARRAY_SIZE_TOO_BIG, arraySize);
             return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);

@@ -61,6 +61,23 @@ static void dpiSubscr__callback(dpiSubscr *subscr, UNUSED void *handle,
 
 
 //-----------------------------------------------------------------------------
+// dpiSubscr__checkOpen() [INTERNAL]
+//   Determine if the subscription is open and available for use.
+//-----------------------------------------------------------------------------
+static int dpiSubscr__checkOpen(dpiSubscr *subscr, const char *fnName,
+        dpiError *error)
+{
+    if (dpiGen__startPublicFn(subscr, DPI_HTYPE_SUBSCR, fnName, 1, error) < 0)
+        return DPI_FAILURE;
+    if (!subscr->handle)
+        return dpiError__set(error, "check closed", DPI_ERR_SUBSCR_CLOSED);
+    if (!subscr->conn->handle || subscr->conn->closing)
+        return dpiError__set(error, "check connection", DPI_ERR_NOT_CONNECTED);
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiSubscr__create() [INTERNAL]
 //   Create a new subscription structure and return it. In case of error NULL
 // is returned.
@@ -543,8 +560,7 @@ int dpiSubscr_close(dpiSubscr *subscr)
 {
     dpiError error;
 
-    if (dpiGen__startPublicFn(subscr, DPI_HTYPE_SUBSCR, __func__, 1,
-            &error) < 0)
+    if (dpiSubscr__checkOpen(subscr, __func__, &error) < 0)
         return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
     if (subscr->handle) {
         if (dpiOci__subscriptionUnRegister(subscr, &error) < 0)
@@ -566,8 +582,7 @@ int dpiSubscr_prepareStmt(dpiSubscr *subscr, const char *sql,
     dpiStmt *tempStmt;
     dpiError error;
 
-    if (dpiGen__startPublicFn(subscr, DPI_HTYPE_SUBSCR, __func__, 1,
-            &error) < 0)
+    if (dpiSubscr__checkOpen(subscr, __func__, &error) < 0)
         return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(subscr, sql)
     DPI_CHECK_PTR_NOT_NULL(subscr, stmt)

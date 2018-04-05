@@ -38,6 +38,10 @@ int dpiError__check(dpiError *error, int status, dpiConn *conn,
         return DPI_FAILURE;
     else if (!error->handle)
         return dpiError__set(error, action, DPI_ERR_ERR_NOT_INITIALIZED);
+    else if (status != DPI_OCI_ERROR && status != DPI_OCI_NO_DATA)
+        return dpiError__set(error, action,
+                DPI_ERR_UNEXPECTED_OCI_RETURN_VALUE, status,
+                error->buffer->fnName);
 
     // fetch OCI error
     error->buffer->action = action;

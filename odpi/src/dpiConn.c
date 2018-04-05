@@ -1213,6 +1213,14 @@ int dpiConn_create(const dpiContext *context, const char *userName,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     }
 
+    // newPassword and edition cannot be specified at the same time
+    if (createParams->newPassword && createParams->newPasswordLength > 0 &&
+            commonParams->edition && commonParams->editionLength > 0) {
+        dpiError__set(&error, "check edition/new password",
+                DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD);
+        return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
+    }
+
     // handle case where pool is specified
     if (createParams->pool) {
         if (dpiGen__checkHandle(createParams->pool, DPI_HTYPE_POOL,
