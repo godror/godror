@@ -138,6 +138,14 @@ func (st *statement) Close() error {
 	st.Lock()
 	defer st.Unlock()
 
+	return st.close()
+}
+
+func (st *statement) close() error {
+	if st == nil {
+		return nil
+	}
+
 	for _, v := range st.vars {
 		C.dpiVar_release(v)
 	}
@@ -201,7 +209,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if Log != nil {
 				Log("error", driver.ErrBadConn)
 			}
-			st.Close()
+			st.close()
 		}
 		return err
 	}
@@ -295,7 +303,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 		case <-ctx.Done():
 			_ = st.Break()
-			st.Close()
+			st.close()
 			return nil, driver.ErrBadConn
 		}
 	}
@@ -351,7 +359,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
-			st.Close()
+			st.close()
 		}
 		return err
 	}
@@ -410,7 +418,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			}
 		case <-ctx.Done():
 			_ = st.Break()
-			st.Close()
+			st.close()
 			return nil, driver.ErrBadConn
 		}
 	}
