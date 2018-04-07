@@ -196,14 +196,15 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	Log := ctxGetLog(ctx)
 
-	defer func() {
+	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			if Log != nil {
 				Log("error", driver.ErrBadConn)
 			}
 			st.Close()
 		}
-	}()
+		return err
+	}
 
 	st.Lock()
 	defer st.Unlock()
@@ -283,17 +284,18 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	select {
 	case err = <-done:
 		if err != nil {
-			return nil, err
+			return nil, closeIfBadConn(err)
 		}
 	case <-ctx.Done():
 		// select again to avoid race condition if both are done
 		select {
 		case err = <-done:
 			if err != nil {
-				return nil, err
+				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
 			_ = st.Break()
+			st.Close()
 			return nil, driver.ErrBadConn
 		}
 	}
@@ -311,7 +313,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				if Log != nil {
 					Log("get", i, "error", err)
 				}
-				return nil, errors.Wrapf(err, "%d. get[%d]", i, 0)
+				return nil, errors.Wrapf(closeIfBadConn(err), "%d. get[%d]", i, 0)
 			}
 			continue
 		}
@@ -321,14 +323,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if Log != nil {
 				Log("msg", "getNumElementsInArray", "i", i, "error", err)
 			}
-			return nil, errors.Wrapf(err, "%d.getNumElementsInArray", i)
+			return nil, errors.Wrapf(closeIfBadConn(err), "%d.getNumElementsInArray", i)
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		if err = get(dest, st.data[i][:n]); err != nil {
 			if Log != nil {
 				Log("msg", "get", "i", i, "n", n, "error", err)
 			}
-			return nil, errors.Wrapf(err, "%d. get", i)
+			return nil, errors.Wrapf(closeIfBadConn(err), "%d. get", i)
 		}
 	}
 	var count C.uint64_t
@@ -347,11 +349,12 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 	Log := ctxGetLog(ctx)
 
-	defer func() {
+	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			st.Close()
 		}
-	}()
+		return err
+	}
 
 	st.Lock()
 	defer st.Unlock()
@@ -368,7 +371,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
 	if err = st.bindVars(args, Log); err != nil {
-		return nil, err
+		return nil, closeIfBadConn(err)
 	}
 
 	// execute
@@ -397,20 +400,22 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	select {
 	case err = <-done:
 		if err != nil {
-			return nil, err
+			return nil, closeIfBadConn(err)
 		}
 	case <-ctx.Done():
 		select {
 		case err = <-done:
 			if err != nil {
-				return nil, err
+				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
 			_ = st.Break()
+			st.Close()
 			return nil, driver.ErrBadConn
 		}
 	}
-	return st.openRows(int(colCount))
+	rows, err = st.openRows(int(colCount))
+	return rows, closeIfBadConn(err)
 }
 
 // NumInput returns the number of placeholder parameters.
