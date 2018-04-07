@@ -5,4 +5,4 @@ package goracle
 //go:generate mv odpi-2.3.0 odpi
 
 // Version of this driver
-const Version = "v2.3.2"
+const Version = "v2.3.3"
