@@ -270,7 +270,7 @@ type Conn interface {
 	Commit() error
 	Rollback() error
 	ServerVersion() (VersionInfo, error)
-	GetObjectType(name string) (*ObjectType, error)
+	GetObjectType(name string) (ObjectType, error)
 	NewSubscription(string, func(Event)) (*Subscription, error)
 }
 
