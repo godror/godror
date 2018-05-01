@@ -203,7 +203,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
-	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), (**C.dpiObjectType)(unsafe.Pointer(&objType))) == C.DPI_FAILURE {
+	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(objType))
 		return ObjectType{}, errors.Wrapf(c.getError(), "getObjectType(%q) conn=%p", name, c.dpiConn)
 	}
@@ -213,11 +213,11 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 
 // NewObject returns a new Object with ObjectType type.
 func (t ObjectType) NewObject() (*Object, error) {
-	obj := Object{ObjectType: t}
-	if C.dpiObjectType_createObject(t.dpiObjectType, (**C.dpiObject)(unsafe.Pointer(&obj.dpiObject))) == C.DPI_FAILURE {
+	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
+	if C.dpiObjectType_createObject(t.dpiObjectType, &obj) == C.DPI_FAILURE {
 		return nil, t.getError()
 	}
-	return &obj, nil
+	return &Object{ObjectType: t, dpiObject: obj}, nil
 }
 
 func (t *ObjectType) init() error {
