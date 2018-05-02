@@ -525,6 +525,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		natTyp      C.dpiNativeTypeNum
 		set         dataSetter
 		bufSize     int
+		objType     *C.dpiObjectType
 	}
 	infos := make([]argInfo, len(args))
 	//fmt.Printf("bindVars %d\n", len(args))
@@ -751,6 +752,22 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 				st.gets[i] = dataGetTime
 			}
 
+		case Object:
+			info.objType = v.ObjectType.dpiObjectType
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+			info.set = st.dataSetObject
+			if info.isOut {
+				st.gets[i] = st.dataGetObject
+			}
+
+		case *Object:
+			info.objType = v.ObjectType.dpiObjectType
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+			info.set = st.dataSetObject
+			if info.isOut {
+				st.gets[i] = st.dataGetObject
+			}
+
 		default:
 			return errors.Errorf("%d. arg: unknown type %T", i+1, value)
 		}
@@ -772,7 +789,12 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			Log("msg", "newVar", "i", i, "plSQLArrays", st.PlSQLArrays(), "typ", int(info.typ), "natTyp", int(info.natTyp), "sliceLen", n, "bufSize", info.bufSize, "isSlice", st.isSlice[i])
 		}
 		//i, st.PlSQLArrays(), info.typ, info.natTyp dataSliceLen, info.bufSize)
-		vi := varInfo{IsPLSArray: st.PlSQLArrays() && st.isSlice[i], Typ: info.typ, NatTyp: info.natTyp, SliceLen: n, BufSize: info.bufSize}
+		vi := varInfo{
+			IsPLSArray: st.PlSQLArrays() && st.isSlice[i],
+			Typ:        info.typ, NatTyp: info.natTyp,
+			SliceLen: n, BufSize: info.bufSize,
+			ObjectType: info.objType,
+		}
 		if vi.IsPLSArray && vi.SliceLen > maxArraySize {
 			return errors.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
@@ -1524,6 +1546,35 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		}
 	}
 	return firstErr
+}
+
+func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
+	if len(data) == 0 {
+		return nil
+	}
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
+	objs := []Object{{}}
+	if O, ok := vv.(Object); ok {
+		objs[0] = O
+	} else {
+		objs = vv.([]Object)
+	}
+	for i, obj := range objs {
+		if obj.dpiObject == nil {
+			data[i].isNull = 1
+			return nil
+		}
+		data[i].isNull = 0
+		C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
+	}
+	return nil
+}
+
+func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
+	return errors.New("dataGetObject not implemented")
 }
 
 // CheckNamedValue is called before passing arguments to the driver

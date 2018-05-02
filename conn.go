@@ -258,6 +258,7 @@ type varInfo struct {
 	Typ               C.dpiOracleTypeNum
 	NatTyp            C.dpiNativeTypeNum
 	SliceLen, BufSize int
+	ObjectType        *C.dpiObjectType
 }
 
 func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
@@ -274,12 +275,12 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	var dataArr *C.dpiData
 	var v *C.dpiVar
 	if Log != nil {
-		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "v", v)
+		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
 	}
 	if C.dpiConn_newVar(
 		c.dpiConn, vi.Typ, vi.NatTyp, C.uint32_t(vi.SliceLen),
 		C.uint32_t(vi.BufSize), 1,
-		isArray, nil,
+		isArray, vi.ObjectType,
 		&v, &dataArr,
 	) == C.DPI_FAILURE {
 		return nil, nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d)", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize)

@@ -38,6 +38,9 @@ func (O *Object) GetAttribute(data *Data, i int) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 	}
+	if data.dpiData == nil {
+		data.dpiData = (*C.dpiData)(C.malloc(C.sizeof_void))
+	}
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
 	}
