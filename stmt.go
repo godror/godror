@@ -713,10 +713,10 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
 			switch v := v.(type) {
 			case Number:
-				info.bufSize = 4 * len(v)
+				info.bufSize = len(v)
 			case []Number:
 				for _, s := range v {
-					if n := 4 * len(s); n > info.bufSize {
+					if n := len(s); n > info.bufSize {
 						info.bufSize = n
 					}
 				}

@@ -1418,3 +1418,31 @@ func TestNullFloat(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestColumnSize(t *testing.T) {
+	t.Parallel()
+	testDb.Exec("DROP TABLE test_column_size")
+	if _, err := testDb.Exec(`CREATE TABLE test_column_size (
+		C1 VARCHAR2(20 BYTE),
+		C2 VARCHAR2(1 BYTE),
+		C3 NVARCHAR2(20),
+		C4 NVARCHAR2(1)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_column_size")
+
+	r, err := testDb.Query("SELECT * FROM test_column_size")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rts, err := r.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, col := range rts {
+		l, _ := col.Length()
+
+		t.Logf("Column %q has length %v", col.Name(), l)
+	}
+}
