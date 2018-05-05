@@ -1664,10 +1664,6 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			Nullable:   info.nullOk == 1,
 			ObjectType: ti.objectType,
 		}
-		switch ti.oracleTypeNum {
-		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR, C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR:
-			bufSize *= 4
-		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
 		vi.Typ, vi.NatTyp, vi.BufSize = ti.oracleTypeNum, ti.defaultNativeTypeNum, bufSize
