@@ -76,5 +76,6 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1060: subscription was already closed", // DPI_ERR_SUBSCR_CLOSED
     "DPI-1061: edition is not supported when a new password is specified", // DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD
     "DPI-1062: unexpected OCI return value %d in function %s", // DPI_ERR_UNEXPECTED_OCI_RETURN_VALUE
+    "DPI-1063: modes DPI_MODE_EXEC_BATCH_ERRORS and DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS can only be used with insert, update, delete and merge statements", // DPI_ERR_EXEC_MODE_ONLY_FOR_DML
 };
 

@@ -1639,7 +1639,7 @@ int dpiVar_getReturnedData(dpiVar *var, uint32_t pos, uint32_t *numElements,
     DPI_CHECK_PTR_NOT_NULL(var, numElements)
     DPI_CHECK_PTR_NOT_NULL(var, data)
     if (var->dynBindBuffers) {
-        *numElements = var->dynBindBuffers[pos].maxArraySize;
+        *numElements = var->dynBindBuffers[pos].actualArraySize;
         *data = var->dynBindBuffers[pos].externalData;
     } else {
         *numElements = 0;

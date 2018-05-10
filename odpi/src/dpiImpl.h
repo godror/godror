@@ -465,6 +465,7 @@ typedef enum {
     DPI_ERR_SUBSCR_CLOSED,
     DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD,
     DPI_ERR_UNEXPECTED_OCI_RETURN_VALUE,
+    DPI_ERR_EXEC_MODE_ONLY_FOR_DML,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -854,6 +855,7 @@ struct dpiSubscr {
     dpiSubscrQOS qos;
     dpiSubscrCallback callback;
     void *callbackContext;
+    int registered;
 };
 
 struct dpiDeqOptions {

@@ -22,7 +22,7 @@ static int dpiStmt__getQueryInfo(dpiStmt *stmt, uint32_t pos,
 static int dpiStmt__getQueryInfoFromParam(dpiStmt *stmt, void *param,
         dpiQueryInfo *info, dpiError *error);
 static int dpiStmt__postFetch(dpiStmt *stmt, dpiError *error);
-static int dpiStmt__preFetch(dpiStmt *stmt, dpiError *error);
+static int dpiStmt__beforeFetch(dpiStmt *stmt, dpiError *error);
 static int dpiStmt__reExecute(dpiStmt *stmt, uint32_t numIters,
         uint32_t mode, dpiError *error);
 
@@ -546,13 +546,17 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
                         DPI_ERR_NOT_SUPPORTED);
             if (dpiVar__setValue(var, &var->buffer, j, data, error) < 0)
                 return DPI_FAILURE;
+            if (var->dynBindBuffers)
+                var->dynBindBuffers[j].actualArraySize = 0;
         }
         if (stmt->isReturning || var->isDynamic)
             var->error = error;
     }
 
-    // for queries, set the prefetch rows to the fetch array size in order to
-    // avoid the network round trip for the first fetch
+    // for queries, set the OCI prefetch to a fixed value; this prevents an
+    // additional round trip for single row fetches while avoiding the overhead
+    // of copying from the OCI prefetch buffer to our own buffers for larger
+    // fetches
     if (stmt->statementType == DPI_STMT_TYPE_SELECT) {
         prefetchSize = DPI_PREFETCH_ROWS_DEFAULT;
         if (dpiOci__attrSet(stmt->handle, DPI_OCI_HTYPE_STMT, &prefetchSize,
@@ -615,7 +619,7 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
 static int dpiStmt__fetch(dpiStmt *stmt, dpiError *error)
 {
     // perform any pre-fetch activities required
-    if (dpiStmt__preFetch(stmt, error) < 0)
+    if (dpiStmt__beforeFetch(stmt, error) < 0)
         return DPI_FAILURE;
 
     // perform fetch
@@ -848,13 +852,13 @@ static int dpiStmt__postFetch(dpiStmt *stmt, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
-// dpiStmt__preFetch() [INTERNAL]
+// dpiStmt__beforeFetch() [INTERNAL]
 //   Performs work that needs to be done prior to fetch for each variable. In
 // addition, variables are created if they do not already exist. A check is
 // also made to ensure that the variable has enough space to support a fetch
 // of the requested size.
 //-----------------------------------------------------------------------------
-static int dpiStmt__preFetch(dpiStmt *stmt, dpiError *error)
+static int dpiStmt__beforeFetch(dpiStmt *stmt, dpiError *error)
 {
     dpiQueryInfo *queryInfo;
     dpiData *data;
@@ -1190,6 +1194,18 @@ int dpiStmt_executeMany(dpiStmt *stmt, dpiExecMode mode, uint32_t numIters)
     // queries are not supported
     if (stmt->statementType == DPI_STMT_TYPE_SELECT) {
         dpiError__set(&error, "check statement type", DPI_ERR_NOT_SUPPORTED);
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    }
+
+    // batch errors and array DML row counts are only supported with DML
+    // statements (insert, update, delete and merge)
+    if ((mode & DPI_MODE_EXEC_BATCH_ERRORS ||
+                mode & DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS) &&
+            stmt->statementType != DPI_STMT_TYPE_INSERT &&
+            stmt->statementType != DPI_STMT_TYPE_UPDATE &&
+            stmt->statementType != DPI_STMT_TYPE_DELETE &&
+            stmt->statementType != DPI_STMT_TYPE_MERGE) {
+        dpiError__set(&error, "check mode", DPI_ERR_EXEC_MODE_ONLY_FOR_DML);
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     }
 
@@ -1699,7 +1715,7 @@ int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
     }
 
     // perform any pre-fetch activities required
-    if (dpiStmt__preFetch(stmt, &error) < 0)
+    if (dpiStmt__beforeFetch(stmt, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
 
     // perform fetch; when fetching the last row, only fetch a single row

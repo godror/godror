@@ -416,7 +416,11 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
         externalAuth = pool->externalAuth;
         if (userName && pool->homogeneous)
             return dpiError__set(error, "check proxy", DPI_ERR_INVALID_PROXY);
-        if (userName)
+
+        // if the userName is provided but no password is provided and external
+        // authentication is not being used, proxy authentication is taking
+        // place
+        if (userName && !password && !externalAuth)
             mode |= DPI_OCI_SESSGET_CREDPROXY;
         if (createParams->matchAnyTag)
             mode |= DPI_OCI_SESSGET_SPOOL_MATCHANY;

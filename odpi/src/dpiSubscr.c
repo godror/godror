@@ -183,6 +183,7 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
     // register the subscription
     if (dpiOci__subscriptionRegister(conn, &subscr->handle, error) < 0)
         return DPI_FAILURE;
+    subscr->registered = 1;
 
     // get the registration id, if applicable
     if (subscrId && dpiOci__attrGet(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION,
@@ -201,7 +202,9 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
 void dpiSubscr__free(dpiSubscr *subscr, dpiError *error)
 {
     if (subscr->handle) {
-        dpiOci__subscriptionUnRegister(subscr, error);
+        if (subscr->registered)
+            dpiOci__subscriptionUnRegister(subscr, error);
+        dpiOci__handleFree(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION);
         subscr->handle = NULL;
     }
     if (subscr->conn) {
@@ -328,7 +331,7 @@ static int dpiSubscr__populateMessage(dpiSubscr *subscr,
             return dpiSubscr__populateQueryChangeMessage(subscr, message,
                     descriptor, error);
         case DPI_EVENT_DEREG:
-            subscr->handle = NULL;
+            subscr->registered = 0;
             break;
         default:
             return dpiError__set(error, "event type", DPI_ERR_NOT_SUPPORTED);
@@ -562,10 +565,10 @@ int dpiSubscr_close(dpiSubscr *subscr)
 
     if (dpiSubscr__checkOpen(subscr, __func__, &error) < 0)
         return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-    if (subscr->handle) {
+    if (subscr->registered) {
         if (dpiOci__subscriptionUnRegister(subscr, &error) < 0)
             return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-        subscr->handle = NULL;
+        subscr->registered = 0;
     }
 
     return dpiGen__endPublicFn(subscr, DPI_SUCCESS, &error);
