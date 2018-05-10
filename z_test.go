@@ -1422,10 +1422,12 @@ func TestColumnSize(t *testing.T) {
 	t.Parallel()
 	testDb.Exec("DROP TABLE test_column_size")
 	if _, err := testDb.Exec(`CREATE TABLE test_column_size (
-		C1 VARCHAR2(20 BYTE),
-		C2 VARCHAR2(1 BYTE),
-		C3 NVARCHAR2(20),
-		C4 NVARCHAR2(1)
+		vc20b VARCHAR2(20 BYTE),
+		vc1b VARCHAR2(1 BYTE),
+		nvc20 NVARCHAR2(20),
+		nvc1 NVARCHAR2(1),
+		vc20c VARCHAR2(20 CHAR),
+		vc1c VARCHAR2(1 CHAR)
 	)`); err != nil {
 		t.Fatal(err)
 	}

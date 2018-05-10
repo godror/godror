@@ -1655,14 +1655,16 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		}
 		r.columns[i] = Column{
-			Name:       C.GoStringN(info.name, C.int(info.nameLength)),
-			OracleType: ti.oracleTypeNum,
-			NativeType: ti.defaultNativeTypeNum,
-			Size:       ti.clientSizeInBytes,
-			Precision:  ti.precision,
-			Scale:      ti.scale,
-			Nullable:   info.nullOk == 1,
-			ObjectType: ti.objectType,
+			Name:        C.GoStringN(info.name, C.int(info.nameLength)),
+			OracleType:  ti.oracleTypeNum,
+			NativeType:  ti.defaultNativeTypeNum,
+			Size:        ti.clientSizeInBytes,
+			Precision:   ti.precision,
+			Scale:       ti.scale,
+			Nullable:    info.nullOk == 1,
+			ObjectType:  ti.objectType,
+			SizeInChars: ti.sizeInChars,
+			DBSize:      ti.dbSizeInBytes,
 		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
@@ -1684,12 +1686,12 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 // Column holds the info from a column.
 type Column struct {
-	Name       string
-	OracleType C.dpiOracleTypeNum
-	NativeType C.dpiNativeTypeNum
-	Size       C.uint32_t
-	Precision  C.int16_t
-	Scale      C.int8_t
-	Nullable   bool
-	ObjectType *C.dpiObjectType
+	Name                      string
+	OracleType                C.dpiOracleTypeNum
+	NativeType                C.dpiNativeTypeNum
+	Size, SizeInChars, DBSize C.uint32_t
+	Precision                 C.int16_t
+	Scale                     C.int8_t
+	Nullable                  bool
+	ObjectType                *C.dpiObjectType
 }
