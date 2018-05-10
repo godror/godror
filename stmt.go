@@ -351,8 +351,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 // QueryContext executes a query that may return rows, such as a SELECT.
 //
 // QueryContext must honor the context timeout and return when it is canceled.
-func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
-	if err = ctx.Err(); err != nil {
+func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	Log := ctxGetLog(ctx)
@@ -378,7 +378,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
-	if err = st.bindVars(args, Log); err != nil {
+	if err := st.bindVars(args, Log); err != nil {
 		return nil, closeIfBadConn(err)
 	}
 
@@ -386,6 +386,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	var colCount C.uint32_t
 	done := make(chan error, 1)
 	go func() {
+		var err error
 		defer close(done)
 		for i := 0; i < 3; i++ {
 			if err = ctx.Err(); err != nil {
@@ -406,13 +407,13 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}()
 
 	select {
-	case err = <-done:
+	case err := <-done:
 		if err != nil {
 			return nil, closeIfBadConn(err)
 		}
 	case <-ctx.Done():
 		select {
-		case err = <-done:
+		case err := <-done:
 			if err != nil {
 				return nil, closeIfBadConn(err)
 			}
@@ -422,7 +423,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			return nil, driver.ErrBadConn
 		}
 	}
-	rows, err = st.openRows(int(colCount))
+	rows, err := st.openRows(int(colCount))
 	return rows, closeIfBadConn(err)
 }
 
