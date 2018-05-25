@@ -302,6 +302,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
+			Log("msg", "BREAK statement")
 			_ = st.Break()
 			st.close()
 			return nil, driver.ErrBadConn
@@ -418,6 +419,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
+			Log("msg", "BREAK query")
 			_ = st.Break()
 			st.close()
 			return nil, driver.ErrBadConn
