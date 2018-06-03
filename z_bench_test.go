@@ -306,13 +306,15 @@ func BenchmarkAppendFloat(b *testing.B) {
 
 func createGeoTable(tableName string, rowCount int) error {
 	var cnt int64
-	if err := testDb.QueryRow("SELECT COUNT(0) FROM " + tableName).Scan(&cnt); err == nil && cnt == int64(rowCount) {
+	if err := testDb.QueryRow(
+		"SELECT COUNT(0) FROM " + tableName, //nolint:gas
+	).Scan(&cnt); err == nil && cnt == int64(rowCount) {
 		return nil
 	}
 	testDb.Exec("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'")
 	testDb.Exec("DROP TABLE " + tableName)
-	if _, err := testDb.Exec(`CREATE TABLE ` + tableName + ` (
-		id NUMBER(9) NOT NULL,
+	if _, err := testDb.Exec(`CREATE TABLE ` + tableName + ` (` + //nolint:gas
+		` id NUMBER(9) NOT NULL,
 	"RECORD_ID" NUMBER(*,0) NOT NULL ENABLE,
 	"PERSON_ID" NUMBER(*,0),
 	"PERSON_ACCOUNT_ID" NUMBER(*,0),
@@ -357,8 +359,8 @@ func createGeoTable(tableName string, rowCount int) error {
 		}
 	}
 
-	stmt, err := testDb.Prepare("INSERT INTO " + tableName + `
-  (ID,RECORD_ID,PERSON_ID,PERSON_ACCOUNT_ID,ORGANIZATION_ID,ORGANIZATION_MEMBERSHIP_ID,
+	stmt, err := testDb.Prepare("INSERT INTO " + tableName + //nolint:gas
+		` (ID,RECORD_ID,PERSON_ID,PERSON_ACCOUNT_ID,ORGANIZATION_ID,ORGANIZATION_MEMBERSHIP_ID,
    LOCATION,DEVICE_ID,DEVICE_REGISTRATION_ID,DEVICE_NAME,DEVICE_TYPE,
    DEVICE_OS_NAME,DEVICE_TOKEN,DEVICE_OTHER_DETAILS)
    VALUES (:1,:2,:3,:4,:5,
@@ -380,15 +382,17 @@ func TestSelectOrder(t *testing.T) {
 	var cnt int64
 	tbl := "user_objects"
 	start := time.Now()
-	if err := testDb.QueryRow("SELECT count(0) FROM " + tbl).Scan(&cnt); err != nil {
+	if err := testDb.QueryRow(
+		"SELECT count(0) FROM " + tbl, //nolint:gas
+	).Scan(&cnt); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("%s rowcount=%d (%s)", tbl, cnt, time.Since(start))
 	if cnt == 0 {
 		cnt = 10
-		tbl = "(SELECT 1 FROM DUAL " + strings.Repeat("\nUNION ALL SELECT 1 FROM DUAL ", int(cnt)-1) + ")"
+		tbl = "(SELECT 1 FROM DUAL " + strings.Repeat("\nUNION ALL SELECT 1 FROM DUAL ", int(cnt)-1) + ")" //nolint:gas
 	}
-	qry := "SELECT ROWNUM FROM " + tbl
+	qry := "SELECT ROWNUM FROM " + tbl //nolint:gas
 	for i := cnt; i < limit; i *= cnt {
 		qry += ", " + tbl
 	}
@@ -460,7 +464,9 @@ func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; {
 		b.StopTimer()
-		rows, err := testDb.Query("SELECT location FROM "+geoTableName, goracle.FetchRowCount(prefetchLen))
+		rows, err := testDb.Query(
+			"SELECT location FROM "+geoTableName, //nolint:gas
+			goracle.FetchRowCount(prefetchLen))
 		if err != nil {
 			b.Fatal(err)
 		}

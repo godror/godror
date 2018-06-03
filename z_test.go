@@ -177,7 +177,9 @@ func TestParseOnly(t *testing.T) {
 	tbl := "test_not_exist" + tblSuffix
 	cnt := func() int {
 		var cnt int64
-		if err := testDb.QueryRowContext(ctx, "SELECT COUNT(0) FROM user_tables WHERE table_name = UPPER('"+tbl+"')").Scan(&cnt); err != nil {
+		if err := testDb.QueryRowContext(ctx,
+			"SELECT COUNT(0) FROM user_tables WHERE table_name = UPPER('"+tbl+"')").Scan(&cnt); //nolint:gas
+		err != nil {
 			t.Fatal(err)
 		}
 		return int(cnt)
@@ -747,10 +749,11 @@ func TestExecuteMany(t *testing.T) {
 		{"f_dt", dates},
 	} {
 		res, execErr := conn.ExecContext(ctx,
-			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)",
+			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
 			tc.Value)
 		if execErr != nil {
-			t.Fatalf("%d. INSERT INTO "+tbl+" (%q) VALUES (%+v): %#v", i, tc.Name, tc.Value, execErr)
+			t.Fatalf("%d. INSERT INTO "+tbl+" (%q) VALUES (%+v): %#v", //nolint:gas
+				i, tc.Name, tc.Value, execErr)
 		}
 		ra, raErr := res.RowsAffected()
 		if raErr != nil {
@@ -763,8 +766,8 @@ func TestExecuteMany(t *testing.T) {
 	conn.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
 
 	res, err := conn.ExecContext(ctx,
-		`INSERT INTO `+tbl+`
-		  (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
+		`INSERT INTO `+tbl+ //nolint:gas
+			` (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
 		  VALUES
 		  (:1, :2, :3, :4, :5, :6, :7)`,
 		ids, ints, nums, int32s, floats, strs, dates)
@@ -778,7 +781,9 @@ func TestExecuteMany(t *testing.T) {
 		t.Errorf("wanted %d rows, got %d", num, ra)
 	}
 
-	rows, err := conn.QueryContext(ctx, "SELECT * FROM "+tbl+" ORDER BY F_id")
+	rows, err := conn.QueryContext(ctx,
+		"SELECT * FROM "+tbl+" ORDER BY F_id", //nolint:gas
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -831,10 +836,16 @@ func TestReadWriteLob(t *testing.T) {
 	defer conn.Close()
 	tbl := "test_lob" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
-	conn.ExecContext(ctx, "CREATE TABLE "+tbl+" (f_id NUMBER(6), f_blob BLOB, f_clob CLOB)")
-	defer testDb.Exec("DROP TABLE " + tbl)
+	conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (f_id NUMBER(6), f_blob BLOB, f_clob CLOB)", //nolint:gas
+	)
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
 
-	stmt, err := conn.PrepareContext(ctx, "INSERT INTO "+tbl+" (F_id, f_blob, F_clob) VALUES (:1, :2, :3)")
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (F_id, f_blob, F_clob) VALUES (:1, :2, :3)", //nolint:gas
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -859,7 +870,9 @@ func TestReadWriteLob(t *testing.T) {
 		}
 
 		var rows *sql.Rows
-		rows, err = conn.QueryContext(ctx, "SELECT F_id, F_blob, F_clob FROM "+tbl+" WHERE F_id IN (:1, :2)", 2*tN, 2*tN+1)
+		rows, err = conn.QueryContext(ctx,
+			"SELECT F_id, F_blob, F_clob FROM "+tbl+" WHERE F_id IN (:1, :2)", //nolint:gas
+			2*tN, 2*tN+1)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
@@ -898,7 +911,9 @@ func TestReadWriteLob(t *testing.T) {
 		rows.Close()
 	}
 
-	rows, err := conn.QueryContext(ctx, "SELECT F_clob FROM "+tbl+"", goracle.ClobAsString())
+	rows, err := conn.QueryContext(ctx,
+		"SELECT F_clob FROM "+tbl+"", //nolint:gas
+		goracle.ClobAsString())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1065,14 +1080,14 @@ func TestSelectFloat(t *testing.T) {
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	const INT, FLOAT = 1234567, 4.5
-	qry = `INSERT INTO ` + tbl + `
-	(INT_COL, FLOAT_COL, EMPTY_INT_COL)
+	qry = `INSERT INTO ` + tbl + //nolint:gas
+		` (INT_COL, FLOAT_COL, EMPTY_INT_COL)
      VALUES (1234567, 45/10, NULL)`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
 
-	qry = "SELECT int_col, float_col, empty_int_col FROM " + tbl
+	qry = "SELECT int_col, float_col, empty_int_col FROM " + tbl //nolint:gas
 	type numbers struct {
 		Int     int
 		Int64   int64
@@ -1169,7 +1184,9 @@ func TestORA1000(t *testing.T) {
 	defer rows.Close()
 	for i := 0; i < 1000; i++ {
 		var n int64
-		if err := testDb.QueryRowContext(ctx, "SELECT /*"+strconv.Itoa(i)+"*/ 1 FROM DUAL").Scan(&n); err != nil {
+		if err := testDb.QueryRowContext(ctx,
+			"SELECT /*"+strconv.Itoa(i)+"*/ 1 FROM DUAL", //nolint:gas
+		).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1185,7 +1202,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	defer testDb.Exec("DROP TABLE " + tableName)
 	const bf = "143"
 	const sc = "270004"
-	qry = "INSERT INTO " + tableName + " (fund_account, fund_code, business_flag, money_type) VALUES (:1, :2, :3, :4)"
+	qry = "INSERT INTO " + tableName + " (fund_account, fund_code, business_flag, money_type) VALUES (:1, :2, :3, :4)" //nolint:gas
 	stmt, err := testDb.Prepare(qry)
 	if err != nil {
 		t.Fatal(errors.Wrap(err, qry))
@@ -1217,7 +1234,7 @@ func TestRanaOraIssue244(t *testing.T) {
 			}
 			defer tx.Rollback()
 
-			qry := `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3`
+			qry := `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3` //nolint:gas
 			stmt, err := tx.Prepare(qry)
 			if err != nil {
 				return errors.Wrapf(err, "%d.Prepare %q", i, err)
