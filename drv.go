@@ -297,22 +297,33 @@ func init() {
 var _ = driver.Driver((*drv)(nil))
 
 type drv struct {
+	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	clientVersion VersionInfo
-	poolsMu       sync.Mutex
 	pools         map[string]*C.dpiPool
 }
 
 func newDrv() (*drv, error) {
 	var d drv
-	var errInfo C.dpiErrorInfo
-	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
-		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &errInfo,
-	) == C.DPI_FAILURE {
-		return nil, fromErrorInfo(errInfo)
-	}
 	d.pools = make(map[string]*C.dpiPool)
 	return &d, nil
+}
+
+func (d *drv) init() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.dpiContext != nil {
+		return nil
+	}
+	var errInfo C.dpiErrorInfo
+	var dpiCtx *C.dpiContext
+	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
+		(**C.dpiContext)(unsafe.Pointer(&dpiCtx)), &errInfo,
+	) == C.DPI_FAILURE {
+		return fromErrorInfo(errInfo)
+	}
+	d.dpiContext = dpiCtx
+	return nil
 }
 
 // Open returns a new connection to the database.
@@ -322,14 +333,22 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	conn, err := d.openConn(P)
 	return conn, maybeBadConn(err)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
+	d.mu.Lock()
 	if d.clientVersion.Version != 0 {
+		d.mu.Unlock()
 		return d.clientVersion, nil
 	}
+	d.mu.Unlock()
+	if err := d.init(); err != nil {
+		return d.clientVersion, err
+	}
+
 	var v C.dpiVersionInfo
 	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
 		return d.clientVersion, errors.Wrap(d.getError(), "getClientVersion")
@@ -339,15 +358,19 @@ func (d *drv) ClientVersion() (VersionInfo, error) {
 }
 
 func (d *drv) openConn(P ConnectionParams) (*conn, error) {
+	if err := d.init(); err != nil {
+		return nil, err
+	}
+
 	c := conn{drv: d, connParams: P}
 	connString := P.StringNoClass()
 
 	defer func() {
-		d.poolsMu.Lock()
+		d.mu.Lock()
 		if Log != nil {
 			Log("pools", d.pools, "conn", P.String())
 		}
-		d.poolsMu.Unlock()
+		d.mu.Unlock()
 	}()
 	authMode := C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
 	if P.IsSysDBA {
@@ -370,9 +393,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
 	if !(P.IsSysDBA || P.IsSysOper) {
-		d.poolsMu.Lock()
+		d.mu.Lock()
 		dp := d.pools[connString]
-		d.poolsMu.Unlock()
+		d.mu.Unlock()
 		if dp != nil {
 			dc := C.malloc(C.sizeof_void)
 			if Log != nil {
@@ -469,9 +492,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	C.dpiPool_setTimeout(dp, 300)
 	C.dpiPool_setMaxLifetimeSession(dp, 3600)
 	C.dpiPool_setStmtCacheSize(dp, 40)
-	d.poolsMu.Lock()
+	d.mu.Lock()
 	d.pools[connString] = dp
-	d.poolsMu.Unlock()
+	d.mu.Unlock()
 
 	return d.openConn(P)
 }
