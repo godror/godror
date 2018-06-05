@@ -160,7 +160,10 @@ func (st *statement) close() error {
 	c := st.conn
 	st.conn = nil
 
-	if dpiStmt != nil && C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
+	var qi C.dpiQueryInfo
+	if dpiStmt != nil &&
+		C.dpiStmt_getQueryInfo(dpiStmt, 1, &qi) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
+		C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
 		return nil
 	}
 	if c == nil {
