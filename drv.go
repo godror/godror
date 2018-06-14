@@ -17,7 +17,7 @@
 //
 // The connection string for the sql.Open("goracle", connString) call can be
 // the simple
-//   loin/password@sid [AS SYSDBA|AS SYSOPER]
+//   login/password@sid [AS SYSDBA|AS SYSOPER]
 //
 // type (with sid being the sexp returned by tnsping),
 // or in the form of
@@ -32,6 +32,7 @@
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
 // See http://docs.oracle.com/cd/E82638_01/JJUCP/optimizing-real-world-performance.htm#JJUCP-GUID-BC09F045-5D80-4AF5-93F5-FEF0531E0E1D
+// You may also use ConnectionParams to configure a connection.
 //
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.

@@ -19,6 +19,12 @@ as connString, or an URL like "oracle://user:passw@sid".
 
 You can provide all possible options with `ConnectionParams`.
 
+More advanced configurations can be set with a connection string such as:
+`user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SID=sid)))`
+
+A configuration like this is how you would add functionality such as load balancing across mutliple servers. The portion
+described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
+
 ## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
