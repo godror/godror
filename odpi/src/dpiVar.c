@@ -207,6 +207,12 @@ static void dpiVar__assignCallbackBuffer(dpiVar *var, dpiVarBuffer *buffer,
         case DPI_ORACLE_TYPE_BFILE:
             *bufpp = buffer->data.asLobLocator[index];
             break;
+        case DPI_ORACLE_TYPE_ROWID:
+            *bufpp = buffer->data.asRowid[index];
+            break;
+        case DPI_ORACLE_TYPE_STMT:
+            *bufpp = buffer->data.asStmt[index];
+            break;
         default:
             *bufpp = buffer->data.asBytes + index * var->sizeInBytes;
             break;

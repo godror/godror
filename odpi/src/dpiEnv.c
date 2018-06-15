@@ -153,8 +153,12 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         return DPI_FAILURE;
 
     // set whether or not we are threaded
-    if (params->createMode & DPI_OCI_THREADED)
+    if (params->createMode & DPI_MODE_CREATE_THREADED)
         env->threaded = 1;
+
+    // set whether or not events mode has been set
+    if (params->createMode & DPI_MODE_CREATE_EVENTS)
+        env->events = 1;
 
     return DPI_SUCCESS;
 }

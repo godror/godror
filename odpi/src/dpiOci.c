@@ -2792,15 +2792,16 @@ int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, dpiError *error)
 // dpiOci__subscriptionUnRegister() [INTERNAL]
 //   Wrapper for OCISubscriptionUnRegister().
 //-----------------------------------------------------------------------------
-int dpiOci__subscriptionUnRegister(dpiSubscr *subscr, dpiError *error)
+int dpiOci__subscriptionUnRegister(dpiConn *conn, dpiSubscr *subscr,
+        dpiError *error)
 {
     int status;
 
     DPI_OCI_LOAD_SYMBOL("OCISubscriptionUnRegister",
             dpiOciSymbols.fnSubscriptionUnRegister)
-    status = (*dpiOciSymbols.fnSubscriptionUnRegister)(subscr->conn->handle,
+    status = (*dpiOciSymbols.fnSubscriptionUnRegister)(conn->handle,
             subscr->handle, error->handle, DPI_OCI_DEFAULT);
-    return dpiError__check(error, status, subscr->conn, "unregister");
+    return dpiError__check(error, status, conn, "unregister");
 }
 
 

@@ -44,8 +44,8 @@
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   2
-#define DPI_MINOR_VERSION   3
-#define DPI_PATCH_LEVEL     2
+#define DPI_MINOR_VERSION   4
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -159,7 +159,8 @@ typedef enum {
     DPI_EVENT_DROP_DB = 4,                      // OCI_EVENT_DROP_DB
     DPI_EVENT_DEREG = 5,                        // OCI_EVENT_DEREG
     DPI_EVENT_OBJCHANGE = 6,                    // OCI_EVENT_OBJCHANGE
-    DPI_EVENT_QUERYCHANGE = 7                   // OCI_EVENT_QUERYCHANGE
+    DPI_EVENT_QUERYCHANGE = 7,                  // OCI_EVENT_QUERYCHANGE
+    DPI_EVENT_AQ = 100
 } dpiEventType;
 
 // statement execution modes
@@ -268,7 +269,8 @@ typedef enum {
 typedef enum {
     DPI_MODE_POOL_GET_WAIT = 0,                 // OCI_SPOOL_ATTRVAL_WAIT
     DPI_MODE_POOL_GET_NOWAIT = 1,               // OCI_SPOOL_ATTRVAL_NOWAIT
-    DPI_MODE_POOL_GET_FORCEGET = 2              // OCI_SPOOL_ATTRVAL_FORCEGET
+    DPI_MODE_POOL_GET_FORCEGET = 2,             // OCI_SPOOL_ATTRVAL_FORCEGET
+    DPI_MODE_POOL_GET_TIMEDWAIT = 3             // OCI_SPOOL_ATTRVAL_TIMEDWAIT
 } dpiPoolGetMode;
 
 // purity values when acquiring a connection from a pool
@@ -314,9 +316,17 @@ typedef enum {
     DPI_STMT_TYPE_COMMIT = 21
 } dpiStatementType;
 
+// subscription grouping classes
+#define DPI_SUBSCR_GROUPING_CLASS_TIME          1
+
+// subscription grouping types
+#define DPI_SUBSCR_GROUPING_TYPE_SUMMARY        1
+#define DPI_SUBSCR_GROUPING_TYPE_LAST           2
+
 // subscription namespaces
 typedef enum {
-    DPI_SUBSCR_NAMESPACE_DBCHANGE = 2           // OCI_SUBSCR_NAMESPACE_DBCHANGE
+    DPI_SUBSCR_NAMESPACE_AQ = 1,              // OCI_SUBSCR_NAMESPACE_AQ
+    DPI_SUBSCR_NAMESPACE_DBCHANGE = 2         // OCI_SUBSCR_NAMESPACE_DBCHANGE
 } dpiSubscrNamespace;
 
 // subscription protocols
@@ -562,6 +572,9 @@ struct dpiPoolCreateParams {
     dpiPoolGetMode getMode;
     const char *outPoolName;
     uint32_t outPoolNameLength;
+    uint32_t timeout;
+    uint32_t waitTimeout;
+    uint32_t maxLifetimeSession;
 };
 
 // structure used for transferring query metadata from ODPI-C
@@ -606,6 +619,11 @@ struct dpiSubscrCreateParams {
     void *callbackContext;
     const char *recipientName;
     uint32_t recipientNameLength;
+    const char *ipAddress;
+    uint32_t ipAddressLength;
+    uint8_t groupingClass;
+    uint32_t groupingValue;
+    uint8_t groupingType;
 };
 
 // structure used for transferring messages in subscription callbacks
@@ -620,6 +638,11 @@ struct dpiSubscrMessage {
     dpiErrorInfo *errorInfo;
     const void *txId;
     uint32_t txIdLength;
+    int registered;
+    const char *queueName;
+    uint32_t queueNameLength;
+    const char *consumerName;
+    uint32_t consumerNameLength;
 };
 
 // structure used for transferring query information in messages in
@@ -852,6 +875,13 @@ int dpiConn_shutdownDatabase(dpiConn *conn, dpiShutdownMode mode);
 
 // startup the database
 int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode);
+
+// subscribe to events in the database
+int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
+        dpiSubscr **subscr);
+
+// unsubscribe from events in the database
+int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
 
 
 //-----------------------------------------------------------------------------
@@ -1316,6 +1346,9 @@ int dpiPool_getStmtCacheSize(dpiPool *pool, uint32_t *cacheSize);
 // get the pool's timeout value
 int dpiPool_getTimeout(dpiPool *pool, uint32_t *value);
 
+// get the pool's wait timeout value
+int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value);
+
 // release a reference to the pool
 int dpiPool_release(dpiPool *pool);
 
@@ -1330,6 +1363,9 @@ int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t cacheSize);
 
 // set the pool's timeout value
 int dpiPool_setTimeout(dpiPool *pool, uint32_t value);
+
+// set the pool's wait timeout value
+int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
 
 
 //-----------------------------------------------------------------------------

@@ -92,6 +92,9 @@ extern unsigned long dpiDebugLevel;
 // define maximum buffer size permitted in variables
 #define DPI_MAX_VAR_BUFFER_SIZE                     (1024 * 1024 * 1024 - 2)
 
+// define subscription grouping repeat count
+#define DPI_SUBSCR_GROUPING_FOREVER                 -1
+
 // define number of rows to prefetch
 #define DPI_PREFETCH_ROWS_DEFAULT                   2
 
@@ -129,6 +132,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DTYPE_AQMSG_PROPERTIES              59
 #define DPI_OCI_DTYPE_INTERVAL_YM                   62
 #define DPI_OCI_DTYPE_INTERVAL_DS                   63
+#define DPI_OCI_DTYPE_AQNFY_DESCRIPTOR              64
 #define DPI_OCI_DTYPE_TIMESTAMP                     68
 #define DPI_OCI_DTYPE_TIMESTAMP_TZ                  69
 #define DPI_OCI_DTYPE_TIMESTAMP_LTZ                 70
@@ -178,6 +182,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_ENQ_TIME                       62
 #define DPI_OCI_ATTR_MSG_STATE                      63
 #define DPI_OCI_ATTR_ORIGINAL_MSGID                 69
+#define DPI_OCI_ATTR_QUEUE_NAME                     70
 #define DPI_OCI_ATTR_NUM_DML_ERRORS                 73
 #define DPI_OCI_ATTR_DML_ROW_OFFSET                 74
 #define DPI_OCI_ATTR_SUBSCR_NAME                    94
@@ -207,6 +212,10 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SUBSCR_CQ_QOSFLAGS             229
 #define DPI_OCI_ATTR_LIST_TYPE_ATTRS                229
 #define DPI_OCI_ATTR_SUBSCR_CQ_REGID                230
+#define DPI_OCI_ATTR_SUBSCR_NTFN_GROUPING_CLASS     231
+#define DPI_OCI_ATTR_SUBSCR_NTFN_GROUPING_VALUE     232
+#define DPI_OCI_ATTR_SUBSCR_NTFN_GROUPING_TYPE      233
+#define DPI_OCI_ATTR_SUBSCR_NTFN_GROUPING_REPEAT_COUNT 235
 #define DPI_OCI_ATTR_NCHARSET_ID                    262
 #define DPI_OCI_ATTR_APPCTX_SIZE                    273
 #define DPI_OCI_ATTR_APPCTX_LIST                    274
@@ -229,6 +238,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_CHNF_OPERATIONS                403
 #define DPI_OCI_ATTR_CHDES_DBNAME                   405
 #define DPI_OCI_ATTR_CHDES_NFYTYPE                  406
+#define DPI_OCI_ATTR_NFY_FLAGS                      406
 #define DPI_OCI_ATTR_CHDES_XID                      407
 #define DPI_OCI_ATTR_MSG_DELIVERY_MODE              407
 #define DPI_OCI_ATTR_CHDES_TABLE_CHANGES            408
@@ -246,6 +256,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_CONNECTION_CLASS               425
 #define DPI_OCI_ATTR_PURITY                         426
 #define DPI_OCI_ATTR_RECEIVE_TIMEOUT                436
+#define DPI_OCI_ATTR_SUBSCR_IPADDR                  452
 #define DPI_OCI_ATTR_UB8_ROW_COUNT                  457
 #define DPI_OCI_ATTR_SPOOL_AUTH                     460
 #define DPI_OCI_ATTR_LTXID                          462
@@ -257,6 +268,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT           495
 #define DPI_OCI_ATTR_SHARDING_KEY                   496
 #define DPI_OCI_ATTR_SUPER_SHARDING_KEY             497
+#define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -466,6 +478,8 @@ typedef enum {
     DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD,
     DPI_ERR_UNEXPECTED_OCI_RETURN_VALUE,
     DPI_ERR_EXEC_MODE_ONLY_FOR_DML,
+    DPI_ERR_ARRAY_VAR_NOT_SUPPORTED,
+    DPI_ERR_EVENTS_MODE_REQUIRED,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -512,7 +526,6 @@ typedef enum {
 // old type definitions (to be dropped)
 //-----------------------------------------------------------------------------
 
-// structure used for creating connections (2.0)
 typedef struct {
     dpiAuthMode authMode;
     const char *connectionClass;
@@ -532,6 +545,34 @@ typedef struct {
     uint32_t outTagLength;
     int outTagFound;
 } dpiConnCreateParams__v20;
+
+typedef struct {
+    dpiSubscrNamespace subscrNamespace;
+    dpiSubscrProtocol protocol;
+    dpiSubscrQOS qos;
+    dpiOpCode operations;
+    uint32_t portNumber;
+    uint32_t timeout;
+    const char *name;
+    uint32_t nameLength;
+    dpiSubscrCallback callback;
+    void *callbackContext;
+    const char *recipientName;
+    uint32_t recipientNameLength;
+} dpiSubscrCreateParams__v23;
+
+typedef struct {
+    uint32_t minSessions;
+    uint32_t maxSessions;
+    uint32_t sessionIncrement;
+    int pingInterval;
+    int pingTimeout;
+    int homogeneous;
+    int externalAuth;
+    dpiPoolGetMode getMode;
+    const char *outPoolName;
+    uint32_t outPoolNameLength;
+} dpiPoolCreateParams__v23;
 
 
 //-----------------------------------------------------------------------------
@@ -604,6 +645,7 @@ typedef struct {
     dpiVersionInfo *versionInfo;
     void *baseDate;
     int threaded;
+    int events;
 } dpiEnv;
 
 typedef struct {
@@ -852,6 +894,7 @@ struct dpiSubscr {
     dpiType_HEAD
     dpiConn *conn;
     void *handle;
+    dpiSubscrNamespace subscrNamespace;
     dpiSubscrQOS qos;
     dpiSubscrCallback callback;
     void *callbackContext;
@@ -883,8 +926,7 @@ struct dpiMsgProps {
 // definition of internal dpiContext methods
 //-----------------------------------------------------------------------------
 void dpiContext__initCommonCreateParams(dpiCommonCreateParams *params);
-void dpiContext__initConnCreateParams(const dpiContext *context,
-        dpiConnCreateParams *params, size_t *structSize);
+void dpiContext__initConnCreateParams(dpiConnCreateParams *params);
 void dpiContext__initPoolCreateParams(dpiPoolCreateParams *params);
 void dpiContext__initSubscrCreateParams(dpiSubscrCreateParams *params);
 
@@ -1322,7 +1364,8 @@ int dpiOci__stringResize(void *envHandle, void **handle, uint32_t newSize,
 int dpiOci__stringSize(void *envHandle, void *handle, uint32_t *size);
 int dpiOci__subscriptionRegister(dpiConn *conn, void **handle,
         dpiError *error);
-int dpiOci__subscriptionUnRegister(dpiSubscr *subscr, dpiError *error);
+int dpiOci__subscriptionUnRegister(dpiConn *conn, dpiSubscr *subscr,
+        dpiError *error);
 int dpiOci__tableDelete(dpiObject *obj, int32_t index, dpiError *error);
 int dpiOci__tableExists(dpiObject *obj, int32_t index, int *exists,
         dpiError *error);

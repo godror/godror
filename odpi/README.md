@@ -1,4 +1,4 @@
-# ODPI-C version 2.3
+# ODPI-C version 2.4
 
 Oracle Database Programming Interface for C (ODPI-C) is an open source library
 of C code that simplifies access to Oracle Database for applications written in
@@ -39,7 +39,7 @@ See [CONTRIBUTING](https://github.com/oracle/odpi/blob/master/CONTRIBUTING.md).
 
 Oracle Drivers:
 * [cx_Oracle](https://oracle.github.io/python-cx_Oracle) Python interface.
-* [node-oracledb](https://github.com/oracle/node-oracledb/tree/dev-2.0) Node.js module.
+* [node-oracledb](https://oracle.github.io/node-oracledb) Node.js module.
 
 Third-party Drivers:
 * [go-goracle](https://gopkg.in/goracle.v2) Go Driver.

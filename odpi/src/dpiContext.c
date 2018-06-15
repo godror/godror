@@ -77,13 +77,9 @@ void dpiContext__initCommonCreateParams(dpiCommonCreateParams *params)
 // the structure size as a convenience for calling functions which may have to
 // differentiate between different ODPI-C application versions.
 //-----------------------------------------------------------------------------
-void dpiContext__initConnCreateParams(const dpiContext *context,
-        dpiConnCreateParams *params, size_t *structSize)
+void dpiContext__initConnCreateParams(dpiConnCreateParams *params)
 {
-    *structSize = sizeof(dpiConnCreateParams);
-    if (context->dpiMinorVersion == 0)
-        *structSize = sizeof(dpiConnCreateParams__v20);
-    memset(params, 0, *structSize);
+    memset(params, 0, sizeof(dpiConnCreateParams));
 }
 
 
@@ -112,6 +108,7 @@ void dpiContext__initSubscrCreateParams(dpiSubscrCreateParams *params)
 {
     memset(params, 0, sizeof(dpiSubscrCreateParams));
     params->subscrNamespace = DPI_SUBSCR_NAMESPACE_DBCHANGE;
+    params->groupingType = DPI_SUBSCR_GROUPING_TYPE_SUMMARY;
 }
 
 
@@ -223,14 +220,19 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
 int dpiContext_initConnCreateParams(const dpiContext *context,
         dpiConnCreateParams *params)
 {
-    size_t structSize;
+    dpiConnCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initConnCreateParams(context, params, &structSize);
+    if (context->dpiMinorVersion > 0)
+        dpiContext__initConnCreateParams(params);
+    else {
+        dpiContext__initConnCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiConnCreateParams__v20));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -242,13 +244,19 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params)
 {
+    dpiPoolCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initPoolCreateParams(params);
+    if (context->dpiMinorVersion > 3)
+        dpiContext__initPoolCreateParams(params);
+    else {
+        dpiContext__initPoolCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v23));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -260,13 +268,19 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
 int dpiContext_initSubscrCreateParams(const dpiContext *context,
         dpiSubscrCreateParams *params)
 {
+    dpiSubscrCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initSubscrCreateParams(params);
+    if (context->dpiMinorVersion > 3)
+        dpiContext__initSubscrCreateParams(params);
+    else {
+        dpiContext__initSubscrCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiSubscrCreateParams__v23));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
