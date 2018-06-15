@@ -471,7 +471,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		poolCreateParams.homogeneous = 0
 	}
 	poolCreateParams.externalAuth = extAuth
-	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
+	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
+	poolCreateParams.timeout = 300             // seconds before idle pool sessions got evicted
+	poolCreateParams.waitTimeout = 1000        // milliseconds to wait for a session become available
+	poolCreateParams.maxLifetimeSession = 3600 // maximum time in seconds till a pooled session may exist
 
 	var dp *C.dpiPool
 	if Log != nil {
