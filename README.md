@@ -142,7 +142,7 @@ and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/gora
 
 ### pre-commit
 
-Add this to .git/hooks/pre-commit
+Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
 
 ```
 #!/bin/sh
@@ -158,19 +158,7 @@ if [ -n "$output" ]; then
 	exit 1
 fi
 
-gometalinter --vendor --disable-all \
-  --enable=deadcode \
-  --enable=ineffassign \
-  --enable=gosimple \
-  --enable=staticcheck \
-  --enable=unused \
-  --enable=vetshadow \
-  --enable=maligned \
-  --enable=vet \
-  --enable=safesql \
-  --enable=unconvert \
-  --enable=gofmt \
-  ./...
+golangci-lint run
 ```
 
 # Third-party
