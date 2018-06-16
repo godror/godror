@@ -17,11 +17,14 @@ package goracle
 
 /*
 #include <stdlib.h>
+#include <stdio.h>
 #include "dpiImpl.h"
 
-void CallbackSubscr(void *context, dpiSubscrMessage *message);
+void CallbackSubscrDebug(void *context, dpiSubscrMessage *message);
+
 */
 import "C"
+
 import (
 	"log"
 	"unsafe"
@@ -135,12 +138,14 @@ type Subscription struct {
 func (s *Subscription) getError() error { return s.conn.getError() }
 
 // NewSubscription creates a new Subscription in the DB.
+//
+// Make sure your user has CHANGE NOTIFICATION privilege!
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
 	subscr := Subscription{conn: c, callback: cb}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
-	defer func() { C.free(unsafe.Pointer(params)) }()
+	//defer func() { C.free(unsafe.Pointer(params)) }()
 	C.dpiContext_initSubscrCreateParams(c.dpiContext, params)
-	//params.subscrNamespace = C.DPI_SUBSCR_NAMESPACE_DBCHANGE
+	params.subscrNamespace = C.DPI_SUBSCR_NAMESPACE_DBCHANGE
 	params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
 	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.operations = C.DPI_OPCODE_ALL_OPS
@@ -149,16 +154,16 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 		params.nameLength = C.uint32_t(len(name))
 	}
 	// typedef void (*dpiSubscrCallback)(void* context, dpiSubscrMessage *message);
-	params.callback = C.dpiSubscrCallback(C.CallbackSubscr)
+	params.callback = C.dpiSubscrCallback(C.CallbackSubscrDebug)
 	params.callbackContext = unsafe.Pointer(&subscr)
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
-	defer func() { C.free(unsafe.Pointer(dpiSubscr)) }()
 
 	if C.dpiConn_subscribe(c.dpiConn,
 		params,
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
 	) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(dpiSubscr))
 		return nil, errors.Wrap(c.getError(), "newSubscription")
 	}
 	subscr.dpiSubscr = dpiSubscr
@@ -172,7 +177,7 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 
 	var dpiStmt *C.dpiStmt
 	if C.dpiSubscr_prepareStmt(s.dpiSubscr, cQry, C.uint32_t(len(qry)), &dpiStmt) == C.DPI_FAILURE {
-		return errors.Wrap(s.getError(), "prepareStmt")
+		return errors.Wrapf(s.getError(), "prepareStmt[%p]", s.dpiSubscr)
 	}
 	defer func() { C.dpiStmt_release(dpiStmt) }()
 

@@ -13,24 +13,34 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-package goracle
+package goracle_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/pkg/errors"
+	goracle "gopkg.in/goracle.v2"
 )
 
 func TestSubscr(t *testing.T) {
-	_, testCon, err := initConn()
+	conn, err := goracle.DriverConn(testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cb := func(e Event) {
-		t.Log(e)
+
+	testDb.Exec("DROP TABLE test_subscr")
+	if _, err := testDb.Exec("CREATE TABLE test_subscr (i NUMBER)"); err != nil {
+		t.Fatal(err)
 	}
-	s, err := testCon.NewSubscription("subscr", cb)
+	defer testDb.Exec("DROP TABLE test_subscr")
+
+	var events []goracle.Event
+	cb := func(e goracle.Event) {
+		t.Log(e)
+		events = append(events, e)
+	}
+	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
 		if strings.Contains(errors.Cause(err).Error(), "ORA-29970:") {
 			t.Skip(err.Error())
@@ -38,7 +48,10 @@ func TestSubscr(t *testing.T) {
 		t.Fatalf("%+v", err)
 	}
 	defer s.Close()
-	if err := s.Register("SELECT object_name, TO_CHAR(last_ddl_time, 'YYYY-MM-DD HH24:MI:SS') last_ddl_time FROM user_objects"); err != nil {
+	if err := s.Register("SELECT i FROM test_subscr"); err != nil {
 		t.Fatalf("%+v", err)
 	}
+	testDb.Exec("INSERT INTO test_subscr (i) VALUES (1)")
+	testDb.Exec("INSERT INTO test_subscr (i) VALUES (0)")
+	t.Log("events:", events)
 }
