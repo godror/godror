@@ -127,10 +127,12 @@ type RowEvent struct {
 
 // Subscription for events in the DB.
 type Subscription struct {
-	*conn
+	conn      *conn
 	dpiSubscr *C.dpiSubscr
 	callback  func(Event)
 }
+
+func (s *Subscription) getError() error { return s.conn.getError() }
 
 // NewSubscription creates a new Subscription in the DB.
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
@@ -153,10 +155,9 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
 	defer func() { C.free(unsafe.Pointer(dpiSubscr)) }()
 
-	if C.dpiConn_newSubscription(c.dpiConn,
+	if C.dpiConn_subscribe(c.dpiConn,
 		params,
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
-		nil,
 	) == C.DPI_FAILURE {
 		return nil, errors.Wrap(c.getError(), "newSubscription")
 	}
@@ -194,12 +195,14 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 // Close the subscription.
 func (s *Subscription) Close() error {
 	dpiSubscr := s.dpiSubscr
+	conn := s.conn
+	s.conn = nil
 	s.dpiSubscr = nil
 	s.callback = nil
-	if dpiSubscr == nil {
+	if dpiSubscr == nil || conn == nil || conn.dpiConn == nil {
 		return nil
 	}
-	if C.dpiSubscr_close(dpiSubscr) == C.DPI_FAILURE {
+	if C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) == C.DPI_FAILURE {
 		return errors.Wrap(s.getError(), "close")
 	}
 	return nil

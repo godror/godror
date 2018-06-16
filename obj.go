@@ -32,6 +32,8 @@ type Object struct {
 	ObjectType
 }
 
+func (O *Object) getError() error { return O.drv.getError() }
+
 // GetAttribute gets the i-th attribute into data.
 func (O *Object) GetAttribute(data *Data, i int) error {
 	attr := O.Attributes[i]
@@ -191,8 +193,10 @@ type ObjectType struct {
 
 	Attributes []ObjectAttribute
 
-	*drv
+	drv *drv
 }
+
+func (t ObjectType) getError() error { return t.drv.getError() }
 
 func (t ObjectType) FullName() string {
 	if t.Schema == "" {
@@ -302,7 +306,7 @@ func objectTypeFromDataTypeInfo(drv *drv, typ C.dpiDataTypeInfo) (ObjectType, er
 
 // ObjectAttribute is an attribute of an Object.
 type ObjectAttribute struct {
-	*drv
+	drv           *drv
 	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
 	ObjectType
