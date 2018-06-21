@@ -24,22 +24,34 @@ import (
 )
 
 func TestQRCN(t *testing.T) {
-	c, err := goracle.DriverConn(testDb)
+	conn, err := goracle.DriverConn(testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	testDb.Exec("DROP TABLE test_subscr")
+	if _, err := testDb.Exec("CREATE TABLE test_subscr (i NUMBER)"); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_subscr")
+
+	var events []goracle.Event
 	cb := func(e goracle.Event) {
 		t.Log(e)
+		events = append(events, e)
 	}
-	subscr, err := c.NewSubscription("test", cb)
+	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
 		if strings.Contains(errors.Cause(err).Error(), "ORA-29970:") {
 			t.Skip(err.Error())
 		}
-		t.Fatal(err)
-	}
-	defer subscr.Close()
-	if err := subscr.Register("SELECT object_name FROM user_objects"); err != nil {
 		t.Fatalf("%+v", err)
 	}
+	defer s.Close()
+	if err := s.Register("SELECT i FROM test_subscr"); err != nil {
+		t.Fatalf("%+v", err)
+	}
+	testDb.Exec("INSERT INTO test_subscr (i) VALUES (1)")
+	testDb.Exec("INSERT INTO test_subscr (i) VALUES (0)")
+	t.Log("events:", events)
 }

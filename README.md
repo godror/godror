@@ -14,16 +14,22 @@ At least Go 1.9 is required!
 
 ## Connect
 
-In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@sid"
-as connString, or an URL like "oracle://user:passw@sid".
+In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@service_name"
+as connString, or an URL like "oracle://user:passw@service_name".
 
 You can provide all possible options with `ConnectionParams`.
 
 More advanced configurations can be set with a connection string such as:
-`user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SID=sid)))`
+`user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
 
 A configuration like this is how you would add functionality such as load balancing across mutliple servers. The portion
 described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
+
+For other possible connection strings, see https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings
+and https://docs.oracle.com/en/database/oracle/oracle-database/12.2/netag/configuring-naming-methods.html#GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE .
+
+TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
+`(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
 
 ## Rationale
 
@@ -142,7 +148,7 @@ and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/gora
 
 ### pre-commit
 
-Add this to .git/hooks/pre-commit
+Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
 
 ```
 #!/bin/sh
@@ -158,19 +164,7 @@ if [ -n "$output" ]; then
 	exit 1
 fi
 
-gometalinter --vendor --disable-all \
-  --enable=deadcode \
-  --enable=ineffassign \
-  --enable=gosimple \
-  --enable=staticcheck \
-  --enable=unused \
-  --enable=vetshadow \
-  --enable=maligned \
-  --enable=vet \
-  --enable=safesql \
-  --enable=unconvert \
-  --enable=gofmt \
-  ./...
+golangci-lint run
 ```
 
 # Third-party

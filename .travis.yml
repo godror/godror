@@ -2,9 +2,7 @@ language: go
 sudo: required
 
 go:
-    #- "1.9"
-    - "1.10.1"
-    #- tip
+    - "1.10.3"
 
 go_import_path: gopkg.in/goracle.v2
 
