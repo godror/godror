@@ -1464,3 +1464,25 @@ func TestColumnSize(t *testing.T) {
 		t.Logf("Column %q has length %v", col.Name(), l)
 	}
 }
+
+func TestReturning(t *testing.T) {
+	defer tl.enableLogging(t)()
+	testDb.Exec("DROP TABLE test_returning")
+	if _, err := testDb.Exec("CREATE TABLE test_returning (a VARCHAR2(20))"); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_returning")
+
+	want := "abraca dabra"
+	var got string
+	if _, err := testDb.Exec(
+		`INSERT INTO test_returning (a) VALUES (UPPER(:1)) RETURNING a INTO :2`,
+		want, sql.Out{Dest: &got},
+	); err != nil {
+		t.Fatal(err)
+	}
+	want = strings.ToUpper(want)
+	if want != got {
+		t.Errorf("got %q, wanted %q", got, want)
+	}
+}

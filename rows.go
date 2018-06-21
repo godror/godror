@@ -275,13 +275,17 @@ func (r *rows) Next(dest []driver.Value) error {
 		if C.dpiStmt_fetchRows(r.dpiStmt, C.uint32_t(r.statement.FetchRowCount()), &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
 			return errors.Wrap(r.getError(), "Next")
 		}
-		//fmt.Printf("bri=%d fetched=%d, moreRows=%d\n", r.bufferRowIndex, r.fetched, moreRows)
+		if Log != nil {
+			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows)
+		}
 		if r.fetched == 0 {
 			r.finished = moreRows == 0
 			_ = r.Close()
 			return io.EOF
 		}
-		//fmt.Printf("data=%#v\n", r.data)
+		if Log != nil {
+			Log("data", r.data)
+		}
 		if r.data == nil {
 			r.data = make([][]C.dpiData, len(r.columns))
 			for i := range r.columns {

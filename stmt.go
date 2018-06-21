@@ -113,16 +113,17 @@ var _ = driver.NamedValueChecker((*statement)(nil))
 type statement struct {
 	sync.Mutex
 	*conn
-	dpiStmt  *C.dpiStmt
-	query    string
-	data     [][]C.dpiData
-	vars     []*C.dpiVar
-	varInfos []varInfo
-	gets     []dataGetter
-	dests    []interface{}
-	isSlice  []bool
-	arrLen   int
-	columns  []Column
+	dpiStmt     *C.dpiStmt
+	query       string
+	data        [][]C.dpiData
+	vars        []*C.dpiVar
+	varInfos    []varInfo
+	gets        []dataGetter
+	dests       []interface{}
+	isSlice     []bool
+	arrLen      int
+	columns     []Column
+	isReturning bool
 	stmtOptions
 }
 type dataGetter func(v interface{}, data []C.dpiData) error
@@ -223,6 +224,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
 		return driver.ResultNoRows, nil
 	}
+	st.isReturning = false
 
 	st.conn.RLock()
 	defer st.conn.RUnlock()
@@ -271,6 +273,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "st.Execute", "error", err)
 			}
 			if err == nil {
+				var info C.dpiStmtInfo
+				if C.dpiStmt_getInfo(st.dpiStmt, &info) == C.DPI_FAILURE {
+					err = errors.Wrap(st.getError(), "getInfo")
+				}
+				st.isReturning = info.isReturning != 0
 				return
 			}
 			cdr, ok := errors.Cause(err).(interface {
@@ -320,6 +327,15 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	for i, get := range st.gets {
 		if get == nil {
 			continue
+		}
+		if st.isReturning {
+			var n C.uint32_t
+			data := &st.data[i][0]
+			if C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) == C.DPI_FAILURE {
+				err = st.getError()
+				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
+			}
+			st.data[i] = (*(*[1 << 30]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {
@@ -372,6 +388,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	st.Lock()
 	defer st.Unlock()
+	st.isReturning = false
 	st.conn.RLock()
 	defer st.conn.RUnlock()
 
