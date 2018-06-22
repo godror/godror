@@ -1486,3 +1486,25 @@ func TestReturning(t *testing.T) {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
 }
+
+func TestMaxOpenCursors(t *testing.T) {
+	var openCursors sql.NullInt64
+	const qry1 = "SELECT p.value FROM v$parameter p WHERE p.name = 'open_cursors'"
+	if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
+		t.Log(errors.Wrap(err, qry1))
+	} else {
+		t.Logf("open_cursors=%v", openCursors)
+	}
+	n := int(openCursors.Int64)
+	if n <= 0 {
+		n = 1000
+	}
+	n *= 2
+	for i := 0; i < n; i++ {
+		var cnt int64
+		const qry2 = "DECLARE cnt PLS_INTEGER; BEGIN SELECT COUNT(0) INTO cnt FROM DUAL; :1 := cnt; END;"
+		if _, err := testDb.Exec(qry2, sql.Out{Dest: &cnt}); err != nil {
+			t.Fatal(errors.Wrapf(err, "%d. %s", i, qry2))
+		}
+	}
+}
