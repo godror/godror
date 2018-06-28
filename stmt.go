@@ -335,7 +335,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				err = st.getError()
 				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
 			}
-			st.data[i] = (*(*[1 << 30]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+			st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {

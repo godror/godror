@@ -294,7 +294,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				if C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data) == C.DPI_FAILURE {
 					return errors.Wrapf(r.getError(), "getReturnedData[%d]", i)
 				}
-				r.data[i] = (*[1 << 30]C.dpiData)(unsafe.Pointer(data))[:n:n]
+				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
 			}
 		}

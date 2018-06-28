@@ -289,9 +289,9 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	/*
 		var theCArray *C.YourType = C.getTheArray()
 		length := C.getTheArrayLength()
-		slice := (*[1 << 30]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
+		slice := (*[maxArraySize]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
 	*/
-	data := ((*[1 << 30]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
+	data := ((*[maxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
 	return v, data, nil
 }
 
