@@ -172,13 +172,34 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	var todo []string
 	if opts.ReadOnly {
-		return nil, errors.New("read-only transaction property is not supported")
+		todo = append(todo, "READ ONLY")
+	} else {
+		todo = append(todo, "READ WRITE")
 	}
 	switch level := sql.IsolationLevel(opts.Isolation); level {
-	case sql.LevelDefault, sql.LevelReadCommitted:
+	case sql.LevelDefault:
+	case sql.LevelReadCommitted:
+		todo = append(todo, "ISOLATION LEVEL READ COMMITTED")
+	case sql.LevelSerializable:
+		todo = append(todo, "ISOLATION LEVEL SERIALIZABLE")
 	default:
 		return nil, errors.Errorf("%v isolation level is not supported", sql.IsolationLevel(opts.Isolation))
+	}
+
+	for _, qry := range todo {
+		qry = "SET TRANSACTION " + qry
+		stmt, err := c.PrepareContext(ctx, qry)
+		if err == nil {
+			//fmt.Println(qry)
+			_, err = stmt.Exec(nil)
+			stmt.Close()
+		}
+		if err != nil {
+			return nil, errors.Wrap(err, qry)
+		}
 	}
 
 	c.RLock()

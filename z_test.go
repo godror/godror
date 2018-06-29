@@ -1228,7 +1228,7 @@ func TestRanaOraIssue244(t *testing.T) {
 		index := rand.Intn(len(fas))
 		i := i
 		grp.Go(func() error {
-			tx, err := testDb.BeginTx(ctx, nil)
+			tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 			if err != nil {
 				return err
 			}
@@ -1506,5 +1506,24 @@ func TestMaxOpenCursors(t *testing.T) {
 		if _, err := testDb.Exec(qry2, sql.Out{Dest: &cnt}); err != nil {
 			t.Fatal(errors.Wrapf(err, "%d. %s", i, qry2))
 		}
+	}
+}
+
+func TestRO(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.QueryContext(ctx, "SELECT 1 FROM DUAL"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.ExecContext(ctx, "CREATE TABLE test_table (i INTEGER)"); err == nil {
+		t.Fatal("RO allows CREATE TABLE ?")
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 }
