@@ -25,10 +25,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
-	"os"
 	"strings"
-	//"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -43,13 +40,6 @@ const getConnection = "--GET_CONNECTION--"
 // So this is 2^25.
 // See https://github.com/go-goracle/goracle/issues/73#issuecomment-401281714
 const maxArraySize = (1<<30)/C.sizeof_dpiSubscrMessageTable - 1
-
-func init() {
-	fmt.Fprintf(os.Stderr, "dpiData=%d\n", C.sizeof_dpiData)
-	fmt.Fprintf(os.Stderr, "dpiSubscrMessageQuery=%d\n", C.sizeof_dpiSubscrMessageQuery)
-	fmt.Fprintf(os.Stderr, "dpiSubscrMessageTable=%d\n", C.sizeof_dpiSubscrMessageTable)
-	fmt.Fprintf(os.Stderr, "maxArraySize=%d\n", maxArraySize)
-}
 
 var _ = driver.Conn((*conn)(nil))
 var _ = driver.ConnBeginTx((*conn)(nil))
