@@ -7,4 +7,3 @@ void CallbackSubscrDebug(void *context, dpiSubscrMessage *message) {
 	fprintf(stderr, "callback called\n");
 	CallbackSubscr(context, message);
 }
-

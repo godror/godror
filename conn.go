@@ -25,6 +25,8 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
+	"os"
 	"strings"
 	//"fmt"
 	"sync"
@@ -35,6 +37,18 @@ import (
 )
 
 const getConnection = "--GET_CONNECTION--"
+
+// The maximum capacity is limited to (2^32 / sizeof(dpiData))-1 to remain compatible
+// with 32-bit platforms. The size of a `C.dpiData` is 32 Byte on a 64-bit system, `C.dpiSubscrMessageTable` is 40 bytes.
+// So this is 2^27.
+const maxArraySize = (1<<32)/C.sizeof_dpiSubscrMessageTable - 1
+
+func init() {
+	fmt.Fprintf(os.Stderr, "dpiData=%d\n", C.sizeof_dpiData)
+	fmt.Fprintf(os.Stderr, "dpiSubscrMessageQuery=%d\n", C.sizeof_dpiSubscrMessageQuery)
+	fmt.Fprintf(os.Stderr, "dpiSubscrMessageTable=%d\n", C.sizeof_dpiSubscrMessageTable)
+	fmt.Fprintf(os.Stderr, "maxArraySize=%d\n", maxArraySize)
+}
 
 var _ = driver.Conn((*conn)(nil))
 var _ = driver.ConnBeginTx((*conn)(nil))
