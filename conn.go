@@ -40,8 +40,9 @@ const getConnection = "--GET_CONNECTION--"
 
 // The maximum capacity is limited to (2^32 / sizeof(dpiData))-1 to remain compatible
 // with 32-bit platforms. The size of a `C.dpiData` is 32 Byte on a 64-bit system, `C.dpiSubscrMessageTable` is 40 bytes.
-// So this is 2^27.
-const maxArraySize = (1<<32)/C.sizeof_dpiSubscrMessageTable - 1
+// So this is 2^25.
+// See https://github.com/go-goracle/goracle/issues/73#issuecomment-401281714
+const maxArraySize = (1<<30)/C.sizeof_dpiSubscrMessageTable - 1
 
 func init() {
 	fmt.Fprintf(os.Stderr, "dpiData=%d\n", C.sizeof_dpiData)
