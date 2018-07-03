@@ -194,7 +194,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		stmt, err := c.PrepareContext(ctx, qry)
 		if err == nil {
 			//fmt.Println(qry)
-			_, err = stmt.Exec(nil)
+			_, err = stmt.Exec(nil) //nolint:typecheck,megacheck
 			stmt.Close()
 		}
 		if err != nil {

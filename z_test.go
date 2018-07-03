@@ -98,7 +98,7 @@ type testLogger struct {
 }
 
 func (tl *testLogger) Log(args ...interface{}) error {
-	fmt.Println(args)
+	fmt.Println(args...)
 	return tl.GetLog()(args)
 }
 func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
@@ -1525,5 +1525,20 @@ func TestRO(t *testing.T) {
 	}
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNullIntoNum(t *testing.T) {
+	testDb.Exec("DROP TABLE test_null_num")
+	qry := "CREATE TABLE test_null_num (i NUMBER(3))"
+	if _, err := testDb.Exec(qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP TABLE test_null_num")
+
+	qry = "INSERT INTO test_null_num (i) VALUES (:1)"
+	var i *int
+	if _, err := testDb.Exec(qry, i); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
 	}
 }

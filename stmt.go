@@ -629,9 +629,15 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	for i := range args {
 		info := &(infos[i])
 		value := st.dests[i]
+		nilPtr := false
 		if _, ok := value.(*driver.Rows); !ok {
 			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
-				value = rv.Elem().Interface()
+				if nilPtr = rv.IsNil(); nilPtr {
+					info.set = dataSetNull
+					value = reflect.Zero(rv.Type().Elem()).Interface()
+				} else {
+					value = rv.Elem().Interface()
+				}
 			}
 		}
 		switch v := value.(type) {
@@ -659,51 +665,67 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			}
 		case int, []int:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case int32, []int32:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case int64, []int64, sql.NullInt64, []sql.NullInt64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case uint, []uint:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case uint32, []uint32:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case uint64, []uint64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case float32, []float32:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case float64, []float64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
+			if !nilPtr {
+				info.set = dataSetNumber
+				if info.isOut {
+					st.gets[i] = dataGetNumber
+				}
 			}
 		case sql.NullFloat64, []sql.NullFloat64:
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
