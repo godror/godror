@@ -1542,3 +1542,26 @@ func TestNullIntoNum(t *testing.T) {
 		t.Fatal(errors.Wrap(err, qry))
 	}
 }
+
+func TestPing(t *testing.T) {
+	t.Parallel()
+	badDB, err := sql.Open("goracle", "bad/passw@1.1.1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	dl, _ := ctx.Deadline()
+	err = badDB.PingContext(ctx)
+	ok := dl.After(time.Now())
+	if err != nil {
+		t.Log(err)
+	} else {
+		t.Log("ping succeeded")
+		if !ok {
+			t.Error("ping succeeded after deadline!")
+		}
+	}
+}

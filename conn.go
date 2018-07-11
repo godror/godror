@@ -74,6 +74,12 @@ func (c *conn) Break() error {
 	return nil
 }
 
+// Ping checks the connection's state.
+//
+// WARNING: as database/sql calls database/sql/driver.Open when it needs
+// a new connection, but does not provide this Context,
+// if the Open stalls (unreachable / firewalled host), the
+// database/sql.Ping may return way after the Context.Deadline!
 func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
