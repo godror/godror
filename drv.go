@@ -407,7 +407,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				nil, 0, nil, 0, &connCreateParams,
 				(**C.dpiConn)(unsafe.Pointer(&dc)),
 			) == C.DPI_FAILURE {
-				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", P)
+				sanitized := P
+				sanitized.Password = "****"
+				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", sanitized)
 			}
 			c.dpiConn = (*C.dpiConn)(dc)
 			return &c, nil
