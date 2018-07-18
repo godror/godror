@@ -387,14 +387,14 @@ int dpiDataBuffer__toOracleNumberFromText(dpiDataBuffer *data, dpiEnv *env,
         decimalPointIndex++;
     }
 
-    // append a sentinel 102 byte for negative numbers if there is room
-    appendSentinel = (isNegative && numDigits < DPI_NUMBER_MAX_DIGITS);
-
     // determine the number of digit pairs; if the number of digits is odd,
     // append a zero to make the number of digits even
     if (numDigits % 2 == 1)
         digits[numDigits++] = 0;
     numPairs = numDigits / 2;
+
+    // append a sentinel 102 byte for negative numbers if there is room
+    appendSentinel = (isNegative && numDigits < DPI_NUMBER_MAX_DIGITS);
 
     // initialize the OCINumber value
     // the length is the number of pairs, plus one for the exponent

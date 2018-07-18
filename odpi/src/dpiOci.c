@@ -2697,12 +2697,21 @@ int dpiOci__stmtPrepare2(dpiStmt *stmt, const char *sql, uint32_t sqlLength,
 int dpiOci__stmtRelease(dpiStmt *stmt, const char *tag, uint32_t tagLength,
         int checkError, dpiError *error)
 {
-    uint32_t mode;
+    uint32_t mode = DPI_OCI_DEFAULT;
+    uint32_t cacheSize = 0;
     int status;
 
+    // if the statement should be deleted from the cache, first check to see
+    // that there actually is a cache currently being used; otherwise, the
+    // error "ORA-24300: bad value for mode" will be raised
+    if (stmt->deleteFromCache) {
+        dpiOci__attrGet(stmt->conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                &cacheSize, NULL, DPI_OCI_ATTR_STMTCACHESIZE, NULL, error);
+        if (cacheSize > 0)
+            mode = DPI_OCI_STRLS_CACHE_DELETE;
+    }
+
     DPI_OCI_LOAD_SYMBOL("OCIStmtRelease", dpiOciSymbols.fnStmtRelease)
-    mode = (stmt->deleteFromCache) ? DPI_OCI_STRLS_CACHE_DELETE :
-            DPI_OCI_DEFAULT;
     status = (*dpiOciSymbols.fnStmtRelease)(stmt->handle, error->handle, tag,
             tagLength, mode);
     if (checkError)

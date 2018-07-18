@@ -1290,6 +1290,8 @@ int dpiConn_deqObject(dpiConn *conn, const char *queueName,
             payload->type->tdo, &payload->instance, &payload->indicator,
             &ociMsgId, &error) < 0) {
         if (error.buffer->code == 25228) {
+            if (ociMsgId)
+                dpiOci__rawResize(conn->env->handle, &ociMsgId, 0, &error);
             *msgId = NULL;
             *msgIdLength = 0;
             return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);

@@ -605,11 +605,13 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         }
     }
 
-    // create query variables (if applicable)
-    if (stmt->statementType == DPI_STMT_TYPE_SELECT &&
-            !(mode & DPI_MODE_EXEC_PARSE_ONLY) &&
-            dpiStmt__createQueryVars(stmt, error) < 0)
-        return DPI_FAILURE;
+    // create query variables (if applicable) and reset row count to zero
+    if (stmt->statementType == DPI_STMT_TYPE_SELECT) {
+        stmt->rowCount = 0;
+        if (!(mode & DPI_MODE_EXEC_PARSE_ONLY) &&
+                dpiStmt__createQueryVars(stmt, error) < 0)
+            return DPI_FAILURE;
+    }
 
     return DPI_SUCCESS;
 }
