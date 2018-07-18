@@ -364,12 +364,12 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 
 	c := conn{drv: d, connParams: P}
-	connString := P.StringNoClass()
+	connString := P.string(false, true)
 
 	defer func() {
 		d.mu.Lock()
 		if Log != nil {
-			Log("pools", d.pools, "conn", P.String())
+			Log("pools", d.pools, "conn", P.string(true))
 		}
 		d.mu.Unlock()
 	}()
@@ -407,9 +407,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				nil, 0, nil, 0, &connCreateParams,
 				(**C.dpiConn)(unsafe.Pointer(&dc)),
 			) == C.DPI_FAILURE {
-				sanitized := P
-				sanitized.Password = "****"
-				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", sanitized)
+				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", P)
 			}
 			c.dpiConn = (*C.dpiConn)(dc)
 			return &c, nil
@@ -446,7 +444,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if P.IsSysDBA || P.IsSysOper {
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
-			Log("C", "dpiConn_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
+			Log("C", "dpiConn_create", "username", P.Username, "password", "SECRET", "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
 		}
 		if C.dpiConn_create(
 			d.dpiContext,
@@ -457,7 +455,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			&connCreateParams,
 			(**C.dpiConn)(unsafe.Pointer(&dc)),
 		) == C.DPI_FAILURE {
-			return nil, errors.Wrapf(d.getError(), "username=%q password=%q sid=%q params=%+v", P.Username, P.Password, P.SID, connCreateParams)
+			return nil, errors.Wrapf(d.getError(), "username=%q password=%q sid=%q params=%+v", P.Username, "SECRET", P.SID, connCreateParams)
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
 		return &c, nil
@@ -480,7 +478,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "password", P.Password, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
+		Log("C", "dpiPool_create", "username", P.Username, "password", "SECRET", "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
 	}
 	if C.dpiPool_create(
 		d.dpiContext,
@@ -492,7 +490,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
 		return nil, errors.Wrapf(d.getError(), "username=%q password=%q SID=%q minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d ",
-			P.Username, strings.Repeat("*", len(P.Password)), P.SID,
+			P.Username, "SECRET", P.SID,
 			P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
 	}
 	C.dpiPool_setTimeout(dp, 300)
@@ -522,7 +520,12 @@ func (P ConnectionParams) String() string {
 	return P.string(true)
 }
 
-func (P ConnectionParams) string(class bool) string {
+func (P ConnectionParams) string(class bool, plaintext ...bool) string {
+	var plaintextPass bool
+	if len(plaintext) > 0 && plaintext[0] {
+		plaintextPass = true
+	}
+
 	host, path := P.SID, ""
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host, path = host[:i], host[i:]
@@ -532,9 +535,13 @@ func (P ConnectionParams) string(class bool) string {
 		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
 	}
 	// params should be sorted lexicographically
+	up := url.UserPassword(P.Username, "SECRET")
+	if plaintextPass {
+		up = url.UserPassword(P.Username, P.Password)
+	}
 	return (&url.URL{
 		Scheme: "oracle",
-		User:   url.UserPassword(P.Username, P.Password),
+		User:   up,
 		Host:   host,
 		Path:   path,
 		RawQuery: cc +
@@ -557,7 +564,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
 		if i < 0 {
-			return P, errors.Errorf("no / in %q", connString)
+			return P, errors.Errorf("no '/' in connection string")
 		}
 		P.Username, connString = connString[:i], connString[i+1:]
 		if i = strings.IndexByte(connString, '@'); i >= 0 {
