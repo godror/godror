@@ -16,6 +16,7 @@
 package goracle
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -44,7 +45,9 @@ func TestParseConnString(t *testing.T) {
 				ConnClass: "POOLED", IsSysOper: true,
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3}},
 
-		"@": {In: wantAt.String(), Want: wantAt},
+		"@": {
+			In:   strings.Replace(wantAt.String(), ":SECRET@", ":"+wantAt.Password+"@", 1),
+			Want: wantAt},
 
 		"xo": {In: "oracle://user:pass@localhost/sid", Want: wantXO},
 	} {
@@ -55,21 +58,21 @@ func TestParseConnString(t *testing.T) {
 			continue
 		}
 		if P != tCase.Want {
-			t.Errorf("%s: got %+v, wanted %+v\n%s", tName, P, tCase.Want, cmp.Diff(tCase.Want, P))
+			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P))
 			continue
 		}
-		s := P.String()
+		s := strings.Replace(P.String(), ":SECRET@", ":"+P.Password+"@", 1)
 		Q, err := ParseConnString(s)
 		if err != nil {
-			t.Errorf("%s: %v", tName, err)
+			t.Errorf("%s: parseConnString %v", tName, err)
 			continue
 		}
 		if P != Q {
-			t.Errorf("%s: got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
+			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
 			continue
 		}
-		if got := Q.String(); s != got {
-			t.Errorf("%s: got %q, wanted %q", tName, got, s)
+		if got := strings.Replace(Q.String(), ":SECRET@", ":"+Q.Password+"@", 1); s != got {
+			t.Errorf("%s: paramString got %q, wanted %q", tName, got, s)
 		}
 	}
 }
