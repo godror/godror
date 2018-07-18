@@ -369,7 +369,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	defer func() {
 		d.mu.Lock()
 		if Log != nil {
-			Log("pools", d.pools, "conn", P.string(true))
+			Log("pools", d.pools, "conn", P.String())
 		}
 		d.mu.Unlock()
 	}()
