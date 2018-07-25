@@ -40,10 +40,14 @@ func (O *Object) GetAttribute(data *Data, i int) error {
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 	}
-	if data.dpiData == nil {
+	wasNull := data.dpiData == nil
+	if wasNull {
 		data.dpiData = (*C.dpiData)(C.malloc(C.sizeof_void))
 	}
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
+		if wasNull {
+			C.free(unsafe.Pointer(data.dpiData))
+		}
 		return O.getError()
 	}
 	return nil
@@ -222,6 +226,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 func (t ObjectType) NewObject() (*Object, error) {
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
 	if C.dpiObjectType_createObject(t.dpiObjectType, &obj) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(obj))
 		return nil, t.getError()
 	}
 	return &Object{ObjectType: t, dpiObject: obj}, nil

@@ -163,6 +163,7 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 		params,
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
 	) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(params))
 		C.free(unsafe.Pointer(dpiSubscr))
 		return nil, errors.Wrap(c.getError(), "newSubscription")
 	}
