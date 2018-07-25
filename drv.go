@@ -27,7 +27,8 @@
 //     poolMinSessions=1& \
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
-//     connectionClass=POOLED
+//     connectionClass=POOLED& \
+//     noConnectionPooling=0
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -88,8 +89,11 @@ const (
 	DefaultPoolMaxSessions = 1000
 	// DefaultPoolIncrement specifies the default value for increment for pool creation.
 	DefaultPoolIncrement = 1
-	// DefaultConnectionClass is the defailt connectionClass
+	// DefaultConnectionClass is the default connectionClass
 	DefaultConnectionClass = "GORACLE"
+	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
+	// It is the same as setting noConnectionPooling=1
+	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
 )
 
 // Number as string
@@ -393,7 +397,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
-	if !(P.IsSysDBA || P.IsSysOper) {
+	if !(P.IsSysDBA || P.IsSysOper || P.NoConnectionPooling) {
 		d.mu.Lock()
 		dp := d.pools[connString]
 		d.mu.Unlock()
@@ -407,6 +411,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				nil, 0, nil, 0, &connCreateParams,
 				(**C.dpiConn)(unsafe.Pointer(&dc)),
 			) == C.DPI_FAILURE {
+				C.free(unsafe.Pointer(dc))
 				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", P)
 			}
 			c.dpiConn = (*C.dpiConn)(dc)
@@ -441,7 +446,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if P.IsSysDBA || P.IsSysOper {
+	if P.IsSysDBA || P.IsSysOper || P.NoConnectionPooling {
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
 			Log("C", "dpiConn_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
@@ -455,6 +460,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			&connCreateParams,
 			(**C.dpiConn)(unsafe.Pointer(&dc)),
 		) == C.DPI_FAILURE {
+			C.free(unsafe.Pointer(dc))
 			return nil, errors.Wrapf(d.getError(), "username=%q sid=%q params=%+v", P.Username, P.SID, connCreateParams)
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
@@ -507,9 +513,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 // You can use ConnectionParams{...}.String() as a connection string
 // in sql.Open.
 type ConnectionParams struct {
-	Username, Password, SID, ConnClass      string
-	IsSysDBA, IsSysOper                     bool
-	MinSessions, MaxSessions, PoolIncrement int
+	Username, Password, SID, ConnClass       string
+	IsSysDBA, IsSysOper, NoConnectionPooling bool
+	MinSessions, MaxSessions, PoolIncrement  int
 }
 
 // StringNoClass returns the string representation of ConnectionParams, without class info.
@@ -537,9 +543,9 @@ func (P ConnectionParams) string(class bool) string {
 		Path:   path,
 		RawQuery: cc +
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
-				"sysdba=%d&sysoper=%d",
+				"sysdba=%d&sysoper=%d&noConnectionPooling=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
-				b2i(P.IsSysDBA), b2i(P.IsSysOper),
+				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.NoConnectionPooling),
 			),
 	}).String()
 }
@@ -599,6 +605,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if P.IsSysDBA = q.Get("sysdba") == "1"; !P.IsSysDBA {
 		P.IsSysOper = q.Get("sysoper") == "1"
 	}
+	P.NoConnectionPooling = q.Get("noConnectionPooling") == "1" || P.ConnClass == NoConnectionPoolingConnectionClass
 
 	for _, task := range []struct {
 		Dest *int

@@ -62,7 +62,7 @@ func init() {
 		logger.Swap(tl)
 	}
 
-	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED",
+	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED&noConnectionPooling=0",
 		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		os.Getenv("GORACLE_DRV_TEST_DB"),
@@ -1564,4 +1564,18 @@ func TestPing(t *testing.T) {
 			t.Error("ping succeeded after deadline!")
 		}
 	}
+}
+
+func TestNoConnectionPooling(t *testing.T) {
+	t.Parallel()
+	db, err := sql.Open("goracle",
+		strings.Replace(
+			strings.Replace(testConStr, "POOLED", goracle.NoConnectionPoolingConnectionClass, 1),
+			"noConnectionPooling=0", "noConnectionPooling=1", 1,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 }
