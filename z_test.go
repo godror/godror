@@ -1571,7 +1571,7 @@ func TestNoConnectionPooling(t *testing.T) {
 	db, err := sql.Open("goracle",
 		strings.Replace(
 			strings.Replace(testConStr, "POOLED", goracle.NoConnectionPoolingConnectionClass, 1),
-			"noConnectionPooling=0", "noConnectionPooling=1", 1,
+			"standaloneConnection=0", "standaloneConnection=1", 1,
 		),
 	)
 	if err != nil {
