@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - add CHANGELOG
+- check that `len(dest) == len(rows.columns)` in `rows.Next(dest)`
 
 ## [2.5.8] - 2018-07-27
 ### Changed

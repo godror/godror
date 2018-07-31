@@ -270,6 +270,9 @@ func (r *rows) Next(dest []driver.Value) error {
 		_ = r.Close()
 		return io.EOF
 	}
+	if len(dest) != len(r.columns) {
+		return errors.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
+	}
 	if r.fetched == 0 {
 		var moreRows C.int
 		if C.dpiStmt_fetchRows(r.dpiStmt, C.uint32_t(r.statement.FetchRowCount()), &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
