@@ -520,13 +520,17 @@ type ConnectionParams struct {
 
 // StringNoClass returns the string representation of ConnectionParams, without class info.
 func (P ConnectionParams) StringNoClass() string {
-	return P.string(false)
+	return P.string(false, false)
 }
 func (P ConnectionParams) String() string {
-	return P.string(true)
+	return P.string(true, false)
 }
 
-func (P ConnectionParams) string(class bool) string {
+func (P ConnectionParams) StringWithPassword() string {
+	return P.string(true, true)
+}
+
+func (P ConnectionParams) string(class, withPassword bool) string {
 	host, path := P.SID, ""
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host, path = host[:i], host[i:]
@@ -536,9 +540,13 @@ func (P ConnectionParams) string(class bool) string {
 		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
 	}
 	// params should be sorted lexicographically
+	password := "SECRET"
+	if withPassword {
+		password = P.Password
+	}
 	return (&url.URL{
 		Scheme: "oracle",
-		User:   url.UserPassword(P.Username, "SECRET"),
+		User:   url.UserPassword(P.Username, password),
 		Host:   host,
 		Path:   path,
 		RawQuery: cc +
