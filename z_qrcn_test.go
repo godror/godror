@@ -42,7 +42,8 @@ func TestQRCN(t *testing.T) {
 	}
 	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
-		if strings.Contains(errors.Cause(err).Error(), "ORA-29970:") {
+		errS := errors.Cause(err).Error()
+		if strings.Contains(errS, "ORA-29970:") || strings.Contains(errS, "ORA-29972:") {
 			t.Skip(err.Error())
 		}
 		t.Fatalf("%+v", err)
