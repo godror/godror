@@ -141,8 +141,27 @@ func (st *statement) Close() error {
 
 	return st.close()
 }
-
 func (st *statement) close() error {
+	if st == nil {
+		return nil
+	}
+	dpiStmt := st.dpiStmt
+	c := st.conn
+	st.cleanup()
+
+	var si C.dpiStmtInfo
+	if dpiStmt != nil &&
+		C.dpiStmt_getInfo(dpiStmt, &si) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
+		C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
+		return nil
+	}
+	if c == nil {
+		return driver.ErrBadConn
+	}
+	return errors.Wrap(c.getError(), "statement/dpiStmt_release")
+}
+
+func (st *statement) cleanup() error {
 	if st == nil {
 		return nil
 	}
@@ -156,17 +175,10 @@ func (st *statement) close() error {
 	st.gets = nil
 	st.dests = nil
 	st.columns = nil
-	dpiStmt := st.dpiStmt
 	st.dpiStmt = nil
 	c := st.conn
 	st.conn = nil
 
-	var si C.dpiStmtInfo
-	if dpiStmt != nil &&
-		C.dpiStmt_getInfo(dpiStmt, &si) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
-		C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
-		return nil
-	}
 	if c == nil {
 		return driver.ErrBadConn
 	}
@@ -316,7 +328,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "BREAK statement")
 			}
 			_ = st.Break()
-			st.close()
+			st.cleanup()
 			return nil, driver.ErrBadConn
 		}
 	}
@@ -445,7 +457,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				Log("msg", "BREAK query")
 			}
 			_ = st.Break()
-			st.close()
+			st.cleanup()
 			return nil, driver.ErrBadConn
 		}
 	}

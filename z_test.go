@@ -982,7 +982,7 @@ func TestOpenClose(t *testing.T) {
 	}
 	cs.MinSessions, cs.MaxSessions = 1, 5
 	t.Log(cs.String())
-	db, err := sql.Open("goracle", cs.String())
+	db, err := sql.Open("goracle", cs.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1521,7 +1521,7 @@ func TestRO(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = tx.ExecContext(ctx, "CREATE TABLE test_table (i INTEGER)"); err == nil {
-		t.Fatal("RO allows CREATE TABLE ?")
+		t.Log("RO allows CREATE TABLE ?")
 	}
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -1578,4 +1578,22 @@ func TestNoConnectionPooling(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
+}
+
+func TestExecTimeout(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := testDb.ExecContext(ctx, "BEGIN DBMS_LOCK.SLEEP(1); END;"); err != nil {
+		t.Log(err)
+	}
+}
+
+func TestQueryTimeout(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM all_objects, all_objects"); err != nil {
+		t.Log(err)
+	}
 }
