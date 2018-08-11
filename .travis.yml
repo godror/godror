@@ -2,53 +2,31 @@
 language: go
 sudo: required
 
+services:
+    - docker
+
 go:
     - "1.10.3"
 
 go_import_path: gopkg.in/goracle.v2
-
-addons:
-    apt:
-        packages:
-            - libaio1
-            - curl
-            - librpm3
-            - librpmio3
-            - rpm-common
-            - rpm2cpio
-            - cpio
 
 env:
     global:
         - GORACLE_DRV_TEST_USERNAME=test
         - GORACLE_DRV_TEST_PASSWORD=test
         - GORACLE_DRV_TEST_DB=oracle.gthomas.eu:49161/xe
-        - ORACLE_INSTANTCLIENT_MAJOR=12.2
-        - ORACLE_INSTANTCLIENT_VERSION=12.2.0.1.0
-        - ORACLE=/usr/local/oracle
-        - ORACLE_HOME=$ORACLE/lib/oracle/$ORACLE_INSTANTCLIENT_MAJOR/client64
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ORACLE_HOME/lib
-        - C_INCLUDE_PATH=$C_INCLUDE_PATH:$ORACLE/include/oracle/$ORACLE_INSTANTCLIENT_MAJOR/client64
 
-# copied from https://github.com/sergeymakinen/docker-oracle-instant-client/blob/master/12.2/Dockerfile
 before_install:
     - export CGO_CFLAGS=-I/usr/include/oracle/12.2/client64
     - export CGO_LDFLAGS=-L/usr/lib/oracle/12.2/client64/lib
-    - sudo mkdir $ORACLE
-    - export TMP_DIR="$(mktemp -d)" && cd "$TMP_DIR" \
-        && curl -L https://github.com/sergeymakinen/docker-oracle-instant-client/raw/assets/oracle-instantclient$ORACLE_INSTANTCLIENT_MAJOR-basic-$ORACLE_INSTANTCLIENT_VERSION-1.x86_64.rpm -o basic.rpm \
-        && rpm2cpio basic.rpm | cpio -i -d -v && sudo cp -r usr/* $ORACLE && rm -rf ./* \
-        && sudo ln -s libclntsh.so.12.1 $ORACLE/lib/oracle/$ORACLE_INSTANTCLIENT_MAJOR/client64/lib/libclntsh.so.$ORACLE_INSTANTCLIENT_MAJOR \
-        && sudo ln -s libocci.so.12.1 $ORACLE/lib/oracle/$ORACLE_INSTANTCLIENT_MAJOR/client64/lib/libocci.so.$ORACLE_INSTANTCLIENT_MAJOR \
-        && curl -L https://github.com/sergeymakinen/docker-oracle-instant-client/raw/assets/oracle-instantclient$ORACLE_INSTANTCLIENT_MAJOR-devel-$ORACLE_INSTANTCLIENT_VERSION-1.x86_64.rpm -o devel.rpm \
-        && rpm2cpio devel.rpm | cpio -i -d -v && sudo cp -r usr/* $ORACLE && rm -rf "$TMP_DIR" \
-        && echo "$ORACLE_HOME/lib" | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo chmod o+r /etc/ld.so.conf.d/oracle.conf && sudo ldconfig
+    - docker pull sergeymakinen/docker-oracle-instant-client:12.2
 
 install:
     - go get -t .
 
 script:
-    - go test -coverprofile=coverage.txt -covermode=atomic .
+	- go test -c .
+    - docker run -ti -v ./goracle.v2.test:/goracle.v2.test:ro sergeymakinen/docker-oracle-instant-client:12.2 goracle.v2.test -test.coverprofile=coverage.txt -test.covermode=atomic
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)
