@@ -12,6 +12,9 @@ addons:
         packages:
             - libaio1
             - curl
+            - librpm3
+            - librpmio3
+            - rpm-common
             - rpm2cpio
             - cpio
 
