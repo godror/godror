@@ -938,6 +938,7 @@ func copySlice(orig interface{}) interface{} {
 }
 
 func TestObject(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -1065,6 +1066,7 @@ func TestOpenBadMemory(t *testing.T) {
 }
 
 func TestSelectFloat(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	tbl := "test_numbers" + tblSuffix
@@ -1154,6 +1156,7 @@ func TestSelectFloat(t *testing.T) {
 }
 
 func TestNumInputs(t *testing.T) {
+	t.Parallel()
 	var a, b string
 	if err := testDb.QueryRow("SELECT :1, :2 FROM DUAL", 'a', 'b').Scan(&a, &b); err != nil {
 		t.Errorf("two inputs: %+v", err)
@@ -1167,6 +1170,7 @@ func TestNumInputs(t *testing.T) {
 }
 
 func TestPtrArg(t *testing.T) {
+	t.Parallel()
 	s := "dog"
 	rows, err := testDb.Query("SELECT * FROM user_objects WHERE object_name=:1", &s)
 	if err != nil {
@@ -1175,6 +1179,7 @@ func TestPtrArg(t *testing.T) {
 	rows.Close()
 }
 func TestORA1000(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects")
@@ -1470,6 +1475,7 @@ func TestColumnSize(t *testing.T) {
 }
 
 func TestReturning(t *testing.T) {
+	t.Parallel()
 	defer tl.enableLogging(t)()
 	testDb.Exec("DROP TABLE test_returning")
 	if _, err := testDb.Exec("CREATE TABLE test_returning (a VARCHAR2(20))"); err != nil {
@@ -1514,6 +1520,7 @@ func TestMaxOpenCursors(t *testing.T) {
 }
 
 func TestRO(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
@@ -1533,6 +1540,7 @@ func TestRO(t *testing.T) {
 }
 
 func TestNullIntoNum(t *testing.T) {
+	t.Parallel()
 	testDb.Exec("DROP TABLE test_null_num")
 	qry := "CREATE TABLE test_null_num (i NUMBER(3))"
 	if _, err := testDb.Exec(qry); err != nil {
@@ -1585,6 +1593,7 @@ func TestNoConnectionPooling(t *testing.T) {
 }
 
 func TestExecTimeout(t *testing.T) {
+	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -1594,6 +1603,7 @@ func TestExecTimeout(t *testing.T) {
 }
 
 func TestQueryTimeout(t *testing.T) {
+	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
