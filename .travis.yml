@@ -18,8 +18,9 @@ install:
     - go get -t .
 
 script:
-    - go test -c -covermode=atomic .
     - docker run -d -p 1521:1521 sath89/oracle-12c
+    - go test -c -covermode=atomic .
+    - while ! nc -z localhost 1521; do echo 'waiting for DB'; sleep 5; done
     - docker run -ti --rm
         -e GORACLE_DRV_TEST_USERNAME=system
         -e GORACLE_DRV_TEST_PASSWORD=oracle
