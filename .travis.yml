@@ -17,8 +17,6 @@ env:
         - GORACLE_DRV_TEST_DB=oracle.gthomas.eu:49161/xe
 
 before_install:
-    - export CGO_CFLAGS=-I/usr/include/oracle/12.2/client64
-    - export CGO_LDFLAGS=-L/usr/lib/oracle/12.2/client64/lib
     - docker pull sergeymakinen/oracle-instant-client:12.2
 
 install:
