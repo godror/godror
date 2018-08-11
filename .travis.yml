@@ -19,14 +19,14 @@ env:
 before_install:
     - export CGO_CFLAGS=-I/usr/include/oracle/12.2/client64
     - export CGO_LDFLAGS=-L/usr/lib/oracle/12.2/client64/lib
-    - docker pull sergeymakinen/docker-oracle-instant-client:12.2
+    - docker pull sergeymakinen/oracle-instant-client:12.2
 
 install:
     - go get -t .
 
 script:
     - go test -c .
-    - docker run -ti -v ./goracle.v2.test:/goracle.v2.test:ro sergeymakinen/docker-oracle-instant-client:12.2 goracle.v2.test -test.coverprofile=coverage.txt -test.covermode=atomic
+    - docker run -ti -v ./goracle.v2.test:/goracle.v2.test:ro sergeymakinen/oracle-instant-client:12.2 goracle.v2.test -test.coverprofile=coverage.txt -test.covermode=atomic
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)
