@@ -21,8 +21,8 @@ install:
 
 script:
     - go test -c -covermode=atomic .
-    - while ! docker logs --tail 10 "$DO_ID" | grep -F -q 'Database ready to use'; do
-        docker logs --tail 10 "$DO_ID"
+    - while ! docker logs "$DO_ID" | grep -F -q 'Database ready to use'; do
+        docker logs "$DO_ID" | tail 10
         sleep 10;
       done
     - docker run -ti --network ora --rm
