@@ -10,10 +10,13 @@ go:
 
 go_import_path: gopkg.in/goracle.v2
 
+env:
+    global:
+        - GORACLE_DRV_TEST_USERNAME=test
+        - GORACLE_DRV_TEST_PASSWORD=test
+        - GORACLE_DRV_TEST_DB=oracle.gthomas.eu:49161/xe
+
 before_install:
-    - docker pull sath89/oracle-12c
-    - docker network ls | grep -q ora || docker network create ora
-    - export DO_ID=$(docker run -d -p 1521:1521 --network ora -v $(pwd)/oracle/data:/u01/app/oracle sath89/oracle-12c)
     - docker pull sergeymakinen/oracle-instant-client:12.2
 
 install:
@@ -21,17 +24,13 @@ install:
 
 script:
     - go test -c -covermode=atomic .
-    - while ! docker logs "$DO_ID" | grep -F -q 'Database ready to use'; do
-        docker logs "$DO_ID" | tail 10
-        sleep 10;
-      done
-    - docker run -ti --network ora --rm
-        -e GORACLE_DRV_TEST_USERNAME=system
-        -e GORACLE_DRV_TEST_PASSWORD=oracle
-        -e GORACLE_DRV_TEST_DB="$DO_ID:1521/xe"
+    - docker run -ti --rm
+        -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME
+        -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD
+        -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB
         -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
         sergeymakinen/oracle-instant-client:12.2
-        /goracle.v2.test -test.coverprofile=coverage.txt
+        /goracle.v2.test -test.coverprofile=coverage.txt -test.v
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)
