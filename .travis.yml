@@ -25,8 +25,16 @@ install:
     - go get -t .
 
 script:
-    - go test -c .
-    - docker run -ti -v ./goracle.v2.test:/goracle.v2.test:ro sergeymakinen/oracle-instant-client:12.2 goracle.v2.test -test.coverprofile=coverage.txt -test.covermode=atomic
+    - go test -c -covermode=atomic .
+    - docker run -ti --rm \
+        -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME \
+        -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD \
+        -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB \
+        -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro \
+        sergeymakinen/oracle-instant-client:12.2 \
+        /goracle.v2.test -test.coverprofile=coverage.txt
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)
+
+# vim: set et:
