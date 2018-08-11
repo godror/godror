@@ -12,19 +12,23 @@ go_import_path: gopkg.in/goracle.v2
 
 before_install:
     - docker pull sath89/oracle-12c
+    - docker network ls | grep -q ora || docker network create ora
+    - export DO_ID=$(docker run -d -p 1521:1521 --network ora -v $(pwd)/oracle/data:/u01/app/oracle sath89/oracle-12c)
     - docker pull sergeymakinen/oracle-instant-client:12.2
 
 install:
     - go get -t .
 
 script:
-    - docker run -d -p 1521:1521 sath89/oracle-12c
     - go test -c -covermode=atomic .
-    - while ! nc -z localhost 1521; do echo 'waiting for DB'; sleep 5; done
-    - docker run -ti --rm
+    - while ! docker logs --tail 10 "$DO_ID" | grep -F -q 'Database ready to use'; do
+        docker logs --tail 10 "$DO_ID"
+        sleep 10;
+      done
+    - docker run -ti --network ora --rm
         -e GORACLE_DRV_TEST_USERNAME=system
         -e GORACLE_DRV_TEST_PASSWORD=oracle
-        -e GORACLE_DRV_TEST_DB=localhost:1521/xe
+        -e GORACLE_DRV_TEST_DB="$DO_ID:1521/xe"
         -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
         sergeymakinen/oracle-instant-client:12.2
         /goracle.v2.test -test.coverprofile=coverage.txt
