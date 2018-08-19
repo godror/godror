@@ -110,6 +110,13 @@ and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string
 
 For `PLS_INTEGER` and `BINARY_INTEGER` (PL/SQL data types) you can use `int32`.
 
+### CLOB, BLOB
+
+As `sql.QueryRow`, `sql.QueryRowContext` closes the statement right after you `Scan` from the returned `*Row`, the returned `Lob` will be invalid, producing
+`getSize: ORA-00000: DPI-1002: invalid dpiLob handle`.
+
+So, use a separate `Stmt` or `sql.QueryContext`.
+
 # Install
 
 Just
