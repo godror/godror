@@ -1693,7 +1693,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
 	}
-	vi := varInfo{SliceLen: st.FetchRowCount()}
+	sliceLen := st.FetchRowCount()
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo
@@ -1729,7 +1729,13 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
-		vi.Typ, vi.NatTyp, vi.BufSize = ti.oracleTypeNum, ti.defaultNativeTypeNum, bufSize
+		vi := varInfo{
+			Typ:        ti.oracleTypeNum,
+			NatTyp:     ti.defaultNativeTypeNum,
+			ObjectType: ti.objectType,
+			BufSize:    bufSize,
+			SliceLen:   sliceLen,
+		}
 		if r.vars[i], r.data[i], err = st.newVar(vi); err != nil {
 			return nil, err
 		}
