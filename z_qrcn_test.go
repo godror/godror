@@ -30,7 +30,7 @@ func TestQRCN(t *testing.T) {
 	}
 
 	testDb.Exec("DROP TABLE test_subscr")
-	if _, err := testDb.Exec("CREATE TABLE test_subscr (i NUMBER)"); err != nil {
+	if _, err = testDb.Exec("CREATE TABLE test_subscr (i NUMBER)"); err != nil {
 		t.Fatal(err)
 	}
 	defer testDb.Exec("DROP TABLE test_subscr")

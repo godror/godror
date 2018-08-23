@@ -1611,3 +1611,72 @@ func TestQueryTimeout(t *testing.T) {
 		t.Log(err)
 	}
 }
+
+func TestSDO(t *testing.T) {
+	//t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	testDb.ExecContext(ctx, "DROP TABLE test_sdo")
+	for _, qry := range []string{
+		`CREATE TYPE test_sdo_point_type AS OBJECT (
+   X NUMBER,
+   Y NUMBER,
+   Z NUMBER)`,
+		"CREATE TYPE test_sdo_elem_info_array AS VARRAY (1048576) of NUMBER",
+		"CREATE TYPE test_sdo_ordinate_array AS VARRAY (1048576) of NUMBER",
+		`CREATE TYPE test_sdo_geometry AS OBJECT (
+ SDO_GTYPE NUMBER,
+ SDO_SRID NUMBER,
+ SDO_POINT test_SDO_POINT_TYPE,
+ SDO_ELEM_INFO test_SDO_ELEM_INFO_ARRAY,
+ SDO_ORDINATES test_SDO_ORDINATE_ARRAY)`,
+
+		`CREATE TABLE test_sdo(
+		id INTEGER not null,
+		shape test_SDO_GEOMETRY not null
+	)`,
+	} {
+		var drop string
+		if strings.HasPrefix(qry, "CREATE TYPE") {
+			drop = "DROP TYPE " + qry[12:strings.Index(qry, " AS")] + " FORCE"
+		} else {
+			drop = "DROP TABLE " + qry[13:strings.Index(qry, "(")]
+		}
+		testDb.ExecContext(ctx, drop)
+		t.Log(drop)
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+		defer testDb.ExecContext(ctx, drop)
+	}
+
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	qry := `INSERT INTO test_sdo(id, shape)
+VALUES (1,
+  test_sdo_geometry(
+    sdo_gtype=>1,
+	sdo_srid=>NULL,
+	sdo_point=>test_sdo_point_type(x=>1, y=>2, z=>3),
+	sdo_emel_info=>test_sdo_elem_info_array(),
+	sdo_ordinates=>test_sdo_ordinate_array()))`
+	if _, err = tx.ExecContext(ctx, qry); err != nil {
+		t.Skip(errors.Wrap(err, qry))
+	}
+
+	rows, err := tx.QueryContext(ctx, "SELECT id, shape FROM test_sdo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	rows.Next()
+	var id int64
+	var shape interface{}
+	if err = rows.Scan(&id, &shape); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("id:", id, "shape:", shape)
+}
