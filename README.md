@@ -18,6 +18,9 @@ In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@se
 as connString, or an URL like "oracle://user:passw@service_name".
 
 You can provide all possible options with `ConnectionParams`.
+Watch out the `ConnectionParams.String()` does redact the password
+(for security, to avoid logging it - see https://github.com/go-goracle/goracle/issues/79).
+So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
 `user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
