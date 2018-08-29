@@ -642,6 +642,14 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		info := &(infos[i])
 		value := st.dests[i]
 		nilPtr := false
+
+		if vr, ok := value.(driver.Valuer); ok {
+			var err error
+			if value, err = vr.Value(); err != nil {
+				return errors.Wrapf(err, "%d. arg.Value()", i)
+			}
+		}
+
 		if _, ok := value.(*driver.Rows); !ok {
 			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
 				if nilPtr = rv.IsNil(); nilPtr {

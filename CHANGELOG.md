@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Allow driver.Valuer as Query argument - see #94.
+
+## [2.5.10] - 2018-08-26
+### Changed
+- use sergeymakinen/oracle-instant-client:12.2 docker for tests
+- added ODPI-C and other licenses into LICENSE.md
+- fill varInfo.ObjectType for better Object support
 
 ## [2.5.9] - 2018-08-03
 ### Added

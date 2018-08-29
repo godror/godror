@@ -1680,3 +1680,53 @@ VALUES (1,
 	}
 	t.Log("id:", id, "shape:", shape)
 }
+
+type Custom struct {
+	Num int64
+}
+
+func (t *Custom) Value() (driver.Value, error) {
+	return t.Num, nil
+}
+
+func (t *Custom) ConvertValue() (driver.Value, error) {
+	return t.Num, nil
+}
+
+func TestSelectCustomType(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	const num = 10
+	nums := &Custom{Num: num}
+	rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < NVL(:alpha, 2) ORDER BY object_id", sql.Named("alpha", nums))
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+	n, oldOid := 0, int64(0)
+	for rows.Next() {
+		var tbl, typ string
+		var oid int64
+		var created time.Time
+		if err := rows.Scan(&tbl, &typ, &oid, &created); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(tbl, typ, oid, created)
+		if tbl == "" {
+			t.Fatal("empty tbl")
+		}
+		n++
+		if oldOid > oid {
+			t.Errorf("got oid=%d, wanted sth < %d.", oid, oldOid)
+		}
+		oldOid = oid
+	}
+	if n != num-1 {
+		t.Errorf("got %d rows, wanted %d", n, num-1)
+	}
+}
