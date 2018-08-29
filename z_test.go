@@ -768,8 +768,8 @@ func TestExecuteMany(t *testing.T) {
 	res, err := conn.ExecContext(ctx,
 		`INSERT INTO `+tbl+ //nolint:gas
 			` (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
-		  VALUES
-		  (:1, :2, :3, :4, :5, :6, :7)`,
+			VALUES
+			(:1, :2, :3, :4, :5, :6, :7)`,
 		ids, ints, nums, int32s, floats, strs, dates)
 	if err != nil {
 		t.Fatalf("%#v", err)
@@ -1348,27 +1348,27 @@ func TestNumberNull(t *testing.T) {
 	defer cancel()
 	testDb.Exec("DROP TABLE number_test")
 	qry := `CREATE TABLE number_test (
-	  caseNum NUMBER(3),
-	  precisionNum NUMBER(5),
+		caseNum NUMBER(3),
+		precisionNum NUMBER(5),
       precScaleNum NUMBER(5, 0),
-	  normalNum NUMBER
-	  )`
+		normalNum NUMBER
+		)`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
 	defer testDb.Exec("DROP TABLE number_test")
 
 	qry = `
-	  INSERT ALL
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (1, 4, 65, 123)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (2, NULL, NULL, NULL)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (3, NULL, NULL, NULL)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (4, NULL, 42, NULL)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (5, NULL, NULL, 31)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (6, 3, 3, 4)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (7, NULL, NULL, NULL)
-	  INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (8, 6, 9, 7)
-	  SELECT 1 FROM DUAL`
+		INSERT ALL
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (1, 4, 65, 123)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (2, NULL, NULL, NULL)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (3, NULL, NULL, NULL)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (4, NULL, 42, NULL)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (5, NULL, NULL, 31)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (6, 3, 3, 4)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (7, NULL, NULL, NULL)
+		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (8, 6, 9, 7)
+		SELECT 1 FROM DUAL`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
@@ -1414,8 +1414,8 @@ func TestNullFloat(t *testing.T) {
 	t.Parallel()
 	testDb.Exec("DROP TABLE test_char")
 	if _, err := testDb.Exec(`CREATE TABLE test_char (
-		  CHARS VARCHAR2(10 BYTE),
-		  FLOATS NUMBER(10, 2)
+			CHARS VARCHAR2(10 BYTE),
+			FLOATS NUMBER(10, 2)
 		)`); err != nil {
 		t.Fatal(err)
 	}
@@ -1686,10 +1686,6 @@ type Custom struct {
 }
 
 func (t *Custom) Value() (driver.Value, error) {
-	return t.Num, nil
-}
-
-func (t *Custom) ConvertValue() (driver.Value, error) {
 	return t.Num, nil
 }
 
