@@ -51,9 +51,9 @@ var (
 	testConStr                   string
 )
 
-const maxSessions = 64
-
 var tblSuffix = "_" + strings.Replace(runtime.Version(), ".", "#", -1)
+
+const maxSessions = 64
 
 func init() {
 	logger := &log.SwapLogger{}
@@ -1204,6 +1204,23 @@ func TestRanaOraIssue244(t *testing.T) {
 	if _, err := testDb.Exec(qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
+	var max int
+	ctx, cancel := context.WithCancel(context.Background())
+	txs := make([]*sql.Tx, 0, maxSessions)
+	for max = 0; max < maxSessions; max++ {
+		tx, err := testDb.BeginTx(ctx, nil)
+		if err != nil {
+			max--
+			break
+		}
+		txs = append(txs, tx)
+	}
+	cancel()
+	for _, tx := range txs {
+		tx.Rollback()
+	}
+	t.Logf("maxSessions=%d max=%d", maxSessions, max)
+
 	defer testDb.Exec("DROP TABLE " + tableName)
 	const bf = "143"
 	const sc = "270004"
@@ -1221,15 +1238,16 @@ func TestRanaOraIssue244(t *testing.T) {
 	}
 	stmt.Close()
 
-	dur := time.Minute
+	dur := time.Minute / 2
 	if testing.Short() {
 		dur = 10 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), dur)
+	ctx, cancel = context.WithTimeout(context.Background(), dur)
 	defer cancel()
 
+	qry = `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3` //nolint:gas
 	grp, ctx := errgroup.WithContext(ctx)
-	for i := 0; i < maxSessions/2; i++ {
+	for i := 0; i < max; i++ {
 		index := rand.Intn(len(fas))
 		i := i
 		grp.Go(func() error {
@@ -1239,7 +1257,6 @@ func TestRanaOraIssue244(t *testing.T) {
 			}
 			defer tx.Rollback()
 
-			qry := `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3` //nolint:gas
 			stmt, err := tx.Prepare(qry)
 			if err != nil {
 				return errors.Wrapf(err, "%d.Prepare %q", i, err)
