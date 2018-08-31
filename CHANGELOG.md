@@ -6,10 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+
+## [2.6.0] - 2018-08-31
+### Changed
+- convert named types to their underlying scalar values - see #96, using MagicTypeConversion() option.
+
 ## [2.5.11] - 2018-08-30
 ### Added
 - Allow driver.Valuer as Query argument - see #94.
-- convert named types to their underlying scalar values - see #96.
 
 ## [2.5.10] - 2018-08-26
 ### Changed
