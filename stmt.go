@@ -38,11 +38,12 @@ import (
 )
 
 type stmtOptions struct {
-	fetchRowCount int
-	arraySize     int
-	execMode      C.dpiExecMode
-	plSQLArrays   bool
-	clobAsString  bool
+	fetchRowCount       int
+	arraySize           int
+	execMode            C.dpiExecMode
+	plSQLArrays         bool
+	clobAsString        bool
+	magicTypeConversion bool
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -66,6 +67,8 @@ func (o stmtOptions) FetchRowCount() int {
 }
 func (o stmtOptions) PlSQLArrays() bool  { return o.plSQLArrays }
 func (o stmtOptions) ClobAsString() bool { return o.clobAsString }
+
+func (o stmtOptions) MagicTypeConversion() bool { return o.magicTypeConversion }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -101,6 +104,11 @@ func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 // ClobAsString returns an option to force fetching CLOB columns as strings.
 func ClobAsString() Option {
 	return func(o *stmtOptions) { o.clobAsString = true }
+}
+
+// MagicTypeConversion returns an option to force converting named scalar types (e.g. "type underlying int64") to their scalar underlying type.
+func MagicTypeConversion() Option {
+	return func(o *stmtOptions) { o.magicTypeConversion = true }
 }
 
 const minChunkSize = 1 << 16
@@ -768,15 +776,31 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 
 	default:
+		var magic bool
 		rv := reflect.ValueOf(value)
-		if rv.Kind() == reflect.Ptr {
+		kind := rv.Kind()
+		if kind != reflect.Ptr {
+			magic = st.MagicTypeConversion()
+		} else {
 			if nilPtr = rv.IsNil(); nilPtr {
 				info.set = dataSetNull
 				value = reflect.Zero(rv.Type().Elem()).Interface()
 			} else {
 				value = rv.Elem().Interface()
 			}
-		} else {
+		}
+		if magic {
+			switch kind {
+			case reflect.Bool,
+				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+				reflect.Float32, reflect.Float64,
+				reflect.String:
+			default:
+				magic = false
+			}
+		}
+		if magic {
 			switch rv.Type().Name() {
 			case "bool",
 				"int", "int8", "int16", "int32", "int64",
@@ -784,35 +808,38 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 				"float32", "float64",
 				"string":
 				// nothing to do
+				magic = false
 			default:
-				switch rv.Kind() {
-				case reflect.Bool:
-					value = rv.Bool()
-				case reflect.Int:
-					value = int(rv.Int())
-				case reflect.Int8:
-					value = int8(rv.Int())
-				case reflect.Int16:
-					value = int16(rv.Int())
-				case reflect.Int32:
-					value = int32(rv.Int())
-				case reflect.Int64:
-					value = rv.Int()
-				case reflect.Uint:
-					value = uint(rv.Uint())
-				case reflect.Uint16:
-					value = uint16(rv.Uint())
-				case reflect.Uint32:
-					value = uint32(rv.Uint())
-				case reflect.Uint64:
-					value = rv.Uint()
-				case reflect.Float32:
-					value = float32(rv.Float())
-				case reflect.Float64:
-					value = rv.Float()
-				case reflect.String:
-					value = rv.String()
-				}
+			}
+		}
+		if magic {
+			switch kind {
+			case reflect.Bool:
+				value = rv.Bool()
+			case reflect.Int:
+				value = int(rv.Int())
+			case reflect.Int8:
+				value = int8(rv.Int())
+			case reflect.Int16:
+				value = int16(rv.Int())
+			case reflect.Int32:
+				value = int32(rv.Int())
+			case reflect.Int64:
+				value = rv.Int()
+			case reflect.Uint:
+				value = uint(rv.Uint())
+			case reflect.Uint16:
+				value = uint16(rv.Uint())
+			case reflect.Uint32:
+				value = uint32(rv.Uint())
+			case reflect.Uint64:
+				value = rv.Uint()
+			case reflect.Float32:
+				value = float32(rv.Float())
+			case reflect.Float64:
+				value = rv.Float()
+			case reflect.String:
+				value = rv.String()
 			}
 		}
 	}

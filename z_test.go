@@ -1261,10 +1261,11 @@ func TestRanaOraIssue244(t *testing.T) {
 			}
 		})
 	}
-	if err := grp.Wait(); err != nil && err != context.DeadlineExceeded {
-		errS := err.Error()
+	if err := grp.Wait(); err != nil && errors.Cause(err) != context.DeadlineExceeded {
+		errS := errors.Cause(err).Error()
 		switch errS {
-		case "sql: statement is closed", "sql:  transaction has already been committed or rolled back":
+		case "sql: statement is closed",
+			"sql: transaction has already been committed or rolled back":
 			return
 		}
 		if strings.Contains(errS, "ORA-12516:") {
@@ -1694,7 +1695,11 @@ func TestSelectCustomType(t *testing.T) {
 	nums := &Custom{Num: num}
 	type underlying int64
 	numbers := underlying(num)
-	rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY object_id", sql.Named("alpha", nums), sql.Named("beta", numbers))
+	rows, err := testDb.QueryContext(ctx,
+		"SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY object_id",
+		sql.Named("alpha", nums),
+		goracle.MagicTypeConversion(), sql.Named("beta", numbers),
+	)
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
