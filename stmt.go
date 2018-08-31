@@ -507,6 +507,15 @@ func (st *statement) NumInput() int {
 	return int(cnt)
 }
 
+type argInfo struct {
+	isIn, isOut bool
+	typ         C.dpiOracleTypeNum
+	natTyp      C.dpiNativeTypeNum
+	set         dataSetter
+	bufSize     int
+	objType     *C.dpiObjectType
+}
+
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	if Log != nil {
@@ -558,14 +567,6 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	st.arrLen = minArrLen
 	maxArraySize := st.ArraySize()
 
-	type argInfo struct {
-		isIn, isOut bool
-		typ         C.dpiOracleTypeNum
-		natTyp      C.dpiNativeTypeNum
-		set         dataSetter
-		bufSize     int
-		objType     *C.dpiObjectType
-	}
 	infos := make([]argInfo, len(args))
 	//fmt.Printf("bindVars %d\n", len(args))
 	for i, a := range args {
@@ -641,207 +642,12 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	for i := range args {
 		info := &(infos[i])
 		value := st.dests[i]
-		nilPtr := false
-
-		if vr, ok := value.(driver.Valuer); ok {
-			var err error
-			if value, err = vr.Value(); err != nil {
-				return errors.Wrapf(err, "%d. arg.Value()", i)
-			}
-		}
-
-		if _, ok := value.(*driver.Rows); !ok {
-			if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
-				if nilPtr = rv.IsNil(); nilPtr {
-					info.set = dataSetNull
-					value = reflect.Zero(rv.Type().Elem()).Interface()
-				} else {
-					value = rv.Elem().Interface()
-				}
-			}
-		}
-		switch v := value.(type) {
-		case Lob, []Lob:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BLOB, C.DPI_NATIVE_TYPE_LOB
-			var isClob bool
-			switch v := v.(type) {
-			case Lob:
-				isClob = v.IsClob
-			case []Lob:
-				isClob = len(v) > 0 && v[0].IsClob
-			}
-			if isClob {
-				info.typ = C.DPI_ORACLE_TYPE_CLOB
-			}
-			info.set = st.dataSetLOB
-			if info.isOut {
-				st.gets[i] = st.dataGetLOB
-			}
-		case *driver.Rows:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT
-			info.set = dataSetNull
-			if info.isOut {
-				st.gets[i] = st.dataGetStmt
-			}
-		case int, []int:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case int32, []int32:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case int64, []int64, sql.NullInt64, []sql.NullInt64:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case uint, []uint:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case uint32, []uint32:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case uint64, []uint64:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case float32, []float32:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case float64, []float64:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
-			if !nilPtr {
-				info.set = dataSetNumber
-				if info.isOut {
-					st.gets[i] = dataGetNumber
-				}
-			}
-		case sql.NullFloat64, []sql.NullFloat64:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
-			info.set = dataSetNumber
-			if info.isOut {
-				st.gets[i] = dataGetNumber
-			}
-		case bool, []bool:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-			info.set = dataSetBool
-			if info.isOut {
-				st.gets[i] = dataGetBool
-			}
-
-		case []byte, [][]byte:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
-			switch v := v.(type) {
-			case []byte:
-				info.bufSize = len(v)
-			case [][]byte:
-				for _, b := range v {
-					if n := len(b); n > info.bufSize {
-						info.bufSize = n
-					}
-				}
-			}
-			info.set = dataSetBytes
-			if info.isOut {
-				info.bufSize = 4000
-				st.gets[i] = dataGetBytes
-			}
-
-		case Number, []Number:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
-			switch v := v.(type) {
-			case Number:
-				info.bufSize = len(v)
-			case []Number:
-				for _, s := range v {
-					if n := len(s); n > info.bufSize {
-						info.bufSize = n
-					}
-				}
-			}
-			info.set = dataSetBytes
-			if info.isOut {
-				info.bufSize = 32767
-				st.gets[i] = dataGetBytes
-			}
-
-		case string, []string, nil:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
-			switch v := v.(type) {
-			case string:
-				info.bufSize = 4 * len(v)
-			case []string:
-				for _, s := range v {
-					if n := 4 * len(s); n > info.bufSize {
-						info.bufSize = n
-					}
-				}
-			}
-			info.set = dataSetBytes
-			if info.isOut {
-				info.bufSize = 32767
-				st.gets[i] = dataGetBytes
-			}
-
-		case time.Time, []time.Time:
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
-			info.set = dataSetTime
-			if info.isOut {
-				st.gets[i] = dataGetTime
-			}
-
-		case Object:
-			info.objType = v.ObjectType.dpiObjectType
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-			info.set = st.dataSetObject
-			if info.isOut {
-				st.gets[i] = st.dataGetObject
-			}
-
-		case *Object:
-			info.objType = v.ObjectType.dpiObjectType
-			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-			info.set = st.dataSetObject
-			if info.isOut {
-				st.gets[i] = st.dataGetObject
-			}
-
-		default:
-			return errors.Errorf("%d. arg: unknown type %T", i+1, value)
-		}
 
 		var err error
+		if value, err = st.bindVarTypeSwitch(info, &(st.gets[i]), value); err != nil {
+			return errors.Wrapf(err, "%d. arg", i+1)
+		}
+
 		var rv reflect.Value
 		if st.isSlice[i] {
 			rv = reflect.ValueOf(value)
@@ -941,6 +747,261 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 	}
 	return nil
+}
+
+func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
+	nilPtr := false
+	switch x := value.(type) {
+	case *driver.Rows:
+	case Number:
+	case *Number:
+		if nilPtr = x == nil; nilPtr {
+			info.set = dataSetNull
+			value = Number("")
+		} else {
+			value = *x
+		}
+	case driver.Valuer:
+		var err error
+		if value, err = x.Value(); err != nil {
+			return value, errors.Wrap(err, "arg.Value()")
+		}
+
+	default:
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Ptr {
+			if nilPtr = rv.IsNil(); nilPtr {
+				info.set = dataSetNull
+				value = reflect.Zero(rv.Type().Elem()).Interface()
+			} else {
+				value = rv.Elem().Interface()
+			}
+		} else {
+			switch rv.Type().Name() {
+			case "bool",
+				"int", "int8", "int16", "int32", "int64",
+				"uint", "uint8", "uint16", "uint32", "uint64",
+				"float32", "float64",
+				"string":
+				// nothing to do
+			default:
+				switch rv.Kind() {
+				case reflect.Bool:
+					value = rv.Bool()
+				case reflect.Int:
+					value = int(rv.Int())
+				case reflect.Int8:
+					value = int8(rv.Int())
+				case reflect.Int16:
+					value = int16(rv.Int())
+				case reflect.Int32:
+					value = int32(rv.Int())
+				case reflect.Int64:
+					value = rv.Int()
+				case reflect.Uint:
+					value = uint(rv.Uint())
+				case reflect.Uint16:
+					value = uint16(rv.Uint())
+				case reflect.Uint32:
+					value = uint32(rv.Uint())
+				case reflect.Uint64:
+					value = rv.Uint()
+				case reflect.Float32:
+					value = float32(rv.Float())
+				case reflect.Float64:
+					value = rv.Float()
+				case reflect.String:
+					value = rv.String()
+				}
+			}
+		}
+	}
+
+	switch v := value.(type) {
+	case Lob, []Lob:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BLOB, C.DPI_NATIVE_TYPE_LOB
+		var isClob bool
+		switch v := v.(type) {
+		case Lob:
+			isClob = v.IsClob
+		case []Lob:
+			isClob = len(v) > 0 && v[0].IsClob
+		}
+		if isClob {
+			info.typ = C.DPI_ORACLE_TYPE_CLOB
+		}
+		info.set = st.dataSetLOB
+		if info.isOut {
+			*get = st.dataGetLOB
+		}
+	case *driver.Rows:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT
+		info.set = dataSetNull
+		if info.isOut {
+			*get = st.dataGetStmt
+		}
+	case int, []int:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case int32, []int32:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case int64, []int64, sql.NullInt64, []sql.NullInt64:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case uint, []uint:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case uint32, []uint32:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case uint64, []uint64:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case float32, []float32:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case float64, []float64:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case sql.NullFloat64, []sql.NullFloat64:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
+		info.set = dataSetNumber
+		if info.isOut {
+			*get = dataGetNumber
+		}
+	case bool, []bool:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
+		info.set = dataSetBool
+		if info.isOut {
+			*get = dataGetBool
+		}
+
+	case []byte, [][]byte:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
+		switch v := v.(type) {
+		case []byte:
+			info.bufSize = len(v)
+		case [][]byte:
+			for _, b := range v {
+				if n := len(b); n > info.bufSize {
+					info.bufSize = n
+				}
+			}
+		}
+		info.set = dataSetBytes
+		if info.isOut {
+			info.bufSize = 4000
+			*get = dataGetBytes
+		}
+
+	case Number, []Number:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
+		switch v := v.(type) {
+		case Number:
+			info.bufSize = len(v)
+		case []Number:
+			for _, s := range v {
+				if n := len(s); n > info.bufSize {
+					info.bufSize = n
+				}
+			}
+		}
+		info.set = dataSetBytes
+		if info.isOut {
+			info.bufSize = 32767
+			*get = dataGetBytes
+		}
+
+	case string, []string, nil:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+		switch v := v.(type) {
+		case string:
+			info.bufSize = 4 * len(v)
+		case []string:
+			for _, s := range v {
+				if n := 4 * len(s); n > info.bufSize {
+					info.bufSize = n
+				}
+			}
+		}
+		info.set = dataSetBytes
+		if info.isOut {
+			info.bufSize = 32767
+			*get = dataGetBytes
+		}
+
+	case time.Time, []time.Time:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
+		info.set = dataSetTime
+		if info.isOut {
+			*get = dataGetTime
+		}
+
+	case Object:
+		info.objType = v.ObjectType.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+
+	case *Object:
+		info.objType = v.ObjectType.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+
+	default:
+		switch typ := reflect.TypeOf(value); typ.Kind {
+		}
+
+		return value, errors.Errorf("unknown type %T", value)
+	}
+
+	return value, nil
 }
 
 type dataSetter func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error

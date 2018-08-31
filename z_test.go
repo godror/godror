@@ -1280,7 +1280,7 @@ func TestRanaOraIssue244(t *testing.T) {
 		})
 	}
 	if err := grp.Wait(); err != nil && err != context.DeadlineExceeded {
-		if strings.Contains(err.Error(), "ORA-12516:") {
+		if strings.Contains(err.Error(), "ORA-12516:") || strings.Contains(err.Error(), "timed out") {
 			t.Log(err)
 		} else {
 			t.Error(err)
@@ -1681,6 +1681,8 @@ VALUES (1,
 	t.Log("id:", id, "shape:", shape)
 }
 
+var _ = driver.Valuer((*Custom)(nil))
+
 type Custom struct {
 	Num int64
 }
@@ -1700,7 +1702,9 @@ func TestSelectCustomType(t *testing.T) {
 	defer conn.Close()
 	const num = 10
 	nums := &Custom{Num: num}
-	rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < NVL(:alpha, 2) ORDER BY object_id", sql.Named("alpha", nums))
+	type underlying int64
+	numbers := underlying(num)
+	rows, err := testDb.QueryContext(ctx, "SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY object_id", sql.Named("alpha", nums), sql.Named("beta", numbers))
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
