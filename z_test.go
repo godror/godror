@@ -987,6 +987,10 @@ func TestOpenClose(t *testing.T) {
 		ctx = goracle.ContextWithTraceTag(ctx, tt)
 		tx2, err2 := db.BeginTx(ctx, nil)
 		if err2 != nil {
+			if strings.Contains(err.Error(), "ORA-12516:") {
+				tx1.Rollback()
+				break
+			}
 			t.Fatal(err2)
 		}
 		if n, err = sessCount(); err != nil {
