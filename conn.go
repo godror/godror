@@ -408,6 +408,8 @@ func maybeBadConn(err error) error {
 			fallthrough
 		case 3135: // connection lost contact
 			fallthrough
+		case 3136: // inbound connection timed out
+			fallthrough
 		case 12153: // TNS:not connected
 			fallthrough
 		case 12537: // TNS:connection closed
