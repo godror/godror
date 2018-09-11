@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -300,6 +300,7 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
             return DPI_ORACLE_TYPE_VARCHAR;
         case DPI_SQLT_FLT:
         case DPI_SQLT_NUM:
+        case DPI_SQLT_PDN:
         case DPI_SQLT_VNU:
         case DPI_SQLT_BFLOAT:
         case DPI_SQLT_BDOUBLE:

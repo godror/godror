@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -63,8 +63,9 @@ int dpiVar__allocate(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
         return dpiError__set(error, "check can be in array",
                 DPI_ERR_NOT_SUPPORTED);
     if (oracleTypeNum == DPI_ORACLE_TYPE_BOOLEAN &&
-            conn->env->versionInfo->versionNum < 12)
-        return dpiError__set(error, "check boolean", DPI_ERR_NOT_SUPPORTED);
+            dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 1,
+                    error) < 0)
+        return DPI_FAILURE;
     if (nativeTypeNum != type->defaultNativeTypeNum) {
         if (dpiVar__validateTypes(type, nativeTypeNum, error) < 0)
             return DPI_FAILURE;
@@ -1574,36 +1575,6 @@ int dpiVar_copyData(dpiVar *var, uint32_t pos, dpiVar *sourceVar,
     sourceData = &sourceVar->buffer.externalData[sourcePos];
     status = dpiVar__copyData(var, pos, sourceData, &error);
     return dpiGen__endPublicFn(var, status, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiVar_getData() [PUBLIC]
-//   Return a pointer to the array of dpiData structures allocated for the
-// variable and the number of elements. These structures are used for
-// transferring data and are populated after an internal execute or fetch is
-// performed (out variables) and before an internal execute is performed (in
-// variables). This routine is needed for DML returning where the number of
-// elements and the external data structure is modified during execution; in
-// all other cases the values returned when the variable is allocated will not
-// change.
-//-----------------------------------------------------------------------------
-int dpiVar_getData(dpiVar *var, uint32_t *numElements, dpiData **data)
-{
-    dpiError error;
-
-    if (dpiGen__startPublicFn(var, DPI_HTYPE_VAR, __func__, 0, &error) < 0)
-        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(var, numElements)
-    DPI_CHECK_PTR_NOT_NULL(var, data)
-    if (var->dynBindBuffers) {
-        *numElements = var->dynBindBuffers->maxArraySize;
-        *data = var->dynBindBuffers->externalData;
-    } else {
-        *numElements = var->buffer.maxArraySize;
-        *data = var->buffer.externalData;
-    }
-    return dpiGen__endPublicFn(var, DPI_SUCCESS, &error);
 }
 
 

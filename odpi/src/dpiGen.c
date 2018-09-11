@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -103,6 +103,36 @@ static const dpiTypeDef dpiAllTypeDefs[DPI_HTYPE_MAX - DPI_HTYPE_NONE - 1] = {
         sizeof(dpiContext),             // size of structure
         0xd81b9181,                     // check integer
         NULL
+    },
+    {
+        "dpiSodaColl",                  // name
+        sizeof(dpiSodaColl),            // size of structure
+        0x3684db22,                     // check integer
+        (dpiTypeFreeProc) dpiSodaColl__free
+    },
+    {
+        "dpiSodaCollCursor",            // name
+        sizeof(dpiSodaCollCursor),      // size of structure
+        0xcdc73b86,                     // check integer
+        (dpiTypeFreeProc) dpiSodaCollCursor__free
+    },
+    {
+        "dpiSodaDb",                    // name
+        sizeof(dpiSodaDb),              // size of structure
+        0x1f386121,                     // check integer
+        (dpiTypeFreeProc) dpiSodaDb__free
+    },
+    {
+        "dpiSodaDoc",                   // name
+        sizeof(dpiSodaDoc),             // size of structure
+        0xaffd950a,                     // check integer
+        (dpiTypeFreeProc) dpiSodaDoc__free
+    },
+    {
+        "dpiSodaDocCursor",             // name
+        sizeof(dpiSodaDocCursor),       // size of structure
+        0x80ceb83b,                     // check integer
+        (dpiTypeFreeProc) dpiSodaDocCursor__free
     }
 };
 

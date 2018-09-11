@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016-2018 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -29,7 +29,6 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
         dpiConnCreateParams *createParams, dpiPool *pool, dpiError *error);
 static int dpiConn__getHandles(dpiConn *conn, dpiError *error);
 static int dpiConn__getServerCharset(dpiConn *conn, dpiError *error);
-static int dpiConn__getServerVersion(dpiConn *conn, dpiError *error);
 static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         const char *connectString, uint32_t connectStringLength,
         dpiConnCreateParams *params, void *authInfo, dpiError *error);
@@ -47,16 +46,26 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
 
 
 //-----------------------------------------------------------------------------
-// dpiConn__checkConnected() [INTERNAL]
-//   Validate the connection handle and determine the error structure to use.
-// Check to see that the connection is connected to the database.
+// dpiConn__check() [INTERNAL]
+//   Validate the connection handle and that it is still connected to the
+// database.
 //-----------------------------------------------------------------------------
-static int dpiConn__checkConnected(dpiConn *conn, const char *fnName,
-        dpiError *error)
+static int dpiConn__check(dpiConn *conn, const char *fnName, dpiError *error)
 {
     if (dpiGen__startPublicFn(conn, DPI_HTYPE_CONN, fnName, 1, error) < 0)
         return DPI_FAILURE;
-    if (!conn->handle || conn->closing)
+    return dpiConn__checkConnected(conn, error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn__checkConnected() [INTERNAL]
+//   Check to see if the connection is still open and raise an exception if it
+// is not.
+//-----------------------------------------------------------------------------
+int dpiConn__checkConnected(dpiConn *conn, dpiError *error)
+{
+    if (!conn->handle || conn->closing || (conn->pool && !conn->pool->handle))
         return dpiError__set(error, "check connected", DPI_ERR_NOT_CONNECTED);
     return DPI_SUCCESS;
 }
@@ -76,6 +85,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     int status, txnInProgress;
     uint32_t serverStatus, i;
     time_t *lastTimeUsed;
+    dpiObject *obj;
     dpiStmt *stmt;
     dpiLob *lob;
 
@@ -92,6 +102,34 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     if (txnInProgress &&
             dpiOci__transRollback(conn, propagateErrors, error) < 0)
         conn->deadSession = 1;
+
+    // close all objects; note that no references are retained by the
+    // handle list (otherwise all objects would be left until an explicit
+    // close of the connection was made) so a reference needs to be acquired
+    // first, as otherwise the object may be freed while the close is being
+    // performed!
+    if (conn->objects) {
+        for (i = 0; i < conn->objects->numSlots; i++) {
+            obj = (dpiObject*) conn->objects->handles[i];
+            if (!obj)
+                continue;
+            if (conn->env->threaded) {
+                dpiMutex__acquire(conn->env->mutex);
+                status = dpiGen__checkHandle(obj, DPI_HTYPE_OBJECT, NULL,
+                        NULL);
+                if (status == DPI_SUCCESS)
+                    obj->refCount += 1;
+                dpiMutex__release(conn->env->mutex);
+                if (status < 0)
+                    continue;
+            }
+            status = dpiObject__close(obj, propagateErrors, error);
+            if (conn->env->threaded)
+                dpiGen__setRefCount(obj, error, -1);
+            if (status < 0)
+                return DPI_FAILURE;
+        }
+    }
 
     // close all open statements; note that no references are retained by the
     // handle list (otherwise all statements would be left open until an
@@ -235,10 +273,12 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error)
 {
-    // allocate handle lists for statements and LOBs
+    // allocate handle lists for statements, LOBs and objects
     if (dpiHandleList__create(&conn->openStmts, error) < 0)
         return DPI_FAILURE;
     if (dpiHandleList__create(&conn->openLobs, error) < 0)
+        return DPI_FAILURE;
+    if (dpiHandleList__create(&conn->objects, error) < 0)
         return DPI_FAILURE;
 
     // initialize environment (for non-pooled connections)
@@ -388,6 +428,10 @@ void dpiConn__free(dpiConn *conn, dpiError *error)
         dpiHandleList__free(conn->openLobs);
         conn->openLobs = NULL;
     }
+    if (conn->objects) {
+        dpiHandleList__free(conn->objects);
+        conn->objects = NULL;
+    }
     dpiUtils__freeMemory(conn);
 }
 
@@ -475,7 +519,7 @@ static int dpiConn__getAttributeText(dpiConn *conn, uint32_t attribute,
     int status;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, fnName, &error) < 0)
+    if (dpiConn__check(conn, fnName, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, value)
     DPI_CHECK_PTR_NOT_NULL(conn, valueLength)
@@ -543,7 +587,7 @@ static int dpiConn__getServerCharset(dpiConn *conn, dpiError *error)
 //   Internal method used for ensuring that the server version has been cached
 // on the connection.
 //-----------------------------------------------------------------------------
-static int dpiConn__getServerVersion(dpiConn *conn, dpiError *error)
+int dpiConn__getServerVersion(dpiConn *conn, dpiError *error)
 {
     uint32_t serverRelease;
     char buffer[512];
@@ -563,10 +607,17 @@ static int dpiConn__getServerVersion(dpiConn *conn, dpiError *error)
         return DPI_FAILURE;
     strncpy( (char*) conn->releaseString, buffer, conn->releaseStringLength);
     conn->versionInfo.versionNum = (int)((serverRelease >> 24) & 0xFF);
-    conn->versionInfo.releaseNum = (int)((serverRelease >> 20) & 0x0F);
-    conn->versionInfo.updateNum = (int)((serverRelease >> 12) & 0xFF);
-    conn->versionInfo.portReleaseNum = (int)((serverRelease >> 8) & 0x0F);
-    conn->versionInfo.portUpdateNum = (int)((serverRelease) & 0xFF);
+    if (conn->versionInfo.versionNum >= 18) {
+        conn->versionInfo.releaseNum = (int)((serverRelease >> 16) & 0xFF);
+        conn->versionInfo.updateNum = (int)((serverRelease >> 12) & 0x0F);
+        conn->versionInfo.portReleaseNum = (int)((serverRelease >> 4) & 0xFF);
+        conn->versionInfo.portUpdateNum = (int)((serverRelease) & 0xF);
+    } else {
+        conn->versionInfo.releaseNum = (int)((serverRelease >> 20) & 0x0F);
+        conn->versionInfo.updateNum = (int)((serverRelease >> 12) & 0xFF);
+        conn->versionInfo.portReleaseNum = (int)((serverRelease >> 8) & 0x0F);
+        conn->versionInfo.portUpdateNum = (int)((serverRelease) & 0xFF);
+    }
     conn->versionInfo.fullVersionNum = (uint32_t)
             DPI_ORACLE_VERSION_TO_NUMBER(conn->versionInfo.versionNum,
                     conn->versionInfo.releaseNum,
@@ -585,9 +636,6 @@ static int dpiConn__getServerVersion(dpiConn *conn, dpiError *error)
 // before a good connection can be acquired. If the connection is brand new
 // (ping time context value has not been set) there is no need to do a ping.
 // This also ensures that the loop cannot run forever!
-//   Note as well that this is only needed for clients less than 12.2. In the
-// 12.2 release a much faster internal check is performed that makes these
-// checks unnecessary.
 //-----------------------------------------------------------------------------
 static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         const char *connectString, uint32_t connectStringLength,
@@ -609,13 +657,6 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         // get session and server handles
         if (dpiConn__getHandles(conn, error) < 0)
             return DPI_FAILURE;
-
-        // Oracle client 12.2 already has better support so do nothing in
-        // that case
-        if (conn->env->versionInfo->versionNum > 12 ||
-                (conn->env->versionInfo->versionNum == 12 &&
-                conn->env->versionInfo->releaseNum >= 2))
-            break;
 
         // get last time used from session context
         lastTimeUsed = NULL;
@@ -809,7 +850,7 @@ static int dpiConn__setAttributeText(dpiConn *conn, uint32_t attribute,
     int status;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, fnName, &error) < 0)
+    if (dpiConn__check(conn, fnName, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(conn, value)
 
@@ -855,10 +896,9 @@ static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
     uint8_t i;
 
     // this is only supported on 12.2 and higher clients
-    if (conn->env->context->versionInfo->versionNum < 12 ||
-            (conn->env->context->versionInfo->versionNum == 12 &&
-             conn->env->context->versionInfo->releaseNum < 2))
-        return dpiError__set(error, action, DPI_ERR_NOT_SUPPORTED);
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 2,
+            error) < 0)
+        return DPI_FAILURE;
 
     // create sharding key descriptor, if necessary
     if (dpiOci__descriptorAlloc(conn->env->handle, shardingKey,
@@ -983,7 +1023,7 @@ int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
     int status;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(conn, transactionId)
     DPI_CHECK_PTR_AND_LENGTH(conn, branchId)
@@ -1053,7 +1093,7 @@ int dpiConn_breakExecution(dpiConn *conn)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__break(conn, &error);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1072,7 +1112,7 @@ int dpiConn_changePassword(dpiConn *conn, const char *userName,
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(conn, userName)
     DPI_CHECK_PTR_AND_LENGTH(conn, oldPassword)
@@ -1096,7 +1136,7 @@ int dpiConn_close(dpiConn *conn, dpiConnCloseMode mode, const char *tag,
     int closing;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(conn, tag)
     if (mode && !conn->pool) {
@@ -1149,7 +1189,7 @@ int dpiConn_commit(dpiConn *conn)
 {
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiOci__transCommit(conn, conn->commitMode, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
@@ -1189,11 +1229,8 @@ int dpiConn_create(const dpiContext *context, const char *userName,
         dpiContext__initCommonCreateParams(&localCommonParams);
         commonParams = &localCommonParams;
     }
-    if (!createParams || context->dpiMinorVersion == 0) {
+    if (!createParams) {
         dpiContext__initConnCreateParams(&localCreateParams);
-        if (createParams)
-            memcpy(&localCreateParams, createParams,
-                    sizeof(dpiConnCreateParams__v20));
         createParams = &localCreateParams;
     }
 
@@ -1259,6 +1296,30 @@ int dpiConn_create(const dpiContext *context, const char *userName,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_getSodaDb() [PUBLIC]
+//   Create a new SODA collection with the given name and metadata.
+//-----------------------------------------------------------------------------
+int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db)
+{
+    dpiError error;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 3,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkDatabaseVersion(conn, 18, 0, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiGen__allocate(DPI_HTYPE_SODA_DB, conn->env, (void**) db,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    dpiGen__setRefCount(conn, &error, 1);
+    (*db)->conn = conn;
+    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_deqObject() [PUBLIC]
 //   Dequeue a message from the specified queue.
 //-----------------------------------------------------------------------------
@@ -1270,7 +1331,7 @@ int dpiConn_deqObject(dpiConn *conn, const char *queueName,
     dpiError error;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiGen__checkHandle(options, DPI_HTYPE_DEQ_OPTIONS, "verify options",
             &error) < 0)
@@ -1317,7 +1378,7 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
     dpiError error;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiGen__checkHandle(options, DPI_HTYPE_ENQ_OPTIONS, "verify options",
             &error) < 0)
@@ -1341,6 +1402,32 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
             &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getCallTimeout() [PUBLIC]
+//   Return the call timeout (in milliseconds) used for round-trips to the
+// database. This is only valid in Oracle Client 18c and higher.
+//-----------------------------------------------------------------------------
+int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 1,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+
+    // get call timeout
+    status = dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            (void*) value, 0, DPI_OCI_ATTR_CALL_TIMEOUT, "get call timeout",
+            &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -1377,7 +1464,7 @@ int dpiConn_getEncodingInfo(dpiConn *conn, dpiEncodingInfo *info)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiEnv__getEncodingInfo(conn->env, info);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1406,7 +1493,7 @@ int dpiConn_getHandle(dpiConn *conn, void **handle)
 {
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, handle)
     *handle = conn->handle;
@@ -1449,7 +1536,7 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
     dpiError error;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, name)
     DPI_CHECK_PTR_NOT_NULL(conn, objType)
@@ -1516,7 +1603,7 @@ int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
     dpiError error;
 
     // validate parameters
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, releaseString)
     DPI_CHECK_PTR_NOT_NULL(conn, releaseStringLength)
@@ -1541,7 +1628,7 @@ int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, cacheSize)
     status = dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX, cacheSize,
@@ -1559,7 +1646,7 @@ int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options)
     dpiDeqOptions *tempOptions;
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, options)
     if (dpiGen__allocate(DPI_HTYPE_DEQ_OPTIONS, conn->env,
@@ -1584,7 +1671,7 @@ int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options)
     dpiEnqOptions *tempOptions;
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, options)
     if (dpiGen__allocate(DPI_HTYPE_ENQ_OPTIONS, conn->env,
@@ -1610,7 +1697,7 @@ int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob)
     dpiLob *tempLob;
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, lob)
     switch (lobType) {
@@ -1645,7 +1732,7 @@ int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props)
     dpiMsgProps *tempProps;
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, props)
     if (dpiGen__allocate(DPI_HTYPE_MSG_PROPS, conn->env, (void**) &tempProps,
@@ -1662,33 +1749,6 @@ int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props)
 
 
 //-----------------------------------------------------------------------------
-// dpiConn_newSubscription() [PUBLIC]
-//   Create a new subscription and return it.
-//-----------------------------------------------------------------------------
-int dpiConn_newSubscription(dpiConn *conn, dpiSubscrCreateParams *params,
-        dpiSubscr **subscr, uint64_t *subscrId)
-{
-    dpiSubscr *tempSubscr;
-    dpiError error;
-
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(conn, params)
-    DPI_CHECK_PTR_NOT_NULL(conn, subscr)
-    if (dpiGen__allocate(DPI_HTYPE_SUBSCR, conn->env, (void**) &tempSubscr,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiSubscr__create(tempSubscr, conn, params, subscrId, &error) < 0) {
-        dpiSubscr__free(tempSubscr, &error);
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    }
-
-    *subscr = tempSubscr;
-    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiConn_newVar() [PUBLIC]
 //   Create a new variable and return it.
 //-----------------------------------------------------------------------------
@@ -1700,7 +1760,7 @@ int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, var)
     DPI_CHECK_PTR_NOT_NULL(conn, data)
@@ -1720,7 +1780,7 @@ int dpiConn_ping(dpiConn *conn)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__ping(conn, &error);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1739,7 +1799,7 @@ int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded)
 {
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, commitNeeded)
     if (dpiOci__transPrepare(conn, commitNeeded, &error) < 0)
@@ -1762,7 +1822,7 @@ int dpiConn_prepareStmt(dpiConn *conn, int scrollable, const char *sql,
     dpiError error;
 
     *stmt = NULL;
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(conn, sql)
     DPI_CHECK_PTR_AND_LENGTH(conn, tag)
@@ -1798,7 +1858,7 @@ int dpiConn_rollback(dpiConn *conn)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__transRollback(conn, 1, &error);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1813,6 +1873,30 @@ int dpiConn_setAction(dpiConn *conn, const char *value, uint32_t valueLength)
 {
     return dpiConn__setAttributeText(conn, DPI_OCI_ATTR_ACTION, value,
             valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_setCallTimeout() [PUBLIC]
+//   Set the call timeout (in milliseconds) used for round-trips to the
+// database. This is only valid in Oracle Client 18c and higher.
+//-----------------------------------------------------------------------------
+int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 1,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+
+    // set call timeout
+    status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &value,
+            0, DPI_OCI_ATTR_CALL_TIMEOUT, "set call timeout", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -1907,7 +1991,7 @@ int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &cacheSize, 0,
             DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size", &error);
@@ -1925,7 +2009,7 @@ int dpiConn_shutdownDatabase(dpiConn *conn, dpiShutdownMode mode)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__dbShutdown(conn, mode, &error);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1941,7 +2025,7 @@ int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode)
     dpiError error;
     int status;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__dbStartup(conn, mode, &error);
     return dpiGen__endPublicFn(conn, status, &error);
@@ -1958,7 +2042,7 @@ int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
     dpiSubscr *tempSubscr;
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, params)
     DPI_CHECK_PTR_NOT_NULL(conn, subscr)
@@ -1969,7 +2053,7 @@ int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
     if (dpiGen__allocate(DPI_HTYPE_SUBSCR, conn->env, (void**) &tempSubscr,
             &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiSubscr__create(tempSubscr, conn, params, NULL, &error) < 0) {
+    if (dpiSubscr__create(tempSubscr, conn, params, &error) < 0) {
         dpiSubscr__free(tempSubscr, &error);
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
@@ -1988,7 +2072,7 @@ int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr)
 {
     dpiError error;
 
-    if (dpiConn__checkConnected(conn, __func__, &error) < 0)
+    if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiGen__checkHandle(subscr, DPI_HTYPE_SUBSCR, "check subscription",
             &error) < 0)

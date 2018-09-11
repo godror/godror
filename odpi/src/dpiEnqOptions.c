@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -121,19 +121,10 @@ int dpiEnqOptions_getTransformation(dpiEnqOptions *options, const char **value,
 //-----------------------------------------------------------------------------
 int dpiEnqOptions_getVisibility(dpiEnqOptions *options, dpiVisibility *value)
 {
-    uint32_t ociValue;
-    dpiError error;
+    uint32_t valueLength = sizeof(uint32_t);
 
-    if (dpiGen__startPublicFn(options, DPI_HTYPE_ENQ_OPTIONS, __func__, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(options, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(options, value)
-    if (dpiOci__attrGet(options->handle, DPI_OCI_DTYPE_AQENQ_OPTIONS,
-            &ociValue, NULL, DPI_OCI_ATTR_VISIBILITY, "get attribute value",
-            &error) < 0)
-        return dpiGen__endPublicFn(options, DPI_FAILURE, &error);
-    *value = (dpiVisibility) ociValue;
-    return dpiGen__endPublicFn(options, DPI_SUCCESS, &error);
+    return dpiEnqOptions__getAttrValue(options, DPI_OCI_ATTR_VISIBILITY,
+            __func__, value, &valueLength);
 }
 
 
@@ -154,10 +145,8 @@ int dpiEnqOptions_release(dpiEnqOptions *options)
 int dpiEnqOptions_setDeliveryMode(dpiEnqOptions *options,
         dpiMessageDeliveryMode value)
 {
-    uint16_t ociValue = value;
-
     return dpiEnqOptions__setAttrValue(options, DPI_OCI_ATTR_MSG_DELIVERY_MODE,
-            __func__, &ociValue, 0);
+            __func__, &value, 0);
 }
 
 
@@ -179,9 +168,7 @@ int dpiEnqOptions_setTransformation(dpiEnqOptions *options, const char *value,
 //-----------------------------------------------------------------------------
 int dpiEnqOptions_setVisibility(dpiEnqOptions *options, dpiVisibility value)
 {
-    uint32_t ociValue = value;
-
     return dpiEnqOptions__setAttrValue(options, DPI_OCI_ATTR_VISIBILITY,
-            __func__, &ociValue, 0);
+            __func__, &value, 0);
 }
 

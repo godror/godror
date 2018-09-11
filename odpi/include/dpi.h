@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016-2018 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -43,10 +43,10 @@
 #endif
 
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   2
-#define DPI_MINOR_VERSION   4
-#define DPI_PATCH_LEVEL     2
-#define DPI_VERSION_SUFFIX
+#define DPI_MAJOR_VERSION   3
+#define DPI_MINOR_VERSION   0
+#define DPI_PATCH_LEVEL     0
+#define DPI_VERSION_SUFFIX  "-dev"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -108,249 +108,235 @@
 // Enumerations
 //-----------------------------------------------------------------------------
 
+
 // connection/pool authorization modes
-typedef enum {
-    DPI_MODE_AUTH_DEFAULT = 0x00000000,         // OCI_DEFAULT
-    DPI_MODE_AUTH_SYSDBA = 0x00000002,          // OCI_SYSDBA
-    DPI_MODE_AUTH_SYSOPER = 0x00000004,         // OCI_SYSOPER
-    DPI_MODE_AUTH_PRELIM = 0x00000008,          // OCI_PRELIM_AUTH
-    DPI_MODE_AUTH_SYSASM = 0x00008000,          // OCI_SYSASM
-    DPI_MODE_AUTH_SYSBKP = 0x00020000,          // OCI_SYSBKP
-    DPI_MODE_AUTH_SYSDGD = 0x00040000,          // OCI_SYSDGD
-    DPI_MODE_AUTH_SYSKMT = 0x00080000,          // OCI_SYSKMT
-    DPI_MODE_AUTH_SYSRAC = 0x00100000           // OCI_SYSRAC
-} dpiAuthMode;
+typedef uint32_t dpiAuthMode;
+#define DPI_MODE_AUTH_DEFAULT                       0x00000000
+#define DPI_MODE_AUTH_SYSDBA                        0x00000002
+#define DPI_MODE_AUTH_SYSOPER                       0x00000004
+#define DPI_MODE_AUTH_PRELIM                        0x00000008
+#define DPI_MODE_AUTH_SYSASM                        0x00008000
+#define DPI_MODE_AUTH_SYSBKP                        0x00020000
+#define DPI_MODE_AUTH_SYSDGD                        0x00040000
+#define DPI_MODE_AUTH_SYSKMT                        0x00080000
+#define DPI_MODE_AUTH_SYSRAC                        0x00100000
 
 // connection close modes
-typedef enum {
-    DPI_MODE_CONN_CLOSE_DEFAULT = 0x0000,       // OCI_DEFAULT
-    DPI_MODE_CONN_CLOSE_DROP = 0x0001,          // OCI_SESSRLS_DROPSESS
-    DPI_MODE_CONN_CLOSE_RETAG = 0x0002          // OCI_SESSRLS_RETAG
-} dpiConnCloseMode;
+typedef uint32_t dpiConnCloseMode;
+#define DPI_MODE_CONN_CLOSE_DEFAULT                 0x0000
+#define DPI_MODE_CONN_CLOSE_DROP                    0x0001
+#define DPI_MODE_CONN_CLOSE_RETAG                   0x0002
 
 // connection/pool creation modes
-typedef enum {
-    DPI_MODE_CREATE_DEFAULT = 0x00000000,       // OCI_DEFAULT
-    DPI_MODE_CREATE_THREADED = 0x00000001,      // OCI_THREADED
-    DPI_MODE_CREATE_EVENTS = 0x00000004         // OCI_EVENTS
-} dpiCreateMode;
+typedef uint32_t dpiCreateMode;
+#define DPI_MODE_CREATE_DEFAULT                     0x00000000
+#define DPI_MODE_CREATE_THREADED                    0x00000001
+#define DPI_MODE_CREATE_EVENTS                      0x00000004
 
 // dequeue modes for advanced queuing
-typedef enum {
-    DPI_MODE_DEQ_BROWSE = 1,                    // OCI_DEQ_BROWSE
-    DPI_MODE_DEQ_LOCKED = 2,                    // OCI_DEQ_LOCKED
-    DPI_MODE_DEQ_REMOVE = 3,                    // OCI_DEQ_REMOVE
-    DPI_MODE_DEQ_REMOVE_NO_DATA = 4             // OCI_DEQ_REMOVE_NODATA
-} dpiDeqMode;
+typedef uint32_t dpiDeqMode;
+#define DPI_MODE_DEQ_BROWSE                         1
+#define DPI_MODE_DEQ_LOCKED                         2
+#define DPI_MODE_DEQ_REMOVE                         3
+#define DPI_MODE_DEQ_REMOVE_NO_DATA                 4
 
 // dequeue navigation flags for advanced queuing
-typedef enum {
-    DPI_DEQ_NAV_FIRST_MSG = 1,                  // OCI_DEQ_FIRST_MSG
-    DPI_DEQ_NAV_NEXT_TRANSACTION = 2,           // OCI_DEQ_NEXT_TRANSACTION
-    DPI_DEQ_NAV_NEXT_MSG = 3                    // OCI_DEQ_NEXT_MSG
-} dpiDeqNavigation;
+typedef uint32_t dpiDeqNavigation;
+#define DPI_DEQ_NAV_FIRST_MSG                       1
+#define DPI_DEQ_NAV_NEXT_TRANSACTION                2
+#define DPI_DEQ_NAV_NEXT_MSG                        3
 
 // event types
-typedef enum {
-    DPI_EVENT_NONE = 0,                         // OCI_EVENT_NONE
-    DPI_EVENT_STARTUP = 1,                      // OCI_EVENT_STARTUP
-    DPI_EVENT_SHUTDOWN = 2,                     // OCI_EVENT_SHUTDOWN
-    DPI_EVENT_SHUTDOWN_ANY = 3,                 // OCI_EVENT_SHUTDOWN_ANY
-    DPI_EVENT_DROP_DB = 4,                      // OCI_EVENT_DROP_DB
-    DPI_EVENT_DEREG = 5,                        // OCI_EVENT_DEREG
-    DPI_EVENT_OBJCHANGE = 6,                    // OCI_EVENT_OBJCHANGE
-    DPI_EVENT_QUERYCHANGE = 7,                  // OCI_EVENT_QUERYCHANGE
-    DPI_EVENT_AQ = 100
-} dpiEventType;
+typedef uint32_t dpiEventType;
+#define DPI_EVENT_NONE                              0
+#define DPI_EVENT_STARTUP                           1
+#define DPI_EVENT_SHUTDOWN                          2
+#define DPI_EVENT_SHUTDOWN_ANY                      3
+#define DPI_EVENT_DROP_DB                           4
+#define DPI_EVENT_DEREG                             5
+#define DPI_EVENT_OBJCHANGE                         6
+#define DPI_EVENT_QUERYCHANGE                       7
+#define DPI_EVENT_AQ                                100
 
 // statement execution modes
-typedef enum {
-    DPI_MODE_EXEC_DEFAULT = 0x00000000,             // OCI_DEFAULT
-    DPI_MODE_EXEC_DESCRIBE_ONLY = 0x00000010,       // OCI_DESCRIBE_ONLY
-    DPI_MODE_EXEC_COMMIT_ON_SUCCESS = 0x00000020,   // OCI_COMMIT_ON_SUCCESS
-    DPI_MODE_EXEC_BATCH_ERRORS = 0x00000080,        // OCI_BATCH_ERRORS
-    DPI_MODE_EXEC_PARSE_ONLY = 0x00000100,          // OCI_PARSE_ONLY
-    DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS = 0x00100000  // OCI_RETURN_ROW_COUNT_ARRAY
-} dpiExecMode;
+typedef uint32_t dpiExecMode;
+#define DPI_MODE_EXEC_DEFAULT                       0x00000000
+#define DPI_MODE_EXEC_DESCRIBE_ONLY                 0x00000010
+#define DPI_MODE_EXEC_COMMIT_ON_SUCCESS             0x00000020
+#define DPI_MODE_EXEC_BATCH_ERRORS                  0x00000080
+#define DPI_MODE_EXEC_PARSE_ONLY                    0x00000100
+#define DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS           0x00100000
 
 // statement fetch modes
-typedef enum {
-    DPI_MODE_FETCH_NEXT = 0x00000002,           // OCI_FETCH_NEXT
-    DPI_MODE_FETCH_FIRST = 0x00000004,          // OCI_FETCH_FIRST
-    DPI_MODE_FETCH_LAST = 0x00000008,           // OCI_FETCH_LAST
-    DPI_MODE_FETCH_PRIOR = 0x00000010,          // OCI_FETCH_PRIOR
-    DPI_MODE_FETCH_ABSOLUTE = 0x00000020,       // OCI_FETCH_ABSOLUTE
-    DPI_MODE_FETCH_RELATIVE = 0x00000040        // OCI_FETCH_RELATIVE
-} dpiFetchMode;
+typedef uint16_t dpiFetchMode;
+#define DPI_MODE_FETCH_NEXT                         0x0002
+#define DPI_MODE_FETCH_FIRST                        0x0004
+#define DPI_MODE_FETCH_LAST                         0x0008
+#define DPI_MODE_FETCH_PRIOR                        0x0010
+#define DPI_MODE_FETCH_ABSOLUTE                     0x0020
+#define DPI_MODE_FETCH_RELATIVE                     0x0040
 
 // message delivery modes in advanced queuing
-typedef enum {
-    DPI_MODE_MSG_PERSISTENT = 1,                // OCI_MSG_PERSISTENT
-    DPI_MODE_MSG_BUFFERED = 2,                  // OCI_MSG_BUFFERED
-    DPI_MODE_MSG_PERSISTENT_OR_BUFFERED = 3     // OCI_MSG_PERSISTENT_OR_BUFFERED
-} dpiMessageDeliveryMode;
+typedef uint16_t dpiMessageDeliveryMode;
+#define DPI_MODE_MSG_PERSISTENT                     1
+#define DPI_MODE_MSG_BUFFERED                       2
+#define DPI_MODE_MSG_PERSISTENT_OR_BUFFERED         3
 
 // message states in advanced queuing
-typedef enum {
-    DPI_MSG_STATE_READY = 0,                    // OCI_MSG_READY
-    DPI_MSG_STATE_WAITING = 1,                  // OCI_MSG_WAITING
-    DPI_MSG_STATE_PROCESSED = 2,                // OCI_MSG_PROCESSED
-    DPI_MSG_STATE_EXPIRED = 3                   // OCI_MSG_EXPIRED
-} dpiMessageState;
+typedef uint32_t dpiMessageState;
+#define DPI_MSG_STATE_READY                         0
+#define DPI_MSG_STATE_WAITING                       1
+#define DPI_MSG_STATE_PROCESSED                     2
+#define DPI_MSG_STATE_EXPIRED                       3
 
 // native C types
-typedef enum {
-    DPI_NATIVE_TYPE_INT64 = 3000,
-    DPI_NATIVE_TYPE_UINT64,
-    DPI_NATIVE_TYPE_FLOAT,
-    DPI_NATIVE_TYPE_DOUBLE,
-    DPI_NATIVE_TYPE_BYTES,
-    DPI_NATIVE_TYPE_TIMESTAMP,
-    DPI_NATIVE_TYPE_INTERVAL_DS,
-    DPI_NATIVE_TYPE_INTERVAL_YM,
-    DPI_NATIVE_TYPE_LOB,
-    DPI_NATIVE_TYPE_OBJECT,
-    DPI_NATIVE_TYPE_STMT,
-    DPI_NATIVE_TYPE_BOOLEAN,
-    DPI_NATIVE_TYPE_ROWID
-} dpiNativeTypeNum;
+typedef uint32_t dpiNativeTypeNum;
+#define DPI_NATIVE_TYPE_INT64                       3000
+#define DPI_NATIVE_TYPE_UINT64                      3001
+#define DPI_NATIVE_TYPE_FLOAT                       3002
+#define DPI_NATIVE_TYPE_DOUBLE                      3003
+#define DPI_NATIVE_TYPE_BYTES                       3004
+#define DPI_NATIVE_TYPE_TIMESTAMP                   3005
+#define DPI_NATIVE_TYPE_INTERVAL_DS                 3006
+#define DPI_NATIVE_TYPE_INTERVAL_YM                 3007
+#define DPI_NATIVE_TYPE_LOB                         3008
+#define DPI_NATIVE_TYPE_OBJECT                      3009
+#define DPI_NATIVE_TYPE_STMT                        3010
+#define DPI_NATIVE_TYPE_BOOLEAN                     3011
+#define DPI_NATIVE_TYPE_ROWID                       3012
 
 // operation codes (database change and continuous query notification)
-typedef enum {
-    DPI_OPCODE_ALL_OPS = 0x0,                   // OCI_OPCODE_ALLOPS
-    DPI_OPCODE_ALL_ROWS = 0x1,                  // OCI_OPCODE_ALLROWS
-    DPI_OPCODE_INSERT = 0x2,                    // OCI_OPCODE_INSERT
-    DPI_OPCODE_UPDATE = 0x4,                    // OCI_OPCODE_UPDATE
-    DPI_OPCODE_DELETE = 0x8,                    // OCI_OPCODE_DELETE
-    DPI_OPCODE_ALTER = 0x10,                    // OCI_OPCODE_ALTER
-    DPI_OPCODE_DROP = 0x20,                     // OCI_OPCODE_DROP
-    DPI_OPCODE_UNKNOWN = 0x40                   // OCI_OPCODE_UNKNOWN
-} dpiOpCode;
+typedef uint32_t dpiOpCode;
+#define DPI_OPCODE_ALL_OPS                          0x0
+#define DPI_OPCODE_ALL_ROWS                         0x1
+#define DPI_OPCODE_INSERT                           0x2
+#define DPI_OPCODE_UPDATE                           0x4
+#define DPI_OPCODE_DELETE                           0x8
+#define DPI_OPCODE_ALTER                            0x10
+#define DPI_OPCODE_DROP                             0x20
+#define DPI_OPCODE_UNKNOWN                          0x40
 
 // Oracle types
-typedef enum {
-    DPI_ORACLE_TYPE_NONE = 2000,
-    DPI_ORACLE_TYPE_VARCHAR,
-    DPI_ORACLE_TYPE_NVARCHAR,
-    DPI_ORACLE_TYPE_CHAR,
-    DPI_ORACLE_TYPE_NCHAR,
-    DPI_ORACLE_TYPE_ROWID,
-    DPI_ORACLE_TYPE_RAW,
-    DPI_ORACLE_TYPE_NATIVE_FLOAT,
-    DPI_ORACLE_TYPE_NATIVE_DOUBLE,
-    DPI_ORACLE_TYPE_NATIVE_INT,
-    DPI_ORACLE_TYPE_NUMBER,
-    DPI_ORACLE_TYPE_DATE,
-    DPI_ORACLE_TYPE_TIMESTAMP,
-    DPI_ORACLE_TYPE_TIMESTAMP_TZ,
-    DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
-    DPI_ORACLE_TYPE_INTERVAL_DS,
-    DPI_ORACLE_TYPE_INTERVAL_YM,
-    DPI_ORACLE_TYPE_CLOB,
-    DPI_ORACLE_TYPE_NCLOB,
-    DPI_ORACLE_TYPE_BLOB,
-    DPI_ORACLE_TYPE_BFILE,
-    DPI_ORACLE_TYPE_STMT,
-    DPI_ORACLE_TYPE_BOOLEAN,
-    DPI_ORACLE_TYPE_OBJECT,
-    DPI_ORACLE_TYPE_LONG_VARCHAR,
-    DPI_ORACLE_TYPE_LONG_RAW,
-    DPI_ORACLE_TYPE_NATIVE_UINT,
-    DPI_ORACLE_TYPE_MAX
-} dpiOracleTypeNum;
+typedef uint32_t dpiOracleTypeNum;
+#define DPI_ORACLE_TYPE_NONE                        2000
+#define DPI_ORACLE_TYPE_VARCHAR                     2001
+#define DPI_ORACLE_TYPE_NVARCHAR                    2002
+#define DPI_ORACLE_TYPE_CHAR                        2003
+#define DPI_ORACLE_TYPE_NCHAR                       2004
+#define DPI_ORACLE_TYPE_ROWID                       2005
+#define DPI_ORACLE_TYPE_RAW                         2006
+#define DPI_ORACLE_TYPE_NATIVE_FLOAT                2007
+#define DPI_ORACLE_TYPE_NATIVE_DOUBLE               2008
+#define DPI_ORACLE_TYPE_NATIVE_INT                  2009
+#define DPI_ORACLE_TYPE_NUMBER                      2010
+#define DPI_ORACLE_TYPE_DATE                        2011
+#define DPI_ORACLE_TYPE_TIMESTAMP                   2012
+#define DPI_ORACLE_TYPE_TIMESTAMP_TZ                2013
+#define DPI_ORACLE_TYPE_TIMESTAMP_LTZ               2014
+#define DPI_ORACLE_TYPE_INTERVAL_DS                 2015
+#define DPI_ORACLE_TYPE_INTERVAL_YM                 2016
+#define DPI_ORACLE_TYPE_CLOB                        2017
+#define DPI_ORACLE_TYPE_NCLOB                       2018
+#define DPI_ORACLE_TYPE_BLOB                        2019
+#define DPI_ORACLE_TYPE_BFILE                       2020
+#define DPI_ORACLE_TYPE_STMT                        2021
+#define DPI_ORACLE_TYPE_BOOLEAN                     2022
+#define DPI_ORACLE_TYPE_OBJECT                      2023
+#define DPI_ORACLE_TYPE_LONG_VARCHAR                2024
+#define DPI_ORACLE_TYPE_LONG_RAW                    2025
+#define DPI_ORACLE_TYPE_NATIVE_UINT                 2026
+#define DPI_ORACLE_TYPE_MAX                         2027
 
 // session pool close modes
-typedef enum {
-    DPI_MODE_POOL_CLOSE_DEFAULT = 0x0000,       // OCI_DEFAULT
-    DPI_MODE_POOL_CLOSE_FORCE = 0x0001          // OCI_SPD_FORCE
-} dpiPoolCloseMode;
+typedef uint32_t dpiPoolCloseMode;
+#define DPI_MODE_POOL_CLOSE_DEFAULT                 0x0000
+#define DPI_MODE_POOL_CLOSE_FORCE                   0x0001
 
 // modes used when acquiring a connection from a session pool
-typedef enum {
-    DPI_MODE_POOL_GET_WAIT = 0,                 // OCI_SPOOL_ATTRVAL_WAIT
-    DPI_MODE_POOL_GET_NOWAIT = 1,               // OCI_SPOOL_ATTRVAL_NOWAIT
-    DPI_MODE_POOL_GET_FORCEGET = 2,             // OCI_SPOOL_ATTRVAL_FORCEGET
-    DPI_MODE_POOL_GET_TIMEDWAIT = 3             // OCI_SPOOL_ATTRVAL_TIMEDWAIT
-} dpiPoolGetMode;
+typedef uint8_t dpiPoolGetMode;
+#define DPI_MODE_POOL_GET_WAIT                      0
+#define DPI_MODE_POOL_GET_NOWAIT                    1
+#define DPI_MODE_POOL_GET_FORCEGET                  2
+#define DPI_MODE_POOL_GET_TIMEDWAIT                 3
 
 // purity values when acquiring a connection from a pool
-typedef enum {
-    DPI_PURITY_DEFAULT = 0,                     // OCI_ATTR_PURITY_DEFAULT
-    DPI_PURITY_NEW = 1,                         // OCI_ATTR_PURITY_NEW
-    DPI_PURITY_SELF = 2                         // OCI_ATTR_PURITY_SELF
-} dpiPurity;
+typedef uint32_t dpiPurity;
+#define DPI_PURITY_DEFAULT                          0
+#define DPI_PURITY_NEW                              1
+#define DPI_PURITY_SELF                             2
 
 // database shutdown modes
-typedef enum {
-    DPI_MODE_SHUTDOWN_DEFAULT = 0,              // OCI_DEFAULT
-    DPI_MODE_SHUTDOWN_TRANSACTIONAL = 1,        // OCI_DBSHUTDOWN_TRANSACTIONAL
-    DPI_MODE_SHUTDOWN_TRANSACTIONAL_LOCAL = 2,  // OCI_DBSHUTDOWN_TRANSACTIONAL_LOCAL
-    DPI_MODE_SHUTDOWN_IMMEDIATE = 3,            // OCI_DBSHUTDOWN_IMMEDIATE
-    DPI_MODE_SHUTDOWN_ABORT = 4,                // OCI_DBSHUTDOWN_ABORT
-    DPI_MODE_SHUTDOWN_FINAL = 5                 // OCI_DBSHUTDOWN_FINAL
-} dpiShutdownMode;
+typedef uint32_t dpiShutdownMode;
+#define DPI_MODE_SHUTDOWN_DEFAULT                   0
+#define DPI_MODE_SHUTDOWN_TRANSACTIONAL             1
+#define DPI_MODE_SHUTDOWN_TRANSACTIONAL_LOCAL       2
+#define DPI_MODE_SHUTDOWN_IMMEDIATE                 3
+#define DPI_MODE_SHUTDOWN_ABORT                     4
+#define DPI_MODE_SHUTDOWN_FINAL                     5
+
+// SODA flags
+#define DPI_SODA_FLAGS_DEFAULT                  0x00
+#define DPI_SODA_FLAGS_ATOMIC_COMMIT            0x01
+#define DPI_SODA_FLAGS_CREATE_COLL_MAP          0x02
+#define DPI_SODA_FLAGS_INDEX_DROP_FORCE         0x04
 
 // database startup modes
-typedef enum {
-    DPI_MODE_STARTUP_DEFAULT = 0,               // OCI_DEFAULT
-    DPI_MODE_STARTUP_FORCE = 1,                 // OCI_DBSTARTUPFLAG_FORCE
-    DPI_MODE_STARTUP_RESTRICT = 2               // OCI_DBSTARTUPFLAG_RESTRICT
-} dpiStartupMode;
+typedef uint32_t dpiStartupMode;
+#define DPI_MODE_STARTUP_DEFAULT                    0
+#define DPI_MODE_STARTUP_FORCE                      1
+#define DPI_MODE_STARTUP_RESTRICT                   2
 
 // statement types
-typedef enum {
-    DPI_STMT_TYPE_UNKNOWN = 0,
-    DPI_STMT_TYPE_SELECT = 1,                   // OCI_STMT_SELECT
-    DPI_STMT_TYPE_UPDATE = 2,                   // OCI_STMT_UPDATE
-    DPI_STMT_TYPE_DELETE = 3,                   // OCI_STMT_DELETE
-    DPI_STMT_TYPE_INSERT = 4,                   // OCI_STMT_INSERT
-    DPI_STMT_TYPE_CREATE = 5,                   // OCI_STMT_CREATE
-    DPI_STMT_TYPE_DROP = 6,                     // OCI_STMT_DROP
-    DPI_STMT_TYPE_ALTER = 7,                    // OCI_STMT_ALTER
-    DPI_STMT_TYPE_BEGIN = 8,                    // OCI_STMT_BEGIN
-    DPI_STMT_TYPE_DECLARE = 9,                  // OCI_STMT_DECLARE
-    DPI_STMT_TYPE_CALL = 10,                    // OCI_STMT_CALL
-    DPI_STMT_TYPE_EXPLAIN_PLAN = 15,
-    DPI_STMT_TYPE_MERGE = 16,                   // OCI_STMT_MERGE
-    DPI_STMT_TYPE_ROLLBACK = 17,
-    DPI_STMT_TYPE_COMMIT = 21
-} dpiStatementType;
+typedef uint16_t dpiStatementType;
+#define DPI_STMT_TYPE_UNKNOWN                       0
+#define DPI_STMT_TYPE_SELECT                        1
+#define DPI_STMT_TYPE_UPDATE                        2
+#define DPI_STMT_TYPE_DELETE                        3
+#define DPI_STMT_TYPE_INSERT                        4
+#define DPI_STMT_TYPE_CREATE                        5
+#define DPI_STMT_TYPE_DROP                          6
+#define DPI_STMT_TYPE_ALTER                         7
+#define DPI_STMT_TYPE_BEGIN                         8
+#define DPI_STMT_TYPE_DECLARE                       9
+#define DPI_STMT_TYPE_CALL                          10
+#define DPI_STMT_TYPE_EXPLAIN_PLAN                  15
+#define DPI_STMT_TYPE_MERGE                         16
+#define DPI_STMT_TYPE_ROLLBACK                      17
+#define DPI_STMT_TYPE_COMMIT                        21
 
 // subscription grouping classes
-#define DPI_SUBSCR_GROUPING_CLASS_TIME          1
+typedef uint8_t dpiSubscrGroupingClass;
+#define DPI_SUBSCR_GROUPING_CLASS_TIME              1
 
 // subscription grouping types
-#define DPI_SUBSCR_GROUPING_TYPE_SUMMARY        1
-#define DPI_SUBSCR_GROUPING_TYPE_LAST           2
+typedef uint8_t dpiSubscrGroupingType;
+#define DPI_SUBSCR_GROUPING_TYPE_SUMMARY            1
+#define DPI_SUBSCR_GROUPING_TYPE_LAST               2
 
 // subscription namespaces
-typedef enum {
-    DPI_SUBSCR_NAMESPACE_AQ = 1,              // OCI_SUBSCR_NAMESPACE_AQ
-    DPI_SUBSCR_NAMESPACE_DBCHANGE = 2         // OCI_SUBSCR_NAMESPACE_DBCHANGE
-} dpiSubscrNamespace;
+typedef uint32_t dpiSubscrNamespace;
+#define DPI_SUBSCR_NAMESPACE_AQ                     1
+#define DPI_SUBSCR_NAMESPACE_DBCHANGE               2
 
 // subscription protocols
-typedef enum {
-    DPI_SUBSCR_PROTO_CALLBACK = 0,              // OCI_SUBSCR_PROTO_OCI
-    DPI_SUBSCR_PROTO_MAIL = 1,                  // OCI_SUBSCR_PROTO_MAIL
-    DPI_SUBSCR_PROTO_PLSQL = 2,                 // OCI_SUBSCR_PROTO_SERVER
-    DPI_SUBSCR_PROTO_HTTP = 3                   // OCI_SUBSCR_PROTO_HTTP
-} dpiSubscrProtocol;
+typedef uint32_t dpiSubscrProtocol;
+#define DPI_SUBSCR_PROTO_CALLBACK                   0
+#define DPI_SUBSCR_PROTO_MAIL                       1
+#define DPI_SUBSCR_PROTO_PLSQL                      2
+#define DPI_SUBSCR_PROTO_HTTP                       3
 
 // subscription quality of service
-typedef enum {
-    DPI_SUBSCR_QOS_RELIABLE = 0x01,
-    DPI_SUBSCR_QOS_DEREG_NFY = 0x02,
-    DPI_SUBSCR_QOS_ROWIDS = 0x04,
-    DPI_SUBSCR_QOS_QUERY = 0x08,
-    DPI_SUBSCR_QOS_BEST_EFFORT = 0x10
-} dpiSubscrQOS;
+typedef uint32_t dpiSubscrQOS;
+#define DPI_SUBSCR_QOS_RELIABLE                     0x01
+#define DPI_SUBSCR_QOS_DEREG_NFY                    0x02
+#define DPI_SUBSCR_QOS_ROWIDS                       0x04
+#define DPI_SUBSCR_QOS_QUERY                        0x08
+#define DPI_SUBSCR_QOS_BEST_EFFORT                  0x10
 
 // visibility of messages in advanced queuing
-typedef enum {
-    DPI_VISIBILITY_IMMEDIATE = 1,               // OCI_DEQ_IMMEDIATE
-    DPI_VISIBILITY_ON_COMMIT = 2                // OCI_DEQ_ON_COMMIT
-} dpiVisibility;
+typedef uint32_t dpiVisibility;
+#define DPI_VISIBILITY_IMMEDIATE                    1
+#define DPI_VISIBILITY_ON_COMMIT                    2
 
 
 //-----------------------------------------------------------------------------
@@ -429,6 +415,14 @@ typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
 typedef struct dpiPoolCreateParams dpiPoolCreateParams;
 typedef struct dpiQueryInfo dpiQueryInfo;
 typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
+typedef struct dpiSodaColl dpiSodaColl;
+typedef struct dpiSodaCollNames dpiSodaCollNames;
+typedef struct dpiSodaCollCursor dpiSodaCollCursor;
+typedef struct dpiSodaDb dpiSodaDb;
+typedef struct dpiSodaDoc dpiSodaDoc;
+typedef struct dpiSodaDocCursor dpiSodaDocCursor;
+typedef struct dpiSodaOperOptions dpiSodaOperOptions;
+typedef struct dpiSodaOutputOptions dpiSodaOutputOptions;
 typedef struct dpiStmtInfo dpiStmtInfo;
 typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
 typedef struct dpiSubscrMessage dpiSubscrMessage;
@@ -592,6 +586,33 @@ struct dpiShardingKeyColumn {
     dpiDataBuffer value;
 };
 
+// structure used for getting collection names from the database
+struct dpiSodaCollNames {
+    uint32_t numNames;
+    const char **names;
+    uint32_t *nameLengths;
+};
+
+// structure used for SODA operations (find/replace/remove)
+struct dpiSodaOperOptions {
+    uint32_t numKeys;
+    const char **keys;
+    uint32_t *keyLengths;
+    const char *key;
+    uint32_t keyLength;
+    const char *version;
+    uint32_t versionLength;
+    const char *filter;
+    uint32_t filterLength;
+    uint32_t skip;
+    uint32_t limit;
+};
+
+// structure used for output from SODA operations (bulk insert)
+struct dpiSodaOutputOptions {
+    uint64_t numDocuments;
+};
+
 // structure used for transferring statement information from ODPI-C
 struct dpiStmtInfo {
     int isQuery;
@@ -713,6 +734,10 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params);
 
+// initialize SODA operation options to default values
+int dpiContext_initSodaOperOptions(const dpiContext *context,
+        dpiSodaOperOptions *options);
+
 // initialize subscription create parameters to default values
 int dpiContext_initSubscrCreateParams(const dpiContext *context,
         dpiSubscrCreateParams *params);
@@ -763,6 +788,9 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
         uint32_t queueNameLength, dpiEnqOptions *options, dpiMsgProps *props,
         dpiObject *payload, const char **msgId, uint32_t *msgIdLength);
 
+// get call timeout in place for round-trips with this connection
+int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value);
+
 // get current schema associated with the connection
 int dpiConn_getCurrentSchema(dpiConn *conn, const char **value,
         uint32_t *valueLength);
@@ -796,6 +824,9 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
 int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
         uint32_t *releaseStringLength, dpiVersionInfo *versionInfo);
 
+// get SODA interface object
+int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db);
+
 // return the statement cache size
 int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize);
 
@@ -807,10 +838,6 @@ int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options);
 
 // create a new message properties object and return it
 int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props);
-
-// create a new subscription for events
-int dpiConn_newSubscription(dpiConn *conn, dpiSubscrCreateParams *params,
-        dpiSubscr **subscr, uint64_t *subscrId);
 
 // create a new temporary LOB
 int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob);
@@ -840,6 +867,9 @@ int dpiConn_rollback(dpiConn *conn);
 
 // set action associated with the connection
 int dpiConn_setAction(dpiConn *conn, const char *value, uint32_t valueLength);
+
+// set call timeout for subsequent round-trips with this connection
+int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value);
 
 // set client identifier associated with the connection
 int dpiConn_setClientIdentifier(dpiConn *conn, const char *value,
@@ -1089,9 +1119,6 @@ int dpiLob_closeResource(dpiLob *lob);
 
 // create a copy of the LOB
 int dpiLob_copy(dpiLob *lob, dpiLob **copiedLob);
-
-// flush buffers for the LOB
-int dpiLob_flushBuffer(dpiLob *lob);
 
 // get buffer size in bytes for a LOB
 int dpiLob_getBufferSize(dpiLob *lob, uint64_t sizeInChars,
@@ -1369,6 +1396,174 @@ int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
 
 
 //-----------------------------------------------------------------------------
+// SODA Collection Methods (dpiSodaColl)
+//-----------------------------------------------------------------------------
+
+// add a reference to the SODA collection
+int dpiSodaColl_addRef(dpiSodaColl *coll);
+
+// create an index on the collection
+int dpiSodaColl_createIndex(dpiSodaColl *coll, const char *indexSpec,
+        uint32_t indexSpecLength, uint32_t flags);
+
+// drop a SODA collection
+int dpiSodaColl_drop(dpiSodaColl *coll, uint32_t flags, int *isDropped);
+
+// drop an index on the collection
+int dpiSodaColl_dropIndex(dpiSodaColl *coll, const char *name,
+        uint32_t nameLength, uint32_t flags, int *isDropped);
+
+// find documents in a SODA collection and return a cursor
+int dpiSodaColl_find(dpiSodaColl *coll, const dpiSodaOperOptions *options,
+        uint32_t flags, dpiSodaDocCursor **cursor);
+
+// find a single document in a SODA collection
+int dpiSodaColl_findOne(dpiSodaColl *coll, const dpiSodaOperOptions *options,
+        uint32_t flags, dpiSodaDoc **doc);
+
+// get the data guide for the collection
+int dpiSodaColl_getDataGuide(dpiSodaColl *coll, uint32_t flags,
+        dpiSodaDoc **doc);
+
+// get the count of documents that match the criteria
+int dpiSodaColl_getDocCount(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, uint32_t flags, uint64_t *count);
+
+// get the metadata of the collection
+int dpiSodaColl_getMetadata(dpiSodaColl *coll, const char **value,
+        uint32_t *valueLength);
+
+// get the name of the collection
+int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
+        uint32_t *valueLength);
+
+// insert a document into the SODA collection
+int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
+        dpiSodaDoc **insertedDoc);
+
+// release a reference to the SODA collection
+int dpiSodaColl_release(dpiSodaColl *coll);
+
+// remove documents from a SODA collection (with operation options)
+int dpiSodaColl_remove(dpiSodaColl *coll, const dpiSodaOperOptions *options,
+        uint32_t flags, uint64_t *count);
+
+// replace a document in a SODA collection (with operation options)
+int dpiSodaColl_replaceOne(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, dpiSodaDoc *doc, uint32_t flags,
+        int *replaced, dpiSodaDoc **replacedDoc);
+
+
+//-----------------------------------------------------------------------------
+// SODA Collection Cursor Methods (dpiSodaCollCursor)
+//-----------------------------------------------------------------------------
+
+// add a reference to the SODA collection cursor
+int dpiSodaCollCursor_addRef(dpiSodaCollCursor *cursor);
+
+// close the SODA collection cursor
+int dpiSodaCollCursor_close(dpiSodaCollCursor *cursor);
+
+// get the next collection from the cursor
+int dpiSodaCollCursor_getNext(dpiSodaCollCursor *cursor, uint32_t flags,
+        dpiSodaColl **coll);
+
+// release a reference to the SODA collection cursor
+int dpiSodaCollCursor_release(dpiSodaCollCursor *cursor);
+
+
+//-----------------------------------------------------------------------------
+// SODA Database Methods (dpiSodaDb)
+//-----------------------------------------------------------------------------
+
+// add a reference to the SODA database
+int dpiSodaDb_addRef(dpiSodaDb *db);
+
+// create a new SODA collection
+int dpiSodaDb_createCollection(dpiSodaDb *db, const char *name,
+        uint32_t nameLength, const char *metadata, uint32_t metadataLength,
+        uint32_t flags, dpiSodaColl **coll);
+
+// create a new SODA document
+int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
+        uint32_t keyLength, const char *content, uint32_t contentLength,
+        const char *mediaType, uint32_t mediaTypeLength, uint32_t flags,
+        dpiSodaDoc **doc);
+
+// free the memory allocated when getting an array of SODA collection names
+int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiSodaCollNames *names);
+
+// return a cursor to iterate over SODA collections
+int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
+        uint32_t startNameLength, uint32_t flags, dpiSodaCollCursor **cursor);
+
+// return an array of SODA collection names
+int dpiSodaDb_getCollectionNames(dpiSodaDb *db, const char *startName,
+        uint32_t startNameLength, uint32_t limit, uint32_t flags,
+        dpiSodaCollNames *names);
+
+// open an existing SODA collection
+int dpiSodaDb_openCollection(dpiSodaDb *db, const char *name,
+        uint32_t nameLength, uint32_t flags, dpiSodaColl **coll);
+
+// release a reference to the SODA database
+int dpiSodaDb_release(dpiSodaDb *db);
+
+
+//-----------------------------------------------------------------------------
+// SODA Document Methods (dpiSodaDoc)
+//-----------------------------------------------------------------------------
+
+// add a reference to the SODA document
+int dpiSodaDoc_addRef(dpiSodaDoc *cursor);
+
+// get the content of the document
+int dpiSodaDoc_getContent(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength, const char **encoding);
+
+// get the created timestamp associated with the document
+int dpiSodaDoc_getCreatedOn(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength);
+
+// get the key associated with the document
+int dpiSodaDoc_getKey(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength);
+
+// get the last modified timestamp associated with the document
+int dpiSodaDoc_getLastModified(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength);
+
+// get the media type of the document
+int dpiSodaDoc_getMediaType(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength);
+
+// get the version of the document
+int dpiSodaDoc_getVersion(dpiSodaDoc *doc, const char **value,
+        uint32_t *valueLength);
+
+// release a reference to the SODA document
+int dpiSodaDoc_release(dpiSodaDoc *cursor);
+
+
+//-----------------------------------------------------------------------------
+// SODA Document Cursor Methods (dpiSodaDocCursor)
+//-----------------------------------------------------------------------------
+
+// add a reference to the SODA document cursor
+int dpiSodaDocCursor_addRef(dpiSodaDocCursor *cursor);
+
+// close the SODA document cursor
+int dpiSodaDocCursor_close(dpiSodaDocCursor *cursor);
+
+// get the next document from the cursor
+int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, uint32_t flags,
+        dpiSodaDoc **doc);
+
+// release a reference to the SODA document cursor
+int dpiSodaDocCursor_release(dpiSodaDocCursor *cursor);
+
+
+//-----------------------------------------------------------------------------
 // Statement Methods (dpiStmt)
 //-----------------------------------------------------------------------------
 
@@ -1503,9 +1698,6 @@ int dpiRowid_release(dpiRowid *subscr);
 // add a reference to the subscription
 int dpiSubscr_addRef(dpiSubscr *subscr);
 
-// close the subscription
-int dpiSubscr_close(dpiSubscr *subscr);
-
 // prepare statement for registration with subscription
 int dpiSubscr_prepareStmt(dpiSubscr *subscr, const char *sql,
         uint32_t sqlLength, dpiStmt **stmt);
@@ -1524,9 +1716,6 @@ int dpiVar_addRef(dpiVar *var);
 // copy the data from one variable to another variable
 int dpiVar_copyData(dpiVar *var, uint32_t pos, dpiVar *sourceVar,
         uint32_t sourcePos);
-
-// deprecated: use dpiVar_getReturnedData() instead
-int dpiVar_getData(dpiVar *var, uint32_t *numElements, dpiData **data);
 
 // return the number of elements in a PL/SQL index-by table
 int dpiVar_getNumElementsInArray(dpiVar *var, uint32_t *numElements);

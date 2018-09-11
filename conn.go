@@ -51,7 +51,7 @@ type conn struct {
 	dpiConn       *C.dpiConn
 	connParams    ConnectionParams
 	inTransaction bool
-	serverVersion VersionInfo
+	Server        VersionInfo
 	*drv
 }
 
@@ -330,32 +330,26 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 var _ = driver.Tx((*conn)(nil))
 
 func (c *conn) ServerVersion() (VersionInfo, error) {
-	c.RLock()
-	sv := c.serverVersion
-	c.RUnlock()
-	if sv.Version != 0 {
-		return sv, nil
+	return c.Server, nil
+}
+
+func (c *conn) init() error {
+	if c.Server.Version != 0 {
+		return nil
 	}
 	var v C.dpiVersionInfo
 	var release *C.char
 	var releaseLen C.uint32_t
 	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-		return sv, errors.Wrap(c.getError(), "getServerVersion")
+		return errors.Wrap(c.getError(), "getServerVersion")
 	}
-	c.Lock()
-	c.serverVersion.set(&v)
-	c.serverVersion.ServerRelease = C.GoStringN(release, C.int(releaseLen))
-	sv = c.serverVersion
-	c.Unlock()
-	return sv, nil
+	c.Server.set(&v)
+	c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+	return nil
 }
 
 func (c *conn) setCallTimeout(ctx context.Context) {
-	ver, err := c.ServerVersion()
-	if err != nil {
-		return
-	}
-	if ver.Version < 18 {
+	if c.Server.Version < 18 {
 		return
 	}
 	if dl, ok := ctx.Deadline(); ok {

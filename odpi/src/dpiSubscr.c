@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -62,19 +62,17 @@ static void dpiSubscr__callback(dpiSubscr *subscr, UNUSED void *handle,
 
 
 //-----------------------------------------------------------------------------
-// dpiSubscr__checkOpen() [INTERNAL]
+// dpiSubscr__check() [INTERNAL]
 //   Determine if the subscription is open and available for use.
 //-----------------------------------------------------------------------------
-static int dpiSubscr__checkOpen(dpiSubscr *subscr, const char *fnName,
+static int dpiSubscr__check(dpiSubscr *subscr, const char *fnName,
         dpiError *error)
 {
     if (dpiGen__startPublicFn(subscr, DPI_HTYPE_SUBSCR, fnName, 1, error) < 0)
         return DPI_FAILURE;
     if (!subscr->handle)
         return dpiError__set(error, "check closed", DPI_ERR_SUBSCR_CLOSED);
-    if (!subscr->conn->handle || subscr->conn->closing)
-        return dpiError__set(error, "check connection", DPI_ERR_NOT_CONNECTED);
-    return DPI_SUCCESS;
+    return dpiConn__checkConnected(subscr->conn, error);
 }
 
 
@@ -84,7 +82,7 @@ static int dpiSubscr__checkOpen(dpiSubscr *subscr, const char *fnName,
 // is returned.
 //-----------------------------------------------------------------------------
 int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
-        dpiSubscrCreateParams *params, uint64_t *subscrId, dpiError *error)
+        dpiSubscrCreateParams *params, dpiError *error)
 {
     uint32_t qosFlags;
     int32_t int32Val;
@@ -228,12 +226,6 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
     if (dpiOci__subscriptionRegister(conn, &subscr->handle, error) < 0)
         return DPI_FAILURE;
     subscr->registered = 1;
-
-    // get the registration id, if applicable
-    if (subscrId && dpiOci__attrGet(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION,
-            subscrId, NULL, DPI_OCI_ATTR_SUBSCR_CQ_REGID,
-            "get registration id", error) < 0)
-        return DPI_FAILURE;
 
     return DPI_SUCCESS;
 }
@@ -645,27 +637,6 @@ int dpiSubscr_addRef(dpiSubscr *subscr)
 
 
 //-----------------------------------------------------------------------------
-// dpiSubscr_close() [PUBLIC]
-//   Close the subscription now, not when the last reference is released. This
-// deregisters the subscription so that notifications are no longer sent.
-//-----------------------------------------------------------------------------
-int dpiSubscr_close(dpiSubscr *subscr)
-{
-    dpiError error;
-
-    if (dpiSubscr__checkOpen(subscr, __func__, &error) < 0)
-        return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-    if (subscr->registered) {
-        if (dpiOci__subscriptionUnRegister(subscr->conn, subscr, &error) < 0)
-            return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-        subscr->registered = 0;
-    }
-
-    return dpiGen__endPublicFn(subscr, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiSubscr_prepareStmt() [PUBLIC]
 //   Prepare statement for registration with subscription.
 //-----------------------------------------------------------------------------
@@ -675,7 +646,7 @@ int dpiSubscr_prepareStmt(dpiSubscr *subscr, const char *sql,
     dpiStmt *tempStmt;
     dpiError error;
 
-    if (dpiSubscr__checkOpen(subscr, __func__, &error) < 0)
+    if (dpiSubscr__check(subscr, __func__, &error) < 0)
         return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(subscr, sql)
     DPI_CHECK_PTR_NOT_NULL(subscr, stmt)

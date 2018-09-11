@@ -257,7 +257,7 @@ func ServerVersion(ex Execer) (VersionInfo, error) {
 	if err != nil {
 		return VersionInfo{}, err
 	}
-	return c.ServerVersion()
+	return c.Server, nil
 }
 
 // Conn is the interface for a connection, to be returned by DriverConn.

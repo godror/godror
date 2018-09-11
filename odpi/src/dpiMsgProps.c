@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -165,19 +165,10 @@ int dpiMsgProps_getDelay(dpiMsgProps *props, int32_t *value)
 int dpiMsgProps_getDeliveryMode(dpiMsgProps *props,
         dpiMessageDeliveryMode *value)
 {
-    uint16_t ociValue;
-    dpiError error;
+    uint32_t valueLength = sizeof(uint16_t);
 
-    if (dpiGen__startPublicFn(props, DPI_HTYPE_MSG_PROPS, __func__, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(props, value)
-    if (dpiOci__attrGet(props->handle, DPI_OCI_DTYPE_AQMSG_PROPERTIES,
-            &ociValue, NULL, DPI_OCI_ATTR_MSG_DELIVERY_MODE,
-            "get attribute value", &error) < 0)
-        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
-    *value = (dpiMessageDeliveryMode) ociValue;
-    return dpiGen__endPublicFn(props, DPI_SUCCESS, &error);
+    return dpiMsgProps__getAttrValue(props, DPI_OCI_ATTR_MSG_DELIVERY_MODE,
+            __func__, value, &valueLength);
 }
 
 
@@ -293,19 +284,11 @@ int dpiMsgProps_getPriority(dpiMsgProps *props, int32_t *value)
 //-----------------------------------------------------------------------------
 int dpiMsgProps_getState(dpiMsgProps *props, dpiMessageState *value)
 {
-    uint32_t ociValue;
-    dpiError error;
+    uint32_t valueLength = sizeof(uint32_t);
 
-    if (dpiGen__startPublicFn(props, DPI_HTYPE_MSG_PROPS, __func__, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(props, value)
-    if (dpiOci__attrGet(props->handle, DPI_OCI_DTYPE_AQMSG_PROPERTIES,
-            &ociValue, NULL, DPI_OCI_ATTR_MSG_STATE, "get attribute value",
-            &error) < 0)
-        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
-    *value = (dpiMessageState) ociValue;
-    return dpiGen__endPublicFn(props, DPI_SUCCESS, &error);
+
+    return dpiMsgProps__getAttrValue(props, DPI_OCI_ATTR_MSG_STATE, __func__,
+            value, &valueLength);
 }
 
 

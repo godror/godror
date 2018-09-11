@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016-2018 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -60,9 +60,7 @@ static int dpiLob__check(dpiLob *lob, const char *fnName, int needErrorHandle,
         return DPI_FAILURE;
     if (!lob->locator)
         return dpiError__set(error, "check closed", DPI_ERR_LOB_CLOSED);
-    if (!lob->conn->handle || lob->conn->closing)
-        return dpiError__set(error, "check connection", DPI_ERR_NOT_CONNECTED);
-    return DPI_SUCCESS;
+    return dpiConn__checkConnected(lob->conn, error);
 }
 
 
@@ -94,7 +92,8 @@ int dpiLob__close(dpiLob *lob, int propagateErrors, dpiError *error)
             status = dpiOci__lobIsTemporary(lob, &isTemporary, propagateErrors,
                     error);
             if (isTemporary && status == DPI_SUCCESS)
-                status = dpiOci__lobFreeTemporary(lob, propagateErrors, error);
+                status = dpiOci__lobFreeTemporary(lob->conn,
+                        lob->locator, propagateErrors, error);
         }
         dpiOci__descriptorFree(lob->locator, DPI_OCI_DTYPE_LOB);
         if (!lob->conn->closing)
@@ -254,21 +253,6 @@ int dpiLob_copy(dpiLob *lob, dpiLob **copiedLob)
     }
     *copiedLob = tempLob;
     return dpiGen__endPublicFn(lob, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiLob_flushBuffer() [PUBLIC]
-//   No longer supported. Will be dropped in version 3. Should not be called.
-//-----------------------------------------------------------------------------
-int dpiLob_flushBuffer(dpiLob *lob)
-{
-    dpiError error;
-
-    if (dpiLob__check(lob, __func__, 0, &error) < 0)
-        return DPI_FAILURE;
-    dpiError__set(&error, "not supported", DPI_ERR_NOT_SUPPORTED);
-    return dpiGen__endPublicFn(lob, DPI_FAILURE, &error);
 }
 
 

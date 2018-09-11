@@ -415,7 +415,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", P)
 			}
 			c.dpiConn = (*C.dpiConn)(dc)
-			return &c, nil
+			return &c, c.init()
 		}
 	}
 
@@ -464,7 +464,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			return nil, errors.Wrapf(d.getError(), "username=%q sid=%q params=%+v", P.Username, P.SID, connCreateParams)
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
-		return &c, nil
+		return &c, c.init()
 	}
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {

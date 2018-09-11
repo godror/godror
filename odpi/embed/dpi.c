@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -38,6 +38,11 @@
 #include "../src/dpiOracleType.c"
 #include "../src/dpiPool.c"
 #include "../src/dpiRowid.c"
+#include "../src/dpiSodaColl.c"
+#include "../src/dpiSodaCollCursor.c"
+#include "../src/dpiSodaDb.c"
+#include "../src/dpiSodaDoc.c"
+#include "../src/dpiSodaDocCursor.c"
 #include "../src/dpiStmt.c"
 #include "../src/dpiSubscr.c"
 #include "../src/dpiUtils.c"

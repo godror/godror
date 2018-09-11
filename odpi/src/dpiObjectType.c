@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -46,6 +46,21 @@ int dpiObjectType__allocate(dpiConn *conn, void *param,
 
     *objType = tempObjType;
     return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiObjectType__check() [INTERNAL]
+//   Validate that the connection from which the object type was created is
+// still connected and issue an error if it is not.
+//-----------------------------------------------------------------------------
+static int dpiObjectType__check(dpiObjectType *objType, const char *fnName,
+        dpiError *error)
+{
+    if (dpiGen__startPublicFn(objType, DPI_HTYPE_OBJECT_TYPE, fnName, 1,
+            error) < 0)
+        return DPI_FAILURE;
+    return dpiConn__checkConnected(objType->conn, error);
 }
 
 
@@ -198,8 +213,7 @@ int dpiObjectType_createObject(dpiObjectType *objType, dpiObject **obj)
     int status;
 
     // validate parameters
-    if (dpiGen__startPublicFn(objType, DPI_HTYPE_OBJECT_TYPE, __func__, 1,
-            &error) < 0)
+    if (dpiObjectType__check(objType, __func__, &error) < 0)
         return dpiGen__endPublicFn(objType, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(objType, obj)
     status = dpiObject__allocate(objType, NULL, NULL, NULL, obj, &error);
@@ -219,8 +233,7 @@ int dpiObjectType_getAttributes(dpiObjectType *objType, uint16_t numAttributes,
     uint16_t i;
 
     // validate object type and the number of attributes
-    if (dpiGen__startPublicFn(objType, DPI_HTYPE_OBJECT_TYPE, __func__, 1,
-            &error) < 0)
+    if (dpiObjectType__check(objType, __func__, &error) < 0)
         return dpiGen__endPublicFn(objType, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(objType, attributes)
     if (numAttributes < objType->numAttributes) {

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -27,6 +27,8 @@
 int dpiError__check(dpiError *error, int status, dpiConn *conn,
         const char *action)
 {
+    uint32_t callTimeout;
+
     // no error has taken place
     if (status == DPI_OCI_SUCCESS || status == DPI_OCI_SUCCESS_WITH_INFO)
         return DPI_SUCCESS;
@@ -64,6 +66,7 @@ int dpiError__check(dpiError *error, int status, dpiConn *conn,
 
     // check for certain errors which indicate that the session is dead and
     // should be dropped from the session pool (if a session pool was used)
+    // also check for call timeout and raise unified message instead
     if (conn && !conn->deadSession) {
         switch (error->buffer->code) {
             case    22: // invalid session ID; access denied
@@ -93,6 +96,19 @@ int dpiError__check(dpiError *error, int status, dpiConn *conn,
             case 28511: // lost RPC connection
             case 56600: // an illegal OCI function call was issued
                 conn->deadSession = 1;
+                break;
+            case  3136: // inbound connection timed out
+            case 12161: // TNS:internal error: partial data received
+                callTimeout = 0;
+                if (conn->env->versionInfo->versionNum >= 18)
+                    dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                            (void*) &callTimeout, 0, DPI_OCI_ATTR_CALL_TIMEOUT,
+                            NULL, error);
+                if (callTimeout > 0) {
+                    dpiError__set(error, action, DPI_ERR_CALL_TIMEOUT,
+                            callTimeout, error->buffer->code);
+                    error->buffer->code = 0;
+                }
                 break;
         }
     }

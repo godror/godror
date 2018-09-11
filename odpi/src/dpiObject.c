@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2017 Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018 Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -47,8 +47,28 @@ int dpiObject__allocate(dpiObjectType *objType, void *instance,
             return DPI_FAILURE;
         }
     }
+    if (tempObj->instance && !dependsOnObj) {
+        if (dpiHandleList__addHandle(objType->conn->objects, tempObj,
+                &tempObj->openSlotNum, error) < 0) {
+            dpiObject__free(tempObj, error);
+            return DPI_FAILURE;
+        }
+    }
     *obj = tempObj;
     return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiObject__check() [INTERNAL]
+//   Determine if the object handle provided is available for use.
+//-----------------------------------------------------------------------------
+static int dpiObject__check(dpiObject *obj, const char *fnName,
+        dpiError *error)
+{
+    if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, fnName, 1, error) < 0)
+        return DPI_FAILURE;
+    return dpiConn__checkConnected(obj->type->conn, error);
 }
 
 
@@ -59,7 +79,7 @@ int dpiObject__allocate(dpiObjectType *objType, void *instance,
 static int dpiObject__checkIsCollection(dpiObject *obj, const char *fnName,
         dpiError *error)
 {
-    if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, fnName, 1, error) < 0)
+    if (dpiObject__check(obj, fnName, error) < 0)
         return DPI_FAILURE;
     if (!obj->type->isCollection)
         return dpiError__set(error, "check collection", DPI_ERR_NOT_COLLECTION,
@@ -73,7 +93,7 @@ static int dpiObject__checkIsCollection(dpiObject *obj, const char *fnName,
 // dpiObject__clearOracleValue() [INTERNAL]
 //   Clear the Oracle value after use.
 //-----------------------------------------------------------------------------
-static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
+static void dpiObject__clearOracleValue(dpiObject *obj, dpiError *error,
         dpiOracleDataBuffer *buffer, dpiOracleTypeNum oracleTypeNum)
 {
     switch (oracleTypeNum) {
@@ -82,7 +102,8 @@ static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
         case DPI_ORACLE_TYPE_VARCHAR:
         case DPI_ORACLE_TYPE_NVARCHAR:
             if (buffer->asString)
-                dpiOci__stringResize(env->handle, &buffer->asString, 0, error);
+                dpiOci__stringResize(obj->env->handle, &buffer->asString, 0,
+                        error);
             break;
         case DPI_ORACLE_TYPE_TIMESTAMP:
             if (buffer->asTimestamp)
@@ -99,9 +120,68 @@ static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
                 dpiOci__descriptorFree(buffer->asTimestamp,
                         DPI_OCI_DTYPE_TIMESTAMP_LTZ);
             break;
+        case DPI_ORACLE_TYPE_CLOB:
+        case DPI_ORACLE_TYPE_NCLOB:
+        case DPI_ORACLE_TYPE_BLOB:
+        case DPI_ORACLE_TYPE_BFILE:
+            if (buffer->asLobLocator) {
+                dpiOci__lobFreeTemporary(obj->type->conn, buffer->asLobLocator,
+                        0, error);
+                dpiOci__descriptorFree(buffer->asLobLocator,
+                        DPI_OCI_DTYPE_LOB);
+            }
         default:
             break;
     };
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiObject__close() [INTERNAL]
+//   Close the object (frees the memory for the instance). This is needed to
+// avoid trying to do so after the connection which created the object is
+// closed. In some future release of the Oracle Client libraries this may not
+// be needed, at which point this code and all of the code for managing the
+// list of objects created by a collection can be removed.
+//-----------------------------------------------------------------------------
+int dpiObject__close(dpiObject *obj, int checkError, dpiError *error)
+{
+    int closing;
+
+    // determine whether object is already being closed and if not, mark
+    // object as being closed; this MUST be done while holding the lock (if
+    // in threaded mode) to avoid race conditions!
+    if (obj->env->threaded)
+        dpiMutex__acquire(obj->env->mutex);
+    closing = obj->closing;
+    obj->closing = 1;
+    if (obj->env->threaded)
+        dpiMutex__release(obj->env->mutex);
+
+    // if object is already being closed, nothing needs to be done
+    if (closing)
+        return DPI_SUCCESS;
+
+    // perform actual work of closing object; if this fails, reset closing
+    // flag; again, this must be done while holding the lock (if in threaded
+    // mode) in order to avoid race conditions!
+    if (obj->instance && !obj->dependsOnObj) {
+        if (dpiOci__objectFree(obj, checkError, error) < 0) {
+            if (obj->env->threaded)
+                dpiMutex__acquire(obj->env->mutex);
+            obj->closing = 0;
+            if (obj->env->threaded)
+                dpiMutex__release(obj->env->mutex);
+            return DPI_FAILURE;
+        }
+        if (!obj->type->conn->closing)
+            dpiHandleList__removeHandle(obj->type->conn->objects,
+                    obj->openSlotNum);
+        obj->instance = NULL;
+        obj->indicator = NULL;
+    }
+
+    return DPI_SUCCESS;
 }
 
 
@@ -111,12 +191,7 @@ static void dpiObject__clearOracleValue(dpiEnv *env, dpiError *error,
 //-----------------------------------------------------------------------------
 void dpiObject__free(dpiObject *obj, dpiError *error)
 {
-    if (obj->instance) {
-        if (!obj->dependsOnObj)
-            dpiOci__objectFree(obj, error);
-        obj->instance = NULL;
-        obj->indicator = NULL;
-    }
+    dpiObject__close(obj, 0, error);
     if (obj->type) {
         dpiGen__setRefCount(obj->type, error, -1);
         obj->type = NULL;
@@ -395,9 +470,27 @@ static int dpiObject__toOracleValue(dpiObject *obj, dpiError *error,
         case DPI_ORACLE_TYPE_NCLOB:
         case DPI_ORACLE_TYPE_BLOB:
         case DPI_ORACLE_TYPE_BFILE:
+            buffer->asLobLocator = NULL;
             if (nativeTypeNum == DPI_NATIVE_TYPE_LOB) {
-                buffer->asLobLocator = data->value.asLOB->locator;
-                *ociValue = buffer->asLobLocator;
+                *ociValue = data->value.asLOB->locator;
+                return DPI_SUCCESS;
+            } else if (nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
+                const dpiOracleType *lobType;
+                dpiLob *tempLob;
+                lobType = dpiOracleType__getFromNum(valueOracleTypeNum, error);
+                if (dpiLob__allocate(obj->type->conn, lobType, &tempLob,
+                        error) < 0)
+                    return DPI_FAILURE;
+                bytes = &data->value.asBytes;
+                if (dpiLob__setFromBytes(tempLob, bytes->ptr, bytes->length,
+                        error) < 0) {
+                    dpiLob__free(tempLob, error);
+                    return DPI_FAILURE;
+                }
+                buffer->asLobLocator = tempLob->locator;
+                *ociValue = tempLob->locator;
+                tempLob->locator = NULL;
+                dpiLob__free(tempLob, error);
                 return DPI_SUCCESS;
             }
             break;
@@ -446,7 +539,7 @@ int dpiObject_appendElement(dpiObject *obj, dpiNativeTypeNum nativeTypeNum,
         indicator = &scalarValueIndicator;
     status = dpiOci__collAppend(obj->type->conn, ociValue, indicator,
             obj->instance, &error);
-    dpiObject__clearOracleValue(obj->env, &error, &valueBuffer,
+    dpiObject__clearOracleValue(obj, &error, &valueBuffer,
             obj->type->elementTypeInfo.oracleTypeNum);
     return dpiGen__endPublicFn(obj, status, &error);
 }
@@ -461,8 +554,8 @@ int dpiObject_copy(dpiObject *obj, dpiObject **copiedObj)
     dpiObject *tempObj;
     dpiError error;
 
-    if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, __func__, 1, &error) < 0)
-        return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
+    if (dpiObject__check(obj, __func__, &error) < 0)
+        return DPI_FAILURE;
     DPI_CHECK_PTR_NOT_NULL(obj, copiedObj)
     if (dpiObject__allocate(obj->type, NULL, NULL, NULL, &tempObj, &error) < 0)
         return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
@@ -506,8 +599,8 @@ int dpiObject_getAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
     int status;
 
     // validate parameters
-    if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, __func__, 1, &error) < 0)
-        return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
+    if (dpiObject__check(obj, __func__, &error) < 0)
+        return DPI_FAILURE;
     DPI_CHECK_PTR_NOT_NULL(obj, data)
     if (dpiGen__checkHandle(attr, DPI_HTYPE_OBJECT_ATTR, "get attribute value",
             &error) < 0)
@@ -720,8 +813,8 @@ int dpiObject_setAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
     int status;
 
     // validate parameters
-    if (dpiGen__startPublicFn(obj, DPI_HTYPE_OBJECT, __func__, 1, &error) < 0)
-        return dpiGen__endPublicFn(obj, DPI_FAILURE, &error);
+    if (dpiObject__check(obj, __func__, &error) < 0)
+        return DPI_FAILURE;
     DPI_CHECK_PTR_NOT_NULL(obj, data)
     if (dpiGen__checkHandle(attr, DPI_HTYPE_OBJECT_ATTR, "set attribute value",
             &error) < 0)
@@ -749,7 +842,7 @@ int dpiObject_setAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
     // set attribute value
     status = dpiOci__objectSetAttr(obj, attr, scalarValueIndicator,
             valueIndicator, ociValue, &error);
-    dpiObject__clearOracleValue(obj->env, &error, &valueBuffer,
+    dpiObject__clearOracleValue(obj, &error, &valueBuffer,
             attr->typeInfo.oracleTypeNum);
     return dpiGen__endPublicFn(obj, status, &error);
 }
@@ -780,7 +873,7 @@ int dpiObject_setElementValueByIndex(dpiObject *obj, int32_t index,
         indicator = &scalarValueIndicator;
     status = dpiOci__collAssignElem(obj->type->conn, index, ociValue,
             indicator, obj->instance, &error);
-    dpiObject__clearOracleValue(obj->env, &error, &valueBuffer,
+    dpiObject__clearOracleValue(obj, &error, &valueBuffer,
             obj->type->elementTypeInfo.oracleTypeNum);
     return dpiGen__endPublicFn(obj, status, &error);
 }
