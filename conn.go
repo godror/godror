@@ -350,6 +350,19 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return sv, nil
 }
 
+func (c *conn) setCallTimeout(ctx context.Context) {
+	ver, err := c.ServerVersion()
+	if err != nil {
+		return
+	}
+	if ver.Version < 18 {
+		return
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		C.dpiConn_setCallTimeout(c.dpiConn, C.uint32_t(time.Until(dl)/time.Millisecond))
+	}
+}
+
 func maybeBadConn(err error) error {
 	if err == nil {
 		return nil

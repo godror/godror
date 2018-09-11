@@ -263,6 +263,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if !st.inTransaction {
 			mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 		}
+		st.setCallTimeout(ctx)
 	Loop:
 		for i := 0; i < 3; i++ {
 			if err = ctx.Err(); err != nil {
@@ -436,6 +437,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				done <- err
 				return
 			}
+			st.setCallTimeout(ctx)
 			if C.dpiStmt_execute(st.dpiStmt, st.ExecMode(), &colCount) != C.DPI_FAILURE {
 				break
 			}
