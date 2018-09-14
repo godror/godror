@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.7.0] - 2018-09-14
+### Changed
+- Update ODPI-C to v3.0.0.
 
 ## [2.6.0] - 2018-08-31
 ### Changed
