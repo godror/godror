@@ -46,7 +46,7 @@
 #define DPI_MAJOR_VERSION   3
 #define DPI_MINOR_VERSION   0
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX  "-dev"
+#define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -422,7 +422,6 @@ typedef struct dpiSodaDb dpiSodaDb;
 typedef struct dpiSodaDoc dpiSodaDoc;
 typedef struct dpiSodaDocCursor dpiSodaDocCursor;
 typedef struct dpiSodaOperOptions dpiSodaOperOptions;
-typedef struct dpiSodaOutputOptions dpiSodaOutputOptions;
 typedef struct dpiStmtInfo dpiStmtInfo;
 typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
 typedef struct dpiSubscrMessage dpiSubscrMessage;
@@ -606,11 +605,6 @@ struct dpiSodaOperOptions {
     uint32_t filterLength;
     uint32_t skip;
     uint32_t limit;
-};
-
-// structure used for output from SODA operations (bulk insert)
-struct dpiSodaOutputOptions {
-    uint64_t numDocuments;
 };
 
 // structure used for transferring statement information from ODPI-C

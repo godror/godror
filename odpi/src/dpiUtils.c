@@ -149,11 +149,12 @@ int dpiUtils__parseNumberString(const char *value, uint32_t valueLength,
         uint8_t *numDigits, uint8_t *digits, dpiError *error)
 {
     char convertedValue[DPI_NUMBER_AS_TEXT_CHARS], exponentDigits[4];
-    int exponentIsNegative, exponent;
     uint8_t numExponentDigits, digit;
     uint32_t convertedValueLength;
     uint16_t *utf16chars, i;
+    int exponentIsNegative;
     const char *endValue;
+    int16_t exponent;
 
     // empty strings are not valid numbers
     if (valueLength == 0)
@@ -250,7 +251,7 @@ int dpiUtils__parseNumberString(const char *value, uint32_t valueLength,
             return dpiError__set(error, "no digits in exponent",
                     DPI_ERR_INVALID_NUMBER);
         exponentDigits[numExponentDigits] = '\0';
-        exponent = (int) strtol(exponentDigits, NULL, 0);
+        exponent = (int16_t) strtol(exponentDigits, NULL, 0);
         if (exponentIsNegative)
             exponent = -exponent;
         *decimalPointIndex += exponent;

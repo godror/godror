@@ -161,7 +161,8 @@ int dpiError__getInfo(dpiError *error, dpiErrorInfo *info)
             info->sqlState = "01002";
             break;
         default:
-            if (error->buffer->code == 0 && error->buffer->errorNum == 0)
+            if (error->buffer->code == 0 &&
+                    error->buffer->errorNum == (dpiErrorNum) 0)
                 info->sqlState = "00000";
             else info->sqlState = "HY000";
             break;

@@ -37,7 +37,7 @@ static int dpiSodaDb__checkConnected(dpiSodaDb *db, const char *fnName,
 // The provided cursor handle is iterated until either the limit is reached
 // or there are no more collections to find.
 //-----------------------------------------------------------------------------
-int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
+static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
         uint32_t limit, dpiSodaCollNames *names, char **namesBuffer,
         dpiError *error)
 {

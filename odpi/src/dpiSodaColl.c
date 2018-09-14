@@ -228,7 +228,7 @@ void dpiSodaColl__free(dpiSodaColl *coll, dpiError *error)
 // dpiSodaColl__getDocCount() [INTERNAL]
 //   Internal method for getting document count.
 //-----------------------------------------------------------------------------
-int dpiSodaColl__getDocCount(dpiSodaColl *coll,
+static int dpiSodaColl__getDocCount(dpiSodaColl *coll,
         const dpiSodaOperOptions *options, uint32_t flags, uint64_t *count,
         dpiError *error)
 {

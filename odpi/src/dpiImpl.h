@@ -569,10 +569,13 @@ typedef enum {
 //-----------------------------------------------------------------------------
 // OCI type definitions
 //-----------------------------------------------------------------------------
+
+// representation of OCI Number type
 typedef struct {
     unsigned char value[DPI_OCI_NUMBER_SIZE];
 } dpiOciNumber;
 
+// representation of OCI Date type
 typedef struct {
     int16_t year;
     uint8_t month;
@@ -582,6 +585,7 @@ typedef struct {
     uint8_t second;
 } dpiOciDate;
 
+// representation of OCI XID type (two-phase commit)
 typedef struct {
     long formatID;
     long gtrid_length;
@@ -593,100 +597,153 @@ typedef struct {
 //-----------------------------------------------------------------------------
 // Internal implementation type definitions
 //-----------------------------------------------------------------------------
+
+// used to manage a list of shared handles in a thread-safe manner; currently
+// used for managing the list of open statements, LOBs and created objects for
+// a connection (so that they can be closed before the connection itself is
+// closed); the functions for managing this structure can be found in the file
+// dpiHandleList.c; empty slots in the array are represented by a NULL handle
 typedef struct {
-    void **handles;
-    uint32_t numSlots;
-    uint32_t numUsedSlots;
-    uint32_t currentPos;
-    dpiMutexType mutex;
+    void **handles;                     // array of handles managed by list
+    uint32_t numSlots;                  // length of handles array
+    uint32_t numUsedSlots;              // actual number of managed handles
+    uint32_t currentPos;                // next position to search
+    dpiMutexType mutex;                 // enables thread safety
 } dpiHandleList;
 
+// used to manage a pool of shared handles in a thread-safe manner; currently
+// used for managing the pool of error handles in the dpiEnv structure; the
+// functions for managing this structure are found in the file dpiHandlePool.c
 typedef struct {
-    void **handles;
-    uint32_t numSlots;
-    uint32_t numUsedSlots;
-    uint32_t acquirePos;
-    uint32_t releasePos;
-    dpiMutexType mutex;
+    void **handles;                     // array of handles managed by pool
+    uint32_t numSlots;                  // length of handles array
+    uint32_t numUsedSlots;              // actual number of managed handles
+    uint32_t acquirePos;                // position from which to acquire
+    uint32_t releasePos;                // position to place released handles
+    dpiMutexType mutex;                 // enables thread safety
 } dpiHandlePool;
 
+// used to save error information internally; one of these is stored for each
+// thread using OCIThreadKeyGet() and OCIThreadKeySet() with a globally created
+// OCI environment handle; it is also used when getting batch error information
+// with the function dpiStmt_getBatchErrors()
 typedef struct {
-    int32_t code;
-    uint16_t offset;
-    dpiErrorNum errorNum;
-    const char *fnName;
-    const char *action;
-    char encoding[DPI_OCI_NLS_MAXBUFSZ];
-    char message[DPI_MAX_ERROR_SIZE];
-    uint32_t messageLength;
-    int isRecoverable;
+    int32_t code;                       // Oracle error code or 0
+    uint16_t offset;                    // parse error offset or row offset
+    dpiErrorNum errorNum;               // OCPI-C error number
+    const char *fnName;                 // ODPI-C function name
+    const char *action;                 // internal action
+    char encoding[DPI_OCI_NLS_MAXBUFSZ];    // encoding (IANA name)
+    char message[DPI_MAX_ERROR_SIZE];   // buffer for storing messages
+    uint32_t messageLength;             // length of message in buffer
+    int isRecoverable;                  // is recoverable?
 } dpiErrorBuffer;
 
+// represents an OCI environment; a pointer to this structure is stored on each
+// handle exposed publicly but it is created only when a pool is created or
+// when a standalone connection is created; connections acquired from a pool
+// shared the same environment as the pool; the functions for manipulating the
+// environment are found in the file dpiEnv.c; all values are read-only after
+// initialization of environment is complete
 typedef struct {
-    const dpiContext *context;
-    void *handle;
-    dpiMutexType mutex;
-    char encoding[DPI_OCI_NLS_MAXBUFSZ];
-    int32_t maxBytesPerCharacter;
-    uint16_t charsetId;
-    char nencoding[DPI_OCI_NLS_MAXBUFSZ];
-    int32_t nmaxBytesPerCharacter;
-    uint16_t ncharsetId;
-    dpiHandlePool *errorHandles;
-    dpiVersionInfo *versionInfo;
-    void *baseDate;
-    int threaded;
-    int events;
+    const dpiContext *context;          // context used to create environment
+    void *handle;                       // OCI environment handle
+    dpiMutexType mutex;                 // for reference count (threaded mode)
+    char encoding[DPI_OCI_NLS_MAXBUFSZ];    // CHAR encoding (IANA name)
+    int32_t maxBytesPerCharacter;       // max bytes per CHAR character
+    uint16_t charsetId;                 // CHAR encoding (Oracle charset ID)
+    char nencoding[DPI_OCI_NLS_MAXBUFSZ];   // NCHAR encoding (IANA name)
+    int32_t nmaxBytesPerCharacter;      // max bytes per NCHAR character
+    uint16_t ncharsetId;                // NCHAR encoding (Oracle charset ID)
+    dpiHandlePool *errorHandles;        // pool of OCI error handles
+    dpiVersionInfo *versionInfo;        // OCI client version info
+    void *baseDate;                     // midnight, January 1, 1970
+    int threaded;                       // threaded mode enabled?
+    int events;                         // events mode enabled?
 } dpiEnv;
 
+// used to manage all errors that take place in the library; the implementation
+// for the functions that use this structure are found in dpiError.c; a pointer
+// to this structure is passed to all internal functions and the first thing
+// that takes place in every public function is a call to this this error
+// structure
 typedef struct {
-    dpiErrorBuffer *buffer;
-    void *handle;
-    dpiEnv *env;
+    dpiErrorBuffer *buffer;             // buffer to store error information
+    void *handle;                       // OCI error handle or NULL
+    dpiEnv *env;                        // env which created OCI error handle
 } dpiError;
 
+// function signature for all methods that free publicly exposed handles
 typedef void (*dpiTypeFreeProc)(void*, dpiError*);
 
+// strcture used to provide metadata for the different types of handles exposed
+// publicly; a list of these structures (defined as constants) can be found in
+// the file dpiGen.c; the enumeration dpiHandleTypeNum is used to identify the
+// structures instead of being used directly
 typedef struct {
-    const char *name;
-    size_t size;
-    uint32_t checkInt;
-    dpiTypeFreeProc freeProc;
+    const char *name;                   // name (used in error messages)
+    size_t size;                        // size of structure, in bytes
+    uint32_t checkInt;                  // check integer (unique)
+    dpiTypeFreeProc freeProc;           // procedure to call to free handle
 } dpiTypeDef;
 
+// all structures exposed publicly by handle have these members
 #define dpiType_HEAD \
     const dpiTypeDef *typeDef; \
     uint32_t checkInt; \
     unsigned refCount; \
     dpiEnv *env;
 
+// contains the base attributes that all handles exposed publicly have; generic
+// functions for checking and manipulating handles are found in the file
+// dpiGen.c; the check integer is used to verify the validity of the handle and
+// is reset to zero when the handle is freed; the reference count is used to
+// manage how many references (either publicly or internally) are held; when
+// the reference count reaches zero the handle is freed
 typedef struct {
     dpiType_HEAD
 } dpiBaseType;
 
+// represents the different types of Oracle data that the library supports; an
+// array of these structures (defined as constants) can be found in the file
+// dpiOracleType.c; the enumeration dpiOracleTypeNum is used to identify the
+// structures
 typedef struct dpiOracleType {
-    dpiOracleTypeNum oracleTypeNum;
-    dpiNativeTypeNum defaultNativeTypeNum;
-    uint16_t oracleType;
-    uint8_t charsetForm;
-    uint32_t sizeInBytes;
-    int isCharacterData;
-    int canBeInArray;
-    int requiresPreFetch;
+    dpiOracleTypeNum oracleTypeNum;     // enumeration value identifying type
+    dpiNativeTypeNum defaultNativeTypeNum;  // default native (C) type
+    uint16_t oracleType;                // OCI type code
+    uint8_t charsetForm;                // specifies CHAR or NCHAR encoding
+    uint32_t sizeInBytes;               // buffer size (fixed) or 0 (variable)
+    int isCharacterData;                // is type character data?
+    int canBeInArray;                   // can type be in an index-by table?
+    int requiresPreFetch;               // prefetch processing required?
 } dpiOracleType;
 
+// represents a chunk of data that has been allocated dynamically for use in
+// dynamic fetching of LONG or LONG RAW columns, or when the calling
+// application wishes to use strings or raw byte strings instead of LOBs; an
+// array of these chunks is found in the structure dpiDynamicBytes
 typedef struct {
-    char *ptr;
-    uint32_t length;
-    uint32_t allocatedLength;
+    char *ptr;                          // pointer to buffer
+    uint32_t length;                    // actual length of buffer
+    uint32_t allocatedLength;           // allocated length of buffer
 } dpiDynamicBytesChunk;
 
+// represents a set of chunks allocated dynamically for use in dynamic fetching
+// of LONG or LONG RAW columns, or when the calling application wishes to use
+// strings or raw byte strings instead of LOBS
 typedef struct {
-    uint32_t numChunks;
-    uint32_t allocatedChunks;
-    dpiDynamicBytesChunk *chunks;
+    uint32_t numChunks;                 // actual number of chunks
+    uint32_t allocatedChunks;           // allocated number of chunks
+    dpiDynamicBytesChunk *chunks;       // array of chunks
 } dpiDynamicBytes;
 
+// represents a single bound variable; an array of these is retained in the
+// dpiStmt structure in order to retain references to the variables that were
+// bound to the statement, which ensures that the values remain valid while the
+// statement is executed; the position is populated for bind by position
+// (otherwise it is 0) and the name/nameLength are populated for bind by name
+// (otherwise they are NULL/0)
 typedef struct {
     dpiVar *var;
     uint32_t pos;
@@ -694,6 +751,8 @@ typedef struct {
     uint32_t nameLength;
 } dpiBindVar;
 
+// intended to avoid the need for casts; contains references to LOBs, objects
+// and statements (as part of dpiVar)
 typedef union {
     void *asHandle;
     dpiObject *asObject;
@@ -702,6 +761,9 @@ typedef union {
     dpiRowid *asRowid;
 } dpiReferenceBuffer;
 
+// intended to avoid the need for casts; contains the actual values that are
+// bound or fetched (as part of dpiVar); it is also used for getting data into
+// and out of Oracle object instances
 typedef union {
     void *asRaw;
     char *asBytes;
@@ -722,6 +784,9 @@ typedef union {
     void **asCollection;
 } dpiOracleData;
 
+// intended to avoid the need for casts; contains the memory needed to supply
+// buffers to Oracle when values are being transferred to or from the Oracle
+// database
 typedef union {
     int64_t asInt64;
     uint64_t asUint64;
@@ -736,214 +801,283 @@ typedef union {
     void *asRaw;
 } dpiOracleDataBuffer;
 
+// represents memory areas used for transferring data to and from the database
+// and is used by the dpiVar structure; most statements only use one buffer,
+// but DML returning statements can use multiple buffers since multiple rows
+// can be returned for each execution of the statement
 typedef struct {
-    uint32_t maxArraySize;
-    uint32_t actualArraySize;
-    int16_t *indicator;
-    uint16_t *returnCode;
-    uint16_t *actualLength16;
-    uint32_t *actualLength32;
-    void **objectIndicator;
-    dpiReferenceBuffer *references;
-    dpiDynamicBytes *dynamicBytes;
-    char *tempBuffer;
-    dpiData *externalData;
-    dpiOracleData data;
+    uint32_t maxArraySize;              // max number of rows in arrays
+    uint32_t actualArraySize;           // actual number of rows in arrays
+    int16_t *indicator;                 // array of indicator values
+    uint16_t *returnCode;               // array of return code values
+    uint16_t *actualLength16;           // array of actual lengths (11.2 only)
+    uint32_t *actualLength32;           // array of actual lengths (12.1+)
+    void **objectIndicator;             // array of object indicator values
+    dpiReferenceBuffer *references;     // array of references (specific types)
+    dpiDynamicBytes *dynamicBytes;      // array of dynamically alloced chunks
+    char *tempBuffer;                   // buffer for numeric conversion
+    dpiData *externalData;              // array of buffers (externally used)
+    dpiOracleData data;                 // Oracle data buffers (internal only)
 } dpiVarBuffer;
 
 
 //-----------------------------------------------------------------------------
 // External implementation type definitions
 //-----------------------------------------------------------------------------
+
+// represents session pools and is exposed publicly as a handle of type
+// DPI_HTYPE_POOL; the implementation for this is found in the file
+// dpiPool.c
 struct dpiPool {
     dpiType_HEAD
-    void *handle;
-    const char *name;
-    uint32_t nameLength;
-    int pingInterval;
-    int pingTimeout;
-    int homogeneous;
-    int externalAuth;
+    void *handle;                       // OCI session pool handle
+    const char *name;                   // pool name (CHAR encoding)
+    uint32_t nameLength;                // length of pool name
+    int pingInterval;                   // interval (seconds) between pings
+    int pingTimeout;                    // timeout (milliseconds) for ping
+    int homogeneous;                    // homogeneous pool?
+    int externalAuth;                   // use external authentication?
 };
 
+// represents connections to the database and is exposed publicly as a handle
+// of type DPI_HTYPE_CONN; the implementation for this is found in the file
+// dpiConn.c; the list of statement, LOB and object handles created by this
+// connection is maintained and all of these are automatically closed when the
+// connection itself is closed (in order to avoid memory leaks and segfaults if
+// the correct order is not observed)
 struct dpiConn {
     dpiType_HEAD
-    dpiPool *pool;
-    void *handle;
-    void *serverHandle;
-    void *sessionHandle;
-    const char *releaseString;
-    uint32_t releaseStringLength;
-    dpiVersionInfo versionInfo;
-    uint32_t commitMode;
-    uint16_t charsetId;
-    dpiHandleList *openStmts;
-    dpiHandleList *openLobs;
-    dpiHandleList *objects;
-    int externalHandle;
-    int deadSession;
-    int standalone;
-    int closing;
+    dpiPool *pool;                      // pool acquired from or NULL
+    void *handle;                       // OCI service context handle
+    void *serverHandle;                 // OCI server handle
+    void *sessionHandle;                // OCI session handle
+    const char *releaseString;          // cached release string or NULL
+    uint32_t releaseStringLength;       // cached release string length or 0
+    dpiVersionInfo versionInfo;         // Oracle database version info
+    uint32_t commitMode;                // commit mode (for two-phase commits)
+    uint16_t charsetId;                 // database character set ID
+    dpiHandleList *openStmts;           // list of statements created
+    dpiHandleList *openLobs;            // list of LOBs created
+    dpiHandleList *objects;             // list of objects created
+    int externalHandle;                 // OCI handle provided directly?
+    int deadSession;                    // dead session (drop from pool)?
+    int standalone;                     // standalone connection (not pooled)?
+    int closing;                        // connection is being closed?
 };
 
+// represents the context in which all activity in the library takes place; the
+// implementation for this is found in the file dpiContext.c; the minor
+// version of the calling application is retained in order to adjust as needed
+// for differing sizes of public structures
 struct dpiContext {
     dpiType_HEAD
-    dpiVersionInfo *versionInfo;
-    uint8_t dpiMinorVersion;
+    dpiVersionInfo *versionInfo;        // OCI client version info
+    uint8_t dpiMinorVersion;            // ODPI-C minor version of application
 };
 
+// represents statements of all types (queries, DML, DDL, PL/SQL) and is
+// exposed publicly as a handle of type DPI_HTYPE_STMT; the implementation for
+// this is found in the file dpiStmt.c
 struct dpiStmt {
     dpiType_HEAD
-    dpiConn *conn;
-    uint32_t openSlotNum;
-    void *handle;
-    uint32_t fetchArraySize;
-    uint32_t bufferRowCount;
-    uint32_t bufferRowIndex;
-    uint32_t numQueryVars;
-    dpiVar **queryVars;
-    dpiQueryInfo *queryInfo;
-    uint32_t allocatedBindVars;
-    uint32_t numBindVars;
-    dpiBindVar *bindVars;
-    uint32_t numBatchErrors;
-    dpiErrorBuffer *batchErrors;
-    uint64_t rowCount;
-    uint64_t bufferMinRow;
-    uint16_t statementType;
-    int isOwned;
-    int hasRowsToFetch;
-    int scrollable;
-    int isReturning;
-    int deleteFromCache;
-    int closing;
+    dpiConn *conn;                      // connection which created this
+    uint32_t openSlotNum;               // slot in connection handle list
+    void *handle;                       // OCI statement handle
+    uint32_t fetchArraySize;            // rows to fetch each time
+    uint32_t bufferRowCount;            // number of rows in fetch buffers
+    uint32_t bufferRowIndex;            // index into buffers for current row
+    uint32_t numQueryVars;              // number of query variables
+    dpiVar **queryVars;                 // array of query variables
+    dpiQueryInfo *queryInfo;            // array of query metadata
+    uint32_t allocatedBindVars;         // number of allocated bind variables
+    uint32_t numBindVars;               // actual nubmer of bind variables
+    dpiBindVar *bindVars;               // array of bind variables
+    uint32_t numBatchErrors;            // number of batch errors
+    dpiErrorBuffer *batchErrors;        // array of batch errors
+    uint64_t rowCount;                  // rows affected or rows fetched so far
+    uint64_t bufferMinRow;              // row num of first row in buffers
+    uint16_t statementType;             // type of statement
+    int isOwned;                        // owned by structure?
+    int hasRowsToFetch;                 // potentially more rows to fetch?
+    int scrollable;                     // scrollable cursor?
+    int isReturning;                    // statement has RETURNING clause?
+    int deleteFromCache;                // drop from statement cache on close?
+    int closing;                        // statement is being closed?
 };
 
+// represents memory areas used for transferring data to and from the database
+// and is exposed publicly as a handle of type DPI_HTYPE_VAR; the
+// implementation for this is found in the file dpiVar.c; variables can be
+// bound to a statement or fetched into by a statement
 struct dpiVar {
     dpiType_HEAD
-    dpiConn *conn;
-    const dpiOracleType *type;
-    dpiNativeTypeNum nativeTypeNum;
-    int requiresPreFetch;
-    int isArray;
-    uint32_t sizeInBytes;
-    int isDynamic;
-    dpiObjectType *objectType;
-    dpiVarBuffer buffer;
-    dpiVarBuffer *dynBindBuffers;
-    dpiError *error;
+    dpiConn *conn;                      // connection which created this
+    const dpiOracleType *type;          // type of data contained in variable
+    dpiNativeTypeNum nativeTypeNum;     // native (C) type of data
+    int requiresPreFetch;               // requires prefetch processing?
+    int isArray;                        // is an index-by table (array)?
+    uint32_t sizeInBytes;               // size in bytes of each row
+    int isDynamic;                      // dynamically bound or defined?
+    dpiObjectType *objectType;          // object type (or NULL)
+    dpiVarBuffer buffer;                // main buffer for data
+    dpiVarBuffer *dynBindBuffers;       // array of buffers (DML returning)
+    dpiError *error;                    // error (only for dynamic bind/define)
 };
 
+// represents large objects (CLOB, BLOB, NCLOB and BFILE) and is exposed
+// publicly as a handle of type DPI_HTYPE_LOB; the implementation for this is
+// found in the file dpiLob.c
 struct dpiLob {
     dpiType_HEAD
-    dpiConn *conn;
-    uint32_t openSlotNum;
-    const dpiOracleType *type;
-    void *locator;
-    char *buffer;
-    int closing;
+    dpiConn *conn;                      // connection which created this
+    uint32_t openSlotNum;               // slot in connection handle list
+    const dpiOracleType *type;          // type of LOB
+    void *locator;                      // OCI LOB locator descriptor
+    char *buffer;                       // stores dir alias/name for BFILE
+    int closing;                        // is LOB being closed?
 };
 
+// represents object attributes of the types created by the SQL command CREATE
+// OR REPLACE TYPE and is exposed publicly as a handle of type
+// DPI_HTYPE_OBJECT_ATTR; the implementation for this is found in the file
+// dpiObjectAttr.c
 struct dpiObjectAttr {
     dpiType_HEAD
-    dpiObjectType *belongsToType;
-    const char *name;
-    uint32_t nameLength;
-    dpiDataTypeInfo typeInfo;
+    dpiObjectType *belongsToType;       // type attribute belongs to
+    const char *name;                   // name of attribute (CHAR encoding)
+    uint32_t nameLength;                // length of name of attribute
+    dpiDataTypeInfo typeInfo;           // attribute data type info
 };
 
+// represents types created by the SQL command CREATE OR REPLACE TYPE and is
+// exposed publicly as a handle of type DPI_HTYPE_OBJECT_TYPE; the
+// implementation for this is found in the file dpiObjectType.c
 struct dpiObjectType {
     dpiType_HEAD
-    dpiConn *conn;
-    void *tdo;
-    uint16_t typeCode;
-    const char *schema;
-    uint32_t schemaLength;
-    const char *name;
-    uint32_t nameLength;
-    dpiDataTypeInfo elementTypeInfo;
-    int isCollection;
-    uint16_t numAttributes;
+    dpiConn *conn;                      // connection which created this
+    void *tdo;                          // OCI type descriptor object
+    uint16_t typeCode;                  // OCI type code
+    const char *schema;                 // schema owning type (CHAR encoding)
+    uint32_t schemaLength;              // length of schema owning type
+    const char *name;                   // name of type (CHAR encoding)
+    uint32_t nameLength;                // length of name of type
+    dpiDataTypeInfo elementTypeInfo;    // type info of elements of collection
+    int isCollection;                   // is type a collection?
+    uint16_t numAttributes;             // number of attributes type has
 };
 
+// represents objects of the types created by the SQL command CREATE OR REPLACE
+// TYPE and is exposed publicly as a handle of type DPI_HTYPE_OBJECT; the
+// implementation for this is found in the file dpiObject.c
 struct dpiObject {
     dpiType_HEAD
-    dpiObjectType *type;
-    uint32_t openSlotNum;
-    void *instance;
-    void *indicator;
-    dpiObject *dependsOnObj;
-    int freeIndicator;
-    int closing;
+    dpiObjectType *type;                // type of object
+    uint32_t openSlotNum;               // slot in connection handle list
+    void *instance;                     // OCI instance
+    void *indicator;                    // OCI indicator
+    dpiObject *dependsOnObj;            // extracted from parent obj, or NULL
+    int freeIndicator;                  // should indicator be freed?
+    int closing;                        // is object being closed?
 };
 
+// represents the unique identifier of a row in Oracle Database and is exposed
+// publicly as a handle of type DPI_HTYPE_ROWID; the implementation for this is
+// found in the file dpiRowid.c
 struct dpiRowid {
     dpiType_HEAD
-    void *handle;
-    char *buffer;
-    uint16_t bufferLength;
+    void *handle;                       // OCI rowid descriptor
+    char *buffer;                       // cached string rep (or NULL)
+    uint16_t bufferLength;              // length of string rep (or 0)
 };
 
+// represents a subscription to events such as continuous query notification
+// (CQN) and object change notification and is exposed publicly as a handle of
+// type DPI_HTYPE_SUBSCR; the implementation for this is found in the file
+// dpiSubscr.c
 struct dpiSubscr {
     dpiType_HEAD
-    dpiConn *conn;
-    void *handle;
-    dpiSubscrNamespace subscrNamespace;
-    dpiSubscrQOS qos;
-    dpiSubscrCallback callback;
-    void *callbackContext;
-    int registered;
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI subscription handle
+    dpiSubscrNamespace subscrNamespace; // OCI namespace
+    dpiSubscrQOS qos;                   // quality of service flags
+    dpiSubscrCallback callback;         // callback when event is propagated
+    void *callbackContext;              // context pointer for callback
+    int registered;                     // registered with database?
 };
 
+// represents the available options for dequeueing messages when using advanced
+// queueing and is exposed publicly as a handle of type DPI_HTYPE_DEQ_OPTIONS;
+// the implementation for this is found in dpiDeqOptions.c
 struct dpiDeqOptions {
     dpiType_HEAD
-    dpiConn *conn;
-    void *handle;
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI dequeue options handle
 };
 
+// represents the available options for enqueueing messages when using advanced
+// queueing and is exposed publicly as a handle of type DPI_HTYPE_ENQ_OPTIONS;
+// the implementation for this is found in dpiEnqOptions.c
 struct dpiEnqOptions {
     dpiType_HEAD
-    dpiConn *conn;
-    void *handle;
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI enqueue options handle
 };
 
+// represents the available properties for message when using advanced queuing
+// and is exposed publicly as a handle of type DPI_HTYPE_MSG_PROPS; the
+// implementation for this is found in the file dpiMsgProps.c
 struct dpiMsgProps {
     dpiType_HEAD
-    dpiConn *conn;
-    void *handle;
-    char *buffer;
-    uint32_t bufferLength;
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI message properties handle
+    char *buffer;                       // latest message ID en/dequeued
+    uint32_t bufferLength;              // size of allocated buffer
 };
 
+// represents SODA collections and is exposed publicly as a handle of type
+// DPI_HTYPE_SODA_COLL; the implementation for this is found in the file
+// dpiSodaColl.c
 struct dpiSodaColl {
     dpiType_HEAD
-    dpiSodaDb *db;
-    void *handle;
-    int binaryContent;
+    dpiSodaDb *db;                      // database which created this
+    void *handle;                       // OCI SODA collection handle
+    int binaryContent;                  // content stored in BLOB?
 };
 
+// represents cursors that iterate over SODA collections and is exposed
+// publicly as a handle of type DPI_HTYPE_SODA_COLL_CURSOR; the implementation
+// for this is found in the file dpiSodaCollCursor.c
 struct dpiSodaCollCursor {
     dpiType_HEAD
-    dpiSodaDb *db;
-    void *handle;
+    dpiSodaDb *db;                      // database which created this
+    void *handle;                       // OCI SODA collection cursor handle
 };
 
+// represents a SODA database (contains SODA collections) and is exposed
+// publicly as a handle of type DPI_HTYPE_SODA_DB; the implementation for this
+// is found in the file dpiSodaDb.c
 struct dpiSodaDb {
     dpiType_HEAD
-    dpiConn *conn;
+    dpiConn *conn;                      // connection which created this
 };
 
+// represents a SODA document and is exposed publicly as a handle of type
+// DPI_HTYPE_SODA_DOC; the implementation for this is found in the file
+// dpiSodaDoc.c
 struct dpiSodaDoc {
     dpiType_HEAD
-    dpiSodaDb *db;
-    void *handle;
-    int binaryContent;
+    dpiSodaDb *db;                      // database which created this
+    void *handle;                       // OCI SODA document handle
+    int binaryContent;                  // binary content?
 };
 
+// represents a SODA document cursor and is exposed publicly as a handle of
+// type DPI_HTYPE_SODA_DOC_CURSOR; the implementation for this is found in the
+// file dpiSodaDocCursor.c
 struct dpiSodaDocCursor {
     dpiType_HEAD
-    dpiSodaColl *coll;
-    void *handle;
+    dpiSodaColl *coll;                  // collection which created this
+    void *handle;                       // OCI SODA document cursor handle
 };
 
 
