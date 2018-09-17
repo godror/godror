@@ -413,11 +413,18 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	st.conn.RLock()
 	defer st.conn.RUnlock()
 
-	if st.query == getConnection {
+	switch st.query {
+	case getConnection:
 		if Log != nil {
 			Log("msg", "QueryContext", "args", args)
 		}
 		return &directRow{conn: st.conn, query: st.query, result: []interface{}{st.conn}}, nil
+
+	case wrapResultset:
+		if Log != nil {
+			Log("msg", "QueryContext", "args", args)
+		}
+		return args[0].Value.(driver.Rows), nil
 	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
@@ -485,8 +492,12 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
+	if st.query == wrapResultset {
+		return 1
+	}
 	if st.dpiStmt == nil {
-		if st.query == getConnection {
+		switch st.query {
+		case getConnection, wrapResultset:
 			return 1
 		}
 		return 0

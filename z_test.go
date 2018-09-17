@@ -664,6 +664,40 @@ func TestSelectRefCursor(t *testing.T) {
 	}
 }
 
+func TestSelectRefCursorWrap(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM <= 10) FROM DUAL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var intf interface{}
+		if err := rows.Scan(&intf); err != nil {
+			t.Error(err)
+			continue
+		}
+		t.Logf("%T", intf)
+		sub, err := goracle.WrapRows(ctx, testDb, intf.(driver.Rows))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("Sub", sub)
+		for sub.Next() {
+			var oName, oType, oID string
+			var created time.Time
+			if err := sub.Scan(&oName, &oType, &oID, &created); err != nil {
+				t.Error(err)
+				break
+			}
+			t.Log(oName, oType, oID, created)
+		}
+		sub.Close()
+	}
+}
+
 func TestExecuteMany(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()

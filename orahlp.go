@@ -41,6 +41,11 @@ type Execer interface {
 	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 }
 
+// Querier is the QueryContext of sql.Conn.
+type Querier interface {
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+}
+
 // DescribeQuery describes the columns in the qry.
 //
 // This can help using unknown-at-compile-time, a.k.a.
@@ -289,4 +294,8 @@ func getConn(ex Execer) (*conn, error) {
 		return nil, errors.Wrap(err, "getConnection")
 	}
 	return c.(*conn), nil
+}
+
+func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
+	return q.QueryContext(ctx, wrapResultset, rset)
 }
