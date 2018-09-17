@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.7.1] - 2018-09-17
+### Changed
+- Inherit parent statement's Options for statements returned as sql.Out.
+
 ## [2.7.0] - 2018-09-14
 ### Changed
 - Update ODPI-C to v3.0.0.
