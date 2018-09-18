@@ -517,6 +517,7 @@ type ConnectionParams struct {
 }
 
 // StringNoClass returns the string representation of ConnectionParams, without class info.
+// The password is replaced with a "SECRET" string!
 func (P ConnectionParams) StringNoClass() string {
 	return P.string(false, false)
 }
@@ -524,6 +525,8 @@ func (P ConnectionParams) String() string {
 	return P.string(true, false)
 }
 
+// StringWithPassword returns the string representation of ConnectionParams (as String() does),
+// but does NOT obfuscate the password, just prints it as is.
 func (P ConnectionParams) StringWithPassword() string {
 	return P.string(true, true)
 }

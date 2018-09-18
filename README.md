@@ -92,6 +92,14 @@ That's what `goracle.DriverConn` is for!
 See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 [NewSubscription](https://godoc.org/gopkg.in/goracle.v2#Subscription).
 
+### Calling stored procedures
+Use `ExecContext` and mark each OUT parameter with `sql.Out`.
+
+### Using cursors returned by stored procedures
+Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
+then either use the `driver.Rows` interface, or transform it into a regular `*sql.Rows` with
+`goracle.WrapRows`.
+
 ## Caveats
 
 ### sql.NullString

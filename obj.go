@@ -202,6 +202,7 @@ type ObjectType struct {
 
 func (t ObjectType) getError() error { return t.drv.getError() }
 
+// FullName returns the object's name with the schame prepended.
 func (t ObjectType) FullName() string {
 	if t.Schema == "" {
 		return t.Name

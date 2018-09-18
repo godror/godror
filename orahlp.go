@@ -296,6 +296,7 @@ func getConn(ex Execer) (*conn, error) {
 	return c.(*conn), nil
 }
 
+// WrapRows transforms a driver.Rows into an *sql.Rows.
 func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
 	return q.QueryContext(ctx, wrapResultset, rset)
 }
