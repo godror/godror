@@ -28,7 +28,8 @@
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
 //     connectionClass=POOLED& \
-//     standaloneConnection=0
+//     standaloneConnection=0& \
+//     enableEvents=0
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -440,7 +441,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if C.dpiContext_initCommonCreateParams(d.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
 		return nil, errors.Wrap(d.getError(), "initCommonCreateParams")
 	}
-	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED | C.DPI_MODE_CREATE_EVENTS
+	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
+	if P.EnableEvents {
+		commonCreateParams.createMode |= C.DPI_MODE_CREATE_EVENTS
+	}
 	commonCreateParams.encoding = cUTF8
 	commonCreateParams.nencoding = cUTF8
 	commonCreateParams.driverName = cDriverName
@@ -513,6 +517,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass        string
 	IsSysDBA, IsSysOper, StandaloneConnection bool
+	EnableEvents                              bool
 	MinSessions, MaxSessions, PoolIncrement   int
 }
 
@@ -552,9 +557,10 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		Path:   path,
 		RawQuery: cc +
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
-				"sysdba=%d&sysoper=%d&standaloneConnection=%d",
+				"sysdba=%d&sysoper=%d&standaloneConnection=%d&enableEvents=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.StandaloneConnection),
+				b2i(P.EnableEvents),
 			),
 	}).String()
 }
@@ -615,6 +621,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.IsSysOper = q.Get("sysoper") == "1"
 	}
 	P.StandaloneConnection = q.Get("standaloneConnection") == "1" || P.ConnClass == NoConnectionPoolingConnectionClass
+	P.EnableEvents = q.Get("enableEvents") == "1"
 
 	for _, task := range []struct {
 		Dest *int

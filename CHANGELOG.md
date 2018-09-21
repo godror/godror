@@ -5,8 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.8.0] - 2018-09-21
 ### Added
 - WrapRows wraps a driver.Rows (such as a returned cursor from a stored procedure) as an sql.Rows for easier handling.
+
+### Changed
+- Do not allow events by default, make them opt-in with EnableEvents connection parameter - see #98.
 
 ## [2.7.1] - 2018-09-17
 ### Changed

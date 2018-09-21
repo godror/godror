@@ -27,6 +27,7 @@ import "C"
 
 import (
 	"log"
+	"strings"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -141,6 +142,9 @@ func (s *Subscription) getError() error { return s.conn.getError() }
 //
 // Make sure your user has CHANGE NOTIFICATION privilege!
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
+	if !c.connParams.EnableEvents {
+		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
+	}
 	subscr := Subscription{conn: c, callback: cb}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
 	//defer func() { C.free(unsafe.Pointer(params)) }()
@@ -165,7 +169,11 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(params))
 		C.free(unsafe.Pointer(dpiSubscr))
-		return nil, errors.Wrap(c.getError(), "newSubscription")
+		err := errors.Wrap(c.getError(), "newSubscription")
+		if strings.Contains(errors.Cause(err).Error(), "DPI-1065:") {
+			err = errors.WithMessage(err, "specify \"enableEvents=1\" connection parameter on connection to be able to use subscriptions")
+		}
+		return nil, err
 	}
 	subscr.dpiSubscr = dpiSubscr
 	return &subscr, nil
