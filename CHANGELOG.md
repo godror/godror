@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- CallTimeout option to set a per-statement OCI_ATTR_CALL_TIMEOUT.
 
 ## [2.8.0] - 2018-09-21
 ### Added

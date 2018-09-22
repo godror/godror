@@ -44,6 +44,7 @@ type stmtOptions struct {
 	plSQLArrays         bool
 	clobAsString        bool
 	magicTypeConversion bool
+	callTimeout         time.Duration
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -109,6 +110,13 @@ func ClobAsString() Option {
 // MagicTypeConversion returns an option to force converting named scalar types (e.g. "type underlying int64") to their scalar underlying type.
 func MagicTypeConversion() Option {
 	return func(o *stmtOptions) { o.magicTypeConversion = true }
+}
+
+// CallTimeout sets the round-trip timeout (OCI_ATTR_CALL_TIMEOUT).
+//
+// See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/handle-and-descriptor-attributes.html#GUID-D8EE68EB-7E38-4068-B06E-DF5686379E5E
+func CallTimeout(d time.Duration) Option {
+	return func(o *stmtOptions) { o.callTimeout = d }
 }
 
 const minChunkSize = 1 << 16
@@ -526,6 +534,13 @@ func (st *statement) NumInput() int {
 
 	// return the number of *unique* arguments
 	return int(cnt)
+}
+
+func (st *statement) setCallTimeout(ctx context.Context) {
+	if st.callTimeout != 0 {
+		ctx, _ = context.WithTimeout(ctx, st.callTimeout)
+	}
+	st.conn.setCallTimeout(ctx)
 }
 
 type argInfo struct {
