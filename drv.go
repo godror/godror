@@ -54,7 +54,10 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/base64"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"math"
 	"net/url"
 	"os"
@@ -329,6 +332,12 @@ func (d *drv) init() error {
 		return fromErrorInfo(errInfo)
 	}
 	d.dpiContext = dpiCtx
+
+	var v C.dpiVersionInfo
+	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
+		return errors.Wrap(d.getError(), "getClientVersion")
+	}
+	d.clientVersion.set(&v)
 	return nil
 }
 
@@ -345,21 +354,6 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
-	d.mu.Lock()
-	if d.clientVersion.Version != 0 {
-		d.mu.Unlock()
-		return d.clientVersion, nil
-	}
-	d.mu.Unlock()
-	if err := d.init(); err != nil {
-		return d.clientVersion, err
-	}
-
-	var v C.dpiVersionInfo
-	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
-		return d.clientVersion, errors.Wrap(d.getError(), "getClientVersion")
-	}
-	d.clientVersion.set(&v)
 	return d.clientVersion, nil
 }
 
@@ -369,7 +363,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 
 	c := conn{drv: d, connParams: P}
-	connString := P.StringNoClass()
+	connString := P.String()
 
 	defer func() {
 		d.mu.Lock()
@@ -490,6 +484,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if Log != nil {
 		Log("C", "dpiPool_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
 	}
+	//fmt.Println("POOL create", connString)
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(P.Username)),
@@ -521,13 +516,16 @@ type ConnectionParams struct {
 	MinSessions, MaxSessions, PoolIncrement   int
 }
 
+// String returns the string representation of ConnectionParams.
+// The password is replaced with a "SECRET" string!
+func (P ConnectionParams) String() string {
+	return P.string(true, false)
+}
+
 // StringNoClass returns the string representation of ConnectionParams, without class info.
 // The password is replaced with a "SECRET" string!
 func (P ConnectionParams) StringNoClass() string {
 	return P.string(false, false)
-}
-func (P ConnectionParams) String() string {
-	return P.string(true, false)
 }
 
 // StringWithPassword returns the string representation of ConnectionParams (as String() does),
@@ -546,9 +544,11 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
 	}
 	// params should be sorted lexicographically
-	password := "SECRET"
-	if withPassword {
-		password = P.Password
+	password := P.Password
+	if !withPassword {
+		hsh := fnv.New64()
+		io.WriteString(hsh, P.Password)
+		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
 	}
 	return (&url.URL{
 		Scheme: "oracle",

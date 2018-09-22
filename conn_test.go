@@ -35,6 +35,15 @@ func TestParseConnString(t *testing.T) {
 	wantXO := wantDefault
 	wantXO.SID = "localhost/sid"
 
+	setP := func(s, p string) string {
+		if i := strings.Index(s, ":SECRET-"); i >= 0 {
+			if j := strings.Index(s[i:], "@"); j >= 0 {
+				return s[:i+1] + p + s[i+j:]
+			}
+		}
+		return s
+	}
+
 	for tName, tCase := range map[string]struct {
 		In   string
 		Want ConnectionParams
@@ -46,7 +55,7 @@ func TestParseConnString(t *testing.T) {
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3}},
 
 		"@": {
-			In:   strings.Replace(wantAt.String(), ":SECRET@", ":"+wantAt.Password+"@", 1),
+			In:   setP(wantAt.String(), wantAt.Password),
 			Want: wantAt},
 
 		"xo": {In: "oracle://user:pass@localhost/sid", Want: wantXO},
@@ -61,7 +70,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P))
 			continue
 		}
-		s := strings.Replace(P.String(), ":SECRET@", ":"+P.Password+"@", 1)
+		s := setP(P.String(), P.Password)
 		Q, err := ParseConnString(s)
 		if err != nil {
 			t.Errorf("%s: parseConnString %v", tName, err)
@@ -71,7 +80,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
 			continue
 		}
-		if got := strings.Replace(Q.String(), ":SECRET@", ":"+Q.Password+"@", 1); s != got {
+		if got := setP(Q.String(), Q.Password); s != got {
 			t.Errorf("%s: paramString got %q, wanted %q", tName, got, s)
 		}
 	}

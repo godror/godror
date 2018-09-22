@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - CallTimeout option to set a per-statement OCI_ATTR_CALL_TIMEOUT.
 
+### Changed
+- Hash the password ("SECRET-sasdas=") in ConnectionParams.String().
+
 ## [2.8.0] - 2018-09-21
 ### Added
 - WrapRows wraps a driver.Rows (such as a returned cursor from a stored procedure) as an sql.Rows for easier handling.

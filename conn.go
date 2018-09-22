@@ -49,10 +49,10 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	sync.RWMutex
-	dpiConn       *C.dpiConn
-	connParams    ConnectionParams
-	inTransaction bool
-	Server        VersionInfo
+	dpiConn        *C.dpiConn
+	connParams     ConnectionParams
+	inTransaction  bool
+	Client, Server VersionInfo
 	*drv
 }
 
@@ -338,6 +338,10 @@ func (c *conn) init() error {
 	if c.Server.Version != 0 {
 		return nil
 	}
+	var err error
+	if c.Client, err = c.drv.ClientVersion(); err != nil {
+		return err
+	}
 	var v C.dpiVersionInfo
 	var release *C.char
 	var releaseLen C.uint32_t
@@ -350,12 +354,15 @@ func (c *conn) init() error {
 }
 
 func (c *conn) setCallTimeout(ctx context.Context) {
-	if c.Server.Version < 18 {
+	if c.Client.Version < 18 {
 		return
 	}
+	var ms C.uint32_t
 	if dl, ok := ctx.Deadline(); ok {
-		C.dpiConn_setCallTimeout(c.dpiConn, C.uint32_t(time.Until(dl)/time.Millisecond))
+		ms = C.uint32_t(time.Until(dl) / time.Millisecond)
 	}
+	// force it to be 0 (disabled)
+	C.dpiConn_setCallTimeout(c.dpiConn, ms)
 }
 
 func maybeBadConn(err error) error {
