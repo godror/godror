@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - CallTimeout option to set a per-statement OCI_ATTR_CALL_TIMEOUT.
+- Allow login with " AS SYSASM", as requested in #100.
 
 ### Changed
 - Hash the password ("SECRET-sasdas=") in ConnectionParams.String().

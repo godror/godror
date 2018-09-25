@@ -373,10 +373,13 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		d.mu.Unlock()
 	}()
 	authMode := C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
-	if P.IsSysDBA {
+	switch {
+	case P.IsSysDBA:
 		authMode |= C.DPI_MODE_AUTH_SYSDBA
-	} else if P.IsSysOper {
+	case P.IsSysOper:
 		authMode |= C.DPI_MODE_AUTH_SYSOPER
+	case P.IsSysASM:
+		authMode |= C.DPI_MODE_AUTH_SYSASM
 	}
 
 	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
@@ -392,7 +395,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
-	if !(P.IsSysDBA || P.IsSysOper || P.StandaloneConnection) {
+	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.StandaloneConnection) {
 		d.mu.Lock()
 		dp := d.pools[connString]
 		d.mu.Unlock()
@@ -444,7 +447,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if P.IsSysDBA || P.IsSysOper || P.StandaloneConnection {
+	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.StandaloneConnection {
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
 			Log("C", "dpiConn_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
@@ -510,10 +513,11 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 // You can use ConnectionParams{...}.String() as a connection string
 // in sql.Open.
 type ConnectionParams struct {
-	Username, Password, SID, ConnClass        string
-	IsSysDBA, IsSysOper, StandaloneConnection bool
-	EnableEvents                              bool
-	MinSessions, MaxSessions, PoolIncrement   int
+	Username, Password, SID, ConnClass      string
+	IsSysDBA, IsSysOper, IsSysASM           bool
+	StandaloneConnection                    bool
+	EnableEvents                            bool
+	MinSessions, MaxSessions, PoolIncrement int
 }
 
 // String returns the string representation of ConnectionParams.
@@ -557,10 +561,11 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		Path:   path,
 		RawQuery: cc +
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
-				"sysdba=%d&sysoper=%d&standaloneConnection=%d&enableEvents=%d",
+				"sysdba=%d&sysoper=%d&sysasm=%d&"+
+				"standaloneConnection=%d&enableEvents=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
-				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.StandaloneConnection),
-				b2i(P.EnableEvents),
+				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
+				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
 			),
 	}).String()
 }
@@ -592,6 +597,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			P.SID = P.SID[:len(P.SID)-10]
 		} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
 			P.SID = P.SID[:len(P.SID)-11]
+		} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
+			P.SID = P.SID[:len(P.SID)-10]
 		}
 		if strings.HasSuffix(P.SID, ":POOLED") {
 			P.ConnClass, P.SID = "POOLED", P.SID[:len(P.SID)-7]
@@ -618,7 +625,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.ConnClass = vv[0]
 	}
 	if P.IsSysDBA = q.Get("sysdba") == "1"; !P.IsSysDBA {
-		P.IsSysOper = q.Get("sysoper") == "1"
+		if P.IsSysOper = q.Get("sysoper") == "1"; !P.IsSysOper {
+			P.IsSysASM = q.Get("sysasm") == "1"
+		}
 	}
 	P.StandaloneConnection = q.Get("standaloneConnection") == "1" || P.ConnClass == NoConnectionPoolingConnectionClass
 	P.EnableEvents = q.Get("enableEvents") == "1"
