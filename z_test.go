@@ -1021,7 +1021,7 @@ func TestOpenClose(t *testing.T) {
 		ctx = goracle.ContextWithTraceTag(ctx, tt)
 		tx2, err2 := db.BeginTx(ctx, nil)
 		if err2 != nil {
-			if strings.Contains(err.Error(), "ORA-12516:") {
+			if strings.Contains(err2.Error(), "ORA-12516:") {
 				tx1.Rollback()
 				break
 			}
