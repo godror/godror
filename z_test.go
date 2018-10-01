@@ -1763,3 +1763,24 @@ func TestSelectCustomType(t *testing.T) {
 		t.Errorf("got %d rows, wanted %d", n, num)
 	}
 }
+
+func TestExecInt64(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	qry := `CREATE OR REPLACE PROCEDURE test_i64_out(p_int NUMBER, p_out1 OUT NUMBER, p_out2 OUT NUMBER) IS
+	BEGIN p_out1 := p_int; p_out2 := p_int; END;`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.ExecContext(ctx, "DROP PROCEDURE test_i64_out")
+
+	qry = "BEGIN test_i64_out(:1, :2, :3); END;"
+	var num sql.NullInt64
+	var str string
+	defer tl.enableLogging(t)()
+	if _, err := testDb.ExecContext(ctx, qry, 3.14, sql.Out{Dest: &num}, sql.Out{Dest: &str}); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("num:", num, "str:", str)
+}

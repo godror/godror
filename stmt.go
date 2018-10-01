@@ -787,28 +787,27 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
 	nilPtr := false
-	switch x := value.(type) {
-	case *driver.Rows:
-	case Number:
-	case *Number:
-		if nilPtr = x == nil; nilPtr {
-			info.set = dataSetNull
-			value = Number("")
-		} else {
-			value = *x
-		}
-	case driver.Valuer:
-		var err error
-		if value, err = x.Value(); err != nil {
-			return value, errors.Wrap(err, "arg.Value()")
-		}
+	if Log != nil {
+		Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
+	}
+	vlr, isValuer := value.(driver.Valuer)
 
+	switch value.(type) {
+	case *driver.Rows:
 	default:
 		var magic bool
 		rv := reflect.ValueOf(value)
 		kind := rv.Kind()
 		if kind != reflect.Ptr {
-			magic = st.MagicTypeConversion()
+			if magic = st.MagicTypeConversion(); magic {
+				if isValuer {
+					var err error
+					if value, err = vlr.Value(); err != nil {
+						return value, errors.Wrap(err, "arg.Value()")
+					}
+					return st.bindVarTypeSwitch(info, get, value)
+				}
+			}
 		} else {
 			if nilPtr = rv.IsNil(); nilPtr {
 				info.set = dataSetNull
@@ -1050,10 +1049,14 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 
 	default:
-		switch typ := reflect.TypeOf(value); typ.Kind {
+		if !isValuer {
+			return value, errors.Errorf("unknown type %T", value)
 		}
-
-		return value, errors.Errorf("unknown type %T", value)
+		var err error
+		if value, err = vlr.Value(); err != nil {
+			return value, errors.Wrap(err, "arg.Value()")
+		}
+		return st.bindVarTypeSwitch(info, get, value)
 	}
 
 	return value, nil
