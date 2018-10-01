@@ -428,6 +428,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			ym := C.dpiData_getIntervalYM(d)
 			dest[i] = fmt.Sprintf("%dy%dm", ym.years, ym.months)
+
 		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
 			C.DPI_ORACLE_TYPE_BLOB,
 			C.DPI_ORACLE_TYPE_BFILE,
@@ -473,13 +474,30 @@ func (r *rows) Next(dest []driver.Value) error {
 				return err
 			}
 			dest[i] = r2
+
 		case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
 			dest[i] = C.dpiData_getBool(d) == 1
-			//case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
+
+		case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
+			if isNull {
+				dest[i] = nil
+				continue
+			}
+			b := C.dpiData_getBytes(d)
+			fmt.Println(b)
+			if Log != nil {
+				Log("msg", "object", "length", b.length, "bytes", C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.length)))
+			}
+
+			dest[i] = &Object{
+				ObjectType: ObjectType{dpiObjectType: col.ObjectType},
+				dpiObject:  C.dpiData_getObject(d),
+			}
+
 		default:
 			return errors.Errorf("unsupported column type %d", typ)
 		}

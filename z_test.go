@@ -1648,27 +1648,56 @@ func TestQueryTimeout(t *testing.T) {
 
 func TestSDO(t *testing.T) {
 	//t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	qry := `SELECT SDO_GEOMETRY('POINT(1 0)', 4326) SHAPE FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(0 1)', 4326) SHAPE FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(-1 4)', 4326) SHAPE FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(2 -6)', 4326) SHAPE FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(-2 7)', 4326) SHAPE FROM DUAL`
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+	defer tl.enableLogging(t)()
+	for rows.Next() {
+		var i interface{}
+		if err = rows.Scan(&i); err != nil {
+			t.Error(errors.Wrap(err, "scan"))
+		}
+		t.Log(i)
+		o := i.(*goracle.Object)
+		t.Log(o.Attributes)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return
+
 	testDb.ExecContext(ctx, "DROP TABLE test_sdo")
 	for _, qry := range []string{
-		`CREATE TYPE test_sdo_point_type AS OBJECT (
-   X NUMBER,
-   Y NUMBER,
-   Z NUMBER)`,
-		"CREATE TYPE test_sdo_elem_info_array AS VARRAY (1048576) of NUMBER",
-		"CREATE TYPE test_sdo_ordinate_array AS VARRAY (1048576) of NUMBER",
-		`CREATE TYPE test_sdo_geometry AS OBJECT (
- SDO_GTYPE NUMBER,
- SDO_SRID NUMBER,
- SDO_POINT test_SDO_POINT_TYPE,
- SDO_ELEM_INFO test_SDO_ELEM_INFO_ARRAY,
- SDO_ORDINATES test_SDO_ORDINATE_ARRAY)`,
+		/*
+					`CREATE TYPE test_sdo_point_type AS OBJECT (
+			   X NUMBER,
+			   Y NUMBER,
+			   Z NUMBER)`,
+					"CREATE TYPE test_sdo_elem_info_array AS VARRAY (1048576) of NUMBER",
+					"CREATE TYPE test_sdo_ordinate_array AS VARRAY (1048576) of NUMBER",
+					`CREATE TYPE test_sdo_geometry AS OBJECT (
+			 SDO_GTYPE NUMBER,
+			 SDO_SRID NUMBER,
+			 SDO_POINT test_SDO_POINT_TYPE,
+			 SDO_ELEM_INFO test_SDO_ELEM_INFO_ARRAY,
+			 SDO_ORDINATES test_SDO_ORDINATE_ARRAY)`,
 
-		`CREATE TABLE test_sdo(
-		id INTEGER not null,
-		shape test_SDO_GEOMETRY not null
-	)`,
+					`CREATE TABLE test_sdo(
+					id INTEGER not null,
+					shape test_SDO_GEOMETRY not null
+				)`,
+		*/
+
+		`CREATE TABLE test_sdo(id INTEGER not null, shape sdo_geometry not null)`,
 	} {
 		var drop string
 		if strings.HasPrefix(qry, "CREATE TYPE") {
@@ -1679,10 +1708,12 @@ func TestSDO(t *testing.T) {
 		testDb.ExecContext(ctx, drop)
 		t.Log(drop)
 		if _, err := testDb.ExecContext(ctx, qry); err != nil {
-			if strings.Contains(err.Error(), "ORA-01031:") {
-				t.Skip(err)
+			err = errors.Wrap(err, qry)
+			t.Log(err)
+			if !strings.Contains(err.Error(), "ORA-01031:") {
+				t.Fatal(err)
 			}
-			t.Fatal(errors.Wrap(err, qry))
+			//t.Skip(err)
 		}
 		defer testDb.ExecContext(ctx, drop)
 	}
@@ -1692,19 +1723,29 @@ func TestSDO(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	qry := `INSERT INTO test_sdo(id, shape)
+
+	qry = `INSERT INTO test_sdo(id, shape)
 VALUES (1,
-  test_sdo_geometry(
+  sdo_geometry(
     sdo_gtype=>1,
 	sdo_srid=>NULL,
-	sdo_point=>test_sdo_point_type(x=>1, y=>2, z=>3),
-	sdo_emel_info=>test_sdo_elem_info_array(),
-	sdo_ordinates=>test_sdo_ordinate_array()))`
+	sdo_point=>sdo_point_type(x=>1, y=>2, z=>3),
+	sdo_emel_info=>sdo_elem_info_array(),
+	sdo_ordinates=>sdo_ordinate_array()))`
 	if _, err = tx.ExecContext(ctx, qry); err != nil {
 		t.Skip(errors.Wrap(err, qry))
 	}
+	qry = `INSERT INTO test_sdo(id, shape)
+SELECT SDO_GEOMETRY(2001, 4326, SDO_POINT_TYPE(1, 0, NULL), NULL, NULL) FROM DUAL
+UNION ALL SELECT SDO_GEOMETRY(2001, 4326, SDO_POINT_TYPE(0, 1, NULL), NULL, NULL) FROM DUAL
+UNION ALL SELECT SDO_GEOMETRY(2001, 4326, SDO_POINT_TYPE(-1, 4, NULL), NULL, NULL) FROM DUAL
+UNION ALL SELECT SDO_GEOMETRY(2001, 4326, SDO_POINT_TYPE(2, -6, NULL), NULL, NULL) FROM DUAL
+UNION ALL SELECT SDO_GEOMETRY(2001, 4326, SDO_POINT_TYPE(-2, 7, NULL), NULL, NULL) FROM DUAL`
+	if _, err = tx.ExecContext(ctx, qry); err != nil {
+		t.Error(errors.Wrap(err, qry))
+	}
 
-	rows, err := tx.QueryContext(ctx, "SELECT id, shape FROM test_sdo")
+	rows, err = tx.QueryContext(ctx, "SELECT id, shape FROM test_sdo")
 	if err != nil {
 		t.Fatal(err)
 	}
