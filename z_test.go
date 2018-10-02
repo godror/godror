@@ -1666,9 +1666,9 @@ func TestSDO(t *testing.T) {
 		if err = rows.Scan(&i); err != nil {
 			t.Error(errors.Wrap(err, "scan"))
 		}
-		t.Log(i)
 		o := i.(*goracle.Object)
-		t.Log(o.Attributes)
+		t.Log("o:", o)
+		t.Log("attrs:", o.Attributes)
 	}
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)

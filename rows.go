@@ -487,16 +487,12 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			b := C.dpiData_getBytes(d)
-			fmt.Println(b)
-			if Log != nil {
-				Log("msg", "object", "length", b.length, "bytes", C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.length)))
-			}
-
-			dest[i] = &Object{
+			o := &Object{
 				ObjectType: ObjectType{dpiObjectType: col.ObjectType},
 				dpiObject:  C.dpiData_getObject(d),
 			}
+			o.init()
+			dest[i] = o
 
 		default:
 			return errors.Errorf("unsupported column type %d", typ)
