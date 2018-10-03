@@ -21,6 +21,7 @@ package goracle
 */
 import "C"
 import (
+	"fmt"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -36,6 +37,9 @@ func (O *Object) getError() error { return O.drv.getError() }
 
 // GetAttribute gets the i-th attribute into data.
 func (O *Object) GetAttribute(data *Data, i int) error {
+	if O == nil || O.dpiObject == nil {
+		panic("nil dpiObject")
+	}
 	attr := O.Attributes[i]
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
@@ -44,11 +48,19 @@ func (O *Object) GetAttribute(data *Data, i int) error {
 	if wasNull {
 		data.dpiData = (*C.dpiData)(C.malloc(C.sizeof_void))
 	}
+	// If the native type is DPI_NATIVE_TYPE_BYTES and the Oracle type of the attribute is DPI_ORACLE_TYPE_NUMBER,
+	// a buffer must be supplied in the value.asBytes.ptr attribute and
+	// the maximum length of that buffer must be supplied
+	// in the value.asBytes.length attribute before calling this function.
+	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
+		var a [22]byte
+		C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), 22)
+	}
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		if wasNull {
 			C.free(unsafe.Pointer(data.dpiData))
 		}
-		return O.getError()
+		return errors.Wrapf(O.getError(), "getAttributeValue(%+v, %+v, %d)", O, attr, data.NativeTypeNum)
 	}
 	return nil
 }
@@ -233,7 +245,21 @@ func (t ObjectType) NewObject() (*Object, error) {
 	return &Object{ObjectType: t, dpiObject: obj}, nil
 }
 
+func wrapObject(d *drv, objectType *C.dpiObjectType, object *C.dpiObject) (*Object, error) {
+	if objectType == nil {
+		return nil, errors.New("objectType is nil")
+	}
+	o := &Object{
+		ObjectType: ObjectType{dpiObjectType: objectType, drv: d},
+		dpiObject:  object,
+	}
+	return o, o.init()
+}
+
 func (t *ObjectType) init() error {
+	if t.drv == nil {
+		panic("drv is nil")
+	}
 	if t.Name != "" && t.Attributes != nil {
 		return nil
 	}
@@ -242,7 +268,7 @@ func (t *ObjectType) init() error {
 	}
 	var info C.dpiObjectTypeInfo
 	if C.dpiObjectType_getInfo(t.dpiObjectType, &info) == C.DPI_FAILURE {
-		return t.getError()
+		return errors.Wrapf(t.getError(), "%v.getInfo", t)
 	}
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
@@ -269,12 +295,15 @@ func (t *ObjectType) init() error {
 		C.uint16_t(len(attrs)),
 		(**C.dpiObjectAttr)(unsafe.Pointer(&attrs[0])),
 	) == C.DPI_FAILURE {
-		return t.getError()
+		return errors.Wrapf(t.getError(), "%v.getAttributes", t)
 	}
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
-			return t.getError()
+			return errors.Wrapf(t.getError(), "%v.attr_getInfo", attr)
+		}
+		if Log != nil {
+			Log("i", i, "attrInfo", attrInfo)
 		}
 		typ := attrInfo.typeInfo
 		sub, err := objectTypeFromDataTypeInfo(t.drv, typ)
@@ -282,7 +311,6 @@ func (t *ObjectType) init() error {
 			return err
 		}
 		t.Attributes[i] = ObjectAttribute{
-			drv:           t.drv,
 			dpiObjectAttr: attr,
 			Name:          C.GoStringN(attrInfo.name, C.int(attrInfo.nameLength)),
 			ObjectType:    sub,
@@ -305,6 +333,12 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	return t.init()
 }
 func objectTypeFromDataTypeInfo(drv *drv, typ C.dpiDataTypeInfo) (ObjectType, error) {
+	if drv == nil {
+		panic("drv nil")
+	}
+	if typ.oracleTypeNum == 0 {
+		panic("typ is nil")
+	}
 	t := ObjectType{drv: drv}
 	err := t.fromDataTypeInfo(typ)
 	return t, err
@@ -312,7 +346,6 @@ func objectTypeFromDataTypeInfo(drv *drv, typ C.dpiDataTypeInfo) (ObjectType, er
 
 // ObjectAttribute is an attribute of an Object.
 type ObjectAttribute struct {
-	drv           *drv
 	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
 	ObjectType
@@ -336,7 +369,7 @@ func (A ObjectAttribute) Close() error {
 func GetObjectType(ex Execer, typeName string) (ObjectType, error) {
 	c, err := getConn(ex)
 	if err != nil {
-		return ObjectType{}, err
+		return ObjectType{}, errors.WithMessage(err, "getConn for "+typeName)
 	}
 	return c.GetObjectType(typeName)
 }

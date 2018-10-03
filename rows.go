@@ -487,11 +487,10 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			o := &Object{
-				ObjectType: ObjectType{dpiObjectType: col.ObjectType},
-				dpiObject:  C.dpiData_getObject(d),
+			o, err := wrapObject(r.drv, col.ObjectType, C.dpiData_getObject(d))
+			if err != nil {
+				return err
 			}
-			o.init()
 			dest[i] = o
 
 		default:

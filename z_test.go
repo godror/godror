@@ -1726,9 +1726,15 @@ UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL),
 				}
 				obj := data.GetObject(a.ObjectType)
 				t.Logf("%d. obj=%+v", i, obj)
+				if obj == nil {
+					continue
+				}
 				for j, val := range obj.Attributes {
 					err = obj.GetAttribute(&data, j)
-					fmt.Printf("%d.%d. %q: %v (%v)\n", i, j, val.Name, data, err)
+					fmt.Printf("%d.%d. %q: %v (err=%+v)\n", i, j, val.Name, data, err)
+					if err != nil {
+						t.Errorf("ERROR: %+v", err)
+					}
 				}
 			}
 		}
