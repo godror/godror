@@ -35,12 +35,12 @@ type Data struct {
 
 // IsNull returns whether the data is null.
 func (d *Data) IsNull() bool {
-	return d.dpiData.isNull == 1
+	return d == nil || d.dpiData == nil || d.dpiData.isNull == 1
 }
 
 // GetBool returns the bool data.
 func (d *Data) GetBool() bool {
-	return C.dpiData_getBool(d.dpiData) == 1
+	return !d.IsNull() && C.dpiData_getBool(d.dpiData) == 1
 }
 
 // SetBool sets the data as bool.
@@ -72,6 +72,9 @@ func (d *Data) SetBytes(b []byte) {
 
 // GetFloat32 gets float32 from the data.
 func (d *Data) GetFloat32() float32 {
+	if d.IsNull() {
+		return 0
+	}
 	return float32(C.dpiData_getFloat(d.dpiData))
 }
 
@@ -82,6 +85,9 @@ func (d *Data) SetFloat32(f float32) {
 
 // GetFloat64 gets float64 from the data.
 func (d *Data) GetFloat64() float64 {
+	if d.IsNull() {
+		return 0
+	}
 	return float64(C.dpiData_getDouble(d.dpiData))
 }
 
@@ -92,6 +98,9 @@ func (d *Data) SetFloat64(f float64) {
 
 // GetInt64 gets int64 from the data.
 func (d *Data) GetInt64() int64 {
+	if d.IsNull() {
+		return 0
+	}
 	return int64(C.dpiData_getInt64(d.dpiData))
 }
 
@@ -102,6 +111,9 @@ func (d *Data) SetInt64(i int64) {
 
 // GetIntervalDS gets duration as interval date-seconds from data.
 func (d *Data) GetIntervalDS() time.Duration {
+	if d.IsNull() {
+		return 0
+	}
 	ds := C.dpiData_getIntervalDS(d.dpiData)
 	return time.Duration(ds.days)*24*time.Hour +
 		time.Duration(ds.hours)*time.Hour +
@@ -121,6 +133,9 @@ func (d *Data) SetIntervalDS(dur time.Duration) {
 
 // GetIntervalYM gets IntervalYM from the data.
 func (d *Data) GetIntervalYM() IntervalYM {
+	if d.IsNull() {
+		return IntervalYM{}
+	}
 	ym := C.dpiData_getIntervalYM(d.dpiData)
 	return IntervalYM{Years: int(ym.years), Months: int(ym.months)}
 }
@@ -132,20 +147,23 @@ func (d *Data) SetIntervalYM(ym IntervalYM) {
 
 // GetLob gets data as Lob.
 func (d *Data) GetLob() *Lob {
-	var L Lob
-	if !d.IsNull() {
-		L.Reader = &dpiLobReader{dpiLob: C.dpiData_getLOB(d.dpiData)}
+	if d.IsNull() {
+		return nil
 	}
-	return &L
+	return &Lob{Reader: &dpiLobReader{dpiLob: C.dpiData_getLOB(d.dpiData)}}
 }
 
 // GetObject gets Object from data.
 func (d *Data) GetObject(typ ObjectType) *Object {
-	obj := &Object{dpiObject: C.dpiData_getObject(d.dpiData), ObjectType: typ}
-	if typ.OracleTypeNum != 0 {
-		obj.init()
+	if d.IsNull() {
+		return nil
 	}
-	return obj
+
+	o := C.dpiData_getObject(d.dpiData)
+	if o == nil {
+		return nil
+	}
+	return &Object{dpiObject: o, ObjectType: typ}
 }
 
 // SetObject sets Object to data.
@@ -155,6 +173,9 @@ func (d *Data) SetObject(o *Object) {
 
 // GetStmt gets Stmt from data.
 func (d *Data) GetStmt() driver.Stmt {
+	if d.IsNull() {
+		return nil
+	}
 	return &statement{dpiStmt: C.dpiData_getStmt(d.dpiData)}
 }
 
@@ -165,6 +186,9 @@ func (d *Data) SetStmt(s *statement) {
 
 // GetTime gets Time from data.
 func (d *Data) GetTime() time.Time {
+	if d.IsNull() {
+		return time.Time{}
+	}
 	ts := C.dpiData_getTimestamp(d.dpiData)
 	return time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
@@ -186,6 +210,9 @@ func (d *Data) SetTime(t time.Time) {
 
 // GetUint64 gets data as uint64.
 func (d *Data) GetUint64() uint64 {
+	if d.IsNull() {
+		return 0
+	}
 	return uint64(C.dpiData_getUint64(d.dpiData))
 }
 
