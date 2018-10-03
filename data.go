@@ -140,8 +140,12 @@ func (d *Data) GetLob() *Lob {
 }
 
 // GetObject gets Object from data.
-func (d *Data) GetObject() *Object {
-	return &Object{dpiObject: C.dpiData_getObject(d.dpiData)}
+func (d *Data) GetObject(typ ObjectType) *Object {
+	obj := &Object{dpiObject: C.dpiData_getObject(d.dpiData), ObjectType: typ}
+	if typ.OracleTypeNum != 0 {
+		obj.init()
+	}
+	return obj
 }
 
 // SetObject sets Object to data.
@@ -215,7 +219,7 @@ func (d *Data) Get() interface{} {
 	case C.DPI_NATIVE_TYPE_LOB:
 		return d.GetLob()
 	case C.DPI_NATIVE_TYPE_OBJECT:
-		return d.GetObject()
+		return d.GetObject(ObjectType{})
 	case C.DPI_NATIVE_TYPE_STMT:
 		return d.GetStmt()
 	case C.DPI_NATIVE_TYPE_TIMESTAMP:
