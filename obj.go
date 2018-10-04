@@ -27,6 +27,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ = fmt.Printf
+
 // Object represents a dpiObject.
 type Object struct {
 	dpiObject *C.dpiObject
@@ -36,38 +38,35 @@ type Object struct {
 func (O *Object) getError() error { return O.drv.getError() }
 
 // GetAttribute gets the i-th attribute into data.
-func (O *Object) GetAttribute(data *Data, i int) error {
+func (O *Object) GetAttribute(data *Data, name string) error {
 	if O == nil || O.dpiObject == nil {
 		panic("nil dpiObject")
 	}
-	attr := O.Attributes[i]
-	if data.NativeTypeNum == 0 {
-		data.NativeTypeNum = attr.NativeTypeNum
-	}
+	attr := O.Attributes[name]
+	data.reset()
+	data.NativeTypeNum = attr.NativeTypeNum
 	wasNull := data.dpiData == nil
-	if wasNull {
-		data.dpiData = (*C.dpiData)(C.malloc(C.sizeof_void))
-	}
-	// If the native type is DPI_NATIVE_TYPE_BYTES and the Oracle type of the attribute is DPI_ORACLE_TYPE_NUMBER,
-	// a buffer must be supplied in the value.asBytes.ptr attribute and
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
 	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
 		var a [22]byte
 		C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), 22)
 	}
+	//fmt.Printf("getAttributeValue(%p, %p, %d, %+v)\n", O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		if wasNull {
 			C.free(unsafe.Pointer(data.dpiData))
+			data.dpiData = nil
 		}
 		return errors.Wrapf(O.getError(), "getAttributeValue(%+v, %+v, %d)", O, attr, data.NativeTypeNum)
 	}
+	fmt.Printf("getAttributeValue(%p, %q=%p, %d, %+v)\n", O.dpiObject, attr.Name, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	return nil
 }
 
 // SetAttribute sets the i-th attribute with data.
-func (O *Object) SetAttribute(i int, data *Data) error {
-	attr := O.Attributes[i]
+func (O *Object) SetAttribute(name string, data *Data) error {
+	attr := O.Attributes[name]
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 	}
@@ -207,7 +206,7 @@ type ObjectType struct {
 	Scale                               int8
 	FsPrecision                         uint8
 
-	Attributes []ObjectAttribute
+	Attributes map[string]ObjectAttribute
 
 	drv *drv
 }
@@ -286,11 +285,11 @@ func (t *ObjectType) init() error {
 		}
 	}
 	if numAttributes == 0 {
-		t.Attributes = []ObjectAttribute{}
+		t.Attributes = map[string]ObjectAttribute{}
 		return nil
 	}
-	t.Attributes = make([]ObjectAttribute, numAttributes)
-	attrs := make([]*C.dpiObjectAttr, len(t.Attributes))
+	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
+	attrs := make([]*C.dpiObjectAttr, numAttributes)
 	if C.dpiObjectType_getAttributes(t.dpiObjectType,
 		C.uint16_t(len(attrs)),
 		(**C.dpiObjectAttr)(unsafe.Pointer(&attrs[0])),
@@ -310,11 +309,13 @@ func (t *ObjectType) init() error {
 		if err != nil {
 			return err
 		}
-		t.Attributes[i] = ObjectAttribute{
+		objAttr := ObjectAttribute{
 			dpiObjectAttr: attr,
 			Name:          C.GoStringN(attrInfo.name, C.int(attrInfo.nameLength)),
 			ObjectType:    sub,
 		}
+		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
+		t.Attributes[objAttr.Name] = objAttr
 	}
 	return nil
 }

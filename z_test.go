@@ -1650,11 +1650,11 @@ func TestSDO(t *testing.T) {
 	//t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	selectQry := `SELECT SDO_GEOMETRY('POINT(1 0)', 4326) SHAPE FROM DUAL UNION ALL
-		SELECT SDO_GEOMETRY('POINT(0 1)', 4326) SHAPE FROM DUAL UNION ALL
-		SELECT SDO_GEOMETRY('POINT(-1 4)', 4326) SHAPE FROM DUAL UNION ALL
-		SELECT SDO_GEOMETRY('POINT(2 -6)', 4326) SHAPE FROM DUAL UNION ALL
-		SELECT SDO_GEOMETRY('POINT(-2 7)', 4326) SHAPE FROM DUAL`
+	selectQry := `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (SELECT SDO_GEOMETRY('POINT(1 0)', 4326) shape FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(0 1)', 4326) FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(-1 4)', 4326) FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(2 -6)', 4326) FROM DUAL UNION ALL
+		SELECT SDO_GEOMETRY('POINT(-2 7)', 4326) FROM DUAL)`
 	rows, err := testDb.QueryContext(ctx, selectQry)
 	if err != nil {
 		if !strings.Contains(err.Error(), `ORA-00904: "SDO_GEOMETRY"`) {
@@ -1698,11 +1698,11 @@ func TestSDO(t *testing.T) {
 			defer testDb.ExecContext(ctx, drop)
 		}
 
-		selectQry = `SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(1, 0, NULL), NULL, NULL) FROM DUAL
+		selectQry = `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(1, 0, NULL), NULL, NULL) FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(0, 1, NULL), NULL, NULL) FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-1, 4, NULL), NULL, NULL) FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(2, -6, NULL), NULL, NULL) FROM DUAL
-UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL), NULL, NULL) FROM DUAL`
+UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL), NULL, NULL) FROM DUAL)`
 		if rows, err = testDb.QueryContext(ctx, selectQry); err != nil {
 			t.Fatal(errors.Wrap(err, selectQry))
 		}
@@ -1711,31 +1711,35 @@ UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL),
 	defer rows.Close()
 	defer tl.enableLogging(t)()
 	for rows.Next() {
+		var dmp, isNull string
 		var intf interface{}
-		if err = rows.Scan(&intf); err != nil {
+		if err = rows.Scan(&intf, &dmp, &isNull); err != nil {
 			t.Error(errors.Wrap(err, "scan"))
 		}
+		t.Log(dmp, isNull)
 		obj := intf.(*goracle.Object)
 		//t.Log("obj:", obj)
-		for i, a := range obj.ObjectType.Attributes {
-			fmt.Printf("%d. %q\n", i, a.Name)
-			if a.Name == "SDO_POINT" || a.Name == "TEST_SDO_POINT" {
-				var data goracle.Data
-				if err = obj.GetAttribute(&data, i); err != nil {
-					t.Fatal(errors.Wrapf(err, "GetAttribute(%d)", i))
-				}
-				obj := data.GetObject(a.ObjectType)
-				t.Logf("%d. obj=%+v", i, obj)
-				if obj == nil {
-					continue
-				}
-				for j, val := range obj.Attributes {
-					err = obj.GetAttribute(&data, j)
-					fmt.Printf("%d.%d. %q: %v (err=%+v)\n", i, j, val.Name, data, err)
-					if err != nil {
-						t.Errorf("ERROR: %+v", err)
-					}
-				}
+		var data goracle.Data
+		if err = obj.GetAttribute(&data, "SDO_GTYPE"); err != nil {
+			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", "SDO_GTYPE"))
+		}
+		t.Logf("SDO_GTYPE: %+v [%v]", data, data.IsNull())
+		const name = "SDO_POINT"
+		if err = obj.GetAttribute(&data, name); err != nil {
+			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", name))
+		}
+		t.Logf("SDO_POINT: %+v [%v]", data, data.IsNull())
+
+		sub := data.GetObject(obj.Attributes[name].ObjectType)
+		t.Logf("%s. sub=%+v", name, sub)
+		if sub == nil {
+			break
+		}
+		for key, val := range obj.Attributes {
+			err = obj.GetAttribute(&data, key)
+			fmt.Printf("%s.%s. %q: %v (err=%+v)\n", name, key, val.Name, data, err)
+			if err != nil {
+				t.Errorf("ERROR: %+v", err)
 			}
 		}
 

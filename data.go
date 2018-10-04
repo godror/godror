@@ -85,6 +85,7 @@ func (d *Data) SetFloat32(f float32) {
 
 // GetFloat64 gets float64 from the data.
 func (d *Data) GetFloat64() float64 {
+	//fmt.Println("GetFloat64", d.IsNull(), d)
 	if d.IsNull() {
 		return 0
 	}
@@ -155,6 +156,9 @@ func (d *Data) GetLob() *Lob {
 
 // GetObject gets Object from data.
 func (d *Data) GetObject(typ ObjectType) *Object {
+	if d == nil || d.dpiData == nil {
+		panic("null")
+	}
 	if d.IsNull() {
 		return nil
 	}
@@ -255,5 +259,14 @@ func (d *Data) Get() interface{} {
 		return d.GetUint64()
 	default:
 		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
+	}
+}
+
+func (d *Data) reset() {
+	d.NativeTypeNum = 0
+	if d.dpiData == nil {
+		d.dpiData = &C.dpiData{}
+	} else {
+		d.SetBytes(nil)
 	}
 }
