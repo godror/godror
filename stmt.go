@@ -364,9 +364,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				err = st.getError()
 				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
 			}
-			if n < 0 {
-				n = 0
-			}
 			st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 		}
 		dest := st.dests[i]
