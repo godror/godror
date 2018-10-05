@@ -286,9 +286,6 @@ func (r *rows) Next(dest []driver.Value) error {
 			_ = r.Close()
 			return io.EOF
 		}
-		if Log != nil {
-			Log("data", r.data)
-		}
 		if r.data == nil {
 			r.data = make([][]C.dpiData, len(r.columns))
 			for i := range r.columns {

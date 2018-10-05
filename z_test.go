@@ -1698,7 +1698,7 @@ func TestSDO(t *testing.T) {
 			defer testDb.ExecContext(ctx, drop)
 		}
 
-		selectQry = `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(1, 0, NULL), NULL, NULL) FROM DUAL
+		selectQry = `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(1, 0, NULL), NULL, NULL) shape FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(0, 1, NULL), NULL, NULL) FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-1, 4, NULL), NULL, NULL) FROM DUAL
 UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(2, -6, NULL), NULL, NULL) FROM DUAL
@@ -1709,7 +1709,13 @@ UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL),
 
 	}
 	defer rows.Close()
-	defer tl.enableLogging(t)()
+	if false {
+		goracle.Log = func(kv ...interface{}) error {
+			t.Helper()
+			t.Log(kv)
+			return nil
+		}
+	}
 	for rows.Next() {
 		var dmp, isNull string
 		var intf interface{}
@@ -1723,12 +1729,12 @@ UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL),
 		if err = obj.GetAttribute(&data, "SDO_GTYPE"); err != nil {
 			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", "SDO_GTYPE"))
 		}
-		t.Logf("SDO_GTYPE: %+v [%v]", data, data.IsNull())
+		t.Logf("SDO_GTYPE: %+v [null? %t]: %T(%+v)", data, data.IsNull(), data.Get(), data.Get())
 		const name = "SDO_POINT"
 		if err = obj.GetAttribute(&data, name); err != nil {
 			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", name))
 		}
-		t.Logf("SDO_POINT: %+v [%v]", data, data.IsNull())
+		t.Logf("SDO_POINT: %+v [null? %t]", data, data.IsNull())
 
 		sub := data.GetObject(obj.Attributes[name].ObjectType)
 		t.Logf("%s. sub=%+v", name, sub)
@@ -1737,7 +1743,7 @@ UNION ALL SELECT test_SDO_GEOMETRY(2001, 4326, test_SDO_POINT_TYPE(-2, 7, NULL),
 		}
 		for key, val := range obj.Attributes {
 			err = obj.GetAttribute(&data, key)
-			fmt.Printf("%s.%s. %q: %v (err=%+v)\n", name, key, val.Name, data, err)
+			t.Logf("%s.%s. %q: %v (err=%+v)\n", name, key, val.Name, val, err)
 			if err != nil {
 				t.Errorf("ERROR: %+v", err)
 			}
