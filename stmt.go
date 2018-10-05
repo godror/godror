@@ -364,9 +364,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				err = st.getError()
 				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
 			}
-			if n > 0 {
-				st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+			if n < 0 {
+				n = 0
 			}
+			st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {
@@ -460,9 +461,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			}
 			if err = ctx.Err(); err == nil {
 				err = st.getError()
-				if c, ok := err.(interface {
-					Code() int
-				}); ok && c.Code() != 4068 {
+				if c, ok := err.(interface{ Code() int }); ok && c.Code() != 4068 {
 					break
 				}
 			}
