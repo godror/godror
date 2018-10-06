@@ -37,12 +37,18 @@ type Object struct {
 
 func (O *Object) getError() error { return O.drv.getError() }
 
+var ErrNoSuchKey = errors.New("no such key")
+
 // GetAttribute gets the i-th attribute into data.
 func (O *Object) GetAttribute(data *Data, name string) error {
 	if O == nil || O.dpiObject == nil {
 		panic("nil dpiObject")
 	}
-	attr := O.Attributes[name]
+	attr, ok := O.Attributes[name]
+	if !ok {
+		return errors.Wrap(ErrNoSuchKey, name)
+	}
+
 	data.reset()
 	data.NativeTypeNum = attr.NativeTypeNum
 	wasNull := data.dpiData == nil
@@ -58,7 +64,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 			C.free(unsafe.Pointer(data.dpiData))
 			data.dpiData = nil
 		}
-		return errors.Wrapf(O.getError(), "getAttributeValue(%+v, %+v, %d)", O, attr, data.NativeTypeNum)
+		return errors.Wrapf(O.getError(), "getAttributeValue(obj=%+v, attr=%+v, typ=%d)", O, attr.dpiObjectAttr, data.NativeTypeNum)
 	}
 	fmt.Printf("getAttributeValue(%p, %q=%p, %d, %+v)\n", O.dpiObject, attr.Name, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	return nil
@@ -108,6 +114,9 @@ func (O *ObjectCollection) Delete(i int) error {
 
 // Get the i-th element of the collection into data.
 func (O *ObjectCollection) Get(data *Data, i int) error {
+	if data == nil {
+		panic("data cannot be nil")
+	}
 	idx := C.int32_t(i)
 	var exists C.int
 	if C.dpiObject_getElementExistsByIndex(O.dpiObject, idx, &exists) == C.DPI_FAILURE {
@@ -116,11 +125,10 @@ func (O *ObjectCollection) Get(data *Data, i int) error {
 	if exists == 0 {
 		return ErrNotExist
 	}
-	if data.NativeTypeNum == 0 {
-		data.NativeTypeNum = O.NativeTypeNum
-	}
+	data.reset()
+	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
-		return O.getError()
+		return errors.Wrapf(O.getError(), "%d[%d]", idx, data.NativeTypeNum)
 	}
 	return nil
 }
