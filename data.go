@@ -167,7 +167,9 @@ func (d *Data) GetObject(typ ObjectType) *Object {
 	if o == nil {
 		return nil
 	}
-	return &Object{dpiObject: o, ObjectType: typ}
+	obj := &Object{dpiObject: o, ObjectType: typ}
+	obj.init()
+	return obj
 }
 
 // SetObject sets Object to data.
