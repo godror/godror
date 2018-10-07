@@ -1728,33 +1728,6 @@ func TestSDO(t *testing.T) {
 		obj := intf.(*goracle.Object)
 		//t.Log("obj:", obj)
 		printObj(t, "", obj)
-
-		var data goracle.Data
-		name := "SDO_GTYPE"
-		if err = obj.GetAttribute(&data, name); err != nil {
-			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", name))
-		}
-		t.Logf("%s: %+v [null? %t]: %T(%+v)", name, data, data.IsNull(), data.Get(), data.Get())
-
-		name = "SDO_POINT"
-		if err = obj.GetAttribute(&data, name); err != nil {
-			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", name))
-		}
-		t.Logf("%s: %+v [null? %t]", name, data, data.IsNull())
-
-		sub := data.GetObject(obj.Attributes[name].ObjectType)
-		t.Logf("%s. sub=%+v", name, sub)
-		printObj(t, name, sub)
-
-		name = "SDO_ORDINATES"
-		if err = obj.GetAttribute(&data, name); err != nil {
-			t.Fatal(errors.Wrapf(err, "GetAttribute(%s)", name))
-		}
-		t.Logf("%s: %+v [null? %t]", name, data, data.IsNull())
-
-		sub = data.GetObject(obj.Attributes[name].ObjectType)
-		t.Logf("%s. sub=%+v", name, sub)
-		printObj(t, name, sub)
 	}
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
@@ -1765,23 +1738,20 @@ func printObj(t *testing.T, name string, obj *goracle.Object) {
 	if obj == nil {
 		return
 	}
-	if obj.CollectionOf != nil {
-		coll := goracle.ObjectCollection{Object: *obj}
-		var data goracle.Data
-		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-			if err = coll.Get(&data, i); err != nil {
-				t.Fatal(errors.Wrapf(err, "%d. elt", i))
-			}
-			t.Logf("%d. %+v", i, data.Get())
-		}
-		return
-	}
-	for key, val := range obj.Attributes {
-		var data goracle.Data
-		err := obj.GetAttribute(&data, key)
-		t.Logf("%s.%s. %q: %v (err=%+v)\n", name, key, val.Name, val, err)
+	for key := range obj.Attributes {
+		sub, err := obj.Get(key)
+		t.Logf("%s.%s. %+v (err=%+v)\n", name, key, sub, err)
 		if err != nil {
 			t.Errorf("ERROR: %+v", err)
+		}
+		if ss, ok := sub.(*goracle.Object); ok {
+			printObj(t, name+"."+key, ss)
+		} else if coll, ok := sub.(*goracle.ObjectCollection); ok {
+			slice, err := coll.AsSlice(nil)
+			t.Logf("%s.%s. %+v", name, key, slice)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }

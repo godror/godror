@@ -22,6 +22,7 @@ package goracle
 import "C"
 import (
 	"fmt"
+	"reflect"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -33,6 +34,8 @@ var _ = fmt.Printf
 type Object struct {
 	dpiObject *C.dpiObject
 	ObjectType
+
+	scratch Data
 }
 
 func (O *Object) getError() error { return O.drv.getError() }
@@ -51,6 +54,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 
 	data.reset()
 	data.NativeTypeNum = attr.NativeTypeNum
+	data.ObjectType = attr.ObjectType
 	wasNull := data.dpiData == nil
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
@@ -75,6 +79,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	attr := O.Attributes[name]
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
+		data.ObjectType = attr.ObjectType
 	}
 	if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		return O.getError()
@@ -82,9 +87,29 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	return nil
 }
 
+// Get scans the named attribute into dest, and returns it.
+func (O *Object) Get(name string) (interface{}, error) {
+	if err := O.GetAttribute(&O.scratch, name); err != nil {
+		return nil, err
+	}
+	isObject := O.scratch.IsObject()
+	if isObject {
+		O.scratch.ObjectType = O.Attributes[name].ObjectType
+	}
+	v := O.scratch.Get()
+	if !isObject {
+		return v, nil
+	}
+	sub := v.(*Object)
+	if sub != nil && sub.CollectionOf != nil {
+		return &ObjectCollection{Object: sub}, nil
+	}
+	return sub, nil
+}
+
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
-	Object
+	*Object
 }
 
 // ErrNotCollection is returned when the Object is not a collection.
@@ -93,13 +118,41 @@ var ErrNotCollection = errors.New("not collection")
 // ErrNotExist is returned when the collection's requested element does not exist.
 var ErrNotExist = errors.New("not exist")
 
+// AsSlice retrieves the collection into a slice.
+func (coll *ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
+	var data Data
+	var dr reflect.Value
+	needsInit := dest == nil
+	if !needsInit {
+		dr = reflect.ValueOf(dest)
+	}
+	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+		if coll.CollectionOf.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT {
+			data.ObjectType = *coll.CollectionOf
+		}
+		if err = coll.Get(&data, i); err != nil {
+			return dest, err
+		}
+		vr := reflect.ValueOf(data.Get())
+		if needsInit {
+			needsInit = false
+			length, err := coll.Len()
+			if err != nil {
+				return dr.Interface(), err
+			}
+			dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
+		}
+		if dr = reflect.Append(dr, vr); err != nil {
+			return dr.Interface(), err
+		}
+	}
+	return dr.Interface(), nil
+}
+
 // Append data to the collection.
 func (O *ObjectCollection) Append(data *Data) error {
-	if data.NativeTypeNum == 0 {
-		data.NativeTypeNum = O.NativeTypeNum
-	}
 	if C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
-		return O.getError()
+		return errors.Wrapf(O.getError(), "append(%d)", data.NativeTypeNum)
 	}
 	return nil
 }
@@ -107,7 +160,7 @@ func (O *ObjectCollection) Append(data *Data) error {
 // Delete i-th element of the collection.
 func (O *ObjectCollection) Delete(i int) error {
 	if C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i)) == C.DPI_FAILURE {
-		return O.getError()
+		return errors.Wrapf(O.getError(), "delete(%d)", i)
 	}
 	return nil
 }
@@ -120,26 +173,24 @@ func (O *ObjectCollection) Get(data *Data, i int) error {
 	idx := C.int32_t(i)
 	var exists C.int
 	if C.dpiObject_getElementExistsByIndex(O.dpiObject, idx, &exists) == C.DPI_FAILURE {
-		return O.getError()
+		return errors.Wrapf(O.getError(), "exists(%d)", idx)
 	}
 	if exists == 0 {
 		return ErrNotExist
 	}
 	data.reset()
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
+	data.ObjectType = *O.CollectionOf
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
-		return errors.Wrapf(O.getError(), "%d[%d]", idx, data.NativeTypeNum)
+		return errors.Wrapf(O.getError(), "get(%d[%d])", idx, data.NativeTypeNum)
 	}
 	return nil
 }
 
 // Set the i-th element of the collection with data.
 func (O *ObjectCollection) Set(i int, data *Data) error {
-	if data.NativeTypeNum == 0 {
-		data.NativeTypeNum = O.NativeTypeNum
-	}
 	if C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
-		return O.getError()
+		return errors.Wrapf(O.getError(), "set(%d[%d])", i, data.NativeTypeNum)
 	}
 	return nil
 }
@@ -149,7 +200,7 @@ func (O *ObjectCollection) First() (int, error) {
 	var exists C.int
 	var idx C.int32_t
 	if C.dpiObject_getFirstIndex(O.dpiObject, &idx, &exists) == C.DPI_FAILURE {
-		return 0, O.getError()
+		return 0, errors.Wrap(O.getError(), "first")
 	}
 	if exists == 1 {
 		return int(idx), nil
@@ -162,7 +213,7 @@ func (O *ObjectCollection) Last() (int, error) {
 	var exists C.int
 	var idx C.int32_t
 	if C.dpiObject_getLastIndex(O.dpiObject, &idx, &exists) == C.DPI_FAILURE {
-		return 0, O.getError()
+		return 0, errors.Wrap(O.getError(), "last")
 	}
 	if exists == 1 {
 		return int(idx), nil
@@ -175,7 +226,7 @@ func (O *ObjectCollection) Next(i int) (int, error) {
 	var exists C.int
 	var idx C.int32_t
 	if C.dpiObject_getNextIndex(O.dpiObject, C.int32_t(i), &idx, &exists) == C.DPI_FAILURE {
-		return 0, O.getError()
+		return 0, errors.Wrapf(O.getError(), "next(%d)", i)
 	}
 	if exists == 1 {
 		return int(idx), nil
@@ -187,7 +238,7 @@ func (O *ObjectCollection) Next(i int) (int, error) {
 func (O *ObjectCollection) Len() (int, error) {
 	var size C.int32_t
 	if C.dpiObject_getSize(O.dpiObject, &size) == C.DPI_FAILURE {
-		return 0, O.getError()
+		return 0, errors.Wrap(O.getError(), "len")
 	}
 	return int(size), nil
 }

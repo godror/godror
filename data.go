@@ -31,6 +31,7 @@ import (
 type Data struct {
 	NativeTypeNum C.dpiNativeTypeNum
 	dpiData       *C.dpiData
+	ObjectType    ObjectType
 }
 
 // IsNull returns whether the data is null.
@@ -155,7 +156,7 @@ func (d *Data) GetLob() *Lob {
 }
 
 // GetObject gets Object from data.
-func (d *Data) GetObject(typ ObjectType) *Object {
+func (d *Data) GetObject() *Object {
 	if d == nil || d.dpiData == nil {
 		panic("null")
 	}
@@ -167,7 +168,7 @@ func (d *Data) GetObject(typ ObjectType) *Object {
 	if o == nil {
 		return nil
 	}
-	obj := &Object{dpiObject: o, ObjectType: typ}
+	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
 	obj.init()
 	return obj
 }
@@ -252,7 +253,7 @@ func (d *Data) Get() interface{} {
 	case C.DPI_NATIVE_TYPE_LOB:
 		return d.GetLob()
 	case C.DPI_NATIVE_TYPE_OBJECT:
-		return d.GetObject(ObjectType{})
+		return d.GetObject()
 	case C.DPI_NATIVE_TYPE_STMT:
 		return d.GetStmt()
 	case C.DPI_NATIVE_TYPE_TIMESTAMP:
@@ -264,8 +265,13 @@ func (d *Data) Get() interface{} {
 	}
 }
 
+func (d *Data) IsObject() bool {
+	return d.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT
+}
+
 func (d *Data) reset() {
 	d.NativeTypeNum = 0
+	d.ObjectType = ObjectType{}
 	if d.dpiData == nil {
 		d.dpiData = &C.dpiData{}
 	} else {
