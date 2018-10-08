@@ -1521,6 +1521,14 @@ func TestReturning(t *testing.T) {
 	if want != got {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
+
+	if _, err := testDb.Exec(
+		`UPDATE test_returning SET a = '1' WHERE 1=0 RETURNING a /*LASTINSERTID*/ INTO :1`,
+		sql.Out{Dest: &got},
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("RETURNING (zero set): %v", got)
 }
 
 func TestMaxOpenCursors(t *testing.T) {

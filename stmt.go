@@ -364,7 +364,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				err = st.getError()
 				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
 			}
-			st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+			if n == 0 {
+				st.data[i] = st.data[i][:0]
+			} else {
+				st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+			}
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {
@@ -1072,7 +1076,7 @@ func dataSetNull(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 }
 func dataGetBool(v interface{}, data []C.dpiData) error {
 	if b, ok := v.(*bool); ok {
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*b = false
 			return nil
 		}
@@ -1115,6 +1119,10 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 }
 func dataGetTime(v interface{}, data []C.dpiData) error {
 	if x, ok := v.(*time.Time); ok {
+		if len(data) == 0 || data[0].isNull == 1 {
+			*x = time.Time{}
+			return nil
+		}
 		dataGetTimeC(x, &data[0])
 		return nil
 	}
@@ -1180,7 +1188,7 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 func dataGetNumber(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *int:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = int(C.dpiData_getInt64(&data[0]))
@@ -1195,7 +1203,11 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *int32:
-		*x = int32(C.dpiData_getInt64(&data[0]))
+		if len(data) == 0 || data[0].isNull == 1 {
+			*x = 0
+		} else {
+			*x = int32(C.dpiData_getInt64(&data[0]))
+		}
 	case *[]int32:
 		*x = (*x)[:0]
 		for i := range data {
@@ -1206,7 +1218,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *int64:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = int64(C.dpiData_getInt64(&data[0]))
@@ -1221,7 +1233,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *sql.NullInt64:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
 			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(&data[0]))
@@ -1237,7 +1249,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *sql.NullFloat64:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
 			x.Valid, x.Float64 = true, float64(C.dpiData_getDouble(&data[0]))
@@ -1253,7 +1265,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		}
 
 	case *uint:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = uint(C.dpiData_getUint64(&data[0]))
@@ -1268,7 +1280,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *uint32:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = uint32(C.dpiData_getUint64(&data[0]))
@@ -1283,7 +1295,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *uint64:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = uint64(C.dpiData_getUint64(&data[0]))
@@ -1299,7 +1311,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		}
 
 	case *float32:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = float32(C.dpiData_getFloat(&data[0]))
@@ -1314,7 +1326,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 	case *float64:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			*x = float64(C.dpiData_getDouble(&data[0]))
@@ -1449,7 +1461,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 func dataGetBytes(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *[]byte:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = nil
 			return nil
 		}
@@ -1468,7 +1480,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 		}
 
 	case *Number:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = ""
 			return nil
 		}
@@ -1486,7 +1498,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 		}
 
 	case *string:
-		if data[0].isNull == 1 {
+		if len(data) == 0 || data[0].isNull == 1 {
 			*x = ""
 			return nil
 		}
@@ -1617,6 +1629,10 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 
 func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
 	if row, ok := v.(*driver.Rows); ok {
+		if len(data) == 0 || data[0].isNull == 1 {
+			*row = nil
+			return nil
+		}
 		return c.dataGetStmtC(row, &data[0])
 	}
 	rows := v.(*[]driver.Rows)
@@ -1655,6 +1671,10 @@ func (c *conn) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 
 func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
 	if L, ok := v.(*Lob); ok {
+		if len(data) == 0 || data[0].isNull == 1 {
+			*L = Lob{}
+			return nil
+		}
 		c.dataGetLOBC(L, &data[0])
 		return nil
 	}
