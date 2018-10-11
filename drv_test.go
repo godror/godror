@@ -28,3 +28,16 @@ func TestFromErrorInfo(t *testing.T) {
 		t.Errorf("got %d, wanted 24315", oe.Code())
 	}
 }
+
+func TestMarshalJSON(t *testing.T) {
+	n := Number("12345.6789")
+	b, err := (&n).MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n = Number("")
+	if err = n.UnmarshalJSON(b); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(n.String())
+}
