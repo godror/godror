@@ -921,6 +921,38 @@ func TestReadWriteLob(t *testing.T) {
 		}
 		t.Logf("clobAsString: %q", s)
 	}
+
+	qry := "SELECT CURSOR(SELECT f_id, f_clob FROM " + tbl + " WHERE ROWNUM <= 10) FROM DUAL"
+	rows, err = testDb.QueryContext(ctx, qry, goracle.ClobAsString())
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var intf interface{}
+		if err := rows.Scan(&intf); err != nil {
+			t.Error(err)
+			continue
+		}
+		t.Logf("%T", intf)
+		sub := intf.(driver.RowsColumnTypeScanType)
+		cols := sub.Columns()
+		t.Log("Columns", cols)
+		dests := make([]driver.Value, len(cols))
+		for {
+			if err := sub.Next(dests); err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Error(err)
+				break
+			}
+			//fmt.Println(dests)
+			t.Log(dests)
+		}
+		sub.Close()
+	}
+
 }
 
 func copySlice(orig interface{}) interface{} {
