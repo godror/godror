@@ -42,7 +42,7 @@ type stmtOptions struct {
 	arraySize           int
 	execMode            C.dpiExecMode
 	plSQLArrays         bool
-	clobAsString        bool
+	lobAsReader         bool
 	magicTypeConversion bool
 	callTimeout         time.Duration
 }
@@ -66,8 +66,10 @@ func (o stmtOptions) FetchRowCount() int {
 	}
 	return o.fetchRowCount
 }
-func (o stmtOptions) PlSQLArrays() bool  { return o.plSQLArrays }
-func (o stmtOptions) ClobAsString() bool { return o.clobAsString }
+func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
+
+func (o stmtOptions) ClobAsString() bool { return !o.lobAsReader }
+func (o stmtOptions) LobAsReader() bool  { return o.lobAsReader }
 
 func (o stmtOptions) MagicTypeConversion() bool { return o.magicTypeConversion }
 
@@ -103,9 +105,30 @@ func ParseOnly() Option {
 func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 
 // ClobAsString returns an option to force fetching CLOB columns as strings.
-func ClobAsString() Option {
-	return func(o *stmtOptions) { o.clobAsString = true }
-}
+//
+// DEPRECATED.
+func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false } }
+
+// LobAsReader is an option to set query columns of CLOB/BLOB to be returned as a Lob.
+//
+// LOB as a reader and writer is not the most performant at all. Yes, OCI
+// and ODPI-C provide a way to retrieve this data directly. Effectively,
+// all you need to do is tell ODPI-C that you want a "long string" or "long
+// raw" returned. You can do that by telling ODPI-C you want a variable
+// with oracleTypeNum=DPI_ORACLE_TYPE_LONG_VARCHAR or
+// DPI_ORACLE_TYPE_LONG_RAW and nativeTypeNum=DPI_NATIVE_TYPE_BYTES. ODPI-C
+// will handle all of the dynamic fetching and allocation that is required.
+// :-) You can also use DPI_ORACLE_TYPE_VARCHAR and DPI_ORACLE_TYPE_RAW as
+// long as you set the size > 32767 -- whichever way you wish to use.
+//
+// With the use of LOBs, there is one round-trip to get the LOB locators,
+// then a round-trip for each read() that is performed. If you request the
+// length there is another round-trip required. So if you fetch 100 rows
+// with 2 CLOB columns, that means you get 401 round-trips. Using
+// string/[]bytes directly means only one round trip. So you can see that
+// if your database is remote with high latency you can have a significant
+// performance penalty!
+func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true } }
 
 // MagicTypeConversion returns an option to force converting named scalar types (e.g. "type underlying int64") to their scalar underlying type.
 func MagicTypeConversion() Option {
@@ -1861,6 +1884,17 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			}
 		case C.DPI_ORACLE_TYPE_DATE:
 			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+
+		case C.DPI_ORACLE_TYPE_BLOB:
+			if !st.LobAsReader() {
+				ti.oracleTypeNum = C.DPI_ORACLE_TYPE_LONG_RAW
+				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			}
+		case C.DPI_ORACLE_TYPE_CLOB:
+			if !st.LobAsReader() {
+				ti.oracleTypeNum = C.DPI_ORACLE_TYPE_LONG_VARCHAR
+				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			}
 		}
 		r.columns[i] = Column{
 			Name:        C.GoStringN(info.name, C.int(info.nameLength)),

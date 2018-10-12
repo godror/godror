@@ -868,6 +868,7 @@ func TestReadWriteLob(t *testing.T) {
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(ctx,
 			"SELECT F_id, F_blob, F_clob FROM "+tbl+" WHERE F_id IN (:1, :2)", //nolint:gas
+			goracle.LobAsReader(),
 			2*tN, 2*tN+1)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
