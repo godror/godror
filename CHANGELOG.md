@@ -7,12 +7,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - allow RETURNING with empty result set (such as UPDATE).
+- Allow SELECT to return object types.
 
 ### Changed
 - fixed Number.MarshalJSON (see #112)'
 - The default type for BLOB is []byte and for CLOB is a string - no need for ClobAsString() option.
 
-### [2.8.2] - 2018-10-01
+## [2.8.2] - 2018-10-01
 ### Changed
 - Fix the driver.Valuer handling, make it the last resort
 

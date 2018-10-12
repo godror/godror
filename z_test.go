@@ -1681,74 +1681,112 @@ func TestQueryTimeout(t *testing.T) {
 
 func TestSDO(t *testing.T) {
 	//t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	testDb.ExecContext(ctx, "DROP TABLE test_sdo")
-	for _, qry := range []string{
-		`CREATE TYPE test_sdo_point_type AS OBJECT (
-   X NUMBER,
-   Y NUMBER,
-   Z NUMBER)`,
-		"CREATE TYPE test_sdo_elem_info_array AS VARRAY (1048576) of NUMBER",
-		"CREATE TYPE test_sdo_ordinate_array AS VARRAY (1048576) of NUMBER",
-		`CREATE TYPE test_sdo_geometry AS OBJECT (
- SDO_GTYPE NUMBER,
- SDO_SRID NUMBER,
- SDO_POINT test_SDO_POINT_TYPE,
- SDO_ELEM_INFO test_SDO_ELEM_INFO_ARRAY,
- SDO_ORDINATES test_SDO_ORDINATE_ARRAY)`,
-
-		`CREATE TABLE test_sdo(
-		id INTEGER not null,
-		shape test_SDO_GEOMETRY not null
-	)`,
-	} {
-		var drop string
-		if strings.HasPrefix(qry, "CREATE TYPE") {
-			drop = "DROP TYPE " + qry[12:strings.Index(qry, " AS")] + " FORCE"
-		} else {
-			drop = "DROP TABLE " + qry[13:strings.Index(qry, "(")]
+	innerQry := `SELECT MDSYS.SDO_GEOMETRY(
+	3001,
+	NULL,
+	NULL,
+	MDSYS.SDO_ELEM_INFO_ARRAY(
+		1,1,1,4,1,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+	),
+	MDSYS.SDO_ORDINATE_ARRAY(
+		480736.567,10853969.692,0,0.998807402795312,-0.0488238888381834,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)
+		) SHAPE FROM DUAL`
+	selectQry := `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (` + innerQry + ")"
+	rows, err := testDb.QueryContext(ctx, selectQry)
+	if err != nil {
+		if !strings.Contains(err.Error(), `ORA-00904: "SDO_GEOMETRY"`) {
+			t.Fatal(errors.Wrap(err, selectQry))
 		}
-		testDb.ExecContext(ctx, drop)
-		t.Log(drop)
-		if _, err := testDb.ExecContext(ctx, qry); err != nil {
-			if strings.Contains(err.Error(), "ORA-01031:") {
-				t.Skip(err)
+		for _, qry := range []string{
+			`CREATE TYPE test_sdo_point_type AS OBJECT (
+			   X NUMBER,
+			   Y NUMBER,
+			   Z NUMBER)`,
+			"CREATE TYPE test_sdo_elem_info_array AS VARRAY (1048576) of NUMBER",
+			"CREATE TYPE test_sdo_ordinate_array AS VARRAY (1048576) of NUMBER",
+			`CREATE TYPE test_sdo_geometry AS OBJECT (
+			 SDO_GTYPE NUMBER,
+			 SDO_SRID NUMBER,
+			 SDO_POINT test_SDO_POINT_TYPE,
+			 SDO_ELEM_INFO test_SDO_ELEM_INFO_ARRAY,
+			 SDO_ORDINATES test_SDO_ORDINATE_ARRAY)`,
+
+			`CREATE TABLE test_sdo(
+					id INTEGER not null,
+					shape test_SDO_GEOMETRY not null
+				)`,
+		} {
+			var drop string
+			if strings.HasPrefix(qry, "CREATE TYPE") {
+				drop = "DROP TYPE " + qry[12:strings.Index(qry, " AS")] + " FORCE"
+			} else {
+				drop = "DROP TABLE " + qry[13:strings.Index(qry, "(")]
 			}
-			t.Fatal(errors.Wrap(err, qry))
+			testDb.ExecContext(ctx, drop)
+			t.Log(drop)
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				err = errors.Wrap(err, qry)
+				t.Log(err)
+				if !strings.Contains(err.Error(), "ORA-01031:") {
+					t.Fatal(err)
+				}
+				//t.Skip(err)
+			}
+			defer testDb.ExecContext(ctx, drop)
 		}
-		defer testDb.ExecContext(ctx, drop)
-	}
 
-	tx, err := testDb.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	qry := `INSERT INTO test_sdo(id, shape)
-VALUES (1,
-  test_sdo_geometry(
-    sdo_gtype=>1,
-	sdo_srid=>NULL,
-	sdo_point=>test_sdo_point_type(x=>1, y=>2, z=>3),
-	sdo_emel_info=>test_sdo_elem_info_array(),
-	sdo_ordinates=>test_sdo_ordinate_array()))`
-	if _, err = tx.ExecContext(ctx, qry); err != nil {
-		t.Skip(errors.Wrap(err, qry))
-	}
+		selectQry = strings.Replace(selectQry, "MDSYS.SDO_", "test_SDO_", -1)
+		if rows, err = testDb.QueryContext(ctx, selectQry); err != nil {
+			t.Fatal(errors.Wrap(err, selectQry))
+		}
 
-	rows, err := tx.QueryContext(ctx, "SELECT id, shape FROM test_sdo")
-	if err != nil {
-		t.Fatal(err)
 	}
 	defer rows.Close()
-	rows.Next()
-	var id int64
-	var shape interface{}
-	if err = rows.Scan(&id, &shape); err != nil {
+	if false {
+		goracle.Log = func(kv ...interface{}) error {
+			t.Helper()
+			t.Log(kv)
+			return nil
+		}
+	}
+	for rows.Next() {
+		var dmp, isNull string
+		var intf interface{}
+		if err = rows.Scan(&intf, &dmp, &isNull); err != nil {
+			t.Error(errors.Wrap(err, "scan"))
+		}
+		t.Log(dmp, isNull)
+		obj := intf.(*goracle.Object)
+		//t.Log("obj:", obj)
+		printObj(t, "", obj)
+	}
+	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	t.Log("id:", id, "shape:", shape)
+}
+
+func printObj(t *testing.T, name string, obj *goracle.Object) {
+	if obj == nil {
+		return
+	}
+	for key := range obj.Attributes {
+		sub, err := obj.Get(key)
+		t.Logf("%s.%s. %+v (err=%+v)\n", name, key, sub, err)
+		if err != nil {
+			t.Errorf("ERROR: %+v", err)
+		}
+		if ss, ok := sub.(*goracle.Object); ok {
+			printObj(t, name+"."+key, ss)
+		} else if coll, ok := sub.(*goracle.ObjectCollection); ok {
+			slice, err := coll.AsSlice(nil)
+			t.Logf("%s.%s. %+v", name, key, slice)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 }
 
 var _ = driver.Valuer((*Custom)(nil))
