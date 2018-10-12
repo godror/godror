@@ -16,6 +16,7 @@
 package goracle
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -40,4 +41,26 @@ func TestMarshalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(n.String())
+
+	n = Number("")
+	b, err = json.Marshal(struct {
+		N Number
+		A int
+	}{N: n, A: 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(string(b))
+
+	type myStruct struct {
+		N interface{}
+		A int
+	}
+	n = Number("")
+	ttt := myStruct{N: &n, A: 12}
+	b, err = json.Marshal(ttt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(string(b))
 }
