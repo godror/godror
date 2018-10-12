@@ -16,16 +16,12 @@
 package goracle_test
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"io"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
-
-	goracle "gopkg.in/goracle.v2"
 )
 
 func TestStatWithLobs(t *testing.T) {
@@ -97,18 +93,11 @@ func (m *metricSet) Fetch(ctx context.Context) ([]event, error) {
 	}
 	defer rows.Close()
 	var events []event
-	var buf bytes.Buffer
 	for rows.Next() {
 		var e event
-		var lob *goracle.Lob
-		if err := rows.Scan(&e.ID, &lob, &e.LastActive); err != nil {
+		if err := rows.Scan(&e.ID, &e.Text, &e.LastActive); err != nil {
 			return events, err
 		}
-		buf.Reset()
-		if _, err := io.Copy(&buf, lob); err != nil {
-			return events, err
-		}
-		e.Text = buf.String()
 		events = append(events, e)
 	}
 

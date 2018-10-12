@@ -1780,7 +1780,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 }
 
 func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
+	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
 		return nil
 	}
