@@ -517,8 +517,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 }
 
 // ConnectionParams holds the params for a connection (pool).
-// You can use ConnectionParams{...}.String() as a connection string
-// in sql.Open.
+// You can use ConnectionParams{...}.StringWithPassword()
+// as a connection string in sql.Open.
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass      string
 	IsSysDBA, IsSysOper, IsSysASM           bool
