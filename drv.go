@@ -38,7 +38,7 @@
 //
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.
-// Thus you can cluster the session pool with classes, or ose POOLED for DRCP.
+// Thus you can cluster the session pool with classes, or use POOLED for DRCP.
 package goracle
 
 /*
