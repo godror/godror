@@ -205,7 +205,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			stmt.Close()
 		}
 		if err != nil {
-			return nil, errors.Wrap(err, qry)
+			return nil, maybeBadConn(errors.Wrap(err, qry))
 		}
 	}
 
