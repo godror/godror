@@ -100,6 +100,11 @@ Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `s
 then either use the `driver.Rows` interface, or transform it into a regular `*sql.Rows` with
 `goracle.WrapRows`.
 
+For examples, see Anthony Tuininga's
+[presentation about Go](https://static.rainfocus.com/oracle/oow18/sess/1525791357522001Q5tc/PF/DEV5047%20-%20The%20Go%20Language_1540587475596001afdk.pdf)
+(page 39)!
+
+
 ## Caveats
 
 ### sql.NullString
