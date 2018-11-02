@@ -1664,7 +1664,7 @@ func TestExecTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := testDb.ExecContext(ctx, "BEGIN DBMS_LOCK.SLEEP(1); END;"); err != nil {
+	if _, err := testDb.ExecContext(ctx, "SELECT COUNT(DISTINCT ORA_HASH(A.table_name)) from cat, cat, cat A"); err != nil {
 		t.Log(err)
 	}
 }
