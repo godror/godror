@@ -53,6 +53,7 @@ type conn struct {
 	connParams     ConnectionParams
 	inTransaction  bool
 	Client, Server VersionInfo
+	setTT          TraceTag
 	*drv
 }
 
@@ -426,29 +427,33 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 	}
 	//fmt.Fprintf(os.Stderr, "setTraceTag %s\n", tt)
 	var err error
-	for nm, v := range map[string]*string{
-		"action":     &tt.Action,
-		"module":     &tt.Module,
-		"info":       &tt.ClientInfo,
-		"identifier": &tt.ClientIdentifier,
-		"op":         &tt.DbOp,
+	for nm, vv := range map[string][2]string{
+		"action":     {c.setTT.Action, tt.Action},
+		"module":     {c.setTT.Module, tt.Module},
+		"info":       {c.setTT.ClientInfo, tt.ClientInfo},
+		"identifier": {c.setTT.ClientIdentifier, tt.ClientIdentifier},
+		"op":         {c.setTT.DbOp, tt.DbOp},
 	} {
+		if vv[0] == vv[1] {
+			continue
+		}
+		v := vv[1]
 		var s *C.char
-		if *v != "" {
-			s = C.CString(*v)
+		if v != "" {
+			s = C.CString(v)
 		}
 		var rc C.int
 		switch nm {
 		case "action":
-			rc = C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(*v)))
+			rc = C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(v)))
 		case "module":
-			rc = C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(*v)))
+			rc = C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(v)))
 		case "info":
-			rc = C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(*v)))
+			rc = C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(v)))
 		case "identifier":
-			rc = C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(*v)))
+			rc = C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(v)))
 		case "op":
-			rc = C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(*v)))
+			rc = C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v)))
 		}
 		if rc == C.DPI_FAILURE && err == nil {
 			err = errors.Wrap(c.getError(), nm)
@@ -457,6 +462,7 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 			C.free(unsafe.Pointer(s))
 		}
 	}
+	c.setTT = tt
 	return err
 }
 
