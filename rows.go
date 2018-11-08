@@ -39,6 +39,7 @@ var _ = driver.RowsColumnTypeLength((*rows)(nil))
 var _ = driver.RowsColumnTypeNullable((*rows)(nil))
 var _ = driver.RowsColumnTypePrecisionScale((*rows)(nil))
 var _ = driver.RowsColumnTypeScanType((*rows)(nil))
+var _ = driver.RowsNextResultSet((*rows)(nil))
 
 type rows struct {
 	*statement
@@ -49,6 +50,10 @@ type rows struct {
 	vars           []*C.dpiVar
 	data           [][]C.dpiData
 	err            error
+
+	origSt    *statement
+	nextRs    *C.dpiStmt
+	nextRsErr error
 }
 
 // Columns returns the names of the columns. The number of
@@ -544,6 +549,60 @@ func (dr *directRow) Next(dest []driver.Value) error {
 	case getConnection:
 		*(dest[0].(*interface{})) = dr.result[0]
 	}
+	return nil
+}
+
+func (r *rows) getImplicitResult() {
+	if r.nextRsErr != nil {
+		return
+	}
+	// use the original statement for the NextResultSet call.
+	st := r.origSt
+	if st == nil {
+		st = r.statement
+		r.origSt = st
+	}
+	if C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) == C.DPI_FAILURE {
+		r.nextRsErr = errors.Wrap(r.getError(), "getImplicitResult")
+	}
+}
+func (r *rows) HasNextResultSet() bool {
+	if r.nextRs != nil {
+		return true
+	}
+	if !((r.conn.Client.Version > 12 || r.conn.Client.Version == 12 && r.conn.Client.Release >= 1) &&
+		(r.conn.Server.Version > 12 || r.conn.Server.Version == 12 && r.conn.Server.Release >= 1)) {
+		return false
+	}
+	r.getImplicitResult()
+	return r.nextRs != nil
+}
+func (r *rows) NextResultSet() error {
+	if r.nextRs == nil {
+		r.getImplicitResult()
+		if r.nextRsErr != nil {
+			return r.nextRsErr
+		}
+		if r.nextRs == nil {
+			return errors.Wrap(io.EOF, "getImplicitResult")
+		}
+	}
+	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
+
+	var n C.uint32_t
+	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
+		return errors.Wrapf(io.EOF, "getNumQueryColumns: %v", r.getError())
+	}
+	// keep the originam statement for the succeeding NextResultSet calls.
+	nr, err := st.openRows(int(n))
+	if err != nil {
+		return err
+	}
+	nr.origSt = r.origSt
+	if nr.origSt == nil {
+		nr.origSt = r.statement
+	}
+	*r = *nr
 	return nil
 }
 

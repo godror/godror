@@ -4,6 +4,7 @@ linters-settings:
 
 linters:
   disable:
+    - megacheck
     - errcheck
     - typecheck
 

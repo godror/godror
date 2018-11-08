@@ -1863,3 +1863,35 @@ func TestExecInt64(t *testing.T) {
 	}
 	t.Log("num:", num, "str:", str)
 }
+
+func TestImplicitResults(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const qry = `declare
+			c0 sys_refcursor;
+            c1 sys_refcursor;
+            c2 sys_refcursor;
+        begin
+			:1 := c0;
+            open c1 for
+            select 1 from DUAL;
+            dbms_sql.return_result(c1);
+            open c2 for
+            select 'A' from DUAL;
+            dbms_sql.return_result(c2);
+        end;`
+	var rows driver.Rows
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &rows}); err != nil {
+		if strings.Contains(err.Error(), "PLS-00302:") {
+			t.Skip()
+		}
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	r := rows.(driver.RowsNextResultSet)
+	for r.HasNextResultSet() {
+		if err := r.NextResultSet(); err != nil {
+			t.Error(err)
+		}
+	}
+}
