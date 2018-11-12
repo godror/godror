@@ -47,6 +47,11 @@ var _ = driver.ConnBeginTx((*conn)(nil))
 var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
+type key int
+
+// ProxyUser specifies the proxy user in context
+const ProxyUser key = iota
+
 type conn struct {
 	sync.RWMutex
 	dpiConn        *C.dpiConn
@@ -54,6 +59,7 @@ type conn struct {
 	inTransaction  bool
 	Client, Server VersionInfo
 	setTT          TraceTag
+	proxyUser      string
 	*drv
 }
 
@@ -84,6 +90,9 @@ func (c *conn) Break() error {
 // database/sql.Ping may return way after the Context.Deadline!
 func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.openProxyConnection(ctx); err != nil {
 		return err
 	}
 	c.RLock()
@@ -232,6 +241,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.openProxyConnection(ctx); err != nil {
 		return nil, err
 	}
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
@@ -487,4 +499,60 @@ type TraceTag struct {
 	Module string
 	// Action - specifies an action, such as an INSERT or UPDATE operation, in a module
 	Action string
+}
+
+func (c *conn) openProxyConnection(ctx context.Context) error {
+	if !c.connParams.HeterogeneousPool {
+		return nil
+	}
+
+	var user string
+	var ok bool
+	if user, ok = ctx.Value(ProxyUser).(string); ok && user == c.proxyUser {
+		return nil
+	}
+
+	if c.dpiConn != nil {
+		if err := c.Close(); err != nil {
+			return driver.ErrBadConn
+		}
+	}
+
+	c.Lock()
+	defer c.Unlock()
+
+	var connCreateParams C.dpiConnCreateParams
+	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+		return errors.Wrap(c.getError(), "initConnCreateParams")
+	}
+
+	dc := C.malloc(C.sizeof_void)
+	if Log != nil {
+		Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
+	}
+
+	if user == "" {
+		if C.dpiPool_acquireConnection(
+			c.pools[c.connParams.String()],
+			nil, 0, nil, 0, nil,
+			(**C.dpiConn)(unsafe.Pointer(&dc)),
+		) == C.DPI_FAILURE {
+			C.free(unsafe.Pointer(dc))
+			return errors.Wrapf(c.getError(), "acquireProxyAuthenticatedConnection")
+		}
+	} else {
+		if C.dpiPool_acquireConnection(
+			c.pools[c.connParams.String()],
+			C.CString(user), C.uint32_t(len(user)), nil, 0, nil,
+			(**C.dpiConn)(unsafe.Pointer(&dc)),
+		) == C.DPI_FAILURE {
+			C.free(unsafe.Pointer(dc))
+			return errors.Wrapf(c.getError(), "acquireProxyAuthenticatedConnection")
+		}
+	}
+
+	c.dpiConn = (*C.dpiConn)(dc)
+	c.proxyUser = user
+
+	return c.init()
 }

@@ -407,6 +407,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		dp := d.pools[connString]
 		d.mu.Unlock()
 		if dp != nil {
+			if P.HeterogeneousPool {
+				//Proxy authenticated connections to database will be provided by methods with context
+				return &c, nil
+			}
 			dc := C.malloc(C.sizeof_void)
 			if Log != nil {
 				Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
@@ -481,7 +485,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
 	poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
 	poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
-	if extAuth == 1 {
+	if extAuth == 1 || P.HeterogeneousPool {
 		poolCreateParams.homogeneous = 0
 	}
 	poolCreateParams.externalAuth = extAuth
@@ -522,6 +526,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass      string
 	IsSysDBA, IsSysOper, IsSysASM           bool
+	HeterogeneousPool                       bool
 	StandaloneConnection                    bool
 	EnableEvents                            bool
 	MinSessions, MaxSessions, PoolIncrement int
@@ -638,6 +643,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	P.StandaloneConnection = q.Get("standaloneConnection") == "1" || P.ConnClass == NoConnectionPoolingConnectionClass
 	P.EnableEvents = q.Get("enableEvents") == "1"
+
+	P.HeterogeneousPool = q.Get("heterogeneousPool") == "1"
 
 	for _, task := range []struct {
 		Dest *int
