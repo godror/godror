@@ -553,7 +553,7 @@ func (dr *directRow) Next(dest []driver.Value) error {
 }
 
 func (r *rows) getImplicitResult() {
-	if r.nextRsErr != nil {
+	if r == nil || r.nextRsErr != nil {
 		return
 	}
 	// use the original statement for the NextResultSet call.
@@ -567,6 +567,9 @@ func (r *rows) getImplicitResult() {
 	}
 }
 func (r *rows) HasNextResultSet() bool {
+	if r == nil || r.statement == nil || r.conn == nil {
+		return false
+	}
 	if r.nextRs != nil {
 		return true
 	}
