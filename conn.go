@@ -49,8 +49,12 @@ var _ = driver.Pinger((*conn)(nil))
 
 type key int
 
-// CurrentUser specifies the current user in context
-const CurrentUser key = iota
+const (
+	// CurrentUser specifies the current user in context
+	CurrentUser key = iota
+	// CurrentUserPass specifies the password of current user in context
+	CurrentUserPass
+)
 
 type conn struct {
 	sync.RWMutex
@@ -518,10 +522,13 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		}
 	}
 
+	// empty password is ok here
+	pass, _ := ctx.Value(CurrentUserPass).(string)
+
 	c.Lock()
 	defer c.Unlock()
 
-	if err := c.acquireConn(c, user); err != nil {
+	if err := c.acquireConn(c, user, pass); err != nil {
 		return err
 	}
 	c.currentUser = user

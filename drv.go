@@ -412,8 +412,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				return &c, nil
 			}
 
-			err := d.acquireConn(&c, "")
-			if err != nil {
+			if err := d.acquireConn(&c, "", ""); err != nil {
 				return nil, err
 			}
 
@@ -513,7 +512,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	return d.openConn(P)
 }
 
-func (d *drv) acquireConn(c *conn, user string) error {
+func (d *drv) acquireConn(c *conn, user, pass string) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "initConnCreateParams")
@@ -523,19 +522,25 @@ func (d *drv) acquireConn(c *conn, user string) error {
 	if Log != nil {
 		Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
 	}
-	var cUserName *C.char
+	var cUserName, cPassword *C.char
 	defer func() {
 		if cUserName != nil {
 			C.free(unsafe.Pointer(cUserName))
+		}
+		if cPassword != nil {
+			C.free(unsafe.Pointer(cPassword))
 		}
 	}()
 	if user != "" {
 		cUserName = C.CString(user)
 	}
+	if pass != "" {
+		cPassword = C.CString(pass)
+	}
 
 	if C.dpiPool_acquireConnection(
 		c.pools[c.connParams.String()],
-		cUserName, C.uint32_t(len(user)), nil, 0, nil,
+		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)), nil,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dc))
