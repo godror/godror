@@ -49,8 +49,8 @@ var _ = driver.Pinger((*conn)(nil))
 
 type key int
 
-// ProxyUser specifies the proxy user in context
-const ProxyUser key = iota
+// CurrentUser specifies the current user in context
+const CurrentUser key = iota
 
 type conn struct {
 	sync.RWMutex
@@ -59,7 +59,7 @@ type conn struct {
 	inTransaction  bool
 	Client, Server VersionInfo
 	setTT          TraceTag
-	proxyUser      string
+	currentUser    string
 	*drv
 }
 
@@ -92,7 +92,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := c.openProxyConnection(ctx); err != nil {
+	if err := c.ensureContextUser(ctx); err != nil {
 		return err
 	}
 	c.RLock()
@@ -243,7 +243,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := c.openProxyConnection(ctx); err != nil {
+	if err := c.ensureContextUser(ctx); err != nil {
 		return nil, err
 	}
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
@@ -501,14 +501,14 @@ type TraceTag struct {
 	Action string
 }
 
-func (c *conn) openProxyConnection(ctx context.Context) error {
+func (c *conn) ensureContextUser(ctx context.Context) error {
 	if !c.connParams.HeterogeneousPool {
 		return nil
 	}
 
 	var user string
 	var ok bool
-	if user, ok = ctx.Value(ProxyUser).(string); ok && user == c.proxyUser {
+	if user, ok = ctx.Value(CurrentUser).(string); ok && user == c.currentUser {
 		return nil
 	}
 
@@ -552,7 +552,7 @@ func (c *conn) openProxyConnection(ctx context.Context) error {
 	}
 
 	c.dpiConn = (*C.dpiConn)(dc)
-	c.proxyUser = user
+	c.currentUser = user
 
 	return c.init()
 }
