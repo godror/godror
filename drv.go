@@ -606,10 +606,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		RawQuery: cc +
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
-				"standaloneConnection=%d&enableEvents=%d",
+				"standaloneConnection=%d&enableEvents=%d&"+
+				"heterogeneousPool=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
 				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
+				b2i(P.HeterogeneousPool),
 			),
 	}).String()
 }

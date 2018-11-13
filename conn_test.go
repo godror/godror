@@ -35,6 +35,9 @@ func TestParseConnString(t *testing.T) {
 	wantXO := wantDefault
 	wantXO.SID = "localhost/sid"
 
+	wantHeterogeneous := wantXO
+	wantHeterogeneous.HeterogeneousPool = true
+
 	setP := func(s, p string) string {
 		if i := strings.Index(s, ":SECRET-"); i >= 0 {
 			if j := strings.Index(s[i:], "@"); j >= 0 {
@@ -58,7 +61,8 @@ func TestParseConnString(t *testing.T) {
 			In:   setP(wantAt.String(), wantAt.Password),
 			Want: wantAt},
 
-		"xo": {In: "oracle://user:pass@localhost/sid", Want: wantXO},
+		"xo":            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
+		"heterogeneous": {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
 	} {
 		t.Log(tCase.In)
 		P, err := ParseConnString(tCase.In)
