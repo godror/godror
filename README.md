@@ -136,6 +136,16 @@ They close the statement right after you `Scan` from the returned `*Row`, the re
 
 So, use a separate `Stmt` or `sql.QueryContext`.
 
+### TIMESTAMP
+As I couldn't make TIMESTAMP arrays work, all `time.Time` is bind as `DATE`, so fractional seconds
+are lost.
+A workaround is converting to string:
+
+    time.Now().Format("2-Jan-06 3:04:05.000000 PM")
+
+See #121.
+
+
 # Install
 
 Just
