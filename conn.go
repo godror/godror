@@ -521,35 +521,9 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 	c.Lock()
 	defer c.Unlock()
 
-	var connCreateParams C.dpiConnCreateParams
-	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "initConnCreateParams")
+	if err := c.acquireConn(c, user); err != nil {
+		return err
 	}
-
-	dc := C.malloc(C.sizeof_void)
-	if Log != nil {
-		Log("C", "dpiPool_acquireHeterogeneousPoolConnection", "conn", connCreateParams)
-	}
-	var cUserName *C.char
-	defer func() {
-		if cUserName != nil {
-			C.free(unsafe.Pointer(cUserName))
-		}
-	}()
-	if user != "" {
-		cUserName = C.CString(user)
-	}
-
-	if C.dpiPool_acquireConnection(
-		c.pools[c.connParams.String()],
-		cUserName, C.uint32_t(len(user)), nil, 0, nil,
-		(**C.dpiConn)(unsafe.Pointer(&dc)),
-	) == C.DPI_FAILURE {
-		C.free(unsafe.Pointer(dc))
-		return errors.Wrapf(c.getError(), "acquireHeterogeneousPoolConnection")
-	}
-
-	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
 
 	return c.init()

@@ -411,19 +411,12 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				//Proxy authenticated connections to database will be provided by methods with context
 				return &c, nil
 			}
-			dc := C.malloc(C.sizeof_void)
-			if Log != nil {
-				Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
+
+			err := d.acquireConn(&c, "")
+			if err != nil {
+				return nil, err
 			}
-			if C.dpiPool_acquireConnection(
-				dp,
-				nil, 0, nil, 0, &connCreateParams,
-				(**C.dpiConn)(unsafe.Pointer(&dc)),
-			) == C.DPI_FAILURE {
-				C.free(unsafe.Pointer(dc))
-				return nil, errors.Wrapf(d.getError(), "acquireConnection[%s]", P)
-			}
-			c.dpiConn = (*C.dpiConn)(dc)
+
 			return &c, c.init()
 		}
 	}
@@ -518,6 +511,40 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	d.mu.Unlock()
 
 	return d.openConn(P)
+}
+
+func (d *drv) acquireConn(c *conn, user string) error {
+	var connCreateParams C.dpiConnCreateParams
+	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+		return errors.Wrap(c.getError(), "initConnCreateParams")
+	}
+
+	dc := C.malloc(C.sizeof_void)
+	if Log != nil {
+		Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
+	}
+	var cUserName *C.char
+	defer func() {
+		if cUserName != nil {
+			C.free(unsafe.Pointer(cUserName))
+		}
+	}()
+	if user != "" {
+		cUserName = C.CString(user)
+	}
+
+	if C.dpiPool_acquireConnection(
+		c.pools[c.connParams.String()],
+		cUserName, C.uint32_t(len(user)), nil, 0, nil,
+		(**C.dpiConn)(unsafe.Pointer(&dc)),
+	) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(dc))
+		return errors.Wrapf(c.getError(), "acquirePoolConnection")
+	}
+
+	c.dpiConn = (*C.dpiConn)(dc)
+
+	return nil
 }
 
 // ConnectionParams holds the params for a connection (pool).
