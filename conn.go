@@ -528,27 +528,25 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 
 	dc := C.malloc(C.sizeof_void)
 	if Log != nil {
-		Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
+		Log("C", "dpiPool_acquireHeterogeneousPoolConnection", "conn", connCreateParams)
+	}
+	var cUserName *C.char
+	defer func() {
+		if cUserName != nil {
+			C.free(unsafe.Pointer(cUserName))
+		}
+	}()
+	if user != "" {
+		cUserName = C.CString(user)
 	}
 
-	if user == "" {
-		if C.dpiPool_acquireConnection(
-			c.pools[c.connParams.String()],
-			nil, 0, nil, 0, nil,
-			(**C.dpiConn)(unsafe.Pointer(&dc)),
-		) == C.DPI_FAILURE {
-			C.free(unsafe.Pointer(dc))
-			return errors.Wrapf(c.getError(), "acquireProxyAuthenticatedConnection")
-		}
-	} else {
-		if C.dpiPool_acquireConnection(
-			c.pools[c.connParams.String()],
-			C.CString(user), C.uint32_t(len(user)), nil, 0, nil,
-			(**C.dpiConn)(unsafe.Pointer(&dc)),
-		) == C.DPI_FAILURE {
-			C.free(unsafe.Pointer(dc))
-			return errors.Wrapf(c.getError(), "acquireProxyAuthenticatedConnection")
-		}
+	if C.dpiPool_acquireConnection(
+		c.pools[c.connParams.String()],
+		cUserName, C.uint32_t(len(user)), nil, 0, nil,
+		(**C.dpiConn)(unsafe.Pointer(&dc)),
+	) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(dc))
+		return errors.Wrapf(c.getError(), "acquireHeterogeneousPoolConnection")
 	}
 
 	c.dpiConn = (*C.dpiConn)(dc)
