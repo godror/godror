@@ -415,10 +415,6 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			if Log != nil {
 				Log("C", "dpiPool_acquireConnection", "conn", connCreateParams)
 			}
-
-			if P.HeterogeneousPool {
-
-			}
 			if C.dpiPool_acquireConnection(
 				dp,
 				nil, 0, nil, 0, &connCreateParams,
