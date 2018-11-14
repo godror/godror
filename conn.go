@@ -47,15 +47,6 @@ var _ = driver.ConnBeginTx((*conn)(nil))
 var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
-type key int
-
-const (
-	// CurrentUser specifies the current user in context
-	CurrentUser key = iota
-	// CurrentUserPass specifies the password of current user in context
-	CurrentUserPass
-)
-
 type conn struct {
 	sync.RWMutex
 	dpiConn        *C.dpiConn
@@ -505,14 +496,22 @@ type TraceTag struct {
 	Action string
 }
 
+const userpwCtxKey = ctxKey("userPw")
+
+// ContextWithUserPassw returns a context with the specified user and password,
+// to be used with heterogeneous pools.
+func ContextWithUserPassw(ctx context.Context, user, password string) context.Context {
+	return context.WithValue(ctx, userpwCtxKey, [2]string{user, password})
+}
+
 func (c *conn) ensureContextUser(ctx context.Context) error {
 	if !c.connParams.HeterogeneousPool {
 		return nil
 	}
 
-	var user string
+	var up [2]string
 	var ok bool
-	if user, ok = ctx.Value(CurrentUser).(string); ok && user == c.currentUser {
+	if up, ok = ctx.Value(userpwCtxKey).([2]string); !ok || up[0] == c.currentUser {
 		return nil
 	}
 
@@ -522,16 +521,12 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		}
 	}
 
-	// empty password is ok here
-	pass, _ := ctx.Value(CurrentUserPass).(string)
-
 	c.Lock()
 	defer c.Unlock()
 
-	if err := c.acquireConn(c, user, pass); err != nil {
+	if err := c.acquireConn(up[0], up[1]); err != nil {
 		return err
 	}
-	c.currentUser = user
 
 	return c.init()
 }

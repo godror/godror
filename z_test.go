@@ -62,7 +62,7 @@ func init() {
 		logger.Swap(tl)
 	}
 
-	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED&noConnectionPooling=0&enableEvents=1",
+	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED&noConnectionPooling=0&enableEvents=1&heterogeneousPool=0",
 		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		os.Getenv("GORACLE_DRV_TEST_DB"),
@@ -1696,7 +1696,7 @@ func TestSDO(t *testing.T) {
 	selectQry := `SELECT shape, DUMP(shape), CASE WHEN shape IS NULL THEN 'I' ELSE 'N' END FROM (` + innerQry + ")"
 	rows, err := testDb.QueryContext(ctx, selectQry)
 	if err != nil {
-		if !strings.Contains(err.Error(), `ORA-00904: "SDO_GEOMETRY"`) {
+		if !strings.Contains(err.Error(), `ORA-00904: "MDSYS"."SDO_GEOMETRY"`) {
 			t.Fatal(errors.Wrap(err, selectQry))
 		}
 		for _, qry := range []string{

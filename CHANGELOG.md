@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - allow RETURNING with empty result set (such as UPDATE).
 - Allow SELECT to return object types.
 - Implement RowsNextResultSet to return implicit result sets set by DBMS_SQL.return.
+- Allow using heterogeneous pools with user set with ContextWithUserPassw.
 
 ### Changed
 - fixed Number.MarshalJSON (see #112)'

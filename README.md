@@ -34,6 +34,9 @@ and https://docs.oracle.com/en/database/oracle/oracle-database/12.2/netag/config
 TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
 
+To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
+`goracle.ContextWithUserPassw`.
+
 ## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be

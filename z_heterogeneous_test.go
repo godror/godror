@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2018 @wwanderley
 //
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,47 +19,49 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/pkg/errors"
 
 	goracle "gopkg.in/goracle.v2"
 )
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
 
-	username := os.Getenv("GORACLE_DRV_TEST_USERNAME")
-	proxyUser := "proxyUser"
+	const proxyPassword = "myPassword"
+	const proxyUser = "proxyUser"
 
-	testHeterogeneousConStr := fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED&noConnectionPooling=0&heterogeneousPool=1",
-		username,
-		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-		os.Getenv("GORACLE_DRV_TEST_DB"),
-		maxSessions,
-	)
+	cs, err := goracle.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.HeterogeneousPool = true
+	username := cs.Username
+	testHeterogeneousConStr := cs.StringWithPassword()
+	t.Log(testHeterogeneousConStr)
 
-	var err error
 	var testHeterogeneousDB *sql.DB
 	if testHeterogeneousDB, err = sql.Open("goracle", testHeterogeneousConStr); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
-		//panic(err)
+		t.Fatal(errors.Wrap(err, testHeterogeneousConStr))
 	}
 	defer testHeterogeneousDB.Close()
 
 	testHeterogeneousDB.Exec(fmt.Sprintf("DROP USER %s", proxyUser))
 
-	if _, err = testHeterogeneousDB.Exec(fmt.Sprintf("CREATE USER %s IDENTIFIED BY myPassword", proxyUser)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = testHeterogeneousDB.Exec(fmt.Sprintf("GRANT CONNECT TO %s", proxyUser)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = testHeterogeneousDB.Exec(fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = testHeterogeneousDB.Exec(fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username)); err != nil {
-		t.Fatal(err)
+	for _, qry := range []string{
+		fmt.Sprintf("CREATE USER %s IDENTIFIED BY "+proxyPassword, proxyUser),
+		fmt.Sprintf("GRANT CONNECT TO %s", proxyUser),
+		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
+		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
+		fmt.Sprintf("CREATE USER %s IDENTIFIED BY %s", proxyUser, proxyPassword),
+		fmt.Sprintf("GRANT CONNECT TO %s", proxyUser),
+		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
+		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
+	} {
+		if _, err := testHeterogeneousDB.Exec(qry); err != nil {
+			t.Skip(errors.Wrap(err, qry))
+		}
 	}
 
 	for tName, tCase := range map[string]struct {
@@ -67,7 +69,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		Want string
 	}{
 		"noContext": {In: context.TODO(), Want: username},
-		"proxyUser": {In: context.WithValue(context.TODO(), goracle.CurrentUser, proxyUser), Want: proxyUser},
+		"proxyUser": {In: goracle.ContextWithUserPassw(context.TODO(), proxyUser, proxyPassword), Want: proxyUser},
 	} {
 
 		var result string

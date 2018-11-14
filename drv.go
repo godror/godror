@@ -29,7 +29,8 @@
 //     poolIncrement=1& \
 //     connectionClass=POOLED& \
 //     standaloneConnection=0& \
-//     enableEvents=0
+//     enableEvents=0&
+//     heterogeneousPool=0
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -412,7 +413,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 				return &c, nil
 			}
 
-			if err := d.acquireConn(&c, "", ""); err != nil {
+			if err := c.acquireConn("", ""); err != nil {
 				return nil, err
 			}
 
@@ -512,7 +513,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	return d.openConn(P)
 }
 
-func (d *drv) acquireConn(c *conn, user, pass string) error {
+func (c *conn) acquireConn(user, pass string) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Wrap(c.getError(), "initConnCreateParams")
@@ -548,6 +549,7 @@ func (d *drv) acquireConn(c *conn, user, pass string) error {
 	}
 
 	c.dpiConn = (*C.dpiConn)(dc)
+	c.currentUser = user
 
 	return nil
 }
