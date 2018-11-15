@@ -5,14 +5,19 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Added
-- allow RETURNING with empty result set (such as UPDATE).
-- Allow SELECT to return object types.
 - Implement RowsNextResultSet to return implicit result sets set by DBMS_SQL.return.
 - Allow using heterogeneous pools with user set with ContextWithUserPassw.
 
+## [2.9.1] - 2018-11-14
+### Added
+- allow RETURNING with empty result set (such as UPDATE).
+- Allow SELECT to return object types.
+
 ### Changed
 - fixed Number.MarshalJSON (see #112)'
+
+## [2.9.0] - 2018-10-12
+### Changed
 - The default type for BLOB is []byte and for CLOB is a string - no need for ClobAsString() option.
 
 ## [2.8.2] - 2018-10-01

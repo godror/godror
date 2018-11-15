@@ -53,7 +53,7 @@ type conn struct {
 	connParams     ConnectionParams
 	inTransaction  bool
 	Client, Server VersionInfo
-	setTT          TraceTag
+	currentTT      TraceTag
 	currentUser    string
 	*drv
 }
@@ -429,17 +429,15 @@ func maybeBadConn(err error) error {
 }
 
 func (c *conn) setTraceTag(tt TraceTag) error {
-	if c.dpiConn == nil {
+	if c == nil || c.dpiConn == nil {
 		return nil
 	}
-	//fmt.Fprintf(os.Stderr, "setTraceTag %s\n", tt)
-	var err error
 	for nm, vv := range map[string][2]string{
-		"action":     {c.setTT.Action, tt.Action},
-		"module":     {c.setTT.Module, tt.Module},
-		"info":       {c.setTT.ClientInfo, tt.ClientInfo},
-		"identifier": {c.setTT.ClientIdentifier, tt.ClientIdentifier},
-		"op":         {c.setTT.DbOp, tt.DbOp},
+		"action":     {c.currentTT.Action, tt.Action},
+		"module":     {c.currentTT.Module, tt.Module},
+		"info":       {c.currentTT.ClientInfo, tt.ClientInfo},
+		"identifier": {c.currentTT.ClientIdentifier, tt.ClientIdentifier},
+		"op":         {c.currentTT.DbOp, tt.DbOp},
 	} {
 		if vv[0] == vv[1] {
 			continue
@@ -462,15 +460,15 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		case "op":
 			rc = C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v)))
 		}
-		if rc == C.DPI_FAILURE && err == nil {
-			err = errors.Wrap(c.getError(), nm)
-		}
 		if s != nil {
 			C.free(unsafe.Pointer(s))
 		}
+		if rc == C.DPI_FAILURE {
+			return errors.Wrap(c.getError(), nm)
+		}
 	}
-	c.setTT = tt
-	return err
+	c.currentTT = tt
+	return nil
 }
 
 const traceTagCtxKey = ctxKey("tracetag")
