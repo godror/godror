@@ -52,6 +52,7 @@ type conn struct {
 	dpiConn        *C.dpiConn
 	connParams     ConnectionParams
 	inTransaction  bool
+	tranParams     tranParams
 	Client, Server VersionInfo
 	currentTT      TraceTag
 	currentUser    string
@@ -185,33 +186,46 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, err
 	}
 
-	var todo []string
+	const (
+		trRO = "READ ONLY"
+		trRW = "READ WRITE"
+		trLC = "ISOLATION LEVEL READ COMMITED"
+		trLS = "ISOLATION LEVEL SERIALIZABLE"
+	)
+
+	var todo tranParams
 	if opts.ReadOnly {
-		todo = append(todo, "READ ONLY")
+		todo.RW = trRO
 	} else {
-		todo = append(todo, "READ WRITE")
+		todo.RW = trRW
 	}
 	switch level := sql.IsolationLevel(opts.Isolation); level {
 	case sql.LevelDefault:
 	case sql.LevelReadCommitted:
-		todo = append(todo, "ISOLATION LEVEL READ COMMITTED")
+		todo.Level = trLC
 	case sql.LevelSerializable:
-		todo = append(todo, "ISOLATION LEVEL SERIALIZABLE")
+		todo.Level = trLS
 	default:
 		return nil, errors.Errorf("%v isolation level is not supported", sql.IsolationLevel(opts.Isolation))
 	}
 
-	for _, qry := range todo {
-		qry = "SET TRANSACTION " + qry
-		stmt, err := c.PrepareContext(ctx, qry)
-		if err == nil {
-			//fmt.Println(qry)
-			_, err = stmt.Exec(nil) //nolint:typecheck,megacheck
-			stmt.Close()
+	if todo != c.tranParams {
+		for _, qry := range []string{todo.RW, todo.Level} {
+			if qry == "" {
+				continue
+			}
+			qry = "SET TRANSACTION " + qry
+			stmt, err := c.PrepareContext(ctx, qry)
+			if err == nil {
+				//fmt.Println(qry)
+				_, err = stmt.Exec(nil) //nolint:typecheck,megacheck
+				stmt.Close()
+			}
+			if err != nil {
+				return nil, maybeBadConn(errors.Wrap(err, qry))
+			}
 		}
-		if err != nil {
-			return nil, maybeBadConn(errors.Wrap(err, qry))
-		}
+		c.tranParams = todo
 	}
 
 	c.RLock()
@@ -229,6 +243,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.Unlock()
 	}
 	return c, nil
+}
+
+type tranParams struct {
+	RW, Level string
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.
@@ -276,6 +294,7 @@ func (c *conn) Rollback() error {
 func (c *conn) endTran(isCommit bool) error {
 	c.Lock()
 	c.inTransaction = false
+	c.tranParams = tranParams{}
 
 	var err error
 	//msg := "Commit"
