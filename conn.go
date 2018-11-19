@@ -396,7 +396,11 @@ func maybeBadConn(err error) error {
 	if err == nil {
 		return nil
 	}
-	if cd, ok := errors.Cause(err).(interface {
+	root := errors.Cause(err)
+	if root == driver.ErrBadConn {
+		return root
+	}
+	if cd, ok := root.(interface {
 		Code() int
 	}); ok {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi

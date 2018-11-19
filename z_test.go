@@ -1808,19 +1808,39 @@ func TestSelectCustomType(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	tbl := "test_custom_type" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (nm VARCHAR2(30), typ VARCHAR2(30), id NUMBER(6), created DATE)"
+	if _, err = conn.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP TABLE " + tbl)
+
+	n := 1000
+	nms, typs, ids, createds := make([]string, n), make([]string, n), make([]int, n), make([]time.Time, n)
+	now := time.Now()
+	for i := range nms {
+		nms[i], typs[i], ids[i], createds[i] = fmt.Sprintf("obj-%d", i), "OBJECT", i, now.Add(-time.Duration(i)*time.Second)
+	}
+	qry = "INSERT INTO " + tbl + " (nm, typ, id, created) VALUES (:1, :2, :3, :4)"
+	if _, err = conn.ExecContext(ctx, qry, nms, typs, ids, createds); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+
 	const num = 10
 	nums := &Custom{Num: num}
 	type underlying int64
 	numbers := underlying(num)
-	rows, err := testDb.QueryContext(ctx,
-		"SELECT object_name, object_type, object_id, created FROM user_objects WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY object_id",
+	rows, err := conn.QueryContext(ctx,
+		"SELECT nm, typ, id, created FROM "+tbl+" WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY id",
 		sql.Named("alpha", nums),
 		goracle.MagicTypeConversion(), sql.Named("beta", numbers),
 	)
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
-	n, oldOid := 0, int64(0)
+	n = 0
+	oldOid := int64(0)
 	for rows.Next() {
 		var tbl, typ string
 		var oid int64

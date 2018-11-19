@@ -16,10 +16,12 @@
 package goracle
 
 import (
+	"database/sql/driver"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/pkg/errors"
 )
 
 func TestParseConnString(t *testing.T) {
@@ -87,5 +89,12 @@ func TestParseConnString(t *testing.T) {
 		if got := setP(Q.String(), Q.Password); s != got {
 			t.Errorf("%s: paramString got %q, wanted %q", tName, got, s)
 		}
+	}
+}
+
+func TestMaybeBadConn(t *testing.T) {
+	want := driver.ErrBadConn
+	if got := maybeBadConn(errors.Wrap(want, "bad")); got != want {
+		t.Errorf("got %v, wanted %v", got, want)
 	}
 }
