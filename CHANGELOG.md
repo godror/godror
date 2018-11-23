@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.10.1] - 2018-11-23
 ### Changed
 - Don't call SET TRANSACTION if not really needed in BeginTx - if the isolation level hasn't changed.
 
