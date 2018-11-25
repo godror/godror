@@ -1,7 +1,7 @@
 module gopkg.in/goracle.v2
 
 require (
-	github.com/go-kit/kit v0.7.0
+	github.com/go-kit/kit v0.8.0
 	github.com/go-logfmt/logfmt v0.3.0 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/google/go-cmp v0.2.0
