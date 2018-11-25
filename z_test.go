@@ -1732,7 +1732,7 @@ func TestSDO(t *testing.T) {
 				if !strings.Contains(err.Error(), "ORA-01031:") {
 					t.Fatal(err)
 				}
-				//t.Skip(err)
+				t.Skip(err)
 			}
 			defer testDb.ExecContext(ctx, drop)
 		}
