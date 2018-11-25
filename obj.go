@@ -40,6 +40,7 @@ type Object struct {
 
 func (O *Object) getError() error { return O.drv.getError() }
 
+// ErrNoSuchKey is the error for missing key in lookup.
 var ErrNoSuchKey = errors.New("no such key")
 
 // GetAttribute gets the i-th attribute into data.
@@ -119,24 +120,24 @@ var ErrNotCollection = errors.New("not collection")
 var ErrNotExist = errors.New("not exist")
 
 // AsSlice retrieves the collection into a slice.
-func (coll *ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
+func (O *ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	var data Data
 	var dr reflect.Value
 	needsInit := dest == nil
 	if !needsInit {
 		dr = reflect.ValueOf(dest)
 	}
-	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-		if coll.CollectionOf.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT {
-			data.ObjectType = *coll.CollectionOf
+	for i, err := O.First(); err == nil; i, err = O.Next(i) {
+		if O.CollectionOf.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT {
+			data.ObjectType = *O.CollectionOf
 		}
-		if err = coll.Get(&data, i); err != nil {
+		if err = O.Get(&data, i); err != nil {
 			return dest, err
 		}
 		vr := reflect.ValueOf(data.Get())
 		if needsInit {
 			needsInit = false
-			length, err := coll.Len()
+			length, err := O.Len()
 			if err != nil {
 				return dr.Interface(), err
 			}

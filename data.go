@@ -265,6 +265,7 @@ func (d *Data) Get() interface{} {
 	}
 }
 
+// IsObject returns whether the data contains an Object or not.
 func (d *Data) IsObject() bool {
 	return d.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT
 }
