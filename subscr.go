@@ -141,6 +141,8 @@ func (s *Subscription) getError() error { return s.conn.getError() }
 // NewSubscription creates a new Subscription in the DB.
 //
 // Make sure your user has CHANGE NOTIFICATION privilege!
+//
+// This code is EXPERIMENTAL yet!
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
 	if !c.connParams.EnableEvents {
 		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
@@ -180,6 +182,8 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 }
 
 // Register a query for Change Notification.
+//
+// This code is EXPERIMENTAL yet!
 func (s *Subscription) Register(qry string, params ...interface{}) error {
 	cQry := C.CString(qry)
 	defer func() { C.free(unsafe.Pointer(cQry)) }()
@@ -207,6 +211,8 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 }
 
 // Close the subscription.
+//
+// This code is EXPERIMENTAL yet!
 func (s *Subscription) Close() error {
 	dpiSubscr := s.dpiSubscr
 	conn := s.conn
