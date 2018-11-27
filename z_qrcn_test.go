@@ -43,15 +43,38 @@ func TestQRCN(t *testing.T) {
 	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
 		errS := errors.Cause(err).Error()
-		if strings.Contains(errS, "ORA-29970:") || strings.Contains(errS, "ORA-29972:") {
+		if strings.Contains(errS, "ORA-29970:") {
+			t.Skip(err.Error())
+		} else if strings.Contains(errS, "ORA-29972:") {
+			t.Log("See \"https://docs.oracle.com/database/121/ADFNS/adfns_cqn.htm#ADFNS553\"")
+			var User string
+			_ = testDb.QueryRow("SELECT USER FROM DUAL").Scan(&User)
+			//t.Log("GRANT EXECUTE ON DBMS_CQ_NOTIFICATION TO "+User)
+			t.Log("GRANT CHANGE NOTIFICATION TO " + User + ";")
 			t.Skip(err.Error())
 		}
 		t.Fatalf("%+v", err)
 	}
 	defer s.Close()
-	if err := s.Register("SELECT i FROM test_subscr"); err != nil {
+	if err := s.Register("SELECT COUNT(0) FROM test_subscr"); err != nil {
 		t.Fatalf("%+v", err)
 	}
+	qry := "SELECT regid, table_name FROM USER_CHANGE_NOTIFICATION_REGS"
+	rows, err := testDb.Query(qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	t.Log("--- Registrations ---")
+	for rows.Next() {
+		var regID, table string
+		if err := rows.Scan(&regID,&table); err != nil {
+			t.Error(err)
+			break
+		}
+		t.Logf("%s: %s", regID, table)
+	}
+	t.Log("---------------------")
+	rows.Close()
 	testDb.Exec("INSERT INTO test_subscr (i) VALUES (1)")
 	testDb.Exec("INSERT INTO test_subscr (i) VALUES (0)")
 	t.Log("events:", events)
