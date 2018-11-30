@@ -73,7 +73,7 @@ func (c *conn) Break() error {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "Break")
+		return maybeBadConn(errors.Wrap(c.getError(), "Break"))
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func (c *conn) Close() error {
 	close(done)
 	var err error
 	if rc == C.DPI_FAILURE {
-		err = errors.Wrap(c.getError(), "Close")
+		err = maybeBadConn(errors.Wrap(c.getError(), "Close"))
 	}
 	return err
 }
@@ -300,12 +300,12 @@ func (c *conn) endTran(isCommit bool) error {
 	//msg := "Commit"
 	if isCommit {
 		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = errors.Wrap(c.getError(), "Commit")
+			err = maybeBadConn(errors.Wrap(c.getError(), "Commit"))
 		}
 	} else {
 		//msg = "Rollback"
 		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-			err = errors.Wrap(c.getError(), "Rollback")
+			err = maybeBadConn(errors.Wrap(c.getError(), "Rollback"))
 		}
 	}
 	c.Unlock()
