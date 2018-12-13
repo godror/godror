@@ -551,3 +551,55 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 
 	return c.init()
 }
+
+// StartupMode for the database.
+type StartupMode C.uint
+
+const (
+	// StartupDefault is the default mode for startup which permits database access to all users.
+	StartupDefault = StartupMode(C.DPI_MODE_STARTUP_DEFAULT)
+	// StartupForce shuts down a running instance (using ABORT) before starting a new one. This mode should only be used in unusual circumstances.
+	StartupForce = StartupMode(C.DPI_MODE_STARTUP_FORCE)
+	// StartupRestrict only allows database access to users with both the CREATE SESSION and RESTRICTED SESSION privileges (normally the DBA).
+	StartupRestrict = StartupMode(C.DPI_MODE_STARTUP_RESTRICT)
+)
+
+// Startup the database, equivalent to "startup nomount" in SQL*Plus.
+// This should be called on PRELIM_AUTH (prelim=1) connection!
+//
+// See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
+func (c *conn) Startup(mode StartupMode) error {
+	if C.dpiConn_startupDatabase(c.dpiConn, C.uint(mode)) == C.DPI_FAILURE {
+		return errors.Wrapf(c.getError(), "startup(%v)", mode)
+	}
+	return nil
+}
+
+// ShutdownMode for the database.
+type ShutdownMode C.uint
+
+const (
+	// ShutdownDefault - further connections to the database are prohibited. Wait for users to disconnect from the database.
+	ShutdownDefault = ShutdownMode(C.DPI_MODE_SHUTDOWN_DEFAULT)
+	// ShutdownTransactional - further connections to the database are prohibited and no new transactions are allowed to be started. Wait for active transactions to complete.
+	ShutdownTransactional = ShutdownMode(C.DPI_MODE_SHUTDOWN_TRANSACTIONAL)
+	// ShutdownTransactionalLocal - behaves the same way as ShutdownTransactional but only waits for local transactions to complete.
+	ShutdownTransactionalLocal = ShutdownMode(C.DPI_MODE_SHUTDOWN_TRANSACTIONAL_LOCAL)
+	// ShutdownImmediate - all uncommitted transactions are terminated and rolled back and all connections to the database are closed immediately.
+	ShutdownImmediate = ShutdownMode(C.DPI_MODE_SHUTDOWN_IMMEDIATE)
+	// ShutdownAbort - all uncommitted transactions are terminated and are not rolled back. This is the fastest way to shut down the database but the next database startup may require instance recovery.
+	ShutdownAbort = ShutdownMode(C.DPI_MODE_SHUTDOWN_ABORT)
+	// ShutdownFinal shuts down the database. This mode should only be used in the second call to dpiConn_shutdownDatabase().
+	ShutdownFinal = ShutdownMode(C.DPI_MODE_SHUTDOWN_FINAL)
+)
+
+// Shutdown shuts down the database.
+// Note that this must be done in two phases except in the situation where the instance is aborted.
+//
+// See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
+func (c *conn) Shutdown(mode ShutdownMode) error {
+	if C.dpiConn_shutdownDatabase(c.dpiConn, C.uint(mode)) == C.DPI_FAILURE {
+		return errors.Wrapf(c.getError(), "shutdown(%v)", mode)
+	}
+	return nil
+}

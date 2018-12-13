@@ -277,9 +277,11 @@ type Conn interface {
 	ServerVersion() (VersionInfo, error)
 	GetObjectType(name string) (ObjectType, error)
 	NewSubscription(string, func(Event)) (*Subscription, error)
+	Startup(StartupMode) error
+	Shutdown(ShutdownMode) error
 }
 
-// DriverConn returns the *goracle.conn of the databas/sql.Conn
+// DriverConn returns the *goracle.conn of the database/sql.Conn
 func DriverConn(ex Execer) (Conn, error) {
 	return getConn(ex)
 }

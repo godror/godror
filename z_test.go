@@ -62,12 +62,18 @@ func init() {
 		logger.Swap(tl)
 	}
 
-	testConStr = fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=%d&poolIncrement=1&connectionClass=POOLED&noConnectionPooling=0&enableEvents=1&heterogeneousPool=0",
-		os.Getenv("GORACLE_DRV_TEST_USERNAME"),
-		os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-		os.Getenv("GORACLE_DRV_TEST_DB"),
-		maxSessions,
-	)
+	P := goracle.ConnectionParams{
+		Username:    os.Getenv("GORACLE_DRV_TEST_USERNAME"),
+		Password:    os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
+		SID:         os.Getenv("GORACLE_DRV_TEST_DB"),
+		MinSessions: 1, MaxSessions: maxSessions, PoolIncrement: 1,
+		ConnClass:    "POOLED",
+		EnableEvents: true,
+	}
+	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
+		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
+	}
+	testConStr = P.StringWithPassword()
 	var err error
 	if testDb, err = sql.Open("goracle", testConStr); err != nil {
 		fmt.Printf("ERROR: %+v\n", err)
@@ -1913,5 +1919,40 @@ func TestImplicitResults(t *testing.T) {
 		if err := r.NextResultSet(); err != nil {
 			t.Error(err)
 		}
+	}
+}
+
+func TestStartupShutdown(t *testing.T) {
+	if os.Getenv("GORACLE_DB_SHUTDOWN") != "1" {
+		t.Skip("GORACLE_DB_SHUTDOWN != 1, skipping shutdown/startup test")
+	}
+	p, err := goracle.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, testConStr))
+	}
+	if !(p.IsSysDBA || p.IsSysOper) {
+		p.IsSysDBA = true
+	}
+	if !p.IsPrelim {
+		p.IsPrelim = true
+	}
+	db, err := sql.Open("goracle", p.StringWithPassword())
+	if err != nil {
+		t.Fatal(err, p.StringWithPassword())
+	}
+	defer db.Close()
+	conn, err := goracle.DriverConn(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Begin()
+	if err = conn.Shutdown(goracle.ShutdownTransactionalLocal); err != nil {
+		t.Error(err)
+	}
+	if err = conn.Shutdown(goracle.ShutdownFinal); err != nil {
+		t.Error(err)
+	}
+	if err = conn.Startup(goracle.StartupDefault); err != nil {
+		t.Error(err)
 	}
 }

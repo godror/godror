@@ -29,8 +29,9 @@
 //     poolIncrement=1& \
 //     connectionClass=POOLED& \
 //     standaloneConnection=0& \
-//     enableEvents=0&
-//     heterogeneousPool=0
+//     enableEvents=0& \
+//     heterogeneousPool=0& \
+//     prelim=0
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -61,7 +62,6 @@ import (
 	"io"
 	"math"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -380,14 +380,25 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		}
 		d.mu.Unlock()
 	}()
+
 	authMode := C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
-	switch {
-	case P.IsSysDBA:
-		authMode |= C.DPI_MODE_AUTH_SYSDBA
-	case P.IsSysOper:
-		authMode |= C.DPI_MODE_AUTH_SYSOPER
-	case P.IsSysASM:
-		authMode |= C.DPI_MODE_AUTH_SYSASM
+	// OR all the modes together
+	for _, elt := range []struct {
+		Is   bool
+		Mode C.uint
+	}{
+		{P.IsSysDBA, C.DPI_MODE_AUTH_SYSDBA},
+		{P.IsSysOper, C.DPI_MODE_AUTH_SYSOPER},
+		{P.IsSysASM, C.DPI_MODE_AUTH_SYSASM},
+		{P.IsPrelim, C.DPI_MODE_AUTH_PRELIM},
+	} {
+		if elt.Is {
+			authMode |= elt.Mode
+		}
+	}
+	if P.IsPrelim {
+		// The shared memory may not exist when Oracle is shut down.
+		P.ConnClass = ""
 	}
 
 	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
@@ -403,7 +414,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
-	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.StandaloneConnection) {
+	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
 		d.mu.Lock()
 		dp := d.pools[connString]
 		d.mu.Unlock()
@@ -425,7 +436,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if !(P.Username == "" && P.Password == "") {
 		cUserName, cPassword = C.CString(P.Username), C.CString(P.Password)
 	}
-	cSid := C.CString(P.SID)
+	var cSid *C.char
+	if P.SID != "" {
+		cSid = C.CString(P.SID)
+	}
 	cUTF8, cConnClass := C.CString("AL32UTF8"), C.CString(P.ConnClass)
 	cDriverName := C.CString(DriverName)
 	defer func() {
@@ -433,7 +447,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			C.free(unsafe.Pointer(cUserName))
 			C.free(unsafe.Pointer(cPassword))
 		}
-		C.free(unsafe.Pointer(cSid))
+		if cSid != nil {
+			C.free(unsafe.Pointer(cSid))
+		}
 		C.free(unsafe.Pointer(cUTF8))
 		C.free(unsafe.Pointer(cConnClass))
 		C.free(unsafe.Pointer(cDriverName))
@@ -451,7 +467,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.StandaloneConnection {
+	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
 			Log("C", "dpiConn_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
@@ -559,7 +575,7 @@ func (c *conn) acquireConn(user, pass string) error {
 // as a connection string in sql.Open.
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass      string
-	IsSysDBA, IsSysOper, IsSysASM           bool
+	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
 	HeterogeneousPool                       bool
 	StandaloneConnection                    bool
 	EnableEvents                            bool
@@ -609,11 +625,11 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
 				"standaloneConnection=%d&enableEvents=%d&"+
-				"heterogeneousPool=%d",
+				"heterogeneousPool=%d&prelim=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
 				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
-				b2i(P.HeterogeneousPool),
+				b2i(P.HeterogeneousPool), b2i(P.IsPrelim),
 			),
 	}).String()
 }
@@ -636,9 +652,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			P.Password, P.SID = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
-			if P.SID = os.Getenv("ORACLE_SID"); P.SID == "" {
-				P.SID = os.Getenv("TWO_TASK")
-			}
 		}
 		uSid := strings.ToUpper(P.SID)
 		if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
@@ -672,15 +685,25 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if vv, ok := q["connectionClass"]; ok {
 		P.ConnClass = vv[0]
 	}
-	if P.IsSysDBA = q.Get("sysdba") == "1"; !P.IsSysDBA {
-		if P.IsSysOper = q.Get("sysoper") == "1"; !P.IsSysOper {
-			P.IsSysASM = q.Get("sysasm") == "1"
-		}
-	}
-	P.StandaloneConnection = q.Get("standaloneConnection") == "1" || P.ConnClass == NoConnectionPoolingConnectionClass
-	P.EnableEvents = q.Get("enableEvents") == "1"
+	for _, task := range []struct {
+		Dest *bool
+		Key  string
+	}{
+		{&P.IsSysDBA, "sysdba"},
+		{&P.IsSysOper, "sysoper"},
+		{&P.IsSysASM, "sysasm"},
+		{&P.IsPrelim, "prelim"},
 
-	P.HeterogeneousPool = q.Get("heterogeneousPool") == "1"
+		{&P.StandaloneConnection, "standaloneConnection"},
+		{&P.EnableEvents, "enableEvents"},
+		{&P.HeterogeneousPool, "heterogeneousPool"},
+	} {
+		*task.Dest = q.Get(task.Key) == "1"
+	}
+	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
+	if P.IsPrelim {
+		P.ConnClass = ""
+	}
 
 	for _, task := range []struct {
 		Dest *int
