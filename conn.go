@@ -553,7 +553,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 }
 
 // StartupMode for the database.
-type StartupMode C.uint
+type StartupMode C.dpiStartupMode
 
 const (
 	// StartupDefault is the default mode for startup which permits database access to all users.
@@ -576,7 +576,7 @@ func (c *conn) Startup(mode StartupMode) error {
 }
 
 // ShutdownMode for the database.
-type ShutdownMode C.uint
+type ShutdownMode C.dpiShutdownMode
 
 const (
 	// ShutdownDefault - further connections to the database are prohibited. Wait for users to disconnect from the database.

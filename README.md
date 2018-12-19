@@ -10,7 +10,7 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
-At least Go 1.9 is required!
+At least Go 1.11 is required!
 
 ## Connect
 

@@ -385,7 +385,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	// OR all the modes together
 	for _, elt := range []struct {
 		Is   bool
-		Mode C.uint
+		Mode C.dpiAuthMode
 	}{
 		{P.IsSysDBA, C.DPI_MODE_AUTH_SYSDBA},
 		{P.IsSysOper, C.DPI_MODE_AUTH_SYSOPER},
