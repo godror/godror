@@ -8,7 +8,7 @@ with the listener at the default port (1521) and Enterprise Manager Express on p
 ## Build
 
   1. Download oracle-database-xe-18c-1.0-1.x86_64.rpm from https://www.oracle.com/technetwork/database/database-technologies/express-edition/downloads/index.html
-  2. `docker build --build-args ORACLE_PASSWORD=mySecr4tPassw0rd -t my/oracle18c:latest .`
+  2. `docker build --build-arg ORACLE_PASSWORD=mySecr4tPassw0rd -t my/oracle18c:latest .`
 
 ## Use
 
