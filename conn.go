@@ -217,8 +217,11 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			qry = "SET TRANSACTION " + qry
 			stmt, err := c.PrepareContext(ctx, qry)
 			if err == nil {
-				//fmt.Println(qry)
-				_, err = stmt.Exec(nil) //nolint:typecheck,megacheck
+				if stc, ok := stmt.(driver.StmtExecContext); ok {
+					_, err = stc.ExecContext(ctx, nil)
+				} else {
+					_, err = stmt.Exec(nil) //lint:ignore SA1019 as that comment is not relevant here
+				}
 				stmt.Close()
 			}
 			if err != nil {

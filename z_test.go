@@ -1945,7 +1945,6 @@ func TestStartupShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.Begin()
 	if err = conn.Shutdown(goracle.ShutdownTransactionalLocal); err != nil {
 		t.Error(err)
 	}
