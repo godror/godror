@@ -304,11 +304,11 @@ func (n *Number) UnmarshalJSON(p []byte) error {
 var Log func(...interface{}) error
 
 func init() {
-	d, err := newDrv()
-	if err != nil {
-		panic(err)
-	}
-	sql.Register("goracle", d)
+	sql.Register("goracle", newDrv())
+}
+
+func newDrv() *drv {
+	return &drv{pools: make(map[string]*C.dpiPool)}
 }
 
 var _ = driver.Driver((*drv)(nil))
@@ -318,12 +318,6 @@ type drv struct {
 	dpiContext    *C.dpiContext
 	clientVersion VersionInfo
 	pools         map[string]*C.dpiPool
-}
-
-func newDrv() (*drv, error) {
-	var d drv
-	d.pools = make(map[string]*C.dpiPool)
-	return &d, nil
 }
 
 func (d *drv) init() error {

@@ -37,9 +37,7 @@ var (
 
 func initConn() (*drv, *conn, error) {
 	initOnce.Do(func() {
-		if testDrv, testOpenErr = newDrv(); testOpenErr != nil {
-			return
-		}
+		testDrv = newDrv()
 		dc, err := testDrv.Open(
 			fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
 				os.Getenv("GORACLE_DRV_TEST_USERNAME"),
