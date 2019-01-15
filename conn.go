@@ -189,7 +189,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	const (
 		trRO = "READ ONLY"
 		trRW = "READ WRITE"
-		trLC = "ISOLATION LEVEL READ COMMITED"
+		trLC = "ISOLATION LEVEL READ COMMITTED"
 		trLS = "ISOLATION LEVEL SERIALIZABLE"
 	)
 
