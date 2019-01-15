@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.11.2] - 2019-01-15
+### Changed
+- ISOLATION LEVEL READ COMMITTED (typo) fix.
+
 ## [2.11.1] - 2018-12-13
 ### Changed
 - Use C.dpiAuthMode, C.dpiStartupMode, C.dpiShutdownMode instead of C.uint - for #129.
