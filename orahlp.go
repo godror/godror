@@ -16,6 +16,7 @@
 package goracle
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -217,32 +218,36 @@ func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 
 // ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
-	qry := `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
+	const maxNumLines = 128
+	bw := bufio.NewWriterSize(w, maxNumLines*(32<<10))
+
+	const qry = `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
 	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)
 	}
 
-	lines := make([]string, 128)
+	lines := make([]string, maxNumLines)
 	var numLines int64
-	params := []interface{}{PlSQLArrays,
+	params := []interface{}{
+		PlSQLArrays,
 		sql.Out{Dest: &lines}, sql.Out{Dest: &numLines, In: true},
 	}
 	for {
 		numLines = int64(len(lines))
-		if _, err := stmt.ExecContext(ctx, params...); err != nil {
+		if _, err = stmt.ExecContext(ctx, params...); err != nil {
+			_ = bw.Flush()
 			return errors.Wrap(err, qry)
 		}
 		for i := 0; i < int(numLines); i++ {
-			if _, err := io.WriteString(w, lines[i]); err != nil {
-				return err
-			}
-			if _, err := w.Write([]byte{'\n'}); err != nil {
+			_, _ = bw.WriteString(lines[i])
+			if err = bw.WriteByte('\n'); err != nil {
+				_ = bw.Flush()
 				return err
 			}
 		}
 		if int(numLines) < len(lines) {
-			return nil
+			return bw.Flush()
 		}
 	}
 }
