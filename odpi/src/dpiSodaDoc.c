@@ -53,17 +53,19 @@ static int dpiSodaDoc__check(dpiSodaDoc *doc, const char *fnName,
 
 //-----------------------------------------------------------------------------
 // dpiSodaDoc__free() [INTERNAL]
-//   Free the memory for a SODA document.
+//   Free the memory for a SODA document. Note that the reference to the
+// database must remain until after the handle is freed; otherwise, a segfault
+// can take place.
 //-----------------------------------------------------------------------------
 void dpiSodaDoc__free(dpiSodaDoc *doc, dpiError *error)
 {
-    if (doc->db) {
-        dpiGen__setRefCount(doc->db, error, -1);
-        doc->db = NULL;
-    }
     if (doc->handle) {
         dpiOci__handleFree(doc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT);
         doc->handle = NULL;
+    }
+    if (doc->db) {
+        dpiGen__setRefCount(doc->db, error, -1);
+        doc->db = NULL;
     }
     dpiUtils__freeMemory(doc);
 }
@@ -173,7 +175,7 @@ int dpiSodaDoc_getCreatedOn(dpiSodaDoc *doc, const char **value,
 
 //-----------------------------------------------------------------------------
 // dpiSodaDoc_getKey() [PUBLIC]
-//   Return the created timestamp of the SODA document.
+//   Return the key of the SODA document.
 //-----------------------------------------------------------------------------
 int dpiSodaDoc_getKey(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength)

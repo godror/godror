@@ -576,15 +576,30 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
 
     // perform execution
     // re-execute statement for ORA-01007: variable not in select list
-    // drop statement from cache for all but ORA-00001: unique key violated
+    // drop statement from cache for all errors (except those which are due to
+    // invalid data which may be fixed in subsequent execution)
     if (dpiOci__stmtExecute(stmt, numIters, mode, error) < 0) {
         dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT,
                 &error->buffer->offset, 0, DPI_OCI_ATTR_PARSE_ERROR_OFFSET,
                 "set parse offset", error);
-        if (reExecute && error->buffer->code == 1007)
-            return dpiStmt__reExecute(stmt, numIters, mode, error);
-        else if (error->buffer->code != 1)
-            stmt->deleteFromCache = 1;
+        switch (error->buffer->code) {
+            case 1007:
+                if (reExecute)
+                    return dpiStmt__reExecute(stmt, numIters, mode, error);
+                stmt->deleteFromCache = 1;
+                break;
+            case 1:
+            case 1400:
+            case 1438:
+            case 1461:
+            case 2290:
+            case 2291:
+            case 2292:
+            case 21525:
+                break;
+            default:
+                stmt->deleteFromCache = 1;
+        }
         return DPI_FAILURE;
     }
 

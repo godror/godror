@@ -309,6 +309,7 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
         case DPI_SQLT_ODT:
             return DPI_ORACLE_TYPE_DATE;
         case DPI_SQLT_BIN:
+        case DPI_SQLT_LVB:
             return DPI_ORACLE_TYPE_RAW;
         case DPI_SQLT_AFC:
             if (charsetForm == DPI_SQLCS_NCHAR)
@@ -485,6 +486,13 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
         if (dpiObjectType__allocate(conn, handle, DPI_OCI_ATTR_TYPE_NAME,
                 &info->objectType, error) < 0)
             return DPI_FAILURE;
+        if (dpiObjectType__isXmlType(info->objectType)) {
+            dpiObjectType__free(info->objectType, error);
+            info->objectType = NULL;
+            info->ociTypeCode = DPI_SQLT_CHR;
+            info->oracleTypeNum = DPI_ORACLE_TYPE_LONG_VARCHAR;
+            info->defaultNativeTypeNum = DPI_NATIVE_TYPE_BYTES;
+        }
     }
 
     return DPI_SUCCESS;

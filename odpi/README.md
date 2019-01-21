@@ -1,4 +1,4 @@
-# ODPI-C version 3.0
+# ODPI-C version 3.1
 
 Oracle Database Programming Interface for C (ODPI-C) is an open source library
 of C code that simplifies access to Oracle Database for applications written in
@@ -47,10 +47,11 @@ Third-party Drivers:
 * [odpic-raw](https://github.com/leptonyu/odpic-raw)  Haskell Raw Bindings.
 * [ruby-ODPI ](https://github.com/kubo/ruby-odpi) Ruby Interface.
 * [rust-oracle ](https://github.com/kubo/rust-oracle) Driver for Rust.
+* [Oracle.jl](https://github.com/felipenoris/Oracle.jl) Driver for Julia.
 
 ## License
 
-Copyright (c) 2016, 2018 Oracle and/or its affiliates.  All rights reserved.
+Copyright (c) 2016, 2018, Oracle and/or its affiliates.  All rights reserved.
 
 This program is free software: you can modify it and/or redistribute it under
 the terms of:

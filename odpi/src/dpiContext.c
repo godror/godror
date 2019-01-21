@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -45,8 +45,8 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
     // verify that the supplied version is supported by the library
     if (dpiMajorVersion != majorVersion || minorVersion > dpiMinorVersion)
         return dpiError__set(error, "check version",
-                DPI_ERR_VERSION_NOT_SUPPORTED, majorVersion, minorVersion,
-                dpiMajorVersion, dpiMinorVersion);
+                DPI_ERR_VERSION_NOT_SUPPORTED, majorVersion, majorVersion,
+                minorVersion, dpiMajorVersion, dpiMinorVersion);
 
     // allocate context and initialize it
     if (dpiGen__allocate(DPI_HTYPE_CONTEXT, NULL, (void**) &tempContext,
@@ -230,13 +230,21 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
 int dpiContext_initConnCreateParams(const dpiContext *context,
         dpiConnCreateParams *params)
 {
+    dpiConnCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initConnCreateParams(params);
+
+    // size changed in version 3.1; can be dropped once version 4 released
+    if (context->dpiMinorVersion > 0)
+        dpiContext__initConnCreateParams(params);
+    else {
+        dpiContext__initConnCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiConnCreateParams__v30));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -248,13 +256,21 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params)
 {
+    dpiPoolCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initPoolCreateParams(params);
+
+    // size changed in version 3.1; can be dropped once version 4 released
+    if (context->dpiMinorVersion > 0)
+        dpiContext__initPoolCreateParams(params);
+    else {
+        dpiContext__initPoolCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v30));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

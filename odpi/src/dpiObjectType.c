@@ -193,6 +193,25 @@ static int dpiObjectType__init(dpiObjectType *objType, void *param,
 
 
 //-----------------------------------------------------------------------------
+// dpiObjectType__isXmlType() [INTERNAL]
+//   Returns a boolean indicating if the object type in question refers to the
+// type SYS.XMLTYPE.
+//-----------------------------------------------------------------------------
+int dpiObjectType__isXmlType(dpiObjectType *objType)
+{
+    static const char *schema = "SYS", *name = "XMLTYPE";
+    size_t schemaLength, nameLength;
+
+    schemaLength = strlen(schema);
+    nameLength = strlen(name);
+    return (objType->schemaLength == schemaLength &&
+            strncmp(objType->schema, schema, schemaLength) == 0 &&
+            objType->nameLength == nameLength &&
+            strncmp(objType->name, name, nameLength) == 0);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiObjectType_addRef() [PUBLIC]
 //   Add a reference to the object type.
 //-----------------------------------------------------------------------------

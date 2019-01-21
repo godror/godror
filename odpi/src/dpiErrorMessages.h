@@ -37,7 +37,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1017: value is null", // DPI_ERR_VALUE_IS_NULL
     "DPI-1018: array size of %u is too small", // DPI_ERR_ARRAY_SIZE_TOO_SMALL
     "DPI-1019: buffer size of %u is too small", // DPI_ERR_BUFFER_SIZE_TOO_SMALL
-    "DPI-1020: version %d.%d is not supported by ODPI-C library version %d.%d", // DPI_ERR_VERSION_NOT_SUPPORTED
+    "DPI-1020: application requires ODPI-C %d (min %d.%d) but is using a shared library at version %d.%d", // DPI_ERR_VERSION_NOT_SUPPORTED
     "DPI-1021: Oracle type %u is invalid", // DPI_ERR_INVALID_ORACLE_TYPE
     "DPI-1022: attribute %.*s is not part of object type %.*s.%.*s", // DPI_ERR_WRONG_ATTR
     "DPI-1023: object %.*s.%.*s is not a collection", // DPI_ERR_NOT_COLLECTION
@@ -60,7 +60,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1041: invalid character set id %d", // DPI_ERR_INVALID_CHARSET_ID
     "DPI-1042: invalid OCI number", // DPI_ERR_INVALID_OCI_NUMBER
     "DPI-1043: invalid number", // DPI_ERR_INVALID_NUMBER
-    "DPI-1044: number too large", // DPI_ERR_NUMBER_TOO_LARGE
+    "DPI-1044: value cannot be represented as an Oracle number", // DPI_ERR_NUMBER_NO_REPR
     "DPI-1045: strings converted to numbers can only be up to 172 characters long", // DPI_ERR_NUMBER_STRING_TOO_LONG
     "DPI-1046: parameter %s cannot be a NULL pointer", // DPI_ERR_NULL_POINTER_PARAMETER
     "DPI-1047: %s-bit Oracle Client library cannot be loaded: \"%s\". See https://oracle.github.io/odpi/doc/installation.html#%s for help", // DPI_ERR_LOAD_LIBRARY
@@ -82,5 +82,6 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1066: Oracle Database is at version %d.%d but must be at version %d.%d or higher", // DPI_ERR_ORACLE_DB_TOO_OLD
     "DPI-1067: call timeout of %u ms exceeded with ORA-%d", // DPI_ERR_CALL_TIMEOUT
     "DPI-1068: SODA cursor was already closed", // DPI_ERR_SODA_CURSOR_CLOSED
+    "DPI-1069: proxy user name must be enclosed in [] when using external authentication", // DPI_ERR_EXT_AUTH_INVALID_PROXY
 };
 

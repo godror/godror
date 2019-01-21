@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -44,7 +44,7 @@
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   3
-#define DPI_MINOR_VERSION   0
+#define DPI_MINOR_VERSION   1
 #define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
@@ -492,6 +492,7 @@ struct dpiConnCreateParams {
     uint8_t numShardingKeyColumns;
     dpiShardingKeyColumn *superShardingKeyColumns;
     uint8_t numSuperShardingKeyColumns;
+    int outNewSession;
 };
 
 // structure used for transferring data to/from ODPI-C
@@ -568,6 +569,8 @@ struct dpiPoolCreateParams {
     uint32_t timeout;
     uint32_t waitTimeout;
     uint32_t maxLifetimeSession;
+    const char *plsqlFixupCallback;
+    uint32_t plsqlFixupCallbackLength;
 };
 
 // structure used for transferring query metadata from ODPI-C
@@ -933,6 +936,9 @@ dpiIntervalDS *dpiData_getIntervalDS(dpiData *data);
 // return the interval (years/months) portion of the data
 dpiIntervalYM *dpiData_getIntervalYM(dpiData *data);
 
+// return whether data value is null or not
+int dpiData_getIsNull(dpiData *data);
+
 // return the LOB portion of the data
 dpiLob *dpiData_getLOB(dpiData *data);
 
@@ -972,6 +978,9 @@ void dpiData_setIntervalYM(dpiData *data, int32_t years, int32_t months);
 
 // set the LOB portion of the data
 void dpiData_setLOB(dpiData *data, dpiLob *lob);
+
+// set data to the null value
+void dpiData_setNull(dpiData *data);
 
 // set the object portion of the data
 void dpiData_setObject(dpiData *data, dpiObject *obj);

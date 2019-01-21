@@ -268,20 +268,12 @@ int dpiUtils__parseNumberString(const char *value, uint32_t valueLength,
     while (*numDigits > 0 && *digits-- == 0)
         (*numDigits)--;
 
-    // only 40 digits are allowed in an OCI number
-    if (*numDigits > DPI_NUMBER_MAX_DIGITS)
-        return dpiError__set(error, "check number of digits > 40",
-                DPI_ERR_NOT_SUPPORTED);
-
-    // values must be less than 1e126
-    if (*decimalPointIndex > 126)
-        return dpiError__set(error, "check size of value",
-                DPI_ERR_NUMBER_TOO_LARGE);
-
-    // values smaller than 1e-130 are simply returned as zero
-    if (*decimalPointIndex < -129) {
-        *numDigits = 0;
-        *isNegative = 0;
+    // values must be less than 1e126 and greater than 1e-129; the number of
+    // digits also cannot exceed the maximum precision of Oracle numbers
+    if (*numDigits > DPI_NUMBER_MAX_DIGITS || *decimalPointIndex > 126 ||
+            *decimalPointIndex < -129) {
+        return dpiError__set(error, "check value can be represented",
+                DPI_ERR_NUMBER_NO_REPR);
     }
 
     return DPI_SUCCESS;

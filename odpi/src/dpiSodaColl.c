@@ -208,17 +208,19 @@ static int dpiSodaColl__find(dpiSodaColl *coll,
 
 //-----------------------------------------------------------------------------
 // dpiSodaColl__free() [INTERNAL]
-//   Free the memory for a SODA collection.
+//   Free the memory for a SODA collection. Note that the reference to the
+// database must remain until after the handle is freed; otherwise, a segfault
+// can take place.
 //-----------------------------------------------------------------------------
 void dpiSodaColl__free(dpiSodaColl *coll, dpiError *error)
 {
-    if (coll->db) {
-        dpiGen__setRefCount(coll->db, error, -1);
-        coll->db = NULL;
-    }
     if (coll->handle) {
         dpiOci__handleFree(coll->handle, DPI_OCI_HTYPE_SODA_COLLECTION);
         coll->handle = NULL;
+    }
+    if (coll->db) {
+        dpiGen__setRefCount(coll->db, error, -1);
+        coll->db = NULL;
     }
     dpiUtils__freeMemory(coll);
 }

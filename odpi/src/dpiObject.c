@@ -105,6 +105,11 @@ static void dpiObject__clearOracleValue(dpiObject *obj, dpiError *error,
                 dpiOci__stringResize(obj->env->handle, &buffer->asString, 0,
                         error);
             break;
+        case DPI_ORACLE_TYPE_RAW:
+            if (buffer->asRawData)
+                dpiOci__rawResize(obj->env->handle, &buffer->asRawData, 0,
+                        error);
+            break;
         case DPI_ORACLE_TYPE_TIMESTAMP:
             if (buffer->asTimestamp)
                 dpiOci__descriptorFree(buffer->asTimestamp,
@@ -240,6 +245,17 @@ static int dpiObject__fromOracleValue(dpiObject *obj, dpiError *error,
                         valueOracleTypeNum == DPI_ORACLE_TYPE_NVARCHAR)
                     asBytes->encoding = obj->env->nencoding;
                 else asBytes->encoding = obj->env->encoding;
+                return DPI_SUCCESS;
+            }
+            break;
+        case DPI_ORACLE_TYPE_RAW:
+            if (nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
+                asBytes = &data->value.asBytes;
+                dpiOci__rawPtr(obj->env->handle, *value->asRawData,
+                        (void**) &asBytes->ptr);
+                dpiOci__rawSize(obj->env->handle, *value->asRawData,
+                        &asBytes->length);
+                asBytes->encoding = NULL;
                 return DPI_SUCCESS;
             }
             break;
@@ -382,6 +398,17 @@ static int dpiObject__toOracleValue(dpiObject *obj, dpiError *error,
                         bytes->length, &buffer->asString, error) < 0)
                     return DPI_FAILURE;
                 *ociValue = buffer->asString;
+                return DPI_SUCCESS;
+            }
+            break;
+        case DPI_ORACLE_TYPE_RAW:
+            buffer->asRawData = NULL;
+            if (nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
+                bytes = &data->value.asBytes;
+                if (dpiOci__rawAssignBytes(obj->env->handle, bytes->ptr,
+                        bytes->length, &buffer->asRawData, error) < 0)
+                    return DPI_FAILURE;
+                *ociValue = buffer->asRawData;
                 return DPI_SUCCESS;
             }
             break;

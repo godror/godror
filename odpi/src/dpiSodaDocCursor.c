@@ -57,17 +57,19 @@ static int dpiSodaDocCursor__check(dpiSodaDocCursor *cursor,
 
 //-----------------------------------------------------------------------------
 // dpiSodaDocCursor__free() [INTERNAL]
-//   Free the memory for a SODA document cursor.
+//   Free the memory for a SODA document cursor. Note that the reference to the
+// collection must remain until after the handle is freed; otherwise, a
+// segfault can take place.
 //-----------------------------------------------------------------------------
 void dpiSodaDocCursor__free(dpiSodaDocCursor *cursor, dpiError *error)
 {
-    if (cursor->coll) {
-        dpiGen__setRefCount(cursor->coll, error, -1);
-        cursor->coll = NULL;
-    }
     if (cursor->handle) {
         dpiOci__handleFree(cursor->handle, DPI_OCI_HTYPE_SODA_DOC_CURSOR);
         cursor->handle = NULL;
+    }
+    if (cursor->coll) {
+        dpiGen__setRefCount(cursor->coll, error, -1);
+        cursor->coll = NULL;
     }
     dpiUtils__freeMemory(cursor);
 }

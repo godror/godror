@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -38,7 +38,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #ifndef isnan
-#define isnan			_isnan
+#define isnan                   _isnan
 #endif
 #else
 #include <pthread.h>
@@ -81,7 +81,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_NUMBER_AS_TEXT_CHARS                    172
 
 // define maximum number of digits possible in an Oracle number
-#define DPI_NUMBER_MAX_DIGITS                       40
+#define DPI_NUMBER_MAX_DIGITS                       38
 
 // define maximum size in bytes supported by basic string handling
 #define DPI_MAX_BASIC_BUFFER_SIZE                   32767
@@ -275,6 +275,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT           495
 #define DPI_OCI_ATTR_SHARDING_KEY                   496
 #define DPI_OCI_ATTR_SUPER_SHARDING_KEY             497
+#define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
 #define DPI_OCI_ATTR_SODA_COLL_NAME                 535
@@ -313,6 +314,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_SQLT_BIN                                23
 #define DPI_SQLT_LBI                                24
 #define DPI_SQLT_UIN                                68
+#define DPI_SQLT_LVB                                95
 #define DPI_SQLT_AFC                                96
 #define DPI_SQLT_IBFLOAT                            100
 #define DPI_SQLT_IBDOUBLE                           101
@@ -346,6 +348,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SESSGET_CREDEXT                     0x0010
 #define DPI_OCI_SESSGET_SPOOL_MATCHANY              0x0020
 #define DPI_OCI_SESSGET_SYSDBA                      0x0100
+#define DPI_OCI_SESSGET_MULTIPROPERTY_TAG           0x0400
 
 // define OCI authentication constants
 #define DPI_OCI_CPW_SYSDBA                          0x00000010
@@ -393,6 +396,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_NTV_SYNTAX                          1
 #define DPI_OCI_MEMORY_CLEARED                      1
 #define DPI_OCI_SESSRLS_DROPSESS                    1
+#define DPI_OCI_SESSRLS_MULTIPROPERTY_TAG           4
 #define DPI_OCI_SERVER_NORMAL                       1
 #define DPI_OCI_TYPEGET_ALL                         1
 #define DPI_OCI_TRANS_NEW                           1
@@ -492,7 +496,7 @@ typedef enum {
     DPI_ERR_INVALID_CHARSET_ID,
     DPI_ERR_INVALID_OCI_NUMBER,
     DPI_ERR_INVALID_NUMBER,
-    DPI_ERR_NUMBER_TOO_LARGE,
+    DPI_ERR_NUMBER_NO_REPR,
     DPI_ERR_NUMBER_STRING_TOO_LONG,
     DPI_ERR_NULL_POINTER_PARAMETER,
     DPI_ERR_LOAD_LIBRARY,
@@ -514,6 +518,7 @@ typedef enum {
     DPI_ERR_ORACLE_DB_TOO_OLD,
     DPI_ERR_CALL_TIMEOUT,
     DPI_ERR_SODA_CURSOR_CLOSED,
+    DPI_ERR_EXT_AUTH_INVALID_PROXY,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -564,6 +569,48 @@ typedef enum {
 //-----------------------------------------------------------------------------
 // old type definitions (to be dropped)
 //-----------------------------------------------------------------------------
+
+// structure used for creating pools (3.0)
+typedef struct {
+    uint32_t minSessions;
+    uint32_t maxSessions;
+    uint32_t sessionIncrement;
+    int pingInterval;
+    int pingTimeout;
+    int homogeneous;
+    int externalAuth;
+    dpiPoolGetMode getMode;
+    const char *outPoolName;
+    uint32_t outPoolNameLength;
+    uint32_t timeout;
+    uint32_t waitTimeout;
+    uint32_t maxLifetimeSession;
+} dpiPoolCreateParams__v30;
+
+// structure used for creating connections (3.0)
+typedef struct {
+    dpiAuthMode authMode;
+    const char *connectionClass;
+    uint32_t connectionClassLength;
+    dpiPurity purity;
+    const char *newPassword;
+    uint32_t newPasswordLength;
+    dpiAppContext *appContext;
+    uint32_t numAppContext;
+    int externalAuth;
+    void *externalHandle;
+    dpiPool *pool;
+    const char *tag;
+    uint32_t tagLength;
+    int matchAnyTag;
+    const char *outTag;
+    uint32_t outTagLength;
+    int outTagFound;
+    dpiShardingKeyColumn *shardingKeyColumns;
+    uint8_t numShardingKeyColumns;
+    dpiShardingKeyColumn *superShardingKeyColumns;
+    uint8_t numSuperShardingKeyColumns;
+} dpiConnCreateParams__v30;
 
 
 //-----------------------------------------------------------------------------
@@ -777,6 +824,7 @@ typedef union {
     void **asInterval;
     void **asLobLocator;
     void **asString;
+    void **asRawData;
     void **asStmt;
     void **asRowid;
     int *asBoolean;
@@ -796,6 +844,7 @@ typedef union {
     dpiOciDate asDate;
     int asBoolean;
     void *asString;
+    void *asRawData;
     void *asTimestamp;
     void *asLobLocator;
     void *asRaw;
@@ -1278,6 +1327,7 @@ void dpiObject__free(dpiObject *obj, dpiError *error);
 int dpiObjectType__allocate(dpiConn *conn, void *param,
         uint32_t nameAttribute, dpiObjectType **objType, dpiError *error);
 void dpiObjectType__free(dpiObjectType *objType, dpiError *error);
+int dpiObjectType__isXmlType(dpiObjectType *objType);
 
 
 //-----------------------------------------------------------------------------

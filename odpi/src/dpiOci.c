@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2017, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -949,7 +949,6 @@ int dpiOci__contextGetValue(dpiConn *conn, const char *key, uint32_t keyLength,
             error->handle, key, (uint8_t) keyLength, value);
     if (checkError)
         return dpiError__check(error, status, conn, "get context value");
-    *value = NULL;
     return DPI_SUCCESS;
 }
 
@@ -2267,15 +2266,15 @@ int dpiOci__objectFree(dpiObject *obj, int checkError, dpiError *error)
     DPI_OCI_LOAD_SYMBOL("OCIObjectFree", dpiOciSymbols.fnObjectFree)
     status = (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
             obj->instance, DPI_OCI_DEFAULT);
-    if (checkError)
-        return dpiError__check(error, status, obj->type->conn,
-                "free instance");
+    if (checkError && dpiError__check(error, status, obj->type->conn,
+            "free instance") < 0)
+        return DPI_FAILURE;
     if (obj->freeIndicator) {
         status = (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
                 obj->indicator, DPI_OCI_DEFAULT);
-        if (checkError)
-            return dpiError__check(error, status, obj->type->conn,
-                    "free indicator");
+        if (checkError && dpiError__check(error, status, obj->type->conn,
+                "free indicator") < 0)
+            return DPI_FAILURE;
     }
     return DPI_SUCCESS;
 }
