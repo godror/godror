@@ -20,6 +20,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -63,13 +64,13 @@ func TestObjectDirect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	qry := `CREATE OR REPLACE PACKAGE test_pkg_obj IS
+	const crea = `CREATE OR REPLACE PACKAGE test_pkg_obj IS
   TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
   TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 END;`
-	if err = prepExec(ctx, testCon, qry); err != nil {
-		t.Fatal(errors.Wrap(err, qry))
+	if err = prepExecMany(ctx, testCon, crea); err != nil {
+		t.Fatal(err)
 	}
 	defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
 
@@ -85,13 +86,25 @@ END;`
 	t.Log(ot)
 }
 
+func prepExecMany(ctx context.Context, testCon *conn, queries string) error {
+	for _, qry := range strings.Split(queries, ";\n") {
+		if strings.HasSuffix(qry, " END") {
+			qry += ";"
+		}
+		if err := prepExec(ctx, testCon, qry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func prepExec(ctx context.Context, testCon *conn, qry string, args ...driver.NamedValue) error {
 	stmt, err := testCon.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)
 	}
-	defer stmt.Close()
 	st := stmt.(*statement)
 	_, err = st.ExecContext(ctx, args)
-	return err
+	stmt.Close()
+	return errors.Wrap(err, qry)
 }

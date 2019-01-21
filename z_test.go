@@ -1955,3 +1955,53 @@ func TestStartupShutdown(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestIssue134(t *testing.T) {
+	const crea = `CREATE OR REPLACE TYPE test_PRJ_TASK_OBJ_TYPE AS OBJECT (
+	PROJECT_NUMBER VARCHAR2(100)
+	,SOURCE_ID VARCHAR2(100)
+	,TASK_NAME VARCHAR2(300)
+	,TASK_DESCRIPTION VARCHAR2(2000)
+	,TASK_START_DATE DATE
+	,TASK_END_DATE DATE
+	,TASK_COST NUMBER
+	,SOURCE_PARENT_ID NUMBER
+	,TASK_TYPE VARCHAR2(100)
+	,QUANTITY NUMBER );
+CREATE OR REPLACE TYPE test_PRJ_TASK_TAB_TYPE IS TABLE OF test_PRJ_TASK_OBJ_TYPE;
+CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (p_create_task_i IN PRJ_TASK_TAB_TYPE,
+	p_create_activity_i IN PRJ_ACTIVITY_TAB_TYPE,
+	p_project_id_i IN NUMBER) IS BEGIN NULL; END;`
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, qry := range strings.Split(crea, ";\n") {
+		if strings.HasSuffix(qry, " END") {
+			qry += ";"
+		}
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+	}
+	defer func() {
+		for _, qry := range []string{
+			`DROP TYPE test_prj_task_tab_type`,
+			`DROP TYPE test_prj_task_obj_type`,
+			`DROP PROCEDURE test_create_task_activity`,
+		} {
+			testDb.Exec(qry)
+		}
+	}()
+
+	var o1, o2 goracle.Object
+	qry := "BEGIN :1 := test_prj_task_tab_type(); END;"
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &o1}); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &o2}); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	qry = "BEGIN test_create_task_activity(:1, :2, :3); END;"
+	if _, err := testDb.ExecContext(ctx, qry, o1, o2, 1); err != nil {
+		t.Error(err)
+	}
+}
