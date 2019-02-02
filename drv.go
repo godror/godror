@@ -549,8 +549,11 @@ func (c *conn) acquireConn(user, pass string) error {
 		cPassword = C.CString(pass)
 	}
 
+	c.drv.mu.Lock()
+	pool := c.pools[c.connParams.String()]
+	c.drv.mu.Unlock()
 	if C.dpiPool_acquireConnection(
-		c.pools[c.connParams.String()],
+		pool,
 		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)), nil,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
