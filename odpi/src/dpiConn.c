@@ -669,6 +669,7 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
     while (1) {
 
         // acquire the new session
+        params->outNewSession = 0;
         if (dpiOci__sessionGet(conn->env->handle, &conn->handle, authInfo,
                 connectString, connectStringLength, params->tag,
                 params->tagLength, &params->outTag, &params->outTagLength,

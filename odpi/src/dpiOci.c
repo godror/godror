@@ -2267,8 +2267,16 @@ int dpiOci__objectFree(dpiObject *obj, int checkError, dpiError *error)
     status = (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
             obj->instance, DPI_OCI_DEFAULT);
     if (checkError && dpiError__check(error, status, obj->type->conn,
-            "free instance") < 0)
+            "free instance") < 0) {
+        // during the attempt to free, PL/SQL records fail with error
+        // "ORA-21602: operation does not support the specified typecode", but
+        // a subsequent attempt will yield error "OCI-21500: internal error
+        // code" and crash the process, so pretend like the free was
+        // successful!
+        if (error->buffer->code == 21602)
+            return DPI_SUCCESS;
         return DPI_FAILURE;
+    }
     if (obj->freeIndicator) {
         status = (*dpiOciSymbols.fnObjectFree)(obj->env->handle, error->handle,
                 obj->indicator, DPI_OCI_DEFAULT);
