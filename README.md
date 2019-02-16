@@ -100,8 +100,9 @@ Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
 ### Using cursors returned by stored procedures
 Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
-then either use the `driver.Rows` interface, or transform it into a regular `*sql.Rows` with
-`goracle.WrapRows`.
+then either use the `driver.Rows` interface,
+or transform it into a regular `*sql.Rows` with `goracle.WrapRows`,
+or (since Go 1.12) just Scan into `*sql.Rows`.
 
 For examples, see Anthony Tuininga's
 [presentation about Go](https://static.rainfocus.com/oracle/oow18/sess/1525791357522001Q5tc/PF/DEV5047%20-%20The%20Go%20Language_1540587475596001afdk.pdf)

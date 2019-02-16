@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Make goracle.drv implement driver.DriverContext with OpenConnector.
+
+## [2.12.2] - 2019-02-15
+### Changed
+- Use ODPI-C v3.1.1
 
 ## [2.12.0] - 2019-01-21
 ### Changed
