@@ -42,18 +42,17 @@ var _ = driver.RowsColumnTypeScanType((*rows)(nil))
 var _ = driver.RowsNextResultSet((*rows)(nil))
 
 type rows struct {
+	columns   []Column
+	vars      []*C.dpiVar
+	data      [][]C.dpiData
+	err       error
+	nextRsErr error
 	*statement
-	columns        []Column
+	origSt         *statement
+	nextRs         *C.dpiStmt
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
 	finished       bool
-	vars           []*C.dpiVar
-	data           [][]C.dpiData
-	err            error
-
-	origSt    *statement
-	nextRs    *C.dpiStmt
-	nextRsErr error
 }
 
 // Columns returns the names of the columns. The number of
@@ -510,10 +509,10 @@ func (r *rows) Next(dest []driver.Value) error {
 var _ = driver.Rows((*directRow)(nil))
 
 type directRow struct {
-	conn   *conn
-	query  string
 	args   []string
 	result []interface{}
+	query  string
+	conn   *conn
 }
 
 func (dr *directRow) Columns() []string {

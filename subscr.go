@@ -102,31 +102,31 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 
 // Event for a subscription.
 type Event struct {
-	Err     error
-	Type    EventType
-	DB      string
 	Tables  []TableEvent
 	Queries []QueryEvent
+	DB      string
+	Err     error
+	Type    EventType
 }
 
 // QueryEvent is an event of a Query.
 type QueryEvent struct {
-	Operation
-	ID     uint64
 	Tables []TableEvent
+	ID     uint64
+	Operation
 }
 
 // TableEvent is for a Table-related event.
 type TableEvent struct {
-	Operation
-	Name string
 	Rows []RowEvent
+	Name string
+	Operation
 }
 
 // RowEvent is for row-related event.
 type RowEvent struct {
-	Operation
 	Rowid string
+	Operation
 }
 
 // Subscription for events in the DB.

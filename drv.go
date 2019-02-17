@@ -314,9 +314,9 @@ func newDrv() *drv {
 var _ = driver.Driver((*drv)(nil))
 
 type drv struct {
+	clientVersion VersionInfo
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
-	clientVersion VersionInfo
 	pools         map[string]*C.dpiPool
 }
 
@@ -610,11 +610,11 @@ func (c connector) Driver() driver.Driver { return c.drv }
 // as a connection string in sql.Open.
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass      string
+	MinSessions, MaxSessions, PoolIncrement int
 	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
 	HeterogeneousPool                       bool
 	StandaloneConnection                    bool
 	EnableEvents                            bool
-	MinSessions, MaxSessions, PoolIncrement int
 }
 
 // String returns the string representation of ConnectionParams.
@@ -772,8 +772,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 
 // OraErr is an error holding the ORA-01234 code and the message.
 type OraErr struct {
-	code    int
 	message string
+	code    int
 }
 
 var _ = error((*OraErr)(nil))
@@ -831,8 +831,8 @@ func b2i(b bool) uint8 {
 
 // VersionInfo holds version info returned by Oracle DB.
 type VersionInfo struct {
-	Version, Release, Update, PortRelease, PortUpdate, Full int
 	ServerRelease                                           string
+	Version, Release, Update, PortRelease, PortUpdate, Full int
 }
 
 func (V *VersionInfo) set(v *C.dpiVersionInfo) {

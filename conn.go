@@ -48,15 +48,15 @@ var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
-	sync.RWMutex
-	dpiConn        *C.dpiConn
 	connParams     ConnectionParams
-	inTransaction  bool
-	tranParams     tranParams
-	Client, Server VersionInfo
 	currentTT      TraceTag
-	currentUser    string
+	Client, Server VersionInfo
+	tranParams     tranParams
+	sync.RWMutex
+	currentUser string
 	*drv
+	dpiConn       *C.dpiConn
+	inTransaction bool
 }
 
 func (c *conn) getError() error {
@@ -317,11 +317,11 @@ func (c *conn) endTran(isCommit bool) error {
 }
 
 type varInfo struct {
-	IsPLSArray        bool
-	Typ               C.dpiOracleTypeNum
-	NatTyp            C.dpiNativeTypeNum
 	SliceLen, BufSize int
 	ObjectType        *C.dpiObjectType
+	NatTyp            C.dpiNativeTypeNum
+	Typ               C.dpiOracleTypeNum
+	IsPLSArray        bool
 }
 
 func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {

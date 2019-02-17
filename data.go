@@ -29,9 +29,9 @@ import (
 
 // Data holds the data to/from Oracle.
 type Data struct {
-	NativeTypeNum C.dpiNativeTypeNum
 	ObjectType    ObjectType
 	dpiData       *C.dpiData
+	NativeTypeNum C.dpiNativeTypeNum
 }
 
 // IsNull returns whether the data is null.

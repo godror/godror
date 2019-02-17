@@ -32,10 +32,9 @@ var _ = fmt.Printf
 
 // Object represents a dpiObject.
 type Object struct {
-	dpiObject *C.dpiObject
-	ObjectType
-
 	scratch Data
+	ObjectType
+	dpiObject *C.dpiObject
 }
 
 func (O *Object) getError() error { return O.drv.getError() }
@@ -254,21 +253,17 @@ func (O *ObjectCollection) Trim(n int) error {
 
 // ObjectType holds type info of an Object.
 type ObjectType struct {
-	dpiObjectType *C.dpiObjectType
-
-	Schema, Name string
-	CollectionOf *ObjectType
-
+	Schema, Name                        string
+	DBSize, ClientSizeInBytes, CharSize int
+	CollectionOf                        *ObjectType
+	Attributes                          map[string]ObjectAttribute
+	dpiObjectType                       *C.dpiObjectType
+	drv                                 *drv
 	OracleTypeNum                       C.dpiOracleTypeNum
 	NativeTypeNum                       C.dpiNativeTypeNum
-	DBSize, ClientSizeInBytes, CharSize int
 	Precision                           int16
 	Scale                               int8
 	FsPrecision                         uint8
-
-	Attributes map[string]ObjectAttribute
-
-	drv *drv
 }
 
 func (t ObjectType) getError() error { return t.drv.getError() }
@@ -407,8 +402,8 @@ func objectTypeFromDataTypeInfo(drv *drv, typ C.dpiDataTypeInfo) (ObjectType, er
 
 // ObjectAttribute is an attribute of an Object.
 type ObjectAttribute struct {
-	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
+	dpiObjectAttr *C.dpiObjectAttr
 	ObjectType
 }
 

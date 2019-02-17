@@ -40,11 +40,11 @@ import (
 type stmtOptions struct {
 	fetchRowCount       int
 	arraySize           int
+	callTimeout         time.Duration
 	execMode            C.dpiExecMode
 	plSQLArrays         bool
 	lobAsReader         bool
 	magicTypeConversion bool
-	callTimeout         time.Duration
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -150,20 +150,20 @@ var _ = driver.StmtExecContext((*statement)(nil))
 var _ = driver.NamedValueChecker((*statement)(nil))
 
 type statement struct {
+	stmtOptions
+	columns  []Column
+	isSlice  []bool
+	gets     []dataGetter
+	dests    []interface{}
+	data     [][]C.dpiData
+	vars     []*C.dpiVar
+	varInfos []varInfo
+	query    string
 	sync.Mutex
+	arrLen int
 	*conn
 	dpiStmt     *C.dpiStmt
-	query       string
-	data        [][]C.dpiData
-	vars        []*C.dpiVar
-	varInfos    []varInfo
-	gets        []dataGetter
-	dests       []interface{}
-	isSlice     []bool
-	arrLen      int
-	columns     []Column
 	isReturning bool
-	stmtOptions
 }
 type dataGetter func(v interface{}, data []C.dpiData) error
 
@@ -573,12 +573,12 @@ func (st *statement) setCallTimeout(ctx context.Context) {
 }
 
 type argInfo struct {
-	isIn, isOut bool
-	typ         C.dpiOracleTypeNum
-	natTyp      C.dpiNativeTypeNum
+	objType     *C.dpiObjectType
 	set         dataSetter
 	bufSize     int
-	objType     *C.dpiObjectType
+	typ         C.dpiOracleTypeNum
+	natTyp      C.dpiNativeTypeNum
+	isIn, isOut bool
 }
 
 // bindVars binds the given args into new variables.
@@ -1937,11 +1937,11 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 // Column holds the info from a column.
 type Column struct {
 	Name                      string
+	ObjectType                *C.dpiObjectType
 	OracleType                C.dpiOracleTypeNum
 	NativeType                C.dpiNativeTypeNum
 	Size, SizeInChars, DBSize C.uint32_t
 	Precision                 C.int16_t
 	Scale                     C.int8_t
 	Nullable                  bool
-	ObjectType                *C.dpiObjectType
 }
