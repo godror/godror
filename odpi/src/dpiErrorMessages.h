@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -63,9 +63,9 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1044: value cannot be represented as an Oracle number", // DPI_ERR_NUMBER_NO_REPR
     "DPI-1045: strings converted to numbers can only be up to 172 characters long", // DPI_ERR_NUMBER_STRING_TOO_LONG
     "DPI-1046: parameter %s cannot be a NULL pointer", // DPI_ERR_NULL_POINTER_PARAMETER
-    "DPI-1047: %s-bit Oracle Client library cannot be loaded: \"%s\". See https://oracle.github.io/odpi/doc/installation.html#%s for help", // DPI_ERR_LOAD_LIBRARY
+    "DPI-1047: Cannot locate a %s-bit Oracle Client library: \"%s\". See https://oracle.github.io/odpi/doc/installation.html#%s for help", // DPI_ERR_LOAD_LIBRARY
     "DPI-1049: symbol %s not found in OCI library", // DPI_ERR_LOAD_SYMBOL
-    "DPI-1050: Oracle Client library is at version %d.%d but must be at version %d.%d or higher", // DPI_ERR_ORACLE_CLIENT_TOO_OLD
+    "DPI-1050: Oracle Client library is at version %d.%d but version %d.%d or higher is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD
     "DPI-1052: unable to get NLS environment variable", // DPI_ERR_NLS_ENV_VAR_GET,
     "DPI-1053: parameter %s cannot be a NULL pointer while corresponding length parameter is non-zero", // DPI_ERR_PTR_LENGTH_MISMATCH
     "DPI-1055: value is not a number (NaN) and cannot be used in Oracle numbers", // DPI_ERR_NAN
@@ -79,7 +79,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1063: modes DPI_MODE_EXEC_BATCH_ERRORS and DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS can only be used with insert, update, delete and merge statements", // DPI_ERR_EXEC_MODE_ONLY_FOR_DML
     "DPI-1064: array variables are not supported with dpiStmt_executeMany()", // DPI_ERR_ARRAY_VAR_NOT_SUPPORTED
     "DPI-1065: events mode is required to subscribe to events in the database", // DPI_ERR_EVENTS_MODE_REQUIRED
-    "DPI-1066: Oracle Database is at version %d.%d but must be at version %d.%d or higher", // DPI_ERR_ORACLE_DB_TOO_OLD
+    "DPI-1066: Oracle Database is at version %d.%d but version %d.%d or higher is needed", // DPI_ERR_ORACLE_DB_TOO_OLD
     "DPI-1067: call timeout of %u ms exceeded with ORA-%d", // DPI_ERR_CALL_TIMEOUT
     "DPI-1068: SODA cursor was already closed", // DPI_ERR_SODA_CURSOR_CLOSED
     "DPI-1069: proxy user name must be enclosed in [] when using external authentication", // DPI_ERR_EXT_AUTH_INVALID_PROXY

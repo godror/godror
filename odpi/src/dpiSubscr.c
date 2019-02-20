@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -275,8 +275,8 @@ static void dpiSubscr__freeMessage(dpiSubscrMessage *message)
             query = &message->queries[i];
             if (query->numTables > 0) {
                 for (j = 0; j < query->numTables; j++) {
-                    if (query->tables[i].numRows > 0)
-                        dpiUtils__freeMemory(query->tables[i].rows);
+                    if (query->tables[j].numRows > 0)
+                        dpiUtils__freeMemory(query->tables[j].rows);
                 }
                 dpiUtils__freeMemory(query->tables);
             }
