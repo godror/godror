@@ -394,7 +394,8 @@ int dpiDataBuffer__toOracleNumberFromText(dpiDataBuffer *data, dpiEnv *env,
     numPairs = numDigits / 2;
 
     // append a sentinel 102 byte for negative numbers if there is room
-    appendSentinel = (isNegative && numDigits < DPI_NUMBER_MAX_DIGITS);
+    appendSentinel = (isNegative && numDigits > 0 &&
+            numDigits < DPI_NUMBER_MAX_DIGITS);
 
     // initialize the OCINumber value
     // the length is the number of pairs, plus one for the exponent
@@ -517,7 +518,7 @@ int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
     status = dpiOci__dateTimeIntervalAdd(env->handle, env->baseDate, interval,
             oracleValue, error);
     dpiOci__descriptorFree(interval, DPI_OCI_DTYPE_INTERVAL_DS);
-    return dpiError__check(error, status, NULL, "add date");
+    return status;
 }
 
 

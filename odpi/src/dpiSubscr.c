@@ -415,6 +415,10 @@ static int dpiSubscr__populateMessage(dpiSubscr *subscr,
         case DPI_EVENT_DEREG:
             subscr->registered = 0;
             break;
+        case DPI_EVENT_STARTUP:
+        case DPI_EVENT_SHUTDOWN:
+        case DPI_EVENT_SHUTDOWN_ANY:
+            break;
         default:
             return dpiError__set(error, "event type", DPI_ERR_NOT_SUPPORTED);
     }

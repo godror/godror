@@ -18,6 +18,8 @@
 #include <time.h>
 
 // forward declarations of internal functions only used in this file
+static int dpiConn__attachExternal(dpiConn *conn, void *externalHandle,
+        dpiError *error);
 static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
         uint32_t userNameLength, const char *password, uint32_t passwordLength,
         const char *connectString, uint32_t connectStringLength,
@@ -43,6 +45,45 @@ static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
         dpiError *error);
 static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
         dpiShardingKeyColumn *column, dpiError *error);
+
+
+//-----------------------------------------------------------------------------
+// dpiConn__attachExternal() [INTERNAL]
+//   Attach to the server and session of an existing service context handle.
+//-----------------------------------------------------------------------------
+static int dpiConn__attachExternal(dpiConn *conn, void *externalHandle,
+        dpiError *error)
+{
+    // mark connection as using an external handle so that no attempts are
+    // made to close it
+    conn->externalHandle = 1;
+
+    // acquire handles from existing service context handle
+    conn->handle = externalHandle;
+    if (dpiConn__getHandles(conn, error) < 0) {
+        conn->handle = NULL;
+        return DPI_FAILURE;
+    }
+
+    // allocate a new service context handle which will use the new environment
+    // handle independent of the original service context handle
+    conn->handle = NULL;
+    if (dpiOci__handleAlloc(conn->env->handle, &conn->handle,
+            DPI_OCI_HTYPE_SVCCTX, "allocate service context handle",
+            error) < 0)
+        return DPI_FAILURE;
+
+    // set these handles on the newly created service context
+    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, conn->serverHandle,
+            0, DPI_OCI_ATTR_SERVER, "set server handle", error) < 0)
+        return DPI_FAILURE;
+    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            conn->sessionHandle, 0, DPI_OCI_ATTR_SESSION, "set session handle",
+            error) < 0)
+        return DPI_FAILURE;
+
+    return DPI_SUCCESS;
+}
 
 
 //-----------------------------------------------------------------------------
@@ -92,7 +133,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     // rollback any outstanding transaction, if one is in progress; drop the
     // session if any errors take place
     txnInProgress = 0;
-    if (!conn->deadSession && conn->sessionHandle) {
+    if (!conn->deadSession && !conn->externalHandle && conn->sessionHandle) {
         txnInProgress = 1;
         if (conn->env->versionInfo->versionNum >= 12)
             dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
@@ -108,7 +149,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     // close of the connection was made) so a reference needs to be acquired
     // first, as otherwise the object may be freed while the close is being
     // performed!
-    if (conn->objects) {
+    if (conn->objects && !conn->externalHandle) {
         for (i = 0; i < conn->objects->numSlots; i++) {
             obj = (dpiObject*) conn->objects->handles[i];
             if (!obj)
@@ -136,7 +177,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     // explicit close was made of either the statement or the connection) so
     // a reference needs to be acquired first, as otherwise the statement may
     // be freed while the close is being performed!
-    if (conn->openStmts) {
+    if (conn->openStmts && !conn->externalHandle) {
         for (i = 0; i < conn->openStmts->numSlots; i++) {
             stmt = (dpiStmt*) conn->openStmts->handles[i];
             if (!stmt)
@@ -159,7 +200,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     }
 
     // close all open LOBs; the same comments apply as for statements
-    if (conn->openLobs) {
+    if (conn->openLobs && !conn->externalHandle) {
         for (i = 0; i < conn->openLobs->numSlots; i++) {
             lob = (dpiLob*) conn->openLobs->handles[i];
             if (!lob)
@@ -183,6 +224,8 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
 
     // handle connections created with an external handle
     if (conn->externalHandle) {
+        if (conn->handle)
+            dpiOci__handleFree(conn->handle, DPI_OCI_HTYPE_SVCCTX);
         conn->sessionHandle = NULL;
 
     // handle standalone connections
@@ -303,11 +346,9 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         return DPI_FAILURE;
 
     // if a handle is specified, use it
-    if (createParams->externalHandle) {
-        conn->handle = createParams->externalHandle;
-        conn->externalHandle = 1;
-        return dpiConn__getHandles(conn, error);
-    }
+    if (createParams->externalHandle)
+        return dpiConn__attachExternal(conn, createParams->externalHandle,
+                error);
 
     // connection class, sharding and the use of session pools require the use
     // of the OCISessionGet() method; all other cases use the OCISessionBegin()
