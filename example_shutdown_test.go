@@ -24,6 +24,7 @@ import (
 	goracle "gopkg.in/goracle.v2"
 )
 
+// ExampleStartup calls exampleStartup to start a database.
 func ExampleStartup() {
 	if err := exampleStartup(goracle.StartupDefault); err != nil {
 		log.Fatal(err)
@@ -64,6 +65,7 @@ func exampleStartup(startupMode goracle.StartupMode) error {
 	return nil
 }
 
+// ExampleShutdown is an example of how to shut down a database.
 func ExampleShutdown() {
 	dsn := "oracle://?sysdba=1" // equivalent to "/ as sysdba"
 	db, err := sql.Open("goracle", dsn)

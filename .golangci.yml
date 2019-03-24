@@ -4,12 +4,16 @@ linters-settings:
 
 linters:
   disable:
-    - megacheck
+    - structcheck
     - errcheck
-    - typecheck
+      #- typecheck
 
 issues:
   exclude:
     - "`?encodeFixed(32|64)Pb`? is unused"
+    - "`?_Ctype[^ `]*`? is unused"
+    - "`?_cgo[^ `]*`? is unused"
+    - "SA4000"
+    - "Example[^ ]* refers to unknown"
 
 # vim: set et shiftwidth=2:

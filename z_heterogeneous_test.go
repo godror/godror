@@ -77,7 +77,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if strings.ToUpper(tCase.Want) != strings.ToUpper(result) {
+		if !strings.EqualFold(tCase.Want, result) {
 			t.Errorf("%s: currentUser got %s, wanted %s", tName, result, tCase.Want)
 		}
 
