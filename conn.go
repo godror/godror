@@ -572,7 +572,7 @@ const (
 //
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Startup(mode StartupMode) error {
-	if C.dpiConn_startupDatabase(c.dpiConn, C.uint(mode)) == C.DPI_FAILURE {
+	if C.dpiConn_startupDatabase(c.dpiConn, C.dpiStartupMode(mode)) == C.DPI_FAILURE {
 		return errors.Wrapf(c.getError(), "startup(%v)", mode)
 	}
 	return nil
@@ -601,7 +601,7 @@ const (
 //
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Shutdown(mode ShutdownMode) error {
-	if C.dpiConn_shutdownDatabase(c.dpiConn, C.uint(mode)) == C.DPI_FAILURE {
+	if C.dpiConn_shutdownDatabase(c.dpiConn, C.dpiShutdownMode(mode)) == C.DPI_FAILURE {
 		return errors.Wrapf(c.getError(), "shutdown(%v)", mode)
 	}
 	return nil

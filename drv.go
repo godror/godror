@@ -567,44 +567,6 @@ func (c *conn) acquireConn(user, pass string) error {
 	return nil
 }
 
-var _ = driver.Connector((*connector)(nil))
-
-type connector struct {
-	ConnectionParams
-	*drv
-}
-
-// OpenConnector must parse the name in the same format that Driver.Open
-// parses the name parameter.
-func (d *drv) OpenConnector(name string) (driver.Connector, error) {
-	P, err := ParseConnString(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return connector{ConnectionParams: P, drv: d}, nil
-}
-
-// Connect returns a connection to the database.
-// Connect may return a cached connection (one previously
-// closed), but doing so is unnecessary; the sql package
-// maintains a pool of idle connections for efficient re-use.
-//
-// The provided context.Context is for dialing purposes only
-// (see net.DialContext) and should not be stored or used for
-// other purposes.
-//
-// The returned connection is only used by one goroutine at a
-// time.
-func (c connector) Connect(context.Context) (driver.Conn, error) {
-	return c.drv.openConn(c.ConnectionParams)
-}
-
-// Driver returns the underlying Driver of the Connector,
-// mainly to maintain compatibility with the Driver method
-// on sql.DB.
-func (c connector) Driver() driver.Driver { return c.drv }
-
 // ConnectionParams holds the params for a connection (pool).
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.

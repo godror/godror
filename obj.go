@@ -136,9 +136,9 @@ func (O *ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 		vr := reflect.ValueOf(data.Get())
 		if needsInit {
 			needsInit = false
-			length, err := O.Len()
-			if err != nil {
-				return dr.Interface(), err
+			length, lengthErr := O.Len()
+			if lengthErr != nil {
+				return dr.Interface(), lengthErr
 			}
 			dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
 		}
