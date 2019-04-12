@@ -16,13 +16,45 @@
 package goracle_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
+	goracle "gopkg.in/goracle.v2"
 )
+
+func TestLOBAppend(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	tmp := &goracle.Lob{}
+	if _, err := testDb.ExecContext(
+		ctx,
+		"DECLARE tmp BLOB; BEGIN dbms_lob.createtemporary(tmp, true, dbms_lob.session); :1 := tmp; END;",
+		goracle.LobAsReader(), sql.Out{Dest: tmp},
+	); err != nil {
+		t.Fatalf("Failed to create temporary lob: %+v", err)
+	}
+
+	buf := bytes.NewBuffer([]byte{1, 2, 3, 4, 5})
+	if _, err := testDb.ExecContext(ctx,
+		"BEGIN dbms_lob.append(:1, :2); END;",
+		tmp, goracle.Lob{Reader: buf},
+	); err != nil {
+		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", buf.Len(), tmp, err)
+	}
+
+	if _, err := testDb.ExecContext(ctx,
+		"DECLARE BEGIN dbms_lob.freetemporary(:1); END;",
+		tmp,
+	); err != nil {
+		t.Errorf("Failed to close temporary lob: %+v", err)
+	}
+}
 
 func TestStatWithLobs(t *testing.T) {
 	t.Parallel()
