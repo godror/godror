@@ -20,6 +20,7 @@ package goracle
 */
 import "C"
 import (
+	//"fmt"
 	"io"
 	"unicode/utf8"
 	"unsafe"
@@ -166,7 +167,11 @@ func (dlw *dpiLobWriter) Close() error {
 	dlw.dpiLob = nil
 	//C.dpiLob_flushBuffer(lob)
 	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
-		return errors.Wrapf(dlw.getError(), "closeResource(%p)", lob)
+		err := dlw.getError()
+		if ec, ok := err.(interface{ Code() int }); ok && !dlw.opened && ec.Code() == 22289 { // cannot perform %s operation on an unopened file or LOB
+			return nil
+		}
+		return errors.Wrapf(err, "closeResource(%p)", lob)
 	}
 	return nil
 }
@@ -189,6 +194,32 @@ func (dl *DirectLob) Close() error {
 	dl.opened = false
 	if C.dpiLob_closeResource(dl.dpiLob) == C.DPI_FAILURE {
 		return errors.Wrap(dl.conn.getError(), "closeResource")
+	}
+	return nil
+}
+
+// Size returns the size of the LOB.
+func (dl *DirectLob) Size() (int64, error) {
+	var n C.uint64_t
+	if C.dpiLob_getSize(dl.dpiLob, &n) == C.DPI_FAILURE {
+		return int64(n), errors.Wrap(dl.conn.getError(), "getSize")
+	}
+	return int64(n), nil
+}
+
+// Trim the LOB to the given size.
+func (dl *DirectLob) Trim(size int64) error {
+	if C.dpiLob_trim(dl.dpiLob, C.uint64_t(size)) == C.DPI_FAILURE {
+		return errors.Wrap(dl.conn.getError(), "trim")
+	}
+	return nil
+}
+
+// Set the contents of the LOB to the given byte slice.
+// The LOB is cleared first.
+func (dl *DirectLob) Set(p []byte) error {
+	if C.dpiLob_setFromBytes(dl.dpiLob, (*C.char)(unsafe.Pointer(&p[0])), C.uint64_t(len(p))) == C.DPI_FAILURE {
+		return errors.Wrap(dl.conn.getError(), "setFromBytes")
 	}
 	return nil
 }

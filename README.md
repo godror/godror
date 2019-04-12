@@ -140,6 +140,10 @@ They close the statement right after you `Scan` from the returned `*Row`, the re
 
 So, use a separate `Stmt` or `sql.QueryContext`.
 
+For writing a LOB, the LOB locator returned from the database is valid only till the `Stmt` is valid!
+So `Prepare` the statement for the retrieval, then `Exec`, and only `Close` the stmt iff you've finished with your LOB!
+For example, see [z_lob_test.go](./z_lob_test.go), `TestLOBAppend`.
+
 ### TIMESTAMP
 As I couldn't make TIMESTAMP arrays work, all `time.Time` is bind as `DATE`, so fractional seconds
 are lost.

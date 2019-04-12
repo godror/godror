@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2019 Tamás Gulácsi
 //
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,28 +31,51 @@ func TestLOBAppend(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	tmp := &goracle.Lob{}
-	if _, err := testDb.ExecContext(
-		ctx,
-		"DECLARE tmp BLOB; BEGIN dbms_lob.createtemporary(tmp, true, dbms_lob.session); :1 := tmp; END;",
-		goracle.LobAsReader(), sql.Out{Dest: tmp},
-	); err != nil {
+	// To have a valid LOB locator, we have to keep the Stmt around.
+	qry := `DECLARE tmp BLOB;
+BEGIN
+  DBMS_LOB.createtemporary(tmp, TRUE, DBMS_LOB.SESSION);
+  :1 := tmp;
+END;`
+	stmt, err := testDb.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.WithMessage(err, qry))
+	}
+	defer stmt.Close()
+	var tmp goracle.Lob
+	if _, err := stmt.ExecContext(ctx, goracle.LobAsReader(), sql.Out{Dest: &tmp}); err != nil {
 		t.Fatalf("Failed to create temporary lob: %+v", err)
 	}
+	t.Logf("tmp: %#v", tmp)
 
-	buf := bytes.NewBuffer([]byte{1, 2, 3, 4, 5})
+	want := [...]byte{1, 2, 3, 4, 5}
 	if _, err := testDb.ExecContext(ctx,
 		"BEGIN dbms_lob.append(:1, :2); END;",
-		tmp, goracle.Lob{Reader: buf},
+		tmp, goracle.Lob{Reader: bytes.NewReader(want[:])},
 	); err != nil {
-		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", buf.Len(), tmp, err)
+		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}
 
-	if _, err := testDb.ExecContext(ctx,
-		"DECLARE BEGIN dbms_lob.freetemporary(:1); END;",
-		tmp,
-	); err != nil {
-		t.Errorf("Failed to close temporary lob: %+v", err)
+	if true {
+		// Either use DBMS_LOB.freetemporary
+		if _, err := testDb.ExecContext(ctx, "BEGIN dbms_lob.freetemporary(:1); END;", tmp); err != nil {
+			t.Errorf("Failed to close temporary lob(%v): %+v", tmp, err)
+		}
+	} else {
+		// Or Hijack and Close it.
+		dl, err := tmp.Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer dl.Close()
+		length, err := dl.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("length: %d", length)
+		if length != int64(len(want)) {
+			t.Errorf("length mismatch: got %d, wanted %d", length, len(want))
+		}
 	}
 }
 

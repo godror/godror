@@ -1743,11 +1743,17 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 	}
 	var firstErr error
 	for i, L := range lobs {
+		//fmt.Printf("dataSetLob[%d]=(%T) %#v\n", i, L, L)
 		if L.Reader == nil {
 			data[i].isNull = 1
-			return nil
+			continue
 		}
 		data[i].isNull = 0
+		if r, ok := L.Reader.(*dpiLobReader); ok {
+			C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob)
+			continue
+		}
+
 		typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
 		if L.IsClob {
 			typ = C.DPI_ORACLE_TYPE_CLOB
