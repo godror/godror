@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [2.11.0] - 2018-12-13
 ### Changed
-- Do not set empty SID from ORACLE_SID/TWO_TASK enviroment variables, leave it to ODPI.
+- Do not set empty SID from ORACLE_SID/TWO_TASK environment variables, leave it to ODPI.
 
 ### Added
 - Allow PRELIM authentication to allow Startup and Shutdown.
