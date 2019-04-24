@@ -142,9 +142,7 @@ func (O *ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 			}
 			dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
 		}
-		if dr = reflect.Append(dr, vr); err != nil {
-			return dr.Interface(), err
-		}
+		dr = reflect.Append(dr, vr)
 	}
 	return dr.Interface(), nil
 }

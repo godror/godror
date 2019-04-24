@@ -1623,7 +1623,10 @@ int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count)
     else if (stmt->statementType != DPI_STMT_TYPE_INSERT &&
             stmt->statementType != DPI_STMT_TYPE_UPDATE &&
             stmt->statementType != DPI_STMT_TYPE_DELETE &&
-            stmt->statementType != DPI_STMT_TYPE_MERGE) {
+            stmt->statementType != DPI_STMT_TYPE_MERGE &&
+            stmt->statementType != DPI_STMT_TYPE_CALL &&
+            stmt->statementType != DPI_STMT_TYPE_BEGIN &&
+            stmt->statementType != DPI_STMT_TYPE_DECLARE) {
         *count = 0;
     } else if (stmt->env->versionInfo->versionNum < 12) {
         if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &rowCount32, 0,
