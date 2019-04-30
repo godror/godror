@@ -653,7 +653,9 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		st.dests[i] = value
 		rv := reflect.ValueOf(value)
 		if info.isOut {
-			//fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
+			if rv.IsNil() {
+			fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
+		}
 			if rv.Kind() == reflect.Ptr {
 				rv = rv.Elem()
 				value = rv.Interface()
