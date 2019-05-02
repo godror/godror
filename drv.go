@@ -303,8 +303,11 @@ func (n *Number) UnmarshalJSON(p []byte) error {
 // or analog to be race-free.
 var Log func(...interface{}) error
 
+var defaultDrv *drv
+
 func init() {
-	sql.Register("goracle", newDrv())
+	defaultDrv = newDrv()
+	sql.Register("goracle", defaultDrv)
 }
 
 func newDrv() *drv {
@@ -479,6 +482,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			return nil, errors.Wrapf(d.getError(), "username=%q sid=%q params=%+v", P.Username, P.SID, connCreateParams)
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
+		c.newSession = true
 		return &c, c.init()
 	}
 	var poolCreateParams C.dpiPoolCreateParams
@@ -554,7 +558,8 @@ func (c *conn) acquireConn(user, pass string) error {
 	c.drv.mu.Unlock()
 	if C.dpiPool_acquireConnection(
 		pool,
-		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)), nil,
+		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),
+		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dc))
@@ -563,6 +568,7 @@ func (c *conn) acquireConn(user, pass string) error {
 
 	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
+	c.newSession = connCreateParams.outNewSession == 1
 
 	return nil
 }

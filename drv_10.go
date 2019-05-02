@@ -20,6 +20,10 @@ package goracle
 import (
 	"context"
 	"database/sql/driver"
+	"fmt"
+	"strings"
+
+	"github.com/pkg/errors"
 )
 
 var _ = driver.Connector((*connector)(nil))
@@ -27,6 +31,7 @@ var _ = driver.Connector((*connector)(nil))
 type connector struct {
 	ConnectionParams
 	*drv
+	onInit func(driver.Conn) error
 }
 
 // OpenConnector must parse the name in the same format that Driver.Open
@@ -52,7 +57,15 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(context.Context) (driver.Conn, error) {
-	return c.drv.openConn(c.ConnectionParams)
+	conn, err := c.drv.openConn(c.ConnectionParams)
+	if err != nil || c.onInit == nil || !conn.newSession {
+		return conn, err
+	}
+	if err = c.onInit(conn); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 // Driver returns the underlying Driver of the Connector,
@@ -60,3 +73,34 @@ func (c connector) Connect(context.Context) (driver.Conn, error) {
 // on sql.DB.
 func (c connector) Driver() driver.Driver { return c.drv }
 
+// NewConnector returns a driver.Connector to be used with sql.OpenDB,
+// which calls the given onInit if the connection is new.
+func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
+	cxr, err := defaultDrv.OpenConnector(name)
+	if err != nil {
+		return nil, err
+	}
+	cx := cxr.(connector)
+	cx.onInit = onInit
+	return cx, err
+}
+
+// NewSessionIniter returns a function suitable for use in NewConnector as onInit,
+// which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
+func NewSessionIniter(m map[string]string) func(driver.Conn) error {
+	return func(cx driver.Conn) error {
+		for k, v := range m {
+			qry := fmt.Sprintf("ALTER SESSION SET %s = '%s'", k, strings.ReplaceAll(v, "'", "''"))
+			st, err := cx.Prepare(qry)
+			if err != nil {
+				return errors.Wrap(err, qry)
+			}
+			_, err = st.Exec(nil) //nolint:SA1019
+			st.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}

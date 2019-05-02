@@ -57,6 +57,7 @@ type conn struct {
 	*drv
 	dpiConn       *C.dpiConn
 	inTransaction bool
+	newSession    bool
 }
 
 func (c *conn) getError() error {
