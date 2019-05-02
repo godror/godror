@@ -279,22 +279,23 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.conn.RLock()
 	defer st.conn.RUnlock()
-	// execute
+
+	// bind variables
+	if err = st.bindVars(args, Log); err != nil {
+		return nil, closeIfBadConn(err)
+	}
+
+	mode := st.ExecMode()
+	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
+	if !st.inTransaction {
+		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+	}
+	st.setCallTimeout(ctx)
+
 	done := make(chan error, 1)
+	// execute
 	go func() {
 		defer close(done)
-		// bind variables
-		if err = st.bindVars(args, Log); err != nil {
-			done <- err
-			return
-		}
-
-		mode := st.ExecMode()
-		//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
-		if !st.inTransaction {
-			mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-		}
-		st.setCallTimeout(ctx)
 	Loop:
 		for i := 0; i < 3; i++ {
 			if err = ctx.Err(); err != nil {
@@ -654,8 +655,8 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		rv := reflect.ValueOf(value)
 		if info.isOut {
 			if rv.IsNil() {
-			fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
-		}
+				fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
+			}
 			if rv.Kind() == reflect.Ptr {
 				rv = rv.Elem()
 				value = rv.Interface()
