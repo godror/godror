@@ -413,7 +413,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
 		case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
 			if isNull {
-				dest[i] = time.Time{}
+				dest[i] = nil
 				continue
 			}
 			ds := C.dpiData_getIntervalDS(d)
