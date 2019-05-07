@@ -1183,6 +1183,9 @@ func dataGetTimeC(t *time.Time, data *C.dpiData) {
 		tz,
 	)
 }
+
+var _, localTzOffsetSecs = (time.Time{}).In(time.Local).Zone()
+
 func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
@@ -1199,19 +1202,20 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 	}
+	tzHour, tzMin := C.int8_t(localTzOffsetSecs/3600), C.int8_t((localTzOffsetSecs%3600)/60)
 	for i, t := range times {
 		if t.IsZero() {
 			data[i].isNull = 1
 			continue
 		}
 		data[i].isNull = 0
-		_, z := t.Zone()
+		t = t.In(time.Local)
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],
 			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
 			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),
-			C.int8_t(z/3600), C.int8_t((z%3600)/60),
+			tzHour, tzMin,
 		)
 	}
 	return nil

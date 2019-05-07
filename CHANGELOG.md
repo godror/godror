@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.14.0] - 2019-05-07
+### Changed
+- Default to time.Local in DATE types when sending to DB, too.
+
 ## [2.13.2] - 2019-05-07
 ### Changed
 - Default to time.Local timezone for DATE types.
