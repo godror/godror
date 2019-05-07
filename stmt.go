@@ -1173,10 +1173,14 @@ func dataGetTimeC(t *time.Time, data *C.dpiData) {
 		return
 	}
 	ts := C.dpiData_getTimestamp(data)
+	tz := time.Local
+	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
+		tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
+	}
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset),
+		tz,
 	)
 }
 func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
