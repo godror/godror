@@ -311,7 +311,7 @@ func init() {
 }
 
 func newDrv() *drv {
-	return &drv{pools: make(map[string]*C.dpiPool)}
+	return &drv{pools: make(map[string]*connPool)}
 }
 
 var _ = driver.Driver((*drv)(nil))
@@ -320,7 +320,13 @@ type drv struct {
 	clientVersion VersionInfo
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
-	pools         map[string]*C.dpiPool
+	pools         map[string]*connPool
+}
+
+type connPool struct {
+	dpiPool   *C.dpiPool
+	timeZone  *time.Location
+	tzOffSecs int
 }
 
 func (d *drv) init() error {
@@ -416,16 +422,20 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		dp := d.pools[connString]
 		d.mu.Unlock()
 		if dp != nil {
-			if P.HeterogeneousPool {
-				//Proxy authenticated connections to database will be provided by methods with context
-				return &c, nil
+			//Proxy authenticated connections to database will be provided by methods with context
+			c.timeZone = dp.timeZone
+			c.tzOffSecs = dp.tzOffSecs
+			if !P.HeterogeneousPool {
+				if err := c.acquireConn("", ""); err != nil {
+					return nil, err
+				}
 			}
-
-			if err := c.acquireConn("", ""); err != nil {
-				return nil, err
+			err := c.init()
+			if err == nil {
+				dp.timeZone = c.timeZone
+				dp.tzOffSecs = c.tzOffSecs
 			}
-
-			return &c, c.init()
+			return &c, err
 		}
 	}
 
@@ -522,7 +532,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
 	d.mu.Lock()
-	d.pools[connString] = dp
+	d.pools[connString] = &connPool{dpiPool: dp}
 	d.mu.Unlock()
 
 	return d.openConn(P)
@@ -558,7 +568,7 @@ func (c *conn) acquireConn(user, pass string) error {
 	pool := c.pools[c.connParams.String()]
 	c.drv.mu.Unlock()
 	if C.dpiPool_acquireConnection(
-		pool,
+		pool.dpiPool,
 		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),
 		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
@@ -570,8 +580,13 @@ func (c *conn) acquireConn(user, pass string) error {
 	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
 	c.newSession = connCreateParams.outNewSession == 1
+	c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
+	err := c.init()
+	if err == nil {
+		pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
+	}
 
-	return c.init()
+	return err
 }
 
 // ConnectionParams holds the params for a connection (pool).
@@ -861,4 +876,32 @@ func ctxGetLog(ctx context.Context) logFunc {
 // ContextWithLog returns a context with the given log function.
 func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
 	return context.WithValue(ctx, logCtxKey, logF)
+}
+
+func parseTZ(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, io.EOF
+	}
+	if s == "Z" || s == "UTC" {
+		return 0, nil
+	}
+	var tz int
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		if i64, err := strconv.ParseInt(s[i+1:], 10, 6); err != nil {
+			return tz, errors.Wrap(err, s)
+		} else {
+			tz = int(i64)
+		}
+		s = s[:i]
+	}
+	if i64, err := strconv.ParseInt(s, 10, 5); err != nil {
+		return tz, errors.Wrap(err, s)
+	} else {
+		if i64 < 0 {
+			tz = -tz
+		}
+		tz += int(i64 * 3600)
+	}
+	return tz, nil
 }

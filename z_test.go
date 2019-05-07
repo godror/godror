@@ -294,7 +294,7 @@ END;
 		}
 	}
 
-	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
+	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.Local)
 	for name, tC := range map[string]struct {
 		In   interface{}
 		Want string
@@ -2046,4 +2046,18 @@ func TestTsTZ(t *testing.T) {
 		t.Log(fn, ver)
 	}
 	t.Skip("wanted non-zero time")
+}
+
+func TestGetDBTimeZone(t *testing.T) {
+	t.Parallel()
+	defer tl.enableLogging(t)()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	const qry = "SELECT DBTIMEZONE FROM DUAL"
+	var tz string
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&tz); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	t.Log("timezone:", tz)
 }

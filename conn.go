@@ -25,8 +25,8 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	//"fmt"
-	"strconv"
+	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -385,41 +385,40 @@ func (c *conn) init() error {
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+	if c.timeZone != nil {
+		return nil
+	}
+	c.timeZone = time.Local
+	_, c.tzOffSecs = (time.Time{}).In(c.timeZone).Zone()
 
-	const qry = "BEGIN :1 := DBTIMEZONE; END;"
-	st, err := c.Prepare(qry)
+	const qry = "SELECT DBTIMEZONE FROM DUAL"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	st, err := c.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)
 	}
 	defer st.Close()
-	timezone := "      "
-	_, err = st.Exec([]driver.Value{&timezone})
-	//fmt.Println("timezone:", timezone, "error:", err)
+	rows, err := st.Query(nil)
 	if err != nil {
 		return err
 	}
-	timezone = strings.TrimSpace(timezone)
-	if timezone == "" {
-		c.timeZone = time.Local
-		_, c.tzOffSecs = (time.Time{}).In(c.timeZone).Zone()
+	defer rows.Close()
+	var timezone string
+	err = rows.Next([]driver.Value{&timezone})
+	if err != nil && errors.Cause(err) != io.EOF {
+		fmt.Println(qry, err)
 		return nil
 	}
-	c.tzOffSecs = 0
-	s := timezone
-	var i64 int64
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		if i64, err = strconv.ParseInt(s[i+1:], 10, 6); err != nil {
-			return errors.Wrap(err, s)
-		}
-		c.tzOffSecs = int(i64)
-		s = s[:i]
+	if timezone = strings.TrimSpace(timezone); timezone == "" {
+		return nil
 	}
-	if i64, err = strconv.ParseInt(s, 10, 5); err != nil {
-		return errors.Wrap(err, s)
+	if off, err := parseTZ(timezone); err != nil {
+		fmt.Println("parse", timezone, err)
+	} else {
+		c.tzOffSecs = off
+		c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
 	}
-	c.tzOffSecs += int(i64 * 3600)
-
-	c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
 	return nil
 }
 
