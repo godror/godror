@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.14.1] - 2019-05-07
+- Try to get the serve DBTIMEZONE, if fails use time.Local
+
 ## [2.14.0] - 2019-05-07
 ### Changed
 - Default to time.Local in DATE types when sending to DB, too.

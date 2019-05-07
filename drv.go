@@ -482,6 +482,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			return nil, errors.Wrapf(d.getError(), "username=%q sid=%q params=%+v", P.Username, P.SID, connCreateParams)
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
+		c.currentUser = P.Username
 		c.newSession = true
 		return &c, c.init()
 	}
@@ -570,7 +571,7 @@ func (c *conn) acquireConn(user, pass string) error {
 	c.currentUser = user
 	c.newSession = connCreateParams.outNewSession == 1
 
-	return nil
+	return c.init()
 }
 
 // ConnectionParams holds the params for a connection (pool).

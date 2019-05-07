@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2019 Tamás Gulácsi
 //
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,8 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	//"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +60,8 @@ type conn struct {
 	dpiConn       *C.dpiConn
 	inTransaction bool
 	newSession    bool
+	timeZone      *time.Location
+	tzOffSecs     int
 }
 
 func (c *conn) getError() error {
@@ -381,6 +385,41 @@ func (c *conn) init() error {
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+
+	const qry = "BEGIN :1 := DBTIMEZONE; END;"
+	st, err := c.Prepare(qry)
+	if err != nil {
+		return errors.Wrap(err, qry)
+	}
+	defer st.Close()
+	timezone := "      "
+	_, err = st.Exec([]driver.Value{&timezone})
+	//fmt.Println("timezone:", timezone, "error:", err)
+	if err != nil {
+		return err
+	}
+	timezone = strings.TrimSpace(timezone)
+	if timezone == "" {
+		c.timeZone = time.Local
+		_, c.tzOffSecs = (time.Time{}).In(c.timeZone).Zone()
+		return nil
+	}
+	c.tzOffSecs = 0
+	s := timezone
+	var i64 int64
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		if i64, err = strconv.ParseInt(s[i+1:], 10, 6); err != nil {
+			return errors.Wrap(err, s)
+		}
+		c.tzOffSecs = int(i64)
+		s = s[:i]
+	}
+	if i64, err = strconv.ParseInt(s, 10, 5); err != nil {
+		return errors.Wrap(err, s)
+	}
+	c.tzOffSecs += int(i64 * 3600)
+
+	c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
 	return nil
 }
 

@@ -1059,9 +1059,9 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 
 	case time.Time, []time.Time:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
-		info.set = dataSetTime
+		info.set = st.conn.dataSetTime
 		if info.isOut {
-			*get = dataGetTime
+			*get = st.conn.dataGetTime
 		}
 
 	case Object:
@@ -1145,13 +1145,13 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	}
 	return nil
 }
-func dataGetTime(v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 	if x, ok := v.(*time.Time); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = time.Time{}
 			return nil
 		}
-		dataGetTimeC(x, &data[0])
+		c.dataGetTimeC(x, &data[0])
 		return nil
 	}
 	slice := v.(*[]time.Time)
@@ -1162,18 +1162,18 @@ func dataGetTime(v interface{}, data []C.dpiData) error {
 		*slice = make([]time.Time, n)
 	}
 	for i := range data {
-		dataGetTimeC(&((*slice)[i]), &data[i])
+		c.dataGetTimeC(&((*slice)[i]), &data[i])
 	}
 	return nil
 }
 
-func dataGetTimeC(t *time.Time, data *C.dpiData) {
+func (c *conn) dataGetTimeC(t *time.Time, data *C.dpiData) {
 	if data.isNull == 1 {
 		*t = time.Time{}
 		return
 	}
 	ts := C.dpiData_getTimestamp(data)
-	tz := time.Local
+	tz := c.timeZone
 	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
 		tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
 	}
@@ -1184,9 +1184,7 @@ func dataGetTimeC(t *time.Time, data *C.dpiData) {
 	)
 }
 
-var _, localTzOffsetSecs = (time.Time{}).In(time.Local).Zone()
-
-func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
 	}
@@ -1202,14 +1200,14 @@ func dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			return nil
 		}
 	}
-	tzHour, tzMin := C.int8_t(localTzOffsetSecs/3600), C.int8_t((localTzOffsetSecs%3600)/60)
+	tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
 	for i, t := range times {
 		if t.IsZero() {
 			data[i].isNull = 1
 			continue
 		}
 		data[i].isNull = 0
-		t = t.In(time.Local)
+		t = t.In(c.timeZone)
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],
