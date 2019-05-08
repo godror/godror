@@ -89,15 +89,13 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 
 // InitAttributes prepare all atributes for use the object as IN parameter
 func (O *Object) InitAttributes() error {
-	data := Data{}
+	var data Data
 	for _, attr := range O.Attributes {
 		data.reset()
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-			var a [22]byte
-			C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), 22)
-
+			C.dpiData_getBytes(data.dpiData)
 		}
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 			return O.getError()
@@ -134,9 +132,13 @@ func (O *Object) ObjectRef() *Object {
 
 // Close releases a reference to the object.
 func (O *Object) Close() error {
+	if O.dpiObject == nil {
+		return nil
+	}
 	if rc := C.dpiObject_release(O.dpiObject); rc == C.DPI_FAILURE {
 		return errors.Wrapf(O.getError(), "error on close object")
 	}
+	O.dpiObject = nil
 
 	return nil
 }
@@ -332,7 +334,7 @@ func (t ObjectType) NewObject() (*Object, error) {
 }
 
 // Close releases a reference to the object type.
-func (t ObjectType) Close() error {
+func (t *ObjectType) Close() error {
 
 	for _, attr := range t.Attributes {
 		err := attr.Close()
@@ -341,7 +343,14 @@ func (t ObjectType) Close() error {
 		}
 	}
 
-	if rc := C.dpiObjectType_release(t.dpiObjectType); rc == C.DPI_FAILURE {
+	t.Attributes = nil
+	d := t.dpiObjectType
+	t.dpiObjectType = nil
+	if d == nil {
+		return nil
+	}
+
+	if rc := C.dpiObjectType_release(d); rc == C.DPI_FAILURE {
 		return errors.Wrapf(t.getError(), "error on close object type")
 	}
 
