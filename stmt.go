@@ -1080,6 +1080,14 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.dataGetObject
 		}
 
+	case userType:
+		info.objType = v.ObjectRef().ObjectType.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+
 	default:
 		if !isValuer {
 			return value, errors.Errorf("unknown type %T", value)
@@ -1796,6 +1804,22 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 	return firstErr
 }
 
+type userType interface {
+	ObjectRef() *Object
+}
+
+// ObjectScanner assigns a value from a database object
+type ObjectScanner interface {
+	sql.Scanner
+	userType
+}
+
+// ObjectWriter update database object before binding
+type ObjectWriter interface {
+	WriteObject() error
+	userType
+}
+
 func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
@@ -1805,10 +1829,31 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 		return dataSetNull(dv, data, nil)
 	}
 	objs := []Object{{}}
-	if O, ok := vv.(Object); ok {
-		objs[0] = O
-	} else {
-		objs = vv.([]Object)
+	switch o := vv.(type) {
+	case Object:
+		objs[0] = o
+	case []Object:
+		objs = o
+	case ObjectWriter:
+		err := o.WriteObject()
+		if err != nil {
+			return err
+		}
+		objs[0] = *o.ObjectRef()
+	case []ObjectWriter:
+		for _, ut := range o {
+			err := ut.WriteObject()
+			if err != nil {
+				return err
+			}
+			objs = append(objs, *ut.ObjectRef())
+		}
+	case userType:
+		objs[0] = *o.ObjectRef()
+	case []userType:
+		for _, ut := range o {
+			objs = append(objs, *ut.ObjectRef())
+		}
 	}
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
@@ -1822,7 +1867,25 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 }
 
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
-	return errors.New("dataGetObject not implemented")
+	switch out := v.(type) {
+	case *Object:
+		d := Data{
+			ObjectType: out.ObjectType,
+			dpiData:    &data[0],
+		}
+		*out = *d.GetObject()
+	case ObjectScanner:
+		d := Data{
+			ObjectType: out.ObjectRef().ObjectType,
+			dpiData:    &data[0],
+		}
+		return out.Scan(d.GetObject())
+	default:
+
+		return fmt.Errorf("dataGetObject not implemented for type %T (maybe you need to implement the Scan method)", v)
+	}
+
+	return nil
 }
 
 // CheckNamedValue is called before passing arguments to the driver

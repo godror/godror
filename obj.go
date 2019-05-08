@@ -87,6 +87,26 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	return nil
 }
 
+// InitAttributes prepare all atributes for use the object as IN parameter
+func (O *Object) InitAttributes() error {
+	data := Data{}
+	for _, attr := range O.Attributes {
+		data.reset()
+		data.NativeTypeNum = attr.NativeTypeNum
+		data.ObjectType = attr.ObjectType
+		if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
+			var a [22]byte
+			C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), 22)
+
+		}
+		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
+			return O.getError()
+		}
+	}
+
+	return nil
+}
+
 // Get scans the named attribute into dest, and returns it.
 func (O *Object) Get(name string) (interface{}, error) {
 	if err := O.GetAttribute(&O.scratch, name); err != nil {
@@ -105,6 +125,20 @@ func (O *Object) Get(name string) (interface{}, error) {
 		return &ObjectCollection{Object: sub}, nil
 	}
 	return sub, nil
+}
+
+// ObjectRef implements userType interface.
+func (O *Object) ObjectRef() *Object {
+	return O
+}
+
+// Close releases a reference to the object.
+func (O *Object) Close() error {
+	if rc := C.dpiObject_release(O.dpiObject); rc == C.DPI_FAILURE {
+		return errors.Wrapf(O.getError(), "error on close object")
+	}
+
+	return nil
 }
 
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
@@ -295,6 +329,23 @@ func (t ObjectType) NewObject() (*Object, error) {
 		return nil, t.getError()
 	}
 	return &Object{ObjectType: t, dpiObject: obj}, nil
+}
+
+// Close releases a reference to the object type.
+func (t ObjectType) Close() error {
+
+	for _, attr := range t.Attributes {
+		err := attr.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	if rc := C.dpiObjectType_release(t.dpiObjectType); rc == C.DPI_FAILURE {
+		return errors.Wrapf(t.getError(), "error on close object type")
+	}
+
+	return nil
 }
 
 func wrapObject(d *drv, objectType *C.dpiObjectType, object *C.dpiObject) (*Object, error) {
