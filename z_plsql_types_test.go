@@ -30,7 +30,7 @@ var _ goracle.ObjectWriter = new(MyRecord)
 
 var _ goracle.ObjectScanner = new(MyTable)
 
-// MYRecord represents PKG_TYPES.MY_RECORD
+// MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
 	*goracle.Object
 	ID  int64
@@ -90,7 +90,7 @@ func (r MyRecord) WriteObject() error {
 	return nil
 }
 
-// MYTable represents PKG_TYPES.MY_TABLE
+// MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
 	*goracle.ObjectCollection
 	Items []*MyRecord
@@ -128,38 +128,38 @@ func (t *MyTable) Scan(src interface{}) error {
 }
 
 func createPackages(ctx context.Context) error {
-	qry := []string{`CREATE OR REPLACE PACKAGE pkg_types AS
+	qry := []string{`CREATE OR REPLACE PACKAGE test_pkg_types AS
 	TYPE my_record IS RECORD (
 		id    NUMBER(5),
 		txt   VARCHAR2(200)
 	);
 	TYPE my_table IS
 		TABLE OF my_record;
-	END pkg_types;`,
+	END test_pkg_types;`,
 
-		`CREATE OR REPLACE PACKAGE pkg_sample AS
+		`CREATE OR REPLACE PACKAGE test_pkg_sample AS
 	PROCEDURE test_record (
 		id    IN    NUMBER,
 		txt   IN    VARCHAR,
-		rec   OUT   pkg_types.my_record
+		rec   OUT   test_pkg_types.my_record
 	);
 	
 	PROCEDURE test_record_in (
-		rec IN OUT pkg_types.my_record
+		rec IN OUT test_pkg_types.my_record
 	);
 	
 	FUNCTION test_table (
 		x NUMBER
-	) RETURN pkg_types.my_table;
+	) RETURN test_pkg_types.my_table;
 	
-	END pkg_sample;`,
+	END test_pkg_sample;`,
 
-		`CREATE OR REPLACE PACKAGE BODY pkg_sample AS
+		`CREATE OR REPLACE PACKAGE BODY test_pkg_sample AS
 	
 	PROCEDURE test_record (
 		id    IN    NUMBER,
 		txt   IN    VARCHAR,
-		rec   OUT   pkg_types.my_record
+		rec   OUT   test_pkg_types.my_record
 	) IS
 	BEGIN
 		rec.id := id;
@@ -167,7 +167,7 @@ func createPackages(ctx context.Context) error {
 	END test_record;
 	
 	PROCEDURE test_record_in (
-		rec IN OUT pkg_types.my_record
+		rec IN OUT test_pkg_types.my_record
 	) IS
 	BEGIN
 		rec.id := rec.id + 1;
@@ -176,11 +176,11 @@ func createPackages(ctx context.Context) error {
 	
 	FUNCTION test_table (
 		x NUMBER
-	) RETURN pkg_types.my_table IS
-		tb     pkg_types.my_table;
-		item   pkg_types.my_record;
+	) RETURN test_pkg_types.my_table IS
+		tb     test_pkg_types.my_table;
+		item   test_pkg_types.my_record;
 	BEGIN
-		tb := pkg_types.my_table();
+		tb := test_pkg_types.my_table();
 		FOR c IN (
 			SELECT
 				level "LEV"
@@ -198,7 +198,7 @@ func createPackages(ctx context.Context) error {
 		RETURN tb;
 	END test_table;
 	
-	END pkg_sample;`}
+	END test_pkg_sample;`}
 
 	for _, ddl := range qry {
 		_, err := testDb.ExecContext(ctx, ddl)
@@ -212,8 +212,8 @@ func createPackages(ctx context.Context) error {
 }
 
 func dropPackages(ctx context.Context) {
-	testDb.ExecContext(ctx, `DROP PACKAGE pkg_types`)
-	testDb.ExecContext(ctx, `DROP PACKAGE pkg_sample`)
+	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_types`)
+	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
 }
 
 func TestPLSQLTypes(t *testing.T) {
@@ -248,7 +248,7 @@ func TestPLSQLTypes(t *testing.T) {
 
 	t.Run("Record", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("PKG_TYPES.MY_RECORD")
+		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +275,7 @@ func TestPLSQLTypes(t *testing.T) {
 				sql.Named("txt", tCase.txt),
 				sql.Named("rec", sql.Out{Dest: &rec}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
+			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -288,7 +288,7 @@ func TestPLSQLTypes(t *testing.T) {
 
 	t.Run("Record IN OUT", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("PKG_TYPES.MY_RECORD")
+		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -314,7 +314,7 @@ func TestPLSQLTypes(t *testing.T) {
 			params := []interface{}{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin pkg_sample.test_record_in(:rec); end;`, params...)
+			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -330,7 +330,7 @@ func TestPLSQLTypes(t *testing.T) {
 
 	t.Run("Table Of", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("PKG_TYPES.MY_TABLE")
+		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -357,7 +357,7 @@ func TestPLSQLTypes(t *testing.T) {
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin :tb := pkg_sample.test_table(:x); end;`, params...)
+			_, err = testDb.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
 			if err != nil {
 				t.Fatal(err)
 			}
