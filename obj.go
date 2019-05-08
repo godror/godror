@@ -87,15 +87,16 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	return nil
 }
 
-// InitAttributes prepare all atributes for use the object as IN parameter
-func (O *Object) InitAttributes() error {
+// ResetAttributes prepare all atributes for use the object as IN parameter
+func (O *Object) ResetAttributes() error {
 	var data Data
 	for _, attr := range O.Attributes {
 		data.reset()
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-			C.dpiData_getBytes(data.dpiData)
+			var a [22]byte
+			C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), 22)
 		}
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 			return O.getError()

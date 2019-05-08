@@ -64,7 +64,7 @@ func (r *MyRecord) Scan(src interface{}) error {
 // Implement this method if you need the record as an input parameter.
 func (r MyRecord) WriteObject() error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	err := r.InitAttributes()
+	err := r.ResetAttributes()
 	if err != nil {
 		return err
 	}
