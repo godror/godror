@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -29,8 +30,11 @@ import (
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	const proxyPassword = "myPassword"
-	const proxyUser = "proxyUser"
+	const proxyUser = "test_proxyUser"
 
 	cs, err := goracle.ParseConnString(testConStr)
 	if err != nil {
@@ -47,19 +51,22 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	}
 	defer testHeterogeneousDB.Close()
 
-	testHeterogeneousDB.Exec(fmt.Sprintf("DROP USER %s", proxyUser))
+	conn, err := testHeterogeneousDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	conn.ExecContext(ctx, `ALTER SESSION SET "_ORACLE_SCRIPT"=true`)
+	conn.ExecContext(ctx, fmt.Sprintf("DROP USER %s", proxyUser))
 
 	for _, qry := range []string{
 		fmt.Sprintf("CREATE USER %s IDENTIFIED BY "+proxyPassword, proxyUser),
 		fmt.Sprintf("GRANT CONNECT TO %s", proxyUser),
 		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
 		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
-		fmt.Sprintf("CREATE USER %s IDENTIFIED BY %s", proxyUser, proxyPassword),
-		fmt.Sprintf("GRANT CONNECT TO %s", proxyUser),
-		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
-		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
 	} {
-		if _, err := testHeterogeneousDB.Exec(qry); err != nil {
+		if _, err := conn.ExecContext(ctx, qry); err != nil {
 			t.Skip(errors.Wrap(err, qry))
 		}
 	}
@@ -68,18 +75,18 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		In   context.Context
 		Want string
 	}{
-		"noContext": {In: context.TODO(), Want: username},
-		"proxyUser": {In: goracle.ContextWithUserPassw(context.TODO(), proxyUser, proxyPassword), Want: proxyUser},
+		"noContext": {In: ctx, Want: username},
+		"proxyUser": {In: goracle.ContextWithUserPassw(ctx, proxyUser, proxyPassword), Want: proxyUser},
 	} {
-
-		var result string
-		if err = testHeterogeneousDB.QueryRowContext(tCase.In, "SELECT user FROM dual").Scan(&result); err != nil {
-			t.Fatal(err)
-		}
-
-		if !strings.EqualFold(tCase.Want, result) {
-			t.Errorf("%s: currentUser got %s, wanted %s", tName, result, tCase.Want)
-		}
+		t.Run(tName, func(t *testing.T) {
+			var result string
+			if err = testHeterogeneousDB.QueryRowContext(tCase.In, "SELECT user FROM dual").Scan(&result); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.EqualFold(tCase.Want, result) {
+				t.Errorf("%s: currentUser got %s, wanted %s", tName, result, tCase.Want)
+			}
+		})
 
 	}
 
