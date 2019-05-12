@@ -25,7 +25,6 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -370,21 +369,23 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 }
 
 func (c *conn) init() error {
-	if c.Server.Version != 0 {
-		return nil
+	if c.Client.Version == 0 {
+		var err error
+		if c.Client, err = c.drv.ClientVersion(); err != nil {
+			return err
+		}
 	}
-	var err error
-	if c.Client, err = c.drv.ClientVersion(); err != nil {
-		return err
+	if c.Server.Version == 0 {
+		var v C.dpiVersionInfo
+		var release *C.char
+		var releaseLen C.uint32_t
+		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+			return errors.Wrap(c.getError(), "getServerVersion")
+		}
+		c.Server.set(&v)
+		c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
 	}
-	var v C.dpiVersionInfo
-	var release *C.char
-	var releaseLen C.uint32_t
-	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "getServerVersion")
-	}
-	c.Server.set(&v)
-	c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+
 	if c.timeZone != nil {
 		return nil
 	}
@@ -399,25 +400,37 @@ func (c *conn) init() error {
 		return errors.Wrap(err, qry)
 	}
 	defer st.Close()
-	rows, err := st.Query(nil)
+	rows, err := st.Query([]driver.Value{})
 	if err != nil {
-		return err
+		return errors.Wrap(err, qry)
 	}
 	defer rows.Close()
 	var timezone string
-	err = rows.Next([]driver.Value{&timezone})
-	if err != nil && errors.Cause(err) != io.EOF {
-		fmt.Println(qry, err)
-		return nil
+	vals := []driver.Value{timezone}
+	for {
+		if err = rows.Next(vals); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return errors.Wrap(err, qry)
+		}
+		timezone = strings.TrimSpace(vals[0].(string))
+		if timezone != "" {
+			break
+		}
 	}
-	if timezone = strings.TrimSpace(timezone); timezone == "" {
-		return nil
+	if timezone == "" {
+		return errors.New("empty DBTIMEZONE")
 	}
 	if off, err := parseTZ(timezone); err != nil {
-		fmt.Println("parse", timezone, err)
+		return errors.Wrap(err, timezone)
 	} else {
-		c.tzOffSecs = off
-		c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
+		// This is dangerous, but I just cannot get whether the DB time zone
+		// setting has DST or not - DBTIMEZONE returns just a fixed offset.
+		if _, localOff := time.Now().Local().Zone(); localOff != off {
+			c.tzOffSecs = off
+			c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
+		}
 	}
 	return nil
 }

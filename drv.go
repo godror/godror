@@ -324,9 +324,10 @@ type drv struct {
 }
 
 type connPool struct {
-	dpiPool   *C.dpiPool
-	timeZone  *time.Location
-	tzOffSecs int
+	dpiPool       *C.dpiPool
+	serverVersion VersionInfo
+	timeZone      *time.Location
+	tzOffSecs     int
 }
 
 func (d *drv) init() error {
@@ -423,15 +424,15 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		d.mu.Unlock()
 		if dp != nil {
 			//Proxy authenticated connections to database will be provided by methods with context
-			c.timeZone = dp.timeZone
-			c.tzOffSecs = dp.tzOffSecs			
+			c.Client, c.Server = d.clientVersion, dp.serverVersion
+			c.timeZone, c.tzOffSecs = dp.timeZone, dp.tzOffSecs
 			if err := c.acquireConn("", ""); err != nil {
 				return nil, err
-			}			
+			}
 			err := c.init()
 			if err == nil {
-				dp.timeZone = c.timeZone
-				dp.tzOffSecs = c.tzOffSecs
+				dp.serverVersion = c.Server
+				dp.timeZone, dp.tzOffSecs = c.timeZone, c.tzOffSecs
 			}
 			return &c, err
 		}
@@ -492,7 +493,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		c.dpiConn = (*C.dpiConn)(dc)
 		c.currentUser = P.Username
 		c.newSession = true
-		return &c, c.init()
+		err := c.init()
+		return &c, err
 	}
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
@@ -578,9 +580,11 @@ func (c *conn) acquireConn(user, pass string) error {
 	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
 	c.newSession = connCreateParams.outNewSession == 1
+	c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
 	c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
 	err := c.init()
 	if err == nil {
+		pool.serverVersion = c.Server
 		pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
 	}
 

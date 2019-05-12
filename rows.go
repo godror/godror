@@ -283,7 +283,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			return errors.Wrap(r.getError(), "Next")
 		}
 		if Log != nil {
-			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows)
+			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
 		if r.fetched == 0 {
 			r.finished = moreRows == 0
@@ -312,10 +312,10 @@ func (r *rows) Next(dest []driver.Value) error {
 	for i, col := range r.columns {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
-		if Log != nil {
-			Log("msg", "Next", "i", i, "row", r.bufferRowIndex) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
-		}
 		isNull := d.isNull == 1
+		if Log != nil {
+			Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "typ", typ, "null", isNull) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
+		}
 
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,

@@ -2054,10 +2054,27 @@ func TestGetDBTimeZone(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	const qry = "SELECT DBTIMEZONE FROM DUAL"
+	qry := "SELECT SESSIONTIMEZONE FROM DUAL"
 	var tz string
 	if err := testDb.QueryRowContext(ctx, qry).Scan(&tz); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
 	t.Log("timezone:", tz)
+
+	for _, timS := range []string{"2006-07-08", "2006-01-02"} {
+		localTime, err := time.ParseInLocation("2006-01-02", timS, time.Local)
+		if err != nil {
+			t.Fatal(err)
+		}
+		qry = "SELECT TO_DATE('" + timS + " 00:00:00', 'YYYY-MM-DD HH24:MI:SS') FROM DUAL"
+		var dbTime time.Time
+		t.Log("local:", localTime.Format(time.RFC3339))
+		if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTime); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+		t.Log("db:", dbTime.Format(time.RFC3339))
+		if !dbTime.Equal(localTime) {
+			t.Errorf("db says %s, local is %s", dbTime.Format(time.RFC3339), localTime.Format(time.RFC3339))
+		}
+	}
 }

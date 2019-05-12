@@ -6,8 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.15.2] - 2019-05-12
+### Changed
+- Use time.Local if it equals with DBTIMEZONE (use DST of time.Local).
+
 ## [2.15.1] - 2019-05-09
-### CHanged
+### Changed
 - Fix heterogenous pools (broken with 2.14.1)
 
 ## [2.15.0] - 2019-05-09
