@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.16.0] - 2019-05-17
+### Changed
+- NumberAsString new option for #159.
+
+## [2.15.3] - 2019-05-16
+### Changed
+- ParseConnString: reorder logic to allow 'sys/... as sysdba' (without @)
+
+## [2.15.3] - 2019-05-16
+### Changed
+- ParseConnString: reorder logic to allow 'sys/... as sysdba' (without @)
+
 ## [2.15.2] - 2019-05-12
 ### Changed
 - Use time.Local if it equals with DBTIMEZONE (use DST of time.Local).

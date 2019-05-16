@@ -45,6 +45,7 @@ type stmtOptions struct {
 	plSQLArrays         bool
 	lobAsReader         bool
 	magicTypeConversion bool
+	numberAsString      bool
 }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
@@ -72,6 +73,7 @@ func (o stmtOptions) ClobAsString() bool { return !o.lobAsReader }
 func (o stmtOptions) LobAsReader() bool  { return o.lobAsReader }
 
 func (o stmtOptions) MagicTypeConversion() bool { return o.magicTypeConversion }
+func (o stmtOptions) NumberAsString() bool      { return o.numberAsString }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -133,6 +135,11 @@ func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true }
 // MagicTypeConversion returns an option to force converting named scalar types (e.g. "type underlying int64") to their scalar underlying type.
 func MagicTypeConversion() Option {
 	return func(o *stmtOptions) { o.magicTypeConversion = true }
+}
+
+// NumberAsString returns an option to return numbers as string, not Number.
+func NumberAsString() Option {
+	return func(o *stmtOptions) { o.numberAsString = true }
 }
 
 // CallTimeout sets the round-trip timeout (OCI_ATTR_CALL_TIMEOUT).
