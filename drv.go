@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2019 Tamás Gulácsi
 //
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -476,7 +476,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
-			Log("C", "dpiConn_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "conn", connCreateParams)
+			Log("C", "dpiConn_create", "params", P.String(), "common", commonCreateParams, "conn", connCreateParams)
 		}
 		if C.dpiConn_create(
 			d.dpiContext,
@@ -526,9 +526,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Wrapf(d.getError(), "username=%q SID=%q minSessions=%d maxSessions=%d poolIncrement=%d extAuth=%d ",
-			P.Username, P.SID,
-			P.MinSessions, P.MaxSessions, P.PoolIncrement, extAuth)
+		return nil, errors.Wrapf(d.getError(), "params=%s extAuth=%v", P.String(), extAuth)
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
 	d.mu.Lock()
@@ -669,22 +667,27 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			return P, errors.Errorf("no '/' in connection string")
 		}
 		P.Username, connString = connString[:i], connString[i+1:]
+
+		uSid := strings.ToUpper(connString)
+		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
+		if strings.Contains(uSid, " AS ") {
+			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
+				connString = connString[:len(connString)-10]
+			} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
+				connString = connString[:len(connString)-11]
+			} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
+				connString = connString[:len(connString)-10]
+			}
+		}
 		if i = strings.IndexByte(connString, '@'); i >= 0 {
 			P.Password, P.SID = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
 		}
-		uSid := strings.ToUpper(P.SID)
-		if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-			P.SID = P.SID[:len(P.SID)-10]
-		} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-			P.SID = P.SID[:len(P.SID)-11]
-		} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-			P.SID = P.SID[:len(P.SID)-10]
-		}
 		if strings.HasSuffix(P.SID, ":POOLED") {
 			P.ConnClass, P.SID = "POOLED", P.SID[:len(P.SID)-7]
 		}
+		//fmt.Printf("connString=%q params=%s\n", connString, P)
 		return P, nil
 	}
 	u, err := url.Parse(connString)
