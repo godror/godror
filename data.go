@@ -39,6 +39,13 @@ func (d *Data) IsNull() bool {
 	return d == nil || d.dpiData == nil || d.dpiData.isNull == 1
 }
 
+// SetNull sets the value of the data to be the null value.
+func (d *Data) SetNull() {
+	if !d.IsNull() {
+		C.dpiData_setNull(d.dpiData)
+	}
+}
+
 // GetBool returns the bool data.
 func (d *Data) GetBool() bool {
 	return !d.IsNull() && C.dpiData_getBool(d.dpiData) == 1
