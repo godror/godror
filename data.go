@@ -36,13 +36,19 @@ type Data struct {
 
 // IsNull returns whether the data is null.
 func (d *Data) IsNull() bool {
+	// Use of C.dpiData_getIsNull(d.dpiData) would be safer,
+	// but ODPI-C 3.1.4 just returns dpiData->isNull, so do the same
+	// without calling CGO.
 	return d == nil || d.dpiData == nil || d.dpiData.isNull == 1
 }
 
 // SetNull sets the value of the data to be the null value.
 func (d *Data) SetNull() {
 	if !d.IsNull() {
-		C.dpiData_setNull(d.dpiData)
+		// Maybe C.dpiData_setNull(d.dpiData) would be safer, but as we don't use C.dpiData_getIsNull,
+		// and those functions (at least in ODPI-C 3.1.4) just operate on data->isNull directly,
+		// don't use CGO if possible.
+		d.dpiData.isNull = 1
 	}
 }
 
