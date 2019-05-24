@@ -2098,3 +2098,80 @@ func TestNumberBool(t *testing.T) {
 		t.Logf("Source id=%d, status=%t\n", id, status)
 	}
 }
+
+func TestSelectObjectTable(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	const objTypeName, objTableName, pkgName = "test_selectObject", "test_selectObjTab", "test_selectObjPkg"
+	cleanup := func() {
+		testDb.Exec("DROP PACKAGE " + pkgName)
+		testDb.Exec("DROP TYPE " + objTableName)
+		testDb.Exec("DROP TYPE " + objTypeName)
+	}
+	cleanup()
+	for _, qry := range []string{
+		`CREATE OR REPLACE TYPE ` + objTypeName + ` AS OBJECT (
+    AA NUMBER(2),
+    BB NUMBER(13,2),
+    CC NUMBER(13,2),
+    DD NUMBER(13,2),
+    MSG varchar2(100))`,
+		"CREATE OR REPLACE TYPE " + objTableName + " AS TABLE OF " + objTypeName,
+		`CREATE OR REPLACE PACKAGE ` + pkgName + ` AS
+    function FUNC_1( p1 in varchar2, p2 in varchar2) RETURN ` + objTableName + `;
+    END;`,
+		`CREATE OR REPLACE PACKAGE BODY ` + pkgName + ` AS
+	FUNCTION func_1( p1 IN VARCHAR2, p2 IN VARCHAR2) RETURN ` + objTableName + ` is
+    	ret ` + objTableName + ` := ` + objTableName + `();
+    begin
+		ret.extend;
+		ret(ret.count):= ` + objTypeName + `( 11, 22, 33, 44, p1||'success!'||p2);
+		ret.extend;
+		ret(ret.count):= ` + objTypeName + `( 55, 66, 77, 88, p1||'failed!'||p2);
+		return ret;
+	end;
+	END;`,
+	} {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Error(errors.Wrap(err, qry))
+		}
+	}
+	defer cleanup()
+
+	const qry = "select " + pkgName + ".FUNC_1('aa','bb') from dual"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var objI interface{}
+		if err = rows.Scan(&objI); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+		obj := goracle.ObjectCollection{Object: objI.(*goracle.Object)}
+		defer obj.Close()
+		t.Log(obj.FullName())
+		i, err := obj.First()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var objData, attrData goracle.Data
+		for {
+			if err = obj.Get(&objData, i); err != nil {
+				t.Fatal(err)
+			}
+			if err := objData.GetObject().GetAttribute(&attrData, "MSG"); err != nil {
+				t.Fatal(err)
+			}
+			msg := string(attrData.GetBytes())
+
+			t.Logf("%d. msg: %+v", i, msg)
+
+			if i, err = obj.Next(i); err != nil {
+				break
+			}
+		}
+	}
+}
