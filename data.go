@@ -21,10 +21,14 @@ package goracle
 */
 import "C"
 import (
+	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"time"
 	"unsafe"
+	"reflect"
+
+	"github.com/pkg/errors"
 )
 
 // Data holds the data to/from Oracle.
@@ -281,6 +285,109 @@ func (d *Data) Get() interface{} {
 // IsObject returns whether the data contains an Object or not.
 func (d *Data) IsObject() bool {
 	return d.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT
+}
+
+// NewData returns Data for input parameters on Object/ObjectCollection.
+func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
+	if c == nil || c.dpiConn == nil {
+		return nil, errors.New("connection is nil")
+	}
+
+	var natType C.dpiNativeTypeNum
+	var oraType C.dpiOracleTypeNum
+	var objectType *C.dpiObjectType
+	var obj ObjectType
+
+	switch v := baseType.(type) {
+	case Lob, []Lob:
+		natType = C.DPI_NATIVE_TYPE_LOB
+		var isClob bool
+		switch v := v.(type) {
+		case Lob:
+			isClob = v.IsClob
+		case []Lob:
+			isClob = len(v) > 0 && v[0].IsClob
+		}		
+		if isClob {
+			oraType = C.DPI_ORACLE_TYPE_CLOB
+		} else {
+			oraType = C.DPI_ORACLE_TYPE_BLOB
+		}			
+	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
+		oraType, natType = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64		
+	case int32, []int32:
+		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64	
+	case uint, []uint, uint64, []uint64:
+		oraType, natType = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64		
+	case uint32, []uint32:
+		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64			
+	case float32, []float32:
+		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT		
+	case float64, []float64, sql.NullFloat64, []sql.NullFloat64:
+		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE			
+	case bool, []bool:
+		oraType, natType = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN		
+	case []byte, [][]byte:
+		oraType, natType = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
+		switch v := v.(type) {
+		case []byte:
+			bufSize = len(v)
+		case [][]byte:
+			for _, b := range v {
+				if n := len(b); n > bufSize {
+					bufSize = n
+				}
+			}
+		}	
+	case string, []string, nil:
+		oraType, natType = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+		bufSize = 32767
+	case time.Time, []time.Time:
+		oraType, natType = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP		
+	case userType, []userType:
+		oraType, natType = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT	
+		switch v := v.(type) {
+		case userType:			
+			obj = v.ObjectRef().ObjectType
+			objectType = v.ObjectRef().ObjectType.dpiObjectType
+		case []userType:
+			if len(v) > 0 {
+				objectType = v[0].ObjectRef().ObjectType.dpiObjectType
+			}
+		}		
+	default:		
+		return nil, errors.Errorf("unknown type %T", v)
+	}
+
+	isArray := C.int(0)
+	if reflect.TypeOf(baseType).Kind() == reflect.Slice {
+		isArray = 1
+	}
+	if sliceLen < 1 {
+		sliceLen = 1
+	}
+	var dataArr *C.dpiData
+	var v *C.dpiVar 
+	if Log != nil {
+		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(oraType), "natTyp", int(natType), "sliceLen", sliceLen, "bufSize", bufSize, "isArray", isArray, "objType", objectType, "v", v)
+	}
+	if C.dpiConn_newVar(
+		c.dpiConn, oraType, natType, C.uint32_t(sliceLen),
+		C.uint32_t(bufSize), 1,
+		isArray, objectType,
+		&v, &dataArr,
+	) == C.DPI_FAILURE {
+		return nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d)", oraType, natType, sliceLen, bufSize)
+	}
+	C.dpiVar_release(v)
+	
+	var dpiData []C.dpiData = ((*[maxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:sliceLen:sliceLen]	
+	data := make([]*Data, sliceLen)
+	for i := 0; i < sliceLen; i++ {
+		data[i] = &Data{dpiData: &dpiData[i], NativeTypeNum: natType, ObjectType: obj}
+	}		
+
+	return data, nil
 }
 
 func (d *Data) reset() {

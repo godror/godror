@@ -127,6 +127,33 @@ func (t *MyTable) Scan(src interface{}) error {
 	return nil
 }
 
+func (r MyTable) WriteObject() error {
+	if len(r.Items) == 0 {
+		return nil
+	}
+
+	conn, err := goracle.DriverConn(testDb)
+	if err != nil {
+		return err
+	}
+
+	data, err := conn.NewData(r.Items[0], len(r.Items), 0)
+	if err != nil {
+		return err
+	}
+
+	for i, item := range r.Items {
+		err = item.WriteObject()
+		if err != nil {
+			return err
+		}
+		d := data[i]
+		d.SetObject(item.ObjectRef())
+		r.Append(d)
+	}
+	return nil
+}
+
 func createPackages(ctx context.Context) error {
 	qry := []string{`CREATE OR REPLACE PACKAGE test_pkg_types AS
 	TYPE my_record IS RECORD (
@@ -151,6 +178,10 @@ func createPackages(ctx context.Context) error {
 	FUNCTION test_table (
 		x NUMBER
 	) RETURN test_pkg_types.my_table;
+
+	PROCEDURE test_table_in (
+		tb IN OUT test_pkg_types.my_table
+	);
 	
 	END test_pkg_sample;`,
 
@@ -197,6 +228,13 @@ func createPackages(ctx context.Context) error {
 	
 		RETURN tb;
 	END test_table;
+
+	PROCEDURE test_table_in (
+		tb IN OUT test_pkg_types.my_table
+	) IS
+	BEGIN
+	null;
+	END test_table_in;
 	
 	END test_pkg_sample;`}
 
@@ -328,7 +366,7 @@ func TestPLSQLTypes(t *testing.T) {
 		}
 	})
 
-	t.Run("Table Of", func(t *testing.T) {
+	t.Run("Table", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
@@ -358,6 +396,74 @@ func TestPLSQLTypes(t *testing.T) {
 				sql.Named("tb", sql.Out{Dest: &tb}),
 			}
 			_, err = testDb.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(tb.Items) != len(tCase.want.Items) {
+				t.Errorf("%s: table got %v items, wanted %v items", tName, len(tb.Items), len(tCase.want.Items))
+			} else {
+				for i := 0; i < len(tb.Items); i++ {
+					got := tb.Items[i]
+					want := tCase.want.Items[i]
+					if got.ID != want.ID {
+						t.Errorf("%s: record ID got %v, wanted %v", tName, got.ID, want.ID)
+					}
+					if got.Txt != want.Txt {
+						t.Errorf("%s: record TXT got %v, wanted %v", tName, got.Txt, want.Txt)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("Table IN", func(t *testing.T) {
+		// you must have execute privilege on package and use uppercase
+		tableObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tableObjType.Close()
+
+		recordObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		items := make([]*MyRecord, 0)
+
+		obj1, err := recordObjType.NewObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer obj1.Close()
+		items = append(items, &MyRecord{ID: 1, Txt: "test - 2", Object: obj1})
+
+		obj2, err := recordObjType.NewObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer obj2.Close()
+		items = append(items, &MyRecord{ID: 2, Txt: "test - 4", Object: obj2})
+
+		for tName, tCase := range map[string]struct {
+			want MyTable
+		}{
+			"one": {want: MyTable{Items: items[:1]}},
+			"two": {want: MyTable{Items: items}},
+		} {
+
+			obj, err := tableObjType.NewObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer obj.Close()
+
+			tb := MyTable{ObjectCollection: &goracle.ObjectCollection{obj}, Items: tCase.want.Items}
+			params := []interface{}{
+				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
+			}
+			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
 			if err != nil {
 				t.Fatal(err)
 			}
