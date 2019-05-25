@@ -95,7 +95,7 @@ func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 			if err != nil {
 				return errors.Wrap(err, qry)
 			}
-			_, err = st.Exec(nil) //nolint:SA1019
+			_, err = st.Exec(nil) //nolint:staticcheck
 			st.Close()
 			if err != nil {
 				return err
