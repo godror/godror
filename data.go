@@ -293,14 +293,30 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 		return nil, errors.New("connection is nil")
 	}
 
-	var natType C.dpiNativeTypeNum
-	var oraType C.dpiOracleTypeNum
-	var objectType *C.dpiObjectType
-	var obj ObjectType
+	vi, err := newVarInfo(baseType, sliceLen, bufSize)
+	if err != nil {
+		return nil, err
+	}
+
+	_, dpiData, err := c.newVar(vi)
+	if err != nil {
+		return nil, err
+	}
+			
+	data := make([]*Data, sliceLen)
+	for i := 0; i < sliceLen; i++ {
+		data[i] = &Data{dpiData: &dpiData[i], NativeTypeNum: vi.NatTyp}
+	}		
+
+	return data, nil
+}
+
+func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
+	var vi varInfo		
 
 	switch v := baseType.(type) {
 	case Lob, []Lob:
-		natType = C.DPI_NATIVE_TYPE_LOB
+		vi.NatTyp = C.DPI_NATIVE_TYPE_LOB
 		var isClob bool
 		switch v := v.(type) {
 		case Lob:
@@ -309,26 +325,26 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 			isClob = len(v) > 0 && v[0].IsClob
 		}		
 		if isClob {
-			oraType = C.DPI_ORACLE_TYPE_CLOB
+			vi.Typ = C.DPI_ORACLE_TYPE_CLOB
 		} else {
-			oraType = C.DPI_ORACLE_TYPE_BLOB
+			vi.Typ = C.DPI_ORACLE_TYPE_BLOB
 		}			
 	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
-		oraType, natType = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64		
 	case int32, []int32:
-		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64	
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64	
 	case uint, []uint, uint64, []uint64:
-		oraType, natType = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64		
 	case uint32, []uint32:
-		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64			
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64			
 	case float32, []float32:
-		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT		
 	case float64, []float64, sql.NullFloat64, []sql.NullFloat64:
-		oraType, natType = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE			
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE			
 	case bool, []bool:
-		oraType, natType = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN		
 	case []byte, [][]byte:
-		oraType, natType = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
 		switch v := v.(type) {
 		case []byte:
 			bufSize = len(v)
@@ -340,54 +356,29 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 			}
 		}	
 	case string, []string, nil:
-		oraType, natType = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 		bufSize = 32767
 	case time.Time, []time.Time:
-		oraType, natType = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP		
 	case userType, []userType:
-		oraType, natType = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT	
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT	
 		switch v := v.(type) {
-		case userType:			
-			obj = v.ObjectRef().ObjectType
-			objectType = v.ObjectRef().ObjectType.dpiObjectType
+		case userType:						
+			vi.ObjectType = v.ObjectRef().ObjectType.dpiObjectType
 		case []userType:
 			if len(v) > 0 {
-				objectType = v[0].ObjectRef().ObjectType.dpiObjectType
+				vi.ObjectType = v[0].ObjectRef().ObjectType.dpiObjectType
 			}
 		}		
 	default:		
-		return nil, errors.Errorf("unknown type %T", v)
+		return vi, errors.Errorf("unknown type %T", v)
 	}
 
-	isArray := C.int(0)
-	if reflect.TypeOf(baseType).Kind() == reflect.Slice {
-		isArray = 1
-	}
-	if sliceLen < 1 {
-		sliceLen = 1
-	}
-	var dataArr *C.dpiData
-	var v *C.dpiVar 
-	if Log != nil {
-		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(oraType), "natTyp", int(natType), "sliceLen", sliceLen, "bufSize", bufSize, "isArray", isArray, "objType", objectType, "v", v)
-	}
-	if C.dpiConn_newVar(
-		c.dpiConn, oraType, natType, C.uint32_t(sliceLen),
-		C.uint32_t(bufSize), 1,
-		isArray, objectType,
-		&v, &dataArr,
-	) == C.DPI_FAILURE {
-		return nil, errors.Wrapf(c.getError(), "newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d)", oraType, natType, sliceLen, bufSize)
-	}
-	C.dpiVar_release(v)
-	
-	var dpiData []C.dpiData = ((*[maxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:sliceLen:sliceLen]	
-	data := make([]*Data, sliceLen)
-	for i := 0; i < sliceLen; i++ {
-		data[i] = &Data{dpiData: &dpiData[i], NativeTypeNum: natType, ObjectType: obj}
-	}		
+	vi.IsPLSArray = reflect.TypeOf(baseType).Kind() == reflect.Slice
+	vi.SliceLen = sliceLen
+	vi.BufSize = bufSize	
 
-	return data, nil
+	return vi, nil
 }
 
 func (d *Data) reset() {
