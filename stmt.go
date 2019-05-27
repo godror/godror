@@ -476,6 +476,12 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 		return nil, closeIfBadConn(err)
 	}
 
+	mode := st.ExecMode()
+	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
+	if !st.inTransaction {
+		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+	}
+
 	// execute
 	var colCount C.uint32_t
 	done := make(chan error, 1)
@@ -488,7 +494,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				return
 			}
 			st.setCallTimeout(ctx)
-			if C.dpiStmt_execute(st.dpiStmt, st.ExecMode(), &colCount) != C.DPI_FAILURE {
+			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) != C.DPI_FAILURE {
 				break
 			}
 			if err = ctx.Err(); err == nil {
