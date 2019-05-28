@@ -1152,6 +1152,13 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		return dataSetNull(dv, data, nil)
 	}
 	b := C.int(0)
+	if v, ok := vv.(bool); ok {
+		if v {
+			b = 1
+		}
+		C.dpiData_setBool(&data[0], b)
+		return nil
+	}
 	if bb, ok := vv.([]bool); ok {
 		for i, v := range bb {
 			if v {
@@ -1159,10 +1166,10 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			}
 			C.dpiData_setBool(&data[i], b)
 		}
-	} else {
-		for i := range data {
-			data[i].isNull = 1
-		}
+		return nil
+	}
+	for i := range data {
+		data[i].isNull = 1
 	}
 	return nil
 }
