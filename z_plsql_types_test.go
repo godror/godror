@@ -16,11 +16,14 @@
 package goracle_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -170,11 +173,11 @@ func createPackages(ctx context.Context) error {
 		txt   IN    VARCHAR,
 		rec   OUT   test_pkg_types.my_record
 	);
-	
+
 	PROCEDURE test_record_in (
 		rec IN OUT test_pkg_types.my_record
 	);
-	
+
 	FUNCTION test_table (
 		x NUMBER
 	) RETURN test_pkg_types.my_table;
@@ -182,11 +185,11 @@ func createPackages(ctx context.Context) error {
 	PROCEDURE test_table_in (
 		tb IN OUT test_pkg_types.my_table
 	);
-	
+
 	END test_pkg_sample;`,
 
 		`CREATE OR REPLACE PACKAGE BODY test_pkg_sample AS
-	
+
 	PROCEDURE test_record (
 		id    IN    NUMBER,
 		txt   IN    VARCHAR,
@@ -196,7 +199,7 @@ func createPackages(ctx context.Context) error {
 		rec.id := id;
 		rec.txt := txt;
 	END test_record;
-	
+
 	PROCEDURE test_record_in (
 		rec IN OUT test_pkg_types.my_record
 	) IS
@@ -204,7 +207,7 @@ func createPackages(ctx context.Context) error {
 		rec.id := rec.id + 1;
 		rec.txt := rec.txt || ' changed';
 	END test_record_in;
-	
+
 	FUNCTION test_table (
 		x NUMBER
 	) RETURN test_pkg_types.my_table IS
@@ -225,7 +228,7 @@ func createPackages(ctx context.Context) error {
 			tb.extend();
 			tb(tb.count) := item;
 		END LOOP;
-	
+
 		RETURN tb;
 	END test_table;
 
@@ -235,7 +238,7 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 	null;
 	END test_table_in;
-	
+
 	END test_pkg_sample;`}
 
 	for _, ddl := range qry {
@@ -485,4 +488,132 @@ func TestPLSQLTypes(t *testing.T) {
 		}
 	})
 
+}
+
+func TestSelectObjectTable(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	const objTypeName, objTableName, pkgName = "test_selectObject", "test_selectObjTab", "test_selectObjPkg"
+	cleanup := func() {
+		testDb.Exec("DROP PACKAGE " + pkgName)
+		testDb.Exec("DROP TYPE " + objTableName)
+		testDb.Exec("DROP TYPE " + objTypeName)
+	}
+	cleanup()
+	for _, qry := range []string{
+		`CREATE OR REPLACE TYPE ` + objTypeName + ` AS OBJECT (
+    AA NUMBER(2),
+    BB NUMBER(13,2),
+    CC NUMBER(13,2),
+    DD NUMBER(13,2),
+    MSG varchar2(100))`,
+		"CREATE OR REPLACE TYPE " + objTableName + " AS TABLE OF " + objTypeName,
+		`CREATE OR REPLACE PACKAGE ` + pkgName + ` AS
+    function FUNC_1( p1 in varchar2, p2 in varchar2) RETURN ` + objTableName + `;
+    END;`,
+		`CREATE OR REPLACE PACKAGE BODY ` + pkgName + ` AS
+	FUNCTION func_1( p1 IN VARCHAR2, p2 IN VARCHAR2) RETURN ` + objTableName + ` is
+    	ret ` + objTableName + ` := ` + objTableName + `();
+    begin
+		ret.extend;
+		ret(ret.count):= ` + objTypeName + `( 11, 22, 33, 44, p1||'success!'||p2);
+		ret.extend;
+		ret(ret.count):= ` + objTypeName + `( 55, 66, 77, 88, p1||'failed!'||p2);
+		return ret;
+	end;
+	END;`,
+	} {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Error(errors.Wrap(err, qry))
+		}
+	}
+	defer cleanup()
+
+	const qry = "select " + pkgName + ".FUNC_1('aa','bb') from dual"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var objI interface{}
+		if err = rows.Scan(&objI); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+		obj := goracle.ObjectCollection{Object: objI.(*goracle.Object)}
+		defer obj.Close()
+		t.Log(obj.FullName())
+		i, err := obj.First()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var objData, attrData goracle.Data
+		for {
+			if err = obj.Get(&objData, i); err != nil {
+				t.Fatal(err)
+			}
+			if err := objData.GetObject().GetAttribute(&attrData, "MSG"); err != nil {
+				t.Fatal(err)
+			}
+			msg := string(attrData.GetBytes())
+
+			t.Logf("%d. msg: %+v", i, msg)
+
+			if i, err = obj.Next(i); err != nil {
+				break
+			}
+		}
+	}
+}
+
+func TestFuncBool(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	const pkgName = "test_bool"
+	cleanup := func() { testDb.Exec("DROP PROCEDURE " + pkgName) }
+	cleanup()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err = goracle.EnableDbmsOutput(ctx, conn); err != nil {
+		t.Error(err)
+	}
+	const crQry = "CREATE OR REPLACE PROCEDURE " + pkgName + `(p_in IN BOOLEAN, p_not OUT BOOLEAN, p_num OUT NUMBER) IS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('in='||(CASE WHEN p_in THEN 'Y' ELSE 'N' END));
+  p_not := NOT p_in;
+  p_num := CASE WHEN p_in THEN 1 ELSE 0 END;
+END;`
+	if _, err := conn.ExecContext(ctx, crQry); err != nil {
+		t.Fatal(errors.Wrap(err, crQry))
+	}
+	defer cleanup()
+
+	const qry = "BEGIN " + pkgName + "(p_in=>:1, p_not=>:2, p_num=>:3); END;"
+	var buf bytes.Buffer
+	for _, in := range []bool{true, false} {
+		var out bool
+		var num int
+		if _, err := conn.ExecContext(ctx, qry, in, sql.Out{Dest: &out}, sql.Out{Dest: &num}); err != nil {
+			t.Errorf("%q: %v", qry, err)
+			continue
+		}
+		t.Logf("in:%v not:%v num:%v", in, out, num)
+		want := 0
+		if in {
+			want = 1
+		}
+		if num != want || out != !in {
+			buf.Reset()
+			if err = goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
+				t.Error(err)
+			}
+			t.Log(buf.String())
+			t.Errorf("got %v/%v wanted %v/%v", out, num, want, !in)
+		}
+	}
 }
