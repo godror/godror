@@ -20,6 +20,9 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
+**Your oracle client version**
+e.g. 12.2.0.1.0
+
 **Your goracle version**
 e.g. 2.16.3
 
