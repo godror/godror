@@ -402,7 +402,10 @@ func (c *conn) init() error {
 	defer st.Close()
 	rows, err := st.Query([]driver.Value{}) //nolint:staticcheck
 	if err != nil {
-		return errors.Wrap(err, qry)
+		if Log != nil {
+			Log("qry", qry, "error", err)
+		}
+		return nil
 	}
 	defer rows.Close()
 	var timezone string
