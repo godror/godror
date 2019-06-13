@@ -2098,3 +2098,43 @@ func TestNumberBool(t *testing.T) {
 		t.Logf("Source id=%d, status=%t\n", id, status)
 	}
 }
+
+func TestCancel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip cancel test")
+	}
+	const maxWait = 30
+	ctx, cancel := context.WithTimeout(context.Background(), (maxWait+1)*time.Second)
+	defer cancel()
+	const qryCount = "SELECT COUNT(0) FROM v$session WHERE USERname = USER"
+	var cnt int
+	if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Before: %d", cnt)
+	goal := cnt
+	const qry = "BEGIN DBMS_LOCK.SLEEP(10); END;"
+	subCtx, subCancel := context.WithCancel(ctx)
+	for i := 0; i < maxWait/3+1; i++ {
+		go testDb.ExecContext(subCtx, qry)
+	}
+	if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("After: %d", cnt)
+	time.Sleep(5 * time.Millisecond)
+	subCancel()
+
+	for i := 0; i < maxWait; i++ {
+		if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+			t.Fatal(err)
+		}
+		dur := time.Duration(i) * time.Second
+		t.Logf("After %s: %d", dur, cnt)
+		if cnt <= goal+1 {
+			return
+		}
+		time.Sleep(dur)
+	}
+	t.Error("cancelation timed out")
+}
