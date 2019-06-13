@@ -328,7 +328,9 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 			vi.Typ = C.DPI_ORACLE_TYPE_CLOB
 		} else {
 			vi.Typ = C.DPI_ORACLE_TYPE_BLOB
-		}			
+		}
+	case Number, []Number:
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
 	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64		
 	case int32, []int32:
