@@ -2103,13 +2103,21 @@ func TestCancel(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip cancel test")
 	}
+	//testDb.SetMaxOpenConns(2)
+	pid := os.Getpid()
 	const maxWait = 30
+	const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
+	var cnt int
 	ctx, cancel := context.WithTimeout(context.Background(), (maxWait+1)*time.Second)
 	defer cancel()
-	const qryCount = "SELECT COUNT(0) FROM v$session WHERE USERname = USER"
-	var cnt int
-	if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
 		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	t.Log("Pid:", pid)
+	if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
+		t.Fatal(errors.Wrap(err, qryCount))
 	}
 	t.Logf("Before: %d", cnt)
 	goal := cnt
@@ -2118,7 +2126,7 @@ func TestCancel(t *testing.T) {
 	for i := 0; i < maxWait/3+1; i++ {
 		go testDb.ExecContext(subCtx, qry)
 	}
-	if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+	if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("After: %d", cnt)
@@ -2126,15 +2134,15 @@ func TestCancel(t *testing.T) {
 	subCancel()
 
 	for i := 0; i < maxWait; i++ {
-		if err := testDb.QueryRowContext(ctx, qryCount).Scan(&cnt); err != nil {
+		if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
 			t.Fatal(err)
 		}
-		dur := time.Duration(i) * time.Second
-		t.Logf("After %s: %d", dur, cnt)
-		if cnt <= goal+1 {
+		t.Logf("After %ds: %d", i, cnt)
+		if cnt <= goal {
+			time.Sleep(10 * time.Second)
 			return
 		}
-		time.Sleep(dur)
+		time.Sleep(time.Second)
 	}
 	t.Error("cancelation timed out")
 }
