@@ -908,22 +908,18 @@ func parseTZ(s string) (int, error) {
 		}
 		s = s[:i]
 	}
-	if i := strings.IndexByte(s, '/'); i >= 0 {
-		destLoc, err := time.LoadLocation("UTC")
-		if err != nil {
-			return tz, errors.Wrap(err,s)
-		}
-		targetLoc, err := time.LoadLocation(s)
-		if err != nil {
-			return tz, errors.Wrap(err,s)
-		}
+	if tz == 0 {
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			targetLoc, err := time.LoadLocation(s)
+			if err != nil {
+				return tz, errors.Wrap(err, s)
+			}
 
-		now := time.Now()
-		_, destOffset := now.In(destLoc).Zone()
-		_, localOffset := now.In(targetLoc).Zone()
+			_, localOffset := time.Now().In(targetLoc).Zone()
 
-		tz+= localOffset-destOffset
-		return tz, nil
+			tz = localOffset
+			return tz, nil
+		}
 	}
 	if i64, err := strconv.ParseInt(s, 10, 5); err != nil {
 		return tz, errors.Wrap(err, s)
