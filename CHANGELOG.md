@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.16.4] - 2019-06-26
 ### Changed
 - Fix bool input (#166).
+- Allow region name from DBTIMEZONE, not just offset.
 
 ## [2.16.2] - 2019-05-27
 ### Changed
