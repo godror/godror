@@ -2103,14 +2103,20 @@ func TestCancel(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip cancel test")
 	}
-	//testDb.SetMaxOpenConns(2)
+	db, err := sql.Open("goracle", testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
 	pid := os.Getpid()
-	const maxWait = 30
+	const maxConc = 10
+	db.SetMaxOpenConns(maxConc - 1)
+	db.SetMaxIdleConns(maxConc/2 + 1)
 	const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
 	var cnt int
-	ctx, cancel := context.WithTimeout(context.Background(), (maxWait+1)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), (3*maxConc+1)*time.Second)
 	defer cancel()
-	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2121,25 +2127,34 @@ func TestCancel(t *testing.T) {
 	}
 	t.Logf("Before: %d", cnt)
 	goal := cnt
-	const qry = "BEGIN DBMS_LOCK.SLEEP(10); END;"
+	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_LOCK.SLEEP(10); END LOOP; END;"
 	subCtx, subCancel := context.WithCancel(ctx)
-	for i := 0; i < maxWait/3+1; i++ {
-		go testDb.ExecContext(subCtx, qry)
+	var wg sync.WaitGroup
+	for i := 0; i < maxConc; i++ {
+		wg.Add(1)
+		go func() {
+			//t.Log(qry)
+			//defer t.Log("END " + qry)
+			wg.Done()
+			if _, err := db.ExecContext(subCtx, qry); err != nil {
+				t.Fatal(errors.Wrap(err, qry))
+			}
+		}()
 	}
+	wg.Wait()
 	if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("After: %d", cnt)
-	time.Sleep(5 * time.Millisecond)
+	t.Logf("After exec, before cancel: %d", cnt)
 	subCancel()
+	t.Logf("After cancel: %d", cnt)
 
-	for i := 0; i < maxWait; i++ {
+	for i := 0; i < 3*maxConc; i++ {
 		if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("After %ds: %d", i, cnt)
-		if cnt <= goal {
-			time.Sleep(10 * time.Second)
+		if i > maxConc && cnt <= goal {
 			return
 		}
 		time.Sleep(time.Second)
