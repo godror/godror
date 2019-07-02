@@ -114,4 +114,3 @@ void dpiHandleList__removeHandle(dpiHandleList *list, uint32_t slotNum)
     list->numUsedSlots--;
     dpiMutex__release(list->mutex);
 }
-

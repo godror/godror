@@ -313,7 +313,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
 		isNull := d.isNull == 1
-		if Log != nil {
+		if false && Log != nil {
 			Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "typ", typ, "null", isNull) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
 		}
 
@@ -507,6 +507,10 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	r.bufferRowIndex++
 	r.fetched--
+
+	if Log != nil {
+		Log("msg", "scanned", "row", r.bufferRowIndex, "dest", dest)
+	}
 
 	return nil
 }

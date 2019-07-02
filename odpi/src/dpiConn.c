@@ -93,7 +93,7 @@ static int dpiConn__attachExternal(dpiConn *conn, void *externalHandle,
 //-----------------------------------------------------------------------------
 static int dpiConn__check(dpiConn *conn, const char *fnName, dpiError *error)
 {
-    if (dpiGen__startPublicFn(conn, DPI_HTYPE_CONN, fnName, 1, error) < 0)
+    if (dpiGen__startPublicFn(conn, DPI_HTYPE_CONN, fnName, error) < 0)
         return DPI_FAILURE;
     return dpiConn__checkConnected(conn, error);
 }
@@ -254,7 +254,8 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
 
         // update last time used (if the session isn't going to be dropped)
         // clear last time used (if the session is going to be dropped)
-        if (conn->sessionHandle) {
+        // do nothing, however, if pool is being closed
+        if (conn->sessionHandle && conn->pool->handle) {
 
             // get the pointer from the context associated with the session
             lastTimeUsed = NULL;
@@ -627,6 +628,19 @@ static int dpiConn__getHandles(dpiConn *conn, dpiError *error)
         return DPI_FAILURE;
 
     return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn__getRawTDO() [INTERNAL]
+//   Internal method used for ensuring that the RAW TDO has been cached on the
+//connection.
+//-----------------------------------------------------------------------------
+int dpiConn__getRawTDO(dpiConn *conn, dpiError *error)
+{
+    if (conn->rawTDO)
+        return DPI_SUCCESS;
+    return dpiOci__typeByName(conn, "SYS", 3, "RAW", 3, &conn->rawTDO, error);
 }
 
 
@@ -1282,7 +1296,7 @@ int dpiConn_create(const dpiContext *context, const char *userName,
     int status;
 
     // validate parameters
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, conn)
@@ -1347,8 +1361,6 @@ int dpiConn_create(const dpiContext *context, const char *userName,
             dpiError__set(&error, "check pool", DPI_ERR_NOT_CONNECTED);
             return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
         }
-        if (dpiEnv__initError(createParams->pool->env, &error) < 0)
-            return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
         status = dpiPool__acquireConnection(createParams->pool, userName,
                 userNameLength, password, passwordLength, createParams, conn,
                 &error);
@@ -1366,8 +1378,7 @@ int dpiConn_create(const dpiContext *context, const char *userName,
     }
 
     *conn = tempConn;
-    dpiHandlePool__release(tempConn->env->errorHandles, error.handle, &error);
-    error.handle = NULL;
+    dpiHandlePool__release(tempConn->env->errorHandles, &error.handle);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -1404,7 +1415,6 @@ int dpiConn_deqObject(dpiConn *conn, const char *queueName,
         uint32_t queueNameLength, dpiDeqOptions *options, dpiMsgProps *props,
         dpiObject *payload, const char **msgId, uint32_t *msgIdLength)
 {
-    void *ociMsgId = NULL;
     dpiError error;
 
     // validate parameters
@@ -1426,19 +1436,15 @@ int dpiConn_deqObject(dpiConn *conn, const char *queueName,
     // dequeue message
     if (dpiOci__aqDeq(conn, queueName, options->handle, props->handle,
             payload->type->tdo, &payload->instance, &payload->indicator,
-            &ociMsgId, &error) < 0) {
+            &props->msgIdRaw, &error) < 0) {
         if (error.buffer->code == 25228) {
-            if (ociMsgId)
-                dpiOci__rawResize(conn->env->handle, &ociMsgId, 0, &error);
             *msgId = NULL;
             *msgIdLength = 0;
             return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
         }
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
-    if (dpiMsgProps__extractMsgId(props, ociMsgId, msgId, msgIdLength,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    dpiMsgProps__extractMsgId(props, msgId, msgIdLength);
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
@@ -1451,7 +1457,6 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
         uint32_t queueNameLength, dpiEnqOptions *options, dpiMsgProps *props,
         dpiObject *payload, const char **msgId, uint32_t *msgIdLength)
 {
-    void *ociMsgId = NULL;
     dpiError error;
 
     // validate parameters
@@ -1473,11 +1478,9 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
     // enqueue message
     if (dpiOci__aqEnq(conn, queueName, options->handle, props->handle,
             payload->type->tdo, &payload->instance, &payload->indicator,
-            &ociMsgId, &error) < 0)
+            &props->msgIdRaw, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiMsgProps__extractMsgId(props, ociMsgId, msgId, msgIdLength,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    dpiMsgProps__extractMsgId(props, msgId, msgIdLength);
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
@@ -1806,22 +1809,34 @@ int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob)
 //-----------------------------------------------------------------------------
 int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props)
 {
-    dpiMsgProps *tempProps;
     dpiError error;
+    int status;
 
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, props)
-    if (dpiGen__allocate(DPI_HTYPE_MSG_PROPS, conn->env, (void**) &tempProps,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiMsgProps__create(tempProps, conn, &error) < 0) {
-        dpiMsgProps__free(tempProps, &error);
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    }
+    status = dpiMsgProps__allocate(conn, props, &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
 
-    *props = tempProps;
-    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+
+//-----------------------------------------------------------------------------
+// dpiConn_newQueue() [PUBLIC]
+//   Create a new AQ queue object and return it.
+//-----------------------------------------------------------------------------
+int dpiConn_newQueue(dpiConn *conn, const char *name, uint32_t nameLength,
+        dpiObjectType *payloadType, dpiQueue **queue)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, name)
+    DPI_CHECK_PTR_NOT_NULL(conn, queue)
+    status = dpiQueue__allocate(conn, name, nameLength, payloadType, queue,
+            &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -2148,6 +2163,7 @@ int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
 int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr)
 {
     dpiError error;
+    int status;
 
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
@@ -2155,12 +2171,15 @@ int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr)
             &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (subscr->registered) {
-        if (dpiOci__subscriptionUnRegister(conn, subscr, &error) < 0)
+        dpiMutex__acquire(subscr->mutex);
+        status = dpiOci__subscriptionUnRegister(conn, subscr, &error);
+        if (status == DPI_SUCCESS)
+            subscr->registered = 0;
+        dpiMutex__release(subscr->mutex);
+        if (status < 0)
             return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-        subscr->registered = 0;
     }
 
     dpiGen__setRefCount(subscr, &error, -1);
     return dpiGen__endPublicFn(subscr, DPI_SUCCESS, &error);
 }
-

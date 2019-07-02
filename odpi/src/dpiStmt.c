@@ -212,9 +212,9 @@ static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, int addReference,
 //-----------------------------------------------------------------------------
 static int dpiStmt__check(dpiStmt *stmt, const char *fnName, dpiError *error)
 {
-    if (dpiGen__startPublicFn(stmt, DPI_HTYPE_STMT, fnName, 1, error) < 0)
+    if (dpiGen__startPublicFn(stmt, DPI_HTYPE_STMT, fnName, error) < 0)
         return DPI_FAILURE;
-    if (!stmt->handle)
+    if (!stmt->handle || (stmt->parentStmt && !stmt->parentStmt->handle))
         return dpiError__set(error, "check closed", DPI_ERR_STMT_CLOSED);
     if (dpiConn__checkConnected(stmt->conn, error) < 0)
         return DPI_FAILURE;
@@ -322,13 +322,16 @@ int dpiStmt__close(dpiStmt *stmt, const char *tag, uint32_t tagLength,
     dpiStmt__clearBindVars(stmt, error);
     dpiStmt__clearQueryVars(stmt, error);
     if (stmt->handle) {
-        if (!stmt->conn->deadSession && stmt->conn->handle) {
+        if (stmt->parentStmt) {
+            dpiGen__setRefCount(stmt->parentStmt, error, -1);
+            stmt->parentStmt = NULL;
+        } else if (!stmt->conn->deadSession && stmt->conn->handle) {
             if (stmt->isOwned)
                 dpiOci__handleFree(stmt->handle, DPI_OCI_HTYPE_STMT);
             else status = dpiOci__stmtRelease(stmt, tag, tagLength,
                     propagateErrors, error);
         }
-        if (!stmt->conn->closing)
+        if (!stmt->conn->closing && !stmt->parentStmt)
             dpiHandleList__removeHandle(stmt->conn->openStmts,
                     stmt->openSlotNum);
         stmt->handle = NULL;
@@ -479,6 +482,7 @@ static int dpiStmt__define(dpiStmt *stmt, uint32_t pos, dpiVar *var,
 {
     void *defineHandle = NULL;
     dpiQueryInfo *queryInfo;
+    int tempBool;
 
     // no need to perform define if variable is unchanged
     if (stmt->queryVars[pos - 1] == var)
@@ -510,6 +514,15 @@ static int dpiStmt__define(dpiStmt *stmt, uint32_t pos, dpiVar *var,
         if (dpiOci__attrSet(defineHandle, DPI_OCI_HTYPE_DEFINE,
                 (void*) &var->type->charsetForm, 0, DPI_OCI_ATTR_CHARSET_FORM,
                 "set charset form", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // specify that the LOB length should be prefetched
+    if (var->nativeTypeNum == DPI_NATIVE_TYPE_LOB) {
+        tempBool = 1;
+        if (dpiOci__attrSet(defineHandle, DPI_OCI_HTYPE_DEFINE,
+                (void*) &tempBool, 0, DPI_OCI_ATTR_LOBPREFETCH_LENGTH,
+                "set lob prefetch length", error) < 0)
             return DPI_FAILURE;
     }
 
@@ -677,6 +690,10 @@ static int dpiStmt__fetch(dpiStmt *stmt, dpiError *error)
 void dpiStmt__free(dpiStmt *stmt, dpiError *error)
 {
     dpiStmt__close(stmt, NULL, 0, 0, error);
+    if (stmt->parentStmt) {
+        dpiGen__setRefCount(stmt->parentStmt, error, -1);
+        stmt->parentStmt = NULL;
+    }
     if (stmt->conn) {
         dpiGen__setRefCount(stmt->conn, error, -1);
         stmt->conn = NULL;
@@ -753,7 +770,7 @@ static int dpiStmt__getBatchErrors(dpiStmt *stmt, dpiError *error)
         // get error message
         localError.buffer = &stmt->batchErrors[i];
         localError.handle = batchErrorHandle;
-        dpiError__check(&localError, DPI_OCI_ERROR, stmt->conn,
+        dpiError__setFromOCI(&localError, DPI_OCI_ERROR, stmt->conn,
                 "get batch error");
         if (error->buffer->errorNum) {
             overallStatus = DPI_FAILURE;
@@ -1484,6 +1501,8 @@ int dpiStmt_getImplicitResult(dpiStmt *stmt, dpiStmt **implicitResult)
         if (dpiStmt__allocate(stmt->conn, 0, &tempStmt, &error) < 0)
             return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
         tempStmt->handle = handle;
+        dpiGen__setRefCount(stmt, &error, 1);
+        tempStmt->parentStmt = stmt;
         if (dpiStmt__createQueryVars(tempStmt, &error) < 0) {
             dpiStmt__free(tempStmt, &error);
             return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
@@ -1818,4 +1837,3 @@ int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize)
     stmt->fetchArraySize = arraySize;
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
-

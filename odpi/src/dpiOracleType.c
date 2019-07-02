@@ -317,6 +317,8 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
             return DPI_ORACLE_TYPE_CHAR;
         case DPI_SQLT_INT:
         case DPI_OCI_TYPECODE_SMALLINT:
+        case DPI_OCI_TYPECODE_BINARY_INTEGER:
+        case DPI_OCI_TYPECODE_PLS_INTEGER:
             return DPI_ORACLE_TYPE_NATIVE_INT;
         case DPI_SQLT_IBFLOAT:
             return DPI_ORACLE_TYPE_NATIVE_FLOAT;
@@ -344,6 +346,7 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
         case DPI_SQLT_BFILE:
             return DPI_ORACLE_TYPE_BFILE;
         case DPI_SQLT_RDD:
+        case DPI_OCI_TYPECODE_ROWID:
             return DPI_ORACLE_TYPE_ROWID;
         case DPI_SQLT_RSET:
             return DPI_ORACLE_TYPE_STMT;
@@ -352,8 +355,10 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
         case DPI_SQLT_INTERVAL_YM:
             return DPI_ORACLE_TYPE_INTERVAL_YM;
         case DPI_SQLT_LNG:
+        case DPI_OCI_TYPECODE_LONG:
             return DPI_ORACLE_TYPE_LONG_VARCHAR;
         case DPI_SQLT_LBI:
+        case DPI_OCI_TYPECODE_LONG_RAW:
             return DPI_ORACLE_TYPE_LONG_RAW;
     }
     return (dpiOracleTypeNum) 0;
@@ -497,4 +502,3 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 
     return DPI_SUCCESS;
 }
-

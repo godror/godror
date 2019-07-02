@@ -156,7 +156,7 @@ int dpiContext_destroy(dpiContext *context)
     char message[80];
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     dpiUtils__clearMemory(&context->checkInt, sizeof(context->checkInt));
@@ -181,7 +181,7 @@ int dpiContext_getClientVersion(const dpiContext *context,
 {
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, versionInfo)
@@ -214,7 +214,7 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
 {
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
@@ -233,7 +233,7 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
     dpiConnCreateParams localParams;
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
@@ -259,7 +259,7 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
     dpiPoolCreateParams localParams;
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
@@ -284,7 +284,7 @@ int dpiContext_initSodaOperOptions(const dpiContext *context,
 {
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, options)
@@ -300,13 +300,20 @@ int dpiContext_initSodaOperOptions(const dpiContext *context,
 int dpiContext_initSubscrCreateParams(const dpiContext *context,
         dpiSubscrCreateParams *params)
 {
+    dpiSubscrCreateParams localParams;
     dpiError error;
 
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__, 0,
+    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initSubscrCreateParams(params);
+
+    // size changed in version 3.2; can be dropped once version 4 released
+    if (context->dpiMinorVersion > 1) {
+        dpiContext__initSubscrCreateParams(params);
+    } else {
+        dpiContext__initSubscrCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiSubscrCreateParams__v30));
+    }
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
-

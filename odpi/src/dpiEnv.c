@@ -108,11 +108,10 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
             env->charsetId, env->ncharsetId, error) < 0)
         return DPI_FAILURE;
 
-    // create the error handle pool and acquire the first error handle
+    // create the error handle pool
     if (dpiHandlePool__create(&env->errorHandles, error) < 0)
         return DPI_FAILURE;
-    if (dpiEnv__initError(env, error) < 0)
-        return DPI_FAILURE;
+    error->env = env;
 
     // if threaded, create mutex for reference counts
     if (params->createMode & DPI_OCI_THREADED)
@@ -162,28 +161,3 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
 
     return DPI_SUCCESS;
 }
-
-
-//-----------------------------------------------------------------------------
-// dpiEnv__initError() [INTERNAL]
-//   Retrieve the OCI error handle to use for error handling, from a pool of
-// error handles common to the environment handle. The environment that was
-// used to create the error handle is stored in the error structure so that
-// the encoding and character set can be retrieved in the event of an OCI
-// error (which uses the CHAR encoding of the environment).
-//-----------------------------------------------------------------------------
-int dpiEnv__initError(dpiEnv *env, dpiError *error)
-{
-    error->env = env;
-    if (dpiHandlePool__acquire(env->errorHandles, &error->handle, error) < 0)
-        return DPI_FAILURE;
-
-    if (!error->handle) {
-        if (dpiOci__handleAlloc(env->handle, &error->handle,
-                DPI_OCI_HTYPE_ERROR, "allocate OCI error", error) < 0)
-            return DPI_FAILURE;
-    }
-
-    return DPI_SUCCESS;
-}
-

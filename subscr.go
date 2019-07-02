@@ -236,10 +236,10 @@ const (
 	EvtStartup     = EventType(C.DPI_EVENT_STARTUP)
 	EvtShutdown    = EventType(C.DPI_EVENT_SHUTDOWN)
 	EvtShutdownAny = EventType(C.DPI_EVENT_SHUTDOWN_ANY)
-	EvtDropDB      = EventType(C.DPI_EVENT_DROP_DB)
 	EvtDereg       = EventType(C.DPI_EVENT_DEREG)
 	EvtObjChange   = EventType(C.DPI_EVENT_OBJCHANGE)
 	EvtQueryChange = EventType(C.DPI_EVENT_QUERYCHANGE)
+	EvtAQ          = EventType(C.DPI_EVENT_AQ)
 )
 
 // Operation in the DB.
