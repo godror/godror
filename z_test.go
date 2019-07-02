@@ -1163,10 +1163,6 @@ func TestSelectFloat(t *testing.T) {
 			Dest: [3]interface{}{&i1, &i2, &i3},
 			Want: numbers{Int64: INT, Float: FLOAT},
 		},
-		"int,float,string": {
-			Dest: [3]interface{}{&n.Int, &n.Float, &n.String},
-			Want: numbers{Int: INT, Float: FLOAT},
-		},
 	} {
 		i1, i2, i3 = nil, nil, nil
 		n = numbers{}
@@ -2111,22 +2107,26 @@ func TestCancel(t *testing.T) {
 	pid := os.Getpid()
 	const maxConc = 10
 	db.SetMaxOpenConns(maxConc - 1)
-	db.SetMaxIdleConns(maxConc/2 + 1)
-	const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
-	var cnt int
-	ctx, cancel := context.WithTimeout(context.Background(), (3*maxConc+1)*time.Second)
+	db.SetMaxIdleConns(1)
+	ctx, cancel := context.WithTimeout(context.Background(), (2*maxConc+1)*time.Second)
 	defer cancel()
+	Cnt := func() int {
+		var cnt int
+		const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
+		if err := db.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
+			t.Fatal(errors.Wrap(err, qryCount))
+		}
+		return cnt
+	}
+
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
 	t.Log("Pid:", pid)
-	if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
-		t.Fatal(errors.Wrap(err, qryCount))
-	}
-	t.Logf("Before: %d", cnt)
-	goal := cnt
+	goal := Cnt()
+	t.Logf("Before: %d", goal)
 	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_LOCK.SLEEP(10); END LOOP; END;"
 	subCtx, subCancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
@@ -2136,24 +2136,20 @@ func TestCancel(t *testing.T) {
 			//t.Log(qry)
 			//defer t.Log("END " + qry)
 			wg.Done()
-			if _, err := db.ExecContext(subCtx, qry); err != nil {
+			if _, err := db.ExecContext(subCtx, qry); err != nil && errors.Cause(err) != context.Canceled {
 				t.Fatal(errors.Wrap(err, qry))
 			}
 		}()
 	}
 	wg.Wait()
-	if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("After exec, before cancel: %d", cnt)
+	t.Logf("After exec, before cancel: %d", Cnt())
 	subCancel()
-	t.Logf("After cancel: %d", cnt)
+	time.Sleep(time.Second)
+	t.Logf("After cancel: %d", Cnt())
 
-	for i := 0; i < 3*maxConc; i++ {
-		if err := tx.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("After %ds: %d", i, cnt)
+	for i := 0; i < 2*maxConc; i++ {
+		cnt := Cnt()
+		t.Logf("After %ds: %d", i+1, cnt)
 		if i > maxConc && cnt <= goal {
 			return
 		}
