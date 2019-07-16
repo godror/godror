@@ -513,12 +513,15 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
 		return nil, errors.Wrap(d.getError(), "initPoolCreateParams")
 	}
+	poolCreateParams.minSessions = DefaultPoolMinSessions
 	if P.MinSessions >= 0 {
 		poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
 	}
-	if P.MaxSessions >= 0 && C.uint32_t(P.MaxSessions) >= poolCreateParams.minSessions {
+	poolCreateParams.maxSessions = DefaultPoolMaxSessions
+	if P.MaxSessions > 0 {
 		poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
 	}
+	poolCreateParams.sessionIncrement = DefaultPoolIncrement
 	if P.PoolIncrement > 0 {
 		poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
 	}
@@ -527,12 +530,15 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 	poolCreateParams.externalAuth = extAuth
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
+	poolCreateParams.timeout = DefaultSessionTimeout
 	if P.SessionTimeout > 0 {
 		poolCreateParams.timeout = C.uint32_t(P.SessionTimeout) // seconds before idle pool sessions get evicted
 	}
+	poolCreateParams.waitTimeout = DefaultWaitTimeout
 	if P.WaitTimeout > 0 {
 		poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout) // milliseconds to wait for a session to become available
 	}
+	poolCreateParams.maxLifetimeSession = DefaultMaxLifeTime
 	if P.MaxLifeTime > 0 {
 		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime) // maximum time in seconds till a pooled session may exist
 	}
