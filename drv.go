@@ -513,23 +513,34 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
 		return nil, errors.Wrap(d.getError(), "initPoolCreateParams")
 	}
-	poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
-	poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
-	poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
+	if P.MinSessions >= 0 {
+		poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
+	}
+	if P.MaxSessions >= 0 && C.uint32_t(P.MaxSessions) >= poolCreateParams.minSessions {
+		poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
+	}
+	if P.PoolIncrement > 0 {
+		poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
+	}
 	if extAuth == 1 || P.HeterogeneousPool {
 		poolCreateParams.homogeneous = 0
 	}
 	poolCreateParams.externalAuth = extAuth
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
-	poolCreateParams.timeout = C.uint32_t(P.SessionTimeout)         // seconds before idle pool sessions get evicted
-	poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout)        // milliseconds to wait for a session to become available
-	poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime) // maximum time in seconds till a pooled session may exist
+	if P.SessionTimeout > 0 {
+		poolCreateParams.timeout = C.uint32_t(P.SessionTimeout) // seconds before idle pool sessions get evicted
+	}
+	if P.WaitTimeout > 0 {
+		poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout) // milliseconds to wait for a session to become available
+	}
+	if P.MaxLifeTime > 0 {
+		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime) // maximum time in seconds till a pooled session may exist
+	}
 
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
+		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams))
 	}
-	//fmt.Println("POOL create", connString)
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(P.Username)),
