@@ -32,8 +32,8 @@
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
 //     prelim=0& \
-//     poolWaitTimeout=100& \
-//     poolSessionMaxLifetime=4000& \
+//     poolWaitTimeout=300& \
+//     poolSessionMaxLifetime=3600& \
 //     poolSessionTimeout=3000
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
@@ -102,11 +102,11 @@ const (
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1
 	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
-	// Default Timeout seconds before idle pool sessions get evicted
+	// DefaultSessionTimeout is the seconds before idle pool sessions get evicted
 	DefaultSessionTimeout = 300
-	// Default Timeout in milliseconds to wait for a session to become available
+	// DefaultWaitTimeout is the milliseconds to wait for a session to become available
 	DefaultWaitTimeout = 3000
-	// Default maximum time in seconds till a pooled session may exist
+	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
 	DefaultMaxLifeTime = 3600
 )
 
