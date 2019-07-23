@@ -1030,7 +1030,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 		info.set = dataSetBytes
 		if info.isOut {
-			info.bufSize = 4000
+			info.bufSize = 32767
 			*get = dataGetBytes
 		}
 
