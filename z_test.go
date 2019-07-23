@@ -1666,7 +1666,7 @@ func TestExecTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := testDb.ExecContext(ctx, "SELECT COUNT(DISTINCT ORA_HASH(A.table_name)) from cat, cat, cat A"); err != nil {
+	if _, err := testDb.ExecContext(ctx, "DECLARE cnt PLS_INTEGER; BEGIN SELECT COUNT(0) INTO cnt FROM (SELECT 1 FROM all_objects WHERE ROWNUM < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000); END;"); err != nil {
 		t.Log(err)
 	}
 }
@@ -1676,7 +1676,7 @@ func TestQueryTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM all_objects, all_objects"); err != nil {
+	if _, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM (SELECT 1 FROM all_objects WHERE rownum < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000)"); err != nil {
 		t.Log(err)
 	}
 }
@@ -2129,19 +2129,20 @@ func TestCancel(t *testing.T) {
 	t.Logf("Before: %d", goal)
 	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_LOCK.SLEEP(10); END LOOP; END;"
 	subCtx, subCancel := context.WithCancel(ctx)
-	var wg sync.WaitGroup
+	var grp errgroup.Group
 	for i := 0; i < maxConc; i++ {
-		wg.Add(1)
-		go func() {
+		grp.Go(func() error {
 			//t.Log(qry)
 			//defer t.Log("END " + qry)
-			wg.Done()
 			if _, err := db.ExecContext(subCtx, qry); err != nil && errors.Cause(err) != context.Canceled {
-				t.Fatal(errors.Wrap(err, qry))
+				return errors.Wrap(err, qry)
 			}
-		}()
+			return nil
+		})
 	}
-	wg.Wait()
+	if err = grp.Wait(); err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("After exec, before cancel: %d", Cnt())
 	subCancel()
 	time.Sleep(time.Second)

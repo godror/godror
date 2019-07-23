@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.18.0] - 2019-07-16
+### Added
+- Setable pool session timeouts.
+
 ## [2.16.4] - 2019-06-26
 ### Changed
 - Fix bool input (#166).

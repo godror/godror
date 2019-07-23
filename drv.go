@@ -31,7 +31,10 @@
 //     standaloneConnection=0& \
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
-//     prelim=0
+//     prelim=0& \
+//     poolWaitTimeout=300& \
+//     poolSessionMaxLifetime=3600& \
+//     poolSessionTimeout=3000
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -99,6 +102,12 @@ const (
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1
 	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
+	// DefaultSessionTimeout is the seconds before idle pool sessions get evicted
+	DefaultSessionTimeout = 300
+	// DefaultWaitTimeout is the milliseconds to wait for a session to become available
+	DefaultWaitTimeout = 3000
+	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
+	DefaultMaxLifeTime = 3600
 )
 
 // Number as string
@@ -504,23 +513,40 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
 		return nil, errors.Wrap(d.getError(), "initPoolCreateParams")
 	}
-	poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
-	poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
-	poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
+	poolCreateParams.minSessions = DefaultPoolMinSessions
+	if P.MinSessions >= 0 {
+		poolCreateParams.minSessions = C.uint32_t(P.MinSessions)
+	}
+	poolCreateParams.maxSessions = DefaultPoolMaxSessions
+	if P.MaxSessions > 0 {
+		poolCreateParams.maxSessions = C.uint32_t(P.MaxSessions)
+	}
+	poolCreateParams.sessionIncrement = DefaultPoolIncrement
+	if P.PoolIncrement > 0 {
+		poolCreateParams.sessionIncrement = C.uint32_t(P.PoolIncrement)
+	}
 	if extAuth == 1 || P.HeterogeneousPool {
 		poolCreateParams.homogeneous = 0
 	}
 	poolCreateParams.externalAuth = extAuth
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
-	poolCreateParams.timeout = 300             // seconds before idle pool sessions got evicted
-	poolCreateParams.waitTimeout = 3 * 1000    // milliseconds to wait for a session become available
-	poolCreateParams.maxLifetimeSession = 3600 // maximum time in seconds till a pooled session may exist
+	poolCreateParams.timeout = DefaultSessionTimeout
+	if P.SessionTimeout > 0 {
+		poolCreateParams.timeout = C.uint32_t(P.SessionTimeout) // seconds before idle pool sessions get evicted
+	}
+	poolCreateParams.waitTimeout = DefaultWaitTimeout
+	if P.WaitTimeout > 0 {
+		poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout) // milliseconds to wait for a session to become available
+	}
+	poolCreateParams.maxLifetimeSession = DefaultMaxLifeTime
+	if P.MaxLifeTime > 0 {
+		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime) // maximum time in seconds till a pooled session may exist
+	}
 
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "sid", P.SID, "common", commonCreateParams, "pool", poolCreateParams)
+		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams))
 	}
-	//fmt.Println("POOL create", connString)
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUserName, C.uint32_t(len(P.Username)),
@@ -601,12 +627,13 @@ func (c *conn) acquireConn(user, pass string) error {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	Username, Password, SID, ConnClass      string
-	MinSessions, MaxSessions, PoolIncrement int
-	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
-	HeterogeneousPool                       bool
-	StandaloneConnection                    bool
-	EnableEvents                            bool
+	Username, Password, SID, ConnClass       string
+	MinSessions, MaxSessions, PoolIncrement  int
+	WaitTimeout, MaxLifeTime, SessionTimeout int
+	IsSysDBA, IsSysOper, IsSysASM, IsPrelim  bool
+	HeterogeneousPool                        bool
+	StandaloneConnection                     bool
+	EnableEvents                             bool
 }
 
 // String returns the string representation of ConnectionParams.
@@ -652,11 +679,13 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
 				"standaloneConnection=%d&enableEvents=%d&"+
-				"heterogeneousPool=%d&prelim=%d",
+				"heterogeneousPool=%d&prelim=%d&"+
+				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
 				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
 				b2i(P.HeterogeneousPool), b2i(P.IsPrelim),
+				P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 			),
 	}).String()
 }
@@ -664,10 +693,13 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 // ParseConnString parses the given connection string into a struct.
 func ParseConnString(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
-		MinSessions:   DefaultPoolMinSessions,
-		MaxSessions:   DefaultPoolMaxSessions,
-		PoolIncrement: DefaultPoolIncrement,
-		ConnClass:     DefaultConnectionClass,
+		MinSessions:    DefaultPoolMinSessions,
+		MaxSessions:    DefaultPoolMaxSessions,
+		PoolIncrement:  DefaultPoolIncrement,
+		ConnClass:      DefaultConnectionClass,
+		MaxLifeTime:    DefaultMaxLifeTime,
+		WaitTimeout:    DefaultWaitTimeout,
+		SessionTimeout: DefaultSessionTimeout,
 	}
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
@@ -744,6 +776,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
 		{&P.PoolIncrement, "poolIncrement"},
+		{&P.SessionTimeout, "poolSessionTimeout"},
+		{&P.WaitTimeout, "poolWaitTimeout"},
+		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -763,7 +798,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	} else if P.PoolIncrement < 1 {
 		P.PoolIncrement = 1
 	}
-
 	return P, nil
 }
 

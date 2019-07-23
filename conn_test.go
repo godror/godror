@@ -26,13 +26,24 @@ import (
 
 func TestParseConnString(t *testing.T) {
 	wantAt := ConnectionParams{
-		Username: "cc", Password: "c@c*1", SID: "192.168.1.1/cc",
+		Username:       "cc",
+		Password:       "c@c*1",
+		SID:            "192.168.1.1/cc",
+		MaxLifeTime:    DefaultMaxLifeTime,
+		SessionTimeout: DefaultSessionTimeout,
+		WaitTimeout:    DefaultWaitTimeout,
 	}
 	wantDefault := ConnectionParams{
-		Username: "user", Password: "pass", SID: "sid",
-		ConnClass:   DefaultConnectionClass,
-		MinSessions: DefaultPoolMinSessions, MaxSessions: DefaultPoolMaxSessions,
-		PoolIncrement: DefaultPoolIncrement}
+		Username:       "user",
+		Password:       "pass",
+		SID:            "sid",
+		ConnClass:      DefaultConnectionClass,
+		MinSessions:    DefaultPoolMinSessions,
+		MaxSessions:    DefaultPoolMaxSessions,
+		PoolIncrement:  DefaultPoolIncrement,
+		MaxLifeTime:    DefaultMaxLifeTime,
+		SessionTimeout: DefaultSessionTimeout,
+		WaitTimeout:    DefaultWaitTimeout}
 
 	wantXO := wantDefault
 	wantXO.SID = "localhost/sid"
@@ -54,10 +65,11 @@ func TestParseConnString(t *testing.T) {
 		Want ConnectionParams
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200&poolSessionMaxLifetime=4000&poolSessionTimeout=2000",
 			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
 				ConnClass: "POOLED", IsSysOper: true,
-				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3}},
+				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
+				WaitTimeout: 200, MaxLifeTime: 4000, SessionTimeout: 2000}},
 
 		"@": {
 			In:   setP(wantAt.String(), wantAt.Password),
