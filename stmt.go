@@ -1527,18 +1527,27 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = nil
 			return nil
 		}
-		b := C.dpiData_getBytes(&data[0])
+		db := C.dpiData_getBytes(&data[0])
+		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+		// b must be copied
+		*x = append((*x)[:0], b...)
 
-		*x = ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
 	case *[][]byte:
+		maX := (*x)[:cap(*x)]
 		*x = (*x)[:0]
 		for i := range data {
 			if data[i].isNull == 1 {
 				*x = append(*x, nil)
 				continue
 			}
-			b := C.dpiData_getBytes(&data[i])
-			*x = append(*x, ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+			db := C.dpiData_getBytes(&data[i])
+			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+			// b must be copied
+			if i < len(maX) {
+				*x = append(*x, append(maX[i][:0], b...))
+			} else {
+				*x = append(*x, append(make([]byte, 0, len(b)), b...))
+			}
 		}
 
 	case *Number:

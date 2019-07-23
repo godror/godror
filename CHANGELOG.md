@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.18.2] - 2019-07-23
+### Changed
+- Force copying of bytes (garbage appears Out with RAW).
+
 ## [2.18.0] - 2019-07-16
 ### Added
 - Setable pool session timeouts.
