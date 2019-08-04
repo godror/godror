@@ -95,7 +95,7 @@ func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 			if err != nil {
 				return errors.Wrap(err, qry)
 			}
-			_, err = st.Exec(nil) //nolint:staticcheck
+			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
 			st.Close()
 			if err != nil {
 				return err

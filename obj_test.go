@@ -69,13 +69,13 @@ func TestObjectDirect(t *testing.T) {
   TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 END;`
-	if err = prepExecMany(ctx, testCon, crea); err != nil {
+	if err = prepExec(ctx, testCon, crea); err != nil {
 		t.Fatal(err)
 	}
 	defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
 
 	//defer tl.enableLogging(t)()
-	ot, err := testCon.GetObjectType("test_pkg_obj.tab_typ")
+	ot, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
 			t.Fatal(fmt.Sprintf("%+v", err))
@@ -84,18 +84,8 @@ END;`
 		t.Skip("client or server < 12")
 	}
 	t.Log(ot)
-}
 
-func prepExecMany(ctx context.Context, testCon *conn, queries string) error {
-	for _, qry := range strings.Split(queries, ";\n") {
-		if strings.HasSuffix(qry, " END") {
-			qry += ";"
-		}
-		if err := prepExec(ctx, testCon, qry); err != nil {
-			return err
-		}
-	}
-	return nil
+	// TODO(tgulacsi): create object (collection), propagate it, send to Oracle side, modify, get back...
 }
 
 func prepExec(ctx context.Context, testCon *conn, qry string, args ...driver.NamedValue) error {

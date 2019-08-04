@@ -23,6 +23,7 @@ import "C"
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -321,7 +322,13 @@ func (t ObjectType) FullName() string {
 }
 
 // GetObjectType returns the ObjectType of a name.
+//
+// The name is uppercased! Because here Oracle seems to be case-sensitive.
+// To leave it as is, enclose it in "-s!
 func (c *conn) GetObjectType(name string) (ObjectType, error) {
+	if !strings.Contains(name, "\"") {
+		name = strings.ToUpper(name)
+	}
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))

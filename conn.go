@@ -400,7 +400,7 @@ func (c *conn) init() error {
 		return errors.Wrap(err, qry)
 	}
 	defer st.Close()
-	rows, err := st.Query([]driver.Value{}) //nolint:staticcheck
+	rows, err := st.Query([]driver.Value{}) //lint:ignore SA1019 - it's hard to use QueryContext here
 	if err != nil {
 		if Log != nil {
 			Log("qry", qry, "error", err)
