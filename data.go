@@ -134,6 +134,9 @@ func (d *Data) GetBytes() []byte {
 		return nil
 	}
 	b := C.dpiData_getBytes(d.dpiData)
+	if b.ptr == nil || b.length == 0 {
+		return nil
+	}
 	return ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
 }
 

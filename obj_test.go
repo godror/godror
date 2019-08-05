@@ -29,11 +29,10 @@ import (
 )
 
 var (
-	testCon                      *conn
-	testDrv                      *drv
-	testOpenErr                  error
-	clientVersion, serverVersion VersionInfo
-	initOnce                     sync.Once
+	testCon     *conn
+	testDrv     *drv
+	testOpenErr error
+	initOnce    sync.Once
 )
 
 func initConn() (*drv, *conn, error) {
@@ -91,6 +90,9 @@ END;`
 	}
 
 	//defer tl.enableLogging(t)()
+	clientVersion, _ := testCon.ClientVersion()
+	serverVersion, _ := testCon.ServerVersion()
+	t.Logf("clientVersion: %#v, serverVersion: %#v", clientVersion, serverVersion)
 	cOt, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
@@ -126,6 +128,13 @@ END;`
 	}
 	t.Logf("coll: %#v", coll)
 	t.Logf("elt : %#v", elt)
+	for attr := range cOt.CollectionOf.Attributes {
+		var data Data
+		if err = elt.GetAttribute(&data, attr); err != nil {
+			t.Error(err, attr)
+		}
+		t.Logf("elt.%s=%v", attr, data.Get())
+	}
 }
 
 func prepExec(ctx context.Context, testCon *conn, qry string, args ...driver.NamedValue) error {

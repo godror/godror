@@ -62,7 +62,10 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
 		a := make([]byte, attr.Precision)
 		C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(attr.Precision))
+	} else if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_INT64 {
+		C.dpiData_setInt64(data.dpiData, 0)
 	}
+
 	//fmt.Printf("getAttributeValue(%p, %p, %d, %+v)\n", O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
 		if wasNull {
