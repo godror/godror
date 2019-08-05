@@ -68,24 +68,64 @@ func TestObjectDirect(t *testing.T) {
   TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
   TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
+
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ);
+END;`
+	const crea2 = `CREATE OR REPLACE PACKAGE BODY test_pkg_obj IS
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ) IS
+    v_idx PLS_INTEGER := NVL(p_obj.LAST, 0) + 1;
+  BEGIN
+    p_obj(v_idx).int := p_obj.COUNT;
+    p_obj(v_idx).num := 314/100;
+	p_obj(v_idx).vc  := 'abraka dabra';
+	p_obj(v_idx).c   := 'X';
+	p_obj(v_idx).dt  := SYSDATE;
+  END modify;
 END;`
 	if err = prepExec(ctx, testCon, crea); err != nil {
 		t.Fatal(err)
 	}
-	defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
+	//defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
+	if err = prepExec(ctx, testCon, crea2); err != nil {
+		t.Fatal(err)
+	}
 
 	//defer tl.enableLogging(t)()
-	ot, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
+	cOt, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
 			t.Fatal(fmt.Sprintf("%+v", err))
 		}
 		t.Log(err)
-		t.Skip("client or server < 12")
+		t.Skipf("client=%d or server=%d < 12", clientVersion.Version, serverVersion.Version)
 	}
-	t.Log(ot)
+	defer cOt.Close()
+	t.Log(cOt)
 
-	// TODO(tgulacsi): create object (collection), propagate it, send to Oracle side, modify, get back...
+	// create object from the type
+	coll, err := cOt.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coll.Close()
+
+	// create an element object
+	elt, err := cOt.CollectionOf.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer elt.Close()
+
+	// append to the collection
+	t.Logf("elt: %#v", elt)
+	coll.AppendObject(elt)
+
+	const mod = "BEGIN test_pkg_obj.modify(:1); END;"
+	if err = prepExec(ctx, testCon, mod, driver.NamedValue{Ordinal: 1, Value: coll}); err != nil {
+		t.Error(err)
+	}
+	t.Logf("coll: %#v", coll)
+	t.Logf("elt : %#v", elt)
 }
 
 func prepExec(ctx context.Context, testCon *conn, qry string, args ...driver.NamedValue) error {

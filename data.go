@@ -24,9 +24,9 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"reflect"
 	"time"
 	"unsafe"
-	"reflect"
 
 	"github.com/pkg/errors"
 )
@@ -36,6 +36,64 @@ type Data struct {
 	ObjectType    ObjectType
 	dpiData       *C.dpiData
 	NativeTypeNum C.dpiNativeTypeNum
+}
+
+var ErrNotSupported = errors.New("not supported")
+
+// NewData creates a new Data structure for the given type, populated with the given type.
+func NewData(v interface{}) (*Data, error) {
+	if v == nil {
+		return nil, errors.Wrap(ErrNotSupported, "nil type")
+	}
+	data := Data{dpiData: &C.dpiData{isNull: 1}}
+	switch x := v.(type) {
+	case int64:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		data.SetInt64(x)
+	case uint64:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		data.SetUint64(x)
+	case float32:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
+		data.SetFloat32(x)
+	case float64:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
+		data.SetFloat64(x)
+	case string:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+		data.SetBytes([]byte(x))
+	case []byte:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+		data.SetBytes(x)
+	case time.Time:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+		data.SetTime(x)
+	case time.Duration:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
+		data.SetIntervalDS(x)
+	case IntervalYM:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_YM
+		data.SetIntervalYM(x)
+	case *DirectLob:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_LOB
+		data.SetLob(x)
+	case *Object:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+		data.ObjectType = x.ObjectType
+		data.SetObject(x)
+	//case *stmt:
+	//data.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
+	//data.SetStmt(x)
+	case bool:
+		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BOOLEAN
+		data.SetBool(x)
+	//case rowid:
+	//data.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
+	//data.SetRowid(x)
+	default:
+		return nil, errors.Wrapf(ErrNotSupported, "%T", v)
+	}
+	return &data, nil
 }
 
 // IsNull returns whether the data is null.
@@ -172,6 +230,11 @@ func (d *Data) GetLob() *Lob {
 	return &Lob{Reader: &dpiLobReader{dpiLob: C.dpiData_getLOB(d.dpiData)}}
 }
 
+// SetLob sets Lob to the data.
+func (d *Data) SetLob(lob *DirectLob) {
+	C.dpiData_setLOB(d.dpiData, lob.dpiLob)
+}
+
 // GetObject gets Object from data.
 func (d *Data) GetObject() *Object {
 	if d == nil || d.dpiData == nil {
@@ -302,17 +365,17 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 	if err != nil {
 		return nil, err
 	}
-			
+
 	data := make([]*Data, sliceLen)
 	for i := 0; i < sliceLen; i++ {
 		data[i] = &Data{dpiData: &dpiData[i], NativeTypeNum: vi.NatTyp}
-	}		
+	}
 
 	return data, nil
 }
 
 func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
-	var vi varInfo		
+	var vi varInfo
 
 	switch v := baseType.(type) {
 	case Lob, []Lob:
@@ -323,7 +386,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 			isClob = v.IsClob
 		case []Lob:
 			isClob = len(v) > 0 && v[0].IsClob
-		}		
+		}
 		if isClob {
 			vi.Typ = C.DPI_ORACLE_TYPE_CLOB
 		} else {
@@ -332,19 +395,19 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 	case Number, []Number:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
 	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
 	case int32, []int32:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64	
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
 	case uint, []uint, uint64, []uint64:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
 	case uint32, []uint32:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64			
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
 	case float32, []float32:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
 	case float64, []float64, sql.NullFloat64, []sql.NullFloat64:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE			
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
 	case bool, []bool:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
 	case []byte, [][]byte:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
 		switch v := v.(type) {
@@ -356,29 +419,29 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 					bufSize = n
 				}
 			}
-		}	
+		}
 	case string, []string, nil:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 		bufSize = 32767
 	case time.Time, []time.Time:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP		
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 	case userType, []userType:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT	
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		switch v := v.(type) {
-		case userType:						
+		case userType:
 			vi.ObjectType = v.ObjectRef().ObjectType.dpiObjectType
 		case []userType:
 			if len(v) > 0 {
 				vi.ObjectType = v[0].ObjectRef().ObjectType.dpiObjectType
 			}
-		}		
-	default:		
+		}
+	default:
 		return vi, errors.Errorf("unknown type %T", v)
 	}
 
 	vi.IsPLSArray = reflect.TypeOf(baseType).Kind() == reflect.Slice
 	vi.SliceLen = sliceLen
-	vi.BufSize = bufSize	
+	vi.BufSize = bufSize
 
 	return vi, nil
 }

@@ -202,6 +202,17 @@ func (O *ObjectCollection) Append(data *Data) error {
 	return nil
 }
 
+// AppendObject adds an Object to the collection.
+func (O *ObjectCollection) AppendObject(obj *Object) error {
+	data := Data{
+		ObjectType:    obj.ObjectType,
+		NativeTypeNum: C.DPI_NATIVE_TYPE_OBJECT,
+		dpiData:       &C.dpiData{isNull: 1},
+	}
+	data.SetObject(obj)
+	return O.Append(&data)
+}
+
 // Delete i-th element of the collection.
 func (O *ObjectCollection) Delete(i int) error {
 	if C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i)) == C.DPI_FAILURE {
@@ -348,6 +359,19 @@ func (t ObjectType) NewObject() (*Object, error) {
 		return nil, t.getError()
 	}
 	return &Object{ObjectType: t, dpiObject: obj}, nil
+}
+
+// NewCollection returns a new Collection object with ObjectType type.
+// If the ObjectType is not a Collection, it returns ErrNotCollection error.
+func (t ObjectType) NewCollection() (*ObjectCollection, error) {
+	if t.CollectionOf == nil {
+		return nil, ErrNotCollection
+	}
+	O, err := t.NewObject()
+	if err != nil {
+		return nil, err
+	}
+	return &ObjectCollection{Object: O}, nil
 }
 
 // Close releases a reference to the object type.

@@ -186,6 +186,19 @@ type DirectLob struct {
 var _ = io.ReaderAt((*DirectLob)(nil))
 var _ = io.WriterAt((*DirectLob)(nil))
 
+// NewTempLob returns a temporary LOB as DirectLob.
+func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
+	typ := C.uint(C.DPI_ORACLE_TYPE_BLOB)
+	if isClob {
+		typ = C.DPI_ORACLE_TYPE_CLOB
+	}
+	lob := DirectLob{conn: c}
+	if C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) == C.DPI_FAILURE {
+		return nil, errors.Wrap(c.getError(), "newTempLob")
+	}
+	return &lob, nil
+}
+
 // Close the Lob.
 func (dl *DirectLob) Close() error {
 	if !dl.opened {
