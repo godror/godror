@@ -680,6 +680,10 @@ int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
     if (dpiSodaColl__check(coll, __func__, &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(coll, docs)
+    if (numDocs == 0) {
+        dpiError__set(&error, "check num documents", DPI_ERR_ARRAY_SIZE_ZERO);
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+    }
     for (i = 0; i < numDocs; i++) {
         if (dpiGen__checkHandle(docs[i], DPI_HTYPE_SODA_DOC, "check document",
                 &error) < 0)

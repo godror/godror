@@ -254,8 +254,8 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
 
         // update last time used (if the session isn't going to be dropped)
         // clear last time used (if the session is going to be dropped)
-        // do nothing, however, if pool is being closed
-        if (conn->sessionHandle && conn->pool->handle) {
+        // do nothing, however, if not using a pool or the pool is being closed
+        if (conn->sessionHandle && conn->pool && conn->pool->handle) {
 
             // get the pointer from the context associated with the session
             lastTimeUsed = NULL;

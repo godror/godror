@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.18.8] - 2019-08-13
 ### Changed
 - GetObjectType uppercases the name by default.
+- Upgrade to ODPI-C v3.2.1
 
 ## [2.18.2] - 2019-07-23
 ### Changed

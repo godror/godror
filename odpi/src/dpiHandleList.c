@@ -43,7 +43,7 @@ int dpiHandleList__addHandle(dpiHandleList *list, void *handle,
         list->handles = tempHandles;
         list->numSlots = numSlots;
         *slotNum = list->numUsedSlots++;
-        list->currentPos = list->numUsedSlots + 1;
+        list->currentPos = list->numUsedSlots;
     } else {
         for (i = 0; i < list->numSlots; i++) {
             if (!list->handles[list->currentPos])

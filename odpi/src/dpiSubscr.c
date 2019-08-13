@@ -637,9 +637,12 @@ static int dpiSubscr__populateQueryChangeMessage(dpiSubscr *subscr,
 static int dpiSubscr__prepareStmt(dpiSubscr *subscr, dpiStmt *stmt,
         const char *sql, uint32_t sqlLength, dpiError *error)
 {
-    // prepare statement for execution
+    // prepare statement for execution; only SELECT statements are supported
     if (dpiStmt__prepare(stmt, sql, sqlLength, NULL, 0, error) < 0)
         return DPI_FAILURE;
+    if (stmt->statementType != DPI_STMT_TYPE_SELECT)
+        return dpiError__set(error, "subscr prepare statement",
+                DPI_ERR_NOT_SUPPORTED);
 
     // fetch array size is set to 1 in order to avoid over allocation since
     // the query is not really going to be used for fetching rows, just for
