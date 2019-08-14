@@ -390,9 +390,14 @@ func (c *conn) init() error {
 		return nil
 	}
 	c.timeZone = time.Local
-	_, c.tzOffSecs = (time.Time{}).In(c.timeZone).Zone()
+	_, c.tzOffSecs = time.Now().In(c.timeZone).Zone()
+	if Log != nil {
+		Log("tz", c.timeZone, "offSecs", c.tzOffSecs)
+	}
 
-	const qry = "SELECT DBTIMEZONE FROM DUAL"
+	// DBTIMEZONE is useless, false, and misdirecting!
+	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
+	const qry = "SELECT LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.PrepareContext(ctx, qry)
@@ -417,13 +422,13 @@ func (c *conn) init() error {
 			}
 			return errors.Wrap(err, qry)
 		}
-		timezone = strings.TrimSpace(vals[0].(string))
+		timezone = vals[0].(string)
 		if timezone != "" {
 			break
 		}
 	}
 	if timezone == "" {
-		return errors.New("empty DBTIMEZONE")
+		return errors.New("empty timezone")
 	}
 	if off, err := parseTZ(timezone); err != nil {
 		return errors.Wrap(err, timezone)
@@ -434,6 +439,9 @@ func (c *conn) init() error {
 			c.tzOffSecs = off
 			c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
 		}
+	}
+	if Log != nil {
+		Log("timezone", timezone, "tz", c.timeZone, "offSecs", c.tzOffSecs)
 	}
 	return nil
 }

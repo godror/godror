@@ -6,7 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [2.18.8] - 2019-08-13
+## [2.18.4] - 2019-08-14
+### Changed
+- Timezone detection: DBTIMEZONE is plain wrong, parse from SYSTIMESTAMP.
+
+## [2.18.3] - 2019-08-13
 ### Changed
 - GetObjectType uppercases the name by default.
 - Upgrade to ODPI-C v3.2.1
