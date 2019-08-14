@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.18.5] - 2019-08-14
+### Changed
+- Remove log.Println left in...
+
 ## [2.18.4] - 2019-08-14
 ### Changed
 - Timezone detection: DBTIMEZONE is plain wrong, parse from SYSTIMESTAMP.
