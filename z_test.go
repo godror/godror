@@ -999,7 +999,7 @@ END;`
 	defer tx.Rollback()
 
 	defer tl.enableLogging(t)()
-	ot, err := goracle.GetObjectType(tx, pkg+strings.ToUpper(".int_tab_typ"))
+	ot, err := goracle.GetObjectType(ctx, tx, pkg+strings.ToUpper(".int_tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
 			t.Fatal(fmt.Sprintf("%+v", err))

@@ -525,12 +525,7 @@ func (A ObjectAttribute) Close() error {
 }
 
 // GetObjectType returns the ObjectType for the name.
-func GetObjectType(ex Execer, typeName string) (ObjectType, error) {
-	return GetObjectTypeContext(context.Background(), ex, typeName)	
-}
-
-// GetObjectTypeContext returns the ObjectType for the name with context.
-func GetObjectTypeContext(ctx context.Context, ex Execer, typeName string) (ObjectType, error) {
+func GetObjectType(ctx context.Context, ex Execer, typeName string) (ObjectType, error) {
 	c, err := getConn(ctx, ex)
 	if err != nil {
 		return ObjectType{}, errors.WithMessage(err, "getConn for "+typeName)
