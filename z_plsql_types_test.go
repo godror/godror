@@ -260,21 +260,21 @@ func dropPackages(ctx context.Context) {
 func TestPLSQLTypes(t *testing.T) {
 	t.Parallel()
 
-	serverVersion, err := goracle.ServerVersion(testDb)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	serverVersion, err := goracle.ServerVersion(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientVersion, err := goracle.ClientVersion(testDb)
+	clientVersion, err := goracle.ClientVersion(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if serverVersion.Version < 12 || clientVersion.Version < 12 {
 		t.Skip("client or server < 12")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	}	
 
 	err = createPackages(ctx)
 	if err != nil {

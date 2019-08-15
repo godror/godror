@@ -82,11 +82,11 @@ func init() {
 	}
 
 	if testDb != nil {
-		if clientVersion, err = goracle.ClientVersion(testDb); err != nil {
+		if clientVersion, err = goracle.ClientVersion(context.Background(), testDb); err != nil {
 			fmt.Printf("ERROR: %+v\n", err)
 			return
 		}
-		if serverVersion, err = goracle.ServerVersion(testDb); err != nil {
+		if serverVersion, err = goracle.ServerVersion(context.Background(), testDb); err != nil {
 			fmt.Printf("ERROR: %+v\n", err)
 			return
 		}

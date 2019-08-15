@@ -253,8 +253,8 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 }
 
 // ClientVersion returns the VersionInfo from the DB.
-func ClientVersion(ex Execer) (VersionInfo, error) {
-	c, err := getConn(context.Background(), ex)
+func ClientVersion(ctx context.Context, ex Execer) (VersionInfo, error) {
+	c, err := getConn(ctx, ex)
 	if err != nil {
 		return VersionInfo{}, err
 	}
@@ -262,8 +262,8 @@ func ClientVersion(ex Execer) (VersionInfo, error) {
 }
 
 // ServerVersion returns the VersionInfo of the client.
-func ServerVersion(ex Execer) (VersionInfo, error) {
-	c, err := getConn(context.Background(), ex)
+func ServerVersion(ctx context.Context, ex Execer) (VersionInfo, error) {
+	c, err := getConn(ctx, ex)
 	if err != nil {
 		return VersionInfo{}, err
 	}
