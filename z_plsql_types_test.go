@@ -134,8 +134,10 @@ func (r MyTable) WriteObject() error {
 	if len(r.Items) == 0 {
 		return nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	conn, err := goracle.DriverConn(testDb)
+	conn, err := goracle.DriverConn(ctx, testDb)
 	if err != nil {
 		return err
 	}
@@ -274,7 +276,7 @@ func TestPLSQLTypes(t *testing.T) {
 
 	if serverVersion.Version < 12 || clientVersion.Version < 12 {
 		t.Skip("client or server < 12")
-	}	
+	}
 
 	err = createPackages(ctx)
 	if err != nil {
@@ -282,7 +284,7 @@ func TestPLSQLTypes(t *testing.T) {
 	}
 	defer dropPackages(ctx)
 
-	conn, err := goracle.DriverConn(testDb)
+	conn, err := goracle.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}

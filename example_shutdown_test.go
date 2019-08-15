@@ -16,6 +16,7 @@
 package goracle_test
 
 import (
+	"context"
 	"database/sql"
 	"log"
 
@@ -31,6 +32,8 @@ func ExampleStartup() {
 	}
 }
 func exampleStartup(startupMode goracle.StartupMode) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	dsn := "oracle://?sysdba=1&prelim=1"
 	db, err := sql.Open("goracle", dsn)
 	if err != nil {
@@ -38,7 +41,7 @@ func exampleStartup(startupMode goracle.StartupMode) error {
 	}
 	defer db.Close()
 
-	oraDB, err := goracle.DriverConn(db)
+	oraDB, err := goracle.DriverConn(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -80,7 +83,9 @@ func ExampleShutdown() {
 }
 
 func exampleShutdown(db *sql.DB, shutdownMode goracle.ShutdownMode) error {
-	oraDB, err := goracle.DriverConn(db)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	oraDB, err := goracle.DriverConn(ctx, db)
 	if err != nil {
 		return err
 	}

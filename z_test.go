@@ -1937,7 +1937,10 @@ func TestStartupShutdown(t *testing.T) {
 		t.Fatal(err, p.StringWithPassword())
 	}
 	defer db.Close()
-	conn, err := goracle.DriverConn(db)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := goracle.DriverConn(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}

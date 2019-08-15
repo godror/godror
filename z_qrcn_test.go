@@ -16,6 +16,7 @@
 package goracle_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -24,7 +25,9 @@ import (
 )
 
 func TestQRCN(t *testing.T) {
-	conn, err := goracle.DriverConn(testDb)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := goracle.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +70,7 @@ func TestQRCN(t *testing.T) {
 	t.Log("--- Registrations ---")
 	for rows.Next() {
 		var regID, table string
-		if err := rows.Scan(&regID,&table); err != nil {
+		if err := rows.Scan(&regID, &table); err != nil {
 			t.Error(err)
 			break
 		}

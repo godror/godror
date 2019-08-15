@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -40,9 +41,9 @@ func initConn() (*drv, *conn, error) {
 		testDrv = newDrv()
 		dc, err := testDrv.Open(
 			fmt.Sprintf("oracle://%s:%s@%s/?poolMinSessions=1&poolMaxSessions=4&poolIncrement=1&connectionClass=POOLED",
-				os.Getenv("GORACLE_DRV_TEST_USERNAME"),
-				os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-				os.Getenv("GORACLE_DRV_TEST_DB"),
+				url.QueryEscape(os.Getenv("GORACLE_DRV_TEST_USERNAME")),
+				url.QueryEscape(os.Getenv("GORACLE_DRV_TEST_PASSWORD")),
+				(os.Getenv("GORACLE_DRV_TEST_DB")),
 			),
 		)
 		if err != nil {

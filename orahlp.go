@@ -288,8 +288,8 @@ type Conn interface {
 }
 
 // DriverConn returns the *goracle.conn of the database/sql.Conn
-func DriverConn(ex Execer) (Conn, error) {
-	return getConn(context.Background(), ex)
+func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
+	return getConn(ctx, ex)
 }
 
 var getConnMu sync.Mutex

@@ -55,25 +55,21 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}
 
 	data.reset()
+	if data.dpiData == nil {
+		data.dpiData = &C.dpiData{isNull: 0}
+	}
 	data.NativeTypeNum = attr.NativeTypeNum
 	data.ObjectType = attr.ObjectType
-	wasNull := data.dpiData == nil
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
 	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-		a := make([]byte, attr.Precision)
-		C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(attr.Precision))
-	} else if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_INT64 {
-		C.dpiData_setInt64(data.dpiData, 0)
+		var a [39]byte
+		C.dpiData_setBytes(data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(len(a)))
 	}
 
 	//fmt.Printf("getAttributeValue(%p, %p, %d, %+v)\n", O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData) == C.DPI_FAILURE {
-		if wasNull {
-			C.free(unsafe.Pointer(data.dpiData))
-			data.dpiData = nil
-		}
-		return errors.Wrapf(O.getError(), "getAttributeValue(obj=%+v, attr=%+v, typ=%d)", O, attr.dpiObjectAttr, data.NativeTypeNum)
+		return errors.Wrapf(O.getError(), "getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d)", name, O, attr.dpiObjectAttr, data.NativeTypeNum)
 	}
 	//fmt.Printf("getAttributeValue(%p, %q=%p, %d, %+v)\n", O.dpiObject, attr.Name, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	return nil
