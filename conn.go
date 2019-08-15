@@ -380,6 +380,9 @@ func (c *conn) init() error {
 		var release *C.char
 		var releaseLen C.uint32_t
 		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+			if c.connParams.IsPrelim {
+				return nil
+			}
 			return errors.Wrap(c.getError(), "getServerVersion")
 		}
 		c.Server.set(&v)
