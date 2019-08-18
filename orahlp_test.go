@@ -17,7 +17,9 @@ package goracle
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -84,5 +86,35 @@ END;
 		if !reflect.DeepEqual(params, tc.params) {
 			t.Errorf("%d. params: got\n\t%#v,\nwanted\n\t%#v.", i, params, tc.params)
 		}
+	}
+}
+
+func TestParseDescription(t *testing.T) {
+	const x = `(DESCRIPTION=
+   (SOURCE_ROUTE=yes)
+   (ADDRESS=(PROTOCOL=tcp)(HOST=host1)(PORT=1630))
+   (ADDRESS_LIST=
+     (FAILOVER=on)
+     (LOAD_BALANCE=off)
+     (ADDRESS=(PROTOCOL=tcp)(HOST=host2a)(PORT=1630))
+     (ADDRESS=(PROTOCOL=tcp)(HOST=host2b)(PORT=1630)))
+   (ADDRESS=(PROTOCOL=tcp)(HOST=host3)(PORT=1521))
+   (CONNECT_DATA=(SERVICE_NAME=Sales.us.example.com)))`
+	s, err := ParseConnDescription(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%#v", s)
+	t.Log(s)
+	strip := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, s)
+	}
+	if want, got := strip(x), strip(s.String()); want != got {
+		t.Errorf("got %q, wanted %q", got, want)
 	}
 }

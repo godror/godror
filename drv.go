@@ -44,6 +44,8 @@
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.
 // Thus you can cluster the session pool with classes, or use POOLED for DRCP.
+//
+// For what can be used as "sid", see https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/configuring-naming-methods.html#GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
 package goracle
 
 /*
