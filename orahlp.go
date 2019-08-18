@@ -23,9 +23,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
-	"unicode"
 
 	"github.com/pkg/errors"
 )
@@ -309,75 +307,4 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 // WrapRows transforms a driver.Rows into an *sql.Rows.
 func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
 	return q.QueryContext(ctx, wrapResultset, rset)
-}
-
-// CStatement can print Oracle connection descriptor (DESCRIPTION=(ADDRESS=...)) format.
-//
-// See https://docs.oracle.com/cd/B28359_01/network.111/b28317/tnsnames.htm#NETRF271
-type CStatement struct {
-	Name, Value string
-	Statements  []CStatement
-}
-
-func (cs CStatement) String() string {
-	var buf strings.Builder
-	cs.Print(&buf, "\n", "  ")
-	return buf.String()
-}
-func (cs CStatement) Print(w io.Writer, prefix, indent string) {
-	fmt.Fprintf(w, "%s(%s=%s", prefix, cs.Name, cs.Value)
-	if cs.Value == "" {
-		for _, s := range cs.Statements {
-			s.Print(w, prefix+indent, indent)
-		}
-	}
-	io.WriteString(w, ")")
-}
-
-func ParseConnDescription(s string) (CStatement, error) {
-	var cs CStatement
-	_, err := cs.Parse(s)
-	return cs, err
-}
-func (cs *CStatement) Parse(s string) (string, error) {
-	ltrim := func(s string) string { return strings.TrimLeftFunc(s, unicode.IsSpace) }
-	s = ltrim(s)
-	if s == "" || s[0] != '(' {
-		return s, nil
-	}
-	i := strings.IndexByte(s[1:], '=') + 1
-	if i <= 0 || strings.Contains(s[1:i], ")") {
-		return s, errors.WithMessage(errors.New("no = after ("), s)
-	}
-	cs.Name = s[1:i]
-	s = ltrim(s[i+1:])
-
-	if s == "" {
-		return s, nil
-	}
-	if s[0] != '(' {
-		if i = strings.IndexByte(s, ')'); i < 0 || strings.Contains(s[1:i], "(") {
-			return s, errors.WithMessage(errors.New("no ) after ="), s)
-		}
-		cs.Value = s[:i]
-		s = ltrim(s[i+1:])
-		return s, nil
-	}
-
-	for s != "" && s[0] == '(' {
-		var sub CStatement
-		var err error
-		if s, err = sub.Parse(s); err != nil {
-			return s, err
-		}
-		if sub.Name == "" {
-			break
-		}
-		cs.Statements = append(cs.Statements, sub)
-	}
-	s = ltrim(s)
-	if s != "" && s[0] == ')' {
-		s = ltrim(s[1:])
-	}
-	return s, nil
 }
