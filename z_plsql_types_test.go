@@ -19,7 +19,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,7 +109,7 @@ func (t *MyTable) Scan(src interface{}) error {
 		t.Items = make([]*MyRecord, 0)
 		for i, err := collection.First(); err == nil; i, err = collection.Next(i) {
 			var data goracle.Data
-			err = collection.Get(&data, i)
+			err = collection.GetItem(&data, i)
 			if err != nil {
 				return err
 			}
@@ -552,7 +554,7 @@ func TestSelectObjectTable(t *testing.T) {
 		}
 		var objData, attrData goracle.Data
 		for {
-			if err = obj.Get(&objData, i); err != nil {
+			if err = obj.GetItem(&objData, i); err != nil {
 				t.Fatal(err)
 			}
 			if err := objData.GetObject().GetAttribute(&attrData, "MSG"); err != nil {
@@ -617,5 +619,261 @@ END;`
 			t.Log(buf.String())
 			t.Errorf("got %v/%v wanted %v/%v", out, num, want, !in)
 		}
+	}
+}
+
+func TestPlSqlObjectDirect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	testCon, err := goracle.DriverConn(ctx, testDb)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const crea = `CREATE OR REPLACE PACKAGE test_pkg_obj IS
+  TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+  TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
+  TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
+
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ);
+END;`
+	const crea2 = `CREATE OR REPLACE PACKAGE BODY test_pkg_obj IS
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ) IS
+    v_idx PLS_INTEGER := NVL(p_obj.LAST, 0) + 1;
+  BEGIN
+    p_obj(v_idx).int := p_obj.COUNT;
+    p_obj(v_idx).num := 314/100;
+	p_obj(v_idx).vc  := 'abraka dabra';
+	p_obj(v_idx).c   := 'X';
+	p_obj(v_idx).dt  := SYSDATE;
+  END modify;
+END;`
+	if err = prepExec(ctx, testCon, crea); err != nil {
+		t.Fatal(err)
+	}
+	//defer prepExec(ctx, testCon, "DROP PACKAGE test_pkg_obj")
+	if err = prepExec(ctx, testCon, crea2); err != nil {
+		t.Fatal(err)
+	}
+
+	//defer tl.enableLogging(t)()
+	clientVersion, _ := goracle.ClientVersion(ctx, testDb)
+	serverVersion, _ := goracle.ServerVersion(ctx, testDb)
+	t.Logf("clientVersion: %#v, serverVersion: %#v", clientVersion, serverVersion)
+	cOt, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
+	if err != nil {
+		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
+			t.Fatal(fmt.Sprintf("%+v", err))
+		}
+		t.Log(err)
+		t.Skipf("client=%d or server=%d < 12", clientVersion.Version, serverVersion.Version)
+	}
+	defer cOt.Close()
+	t.Log(cOt)
+
+	// create object from the type
+	coll, err := cOt.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coll.Close()
+
+	// create an element object
+	elt, err := cOt.CollectionOf.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer elt.Close()
+	if err = elt.Set("C", "Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	// append to the collection
+	t.Logf("elt: %s", elt)
+	coll.AppendObject(elt)
+
+	const mod = "BEGIN test_pkg_obj.modify(:1); END;"
+	if err = prepExec(ctx, testCon, mod, driver.NamedValue{Ordinal: 1, Value: coll}); err != nil {
+		t.Error(err)
+	}
+	t.Logf("coll: %s", coll)
+	var data goracle.Data
+	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+		if err = coll.GetItem(&data, i); err != nil {
+			t.Fatal(err)
+		}
+		elt = data.GetObject()
+
+		t.Logf("elt[%d]: %s", i, elt)
+		for attr := range elt.Attributes {
+			val, err := elt.Get(attr)
+			if err != nil {
+				t.Error(err, attr)
+			}
+			t.Logf("elt[%d].%s=%v", i, attr, val)
+		}
+	}
+}
+func prepExec(ctx context.Context, testCon goracle.Conn, qry string, args ...driver.NamedValue) error {
+	stmt, err := testCon.PrepareContext(ctx, qry)
+	if err != nil {
+		return errors.Wrap(err, qry)
+	}
+	_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, args)
+	stmt.Close()
+	return errors.Wrap(err, qry)
+}
+
+func TestPlSqlObject(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	pkg := strings.ToUpper("test_pkg_obj" + tblSuffix)
+	qry := `CREATE OR REPLACE PACKAGE ` + pkg + ` IS
+  TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+  TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
+  TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
+END;`
+	if _, err = conn.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	defer testDb.Exec("DROP PACKAGE " + pkg)
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	defer tl.enableLogging(t)()
+	ot, err := goracle.GetObjectType(ctx, tx, pkg+strings.ToUpper(".int_tab_typ"))
+	if err != nil {
+		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
+			t.Fatal(fmt.Sprintf("%+v", err))
+		}
+		t.Log(err)
+		t.Skip("client or server version < 12")
+	}
+	t.Log(ot)
+}
+
+func TestCallWithObject(t *testing.T) {
+	t.Parallel()
+	cleanup := func() {
+		for _, drop := range []string{
+			"DROP PROCEDURE test_cwo_getSum",
+			"DROP TYPE test_cwo_tbl_t",
+			"DROP TYPE test_cwo_rec_t",
+		} {
+			testDb.Exec(drop)
+		}
+	}
+
+	const crea = `CREATE OR REPLACE TYPE test_cwo_rec_t FORCE AS OBJECT (
+  numberpart1 VARCHAR2(6),
+  numberpart2 VARCHAR2(10),
+  code VARCHAR(7),
+  CONSTRUCTOR FUNCTION test_cwo_rec_t RETURN SELF AS RESULT
+);
+
+CREATE OR REPLACE TYPE test_cwo_tbl_t FORCE AS TABLE OF test_cwo_rec_t;
+
+CREATE OR REPLACE PROCEDURE test_cwo_getSum(
+  p_operation_id IN OUT VARCHAR2,
+  a_languagecode_i IN VARCHAR2,
+  a_username_i IN VARCHAR2,
+  a_channelcode_i IN VARCHAR2,
+  a_mcalist_i IN test_cwo_tbl_t,
+  a_validfrom_i IN DATE,
+  a_validto_i IN DATE,
+  a_statuscode_list_i IN VARCHAR2 ,
+  a_type_list_o OUT SYS_REFCURSOR
+) IS
+  cnt PLS_INTEGER;
+BEGIN
+  cnt := a_mcalist_i.COUNT;
+  OPEN a_type_list_o FOR
+    SELECT cnt FROM DUAL;
+END;
+`
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	cleanup()
+	for _, qry := range strings.Split(crea, "CREATE OR") {
+		if qry == "" {
+			continue
+		}
+		qry = "CREATE OR" + qry
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatal(errors.Wrap(err, qry))
+		}
+	}
+
+	var p_operation_id string
+	var a_languagecode_i string
+	var a_username_i string
+	var a_channelcode_i string
+	var a_mcalist_i *goracle.Object
+	var a_validfrom_i string
+	var a_validto_i string
+	var a_statuscode_list_i string
+	var a_type_list_o driver.Rows
+
+	typ, err := goracle.GetObjectType(ctx, testDb, "test_cwo_tbl_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a_mcalist_i, err = typ.NewObject(); err != nil {
+		t.Fatal(err)
+	}
+	if typ, err = goracle.GetObjectType(ctx, testDb, "test_cwo_rec_t"); err != nil {
+		t.Fatal(err)
+	}
+	elt, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = elt.Set("NUMBERPART1", "np1"); err != nil {
+		t.Fatal(err)
+	}
+	if err = a_mcalist_i.Collection().Append(elt); err != nil {
+		t.Fatal(err)
+	}
+
+	const qry = `BEGIN test_cwo_getSum(:v1,:v2,:v3,:v4,:v5,:v6,:v7,:v8,:v9); END;`
+	if _, err := testDb.ExecContext(ctx, qry,
+		sql.Named("v1", sql.Out{Dest: &p_operation_id, In: true}),
+		sql.Named("v2", &a_languagecode_i),
+		sql.Named("v3", &a_username_i),
+		sql.Named("v4", &a_channelcode_i),
+		sql.Named("v5", &a_mcalist_i),
+		sql.Named("v6", &a_validfrom_i),
+		sql.Named("v7", &a_validto_i),
+		sql.Named("v8", &a_statuscode_list_i),
+		sql.Named("v9", sql.Out{Dest: &a_type_list_o}),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := goracle.WrapRows(ctx, testDb, a_type_list_o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var i int
+	for rows.Next() {
+		var n int
+		if err = rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		i++
+		t.Logf("%d. %d", i, n)
 	}
 }

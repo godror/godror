@@ -273,10 +273,11 @@ func ServerVersion(ctx context.Context, ex Execer) (VersionInfo, error) {
 // Conn is the interface for a connection, to be returned by DriverConn.
 type Conn interface {
 	driver.Conn
+	driver.ConnBeginTx
+	driver.ConnPrepareContext
 	driver.Pinger
+
 	Break() error
-	BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error)
-	PrepareContext(ctx context.Context, query string) (driver.Stmt, error)
 	Commit() error
 	Rollback() error
 	ServerVersion() (VersionInfo, error)

@@ -1086,8 +1086,10 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 
 	case *Object:
-		info.objType = v.ObjectType.dpiObjectType
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		if !nilPtr && v != nil {
+			info.objType = v.ObjectType.dpiObjectType
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		}
 		info.set = st.dataSetObject
 		if info.isOut {
 			*get = st.dataGetObject

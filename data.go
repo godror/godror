@@ -46,54 +46,7 @@ func NewData(v interface{}) (*Data, error) {
 		return nil, errors.Wrap(ErrNotSupported, "nil type")
 	}
 	data := Data{dpiData: &C.dpiData{isNull: 1}}
-	switch x := v.(type) {
-	case int64:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-		data.SetInt64(x)
-	case uint64:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
-		data.SetUint64(x)
-	case float32:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
-		data.SetFloat32(x)
-	case float64:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
-		data.SetFloat64(x)
-	case string:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-		data.SetBytes([]byte(x))
-	case []byte:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-		data.SetBytes(x)
-	case time.Time:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
-		data.SetTime(x)
-	case time.Duration:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
-		data.SetIntervalDS(x)
-	case IntervalYM:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_YM
-		data.SetIntervalYM(x)
-	case *DirectLob:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_LOB
-		data.SetLob(x)
-	case *Object:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
-		data.ObjectType = x.ObjectType
-		data.SetObject(x)
-	//case *stmt:
-	//data.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
-	//data.SetStmt(x)
-	case bool:
-		data.NativeTypeNum = C.DPI_NATIVE_TYPE_BOOLEAN
-		data.SetBool(x)
-	//case rowid:
-	//data.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
-	//data.SetRowid(x)
-	default:
-		return nil, errors.Wrapf(ErrNotSupported, "%T", v)
-	}
-	return &data, nil
+	return &data, data.Set(v)
 }
 
 // IsNull returns whether the data is null.
@@ -346,6 +299,64 @@ func (d *Data) Get() interface{} {
 	default:
 		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
 	}
+}
+
+// Set the data.
+func (d *Data) Set(v interface{}) error {
+	if v == nil {
+		return errors.Wrap(ErrNotSupported, "nil type")
+	}
+	if d.dpiData == nil {
+		d.dpiData = &C.dpiData{isNull: 1}
+	}
+	switch x := v.(type) {
+	case int64:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(x)
+	case uint64:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(x)
+	case float32:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
+		d.SetFloat32(x)
+	case float64:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
+		d.SetFloat64(x)
+	case string:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+		d.SetBytes([]byte(x))
+	case []byte:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+		d.SetBytes(x)
+	case time.Time:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+		d.SetTime(x)
+	case time.Duration:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
+		d.SetIntervalDS(x)
+	case IntervalYM:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_YM
+		d.SetIntervalYM(x)
+	case *DirectLob:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_LOB
+		d.SetLob(x)
+	case *Object:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+		d.ObjectType = x.ObjectType
+		d.SetObject(x)
+	//case *stmt:
+	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
+	//d.SetStmt(x)
+	case bool:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BOOLEAN
+		d.SetBool(x)
+	//case rowid:
+	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
+	//d.SetRowid(x)
+	default:
+		return errors.Wrapf(ErrNotSupported, "%T", v)
+	}
+	return nil
 }
 
 // IsObject returns whether the data contains an Object or not.

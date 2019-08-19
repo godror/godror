@@ -493,7 +493,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			o, err := wrapObject(r.drv, col.ObjectType, C.dpiData_getObject(d))
+			o, err := wrapObject(r.conn, col.ObjectType, C.dpiData_getObject(d))
 			if err != nil {
 				return err
 			}
