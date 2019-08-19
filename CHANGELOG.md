@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.20.0] - 2019-08-19
+### Added
+- Queue support with Objects.
+
+### Changed
+- Change Object Set/Get
+
 ## [2.19.0] - 2019-08-15
 ### Changed
 - Require Context for getConn and thus in ClientVersion, ServerVersion, GetObjectType, DriverConn functions.
