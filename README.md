@@ -12,6 +12,9 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 
 At least Go 1.11 is required!
 
+Although an Oracle client is NOT required for compiling, it is at run time.
+One can download it from https://www.oracle.com/database/technologies/instant-client/downloads.html
+
 ## Connect
 
 In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@service_name"
