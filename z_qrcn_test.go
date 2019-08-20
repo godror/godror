@@ -46,7 +46,7 @@ func TestQRCN(t *testing.T) {
 	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
 		errS := errors.Cause(err).Error()
-		if strings.Contains(errS, "ORA-29970:") {
+		if strings.Contains(errS, "ORA-29970:") || strings.Contains(errS, "ORA-65131:") {
 			t.Skip(err.Error())
 		} else if strings.Contains(errS, "ORA-29972:") {
 			t.Log("See \"https://docs.oracle.com/database/121/ADFNS/adfns_cqn.htm#ADFNS553\"")

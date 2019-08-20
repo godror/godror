@@ -821,8 +821,8 @@ func TestExecuteMany(t *testing.T) {
 			t.Errorf("%d. VC got %q, wanted %q.", i, vc, strs[i])
 		}
 		t.Logf("%d. dt=%v", i, dt)
-		if dt != dates[i] {
-			t.Errorf("%d. got DT %v, wanted %v.", i, dt, dates[i])
+		if !dt.Equal(dates[i]) {
+			t.Errorf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
 		}
 		i++
 	}
