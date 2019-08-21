@@ -1863,8 +1863,15 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	switch o := vv.(type) {
 	case Object:
 		objs[0] = o
+	case *Object:
+		objs[0] = *o
 	case []Object:
 		objs = o
+	case []*Object:
+		objs = make([]Object, len(o))
+		for i, x := range o {
+			objs[i] = *x
+		}
 	case ObjectWriter:
 		err := o.WriteObject()
 		if err != nil {
@@ -1889,10 +1896,12 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
 			data[i].isNull = 1
-			return nil
+			continue
 		}
 		data[i].isNull = 0
-		C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
+		if C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) == C.DPI_FAILURE {
+			return errors.WithMessage(c.getError(), "setFromObject")
+		}
 	}
 	return nil
 }

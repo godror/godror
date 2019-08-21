@@ -61,8 +61,8 @@ var parallelOnce sync.Once
 var parallelCh chan struct{}
 
 func parallel(t *testing.T) func() {
-	t.Parallel()
-	return func() {}
+	//t.Parallel()
+	//return func() {}
 	parallelOnce.Do(func() {
 		parallelCh = make(chan struct{}, *flagConcurrency)
 	})
@@ -330,7 +330,7 @@ END;
 		},
 		"dt_3": {
 			In:   []time.Time{epoch, epoch.AddDate(0, 0, -1), epoch.AddDate(0, 0, -2)},
-			Want: "1:2017-11-20T12:14:21\n2:2017-11-19T12:14:21\n3:2017-11-18T12:14:21\n",
+			Want: "1:2017-11-20T11:14:21\n2:2017-11-19T11:14:21\n3:2017-11-18T11:14:21\n",
 		},
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
@@ -1934,6 +1934,16 @@ func TestStartupShutdown(t *testing.T) {
 }
 
 func TestIssue134(t *testing.T) {
+	cleanup := func() {
+		for _, qry := range []string{
+			`DROP TYPE test_prj_task_tab_type`,
+			`DROP TYPE test_prj_task_obj_type`,
+			`DROP PROCEDURE test_create_task_activity`,
+		} {
+			testDb.Exec(qry)
+		}
+	}
+	cleanup()
 	const crea = `CREATE OR REPLACE TYPE test_PRJ_TASK_OBJ_TYPE AS OBJECT (
 	PROJECT_NUMBER VARCHAR2(100)
 	,SOURCE_ID VARCHAR2(100)
@@ -1959,27 +1969,38 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (p_create_task_i IN PRJ_TA
 			t.Fatal(errors.Wrap(err, qry))
 		}
 	}
-	defer func() {
-		for _, qry := range []string{
-			`DROP TYPE test_prj_task_tab_type`,
-			`DROP TYPE test_prj_task_obj_type`,
-			`DROP PROCEDURE test_create_task_activity`,
-		} {
-			testDb.Exec(qry)
-		}
-	}()
+	defer cleanup()
 
-	var o1, o2 goracle.Object
+	conn, err := goracle.DriverConn(ctx, testDb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var o1, o2 *goracle.Object
+	ot, err := conn.GetObjectType("TEST_PRJ_TASK_TAB_TYPE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o1, err = ot.NewObject(); err != nil {
+		t.Fatal(err)
+	}
 	qry := "BEGIN :1 := test_prj_task_tab_type(); END;"
-	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &o1}); err != nil {
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: o1}); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
-	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &o2}); err != nil {
+	if o2, err = ot.NewObject(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: o2}); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
+	t.Logf("o1=%#v, o2=%#v", o1, o2)
 	qry = "BEGIN test_create_task_activity(:1, :2, :3); END;"
-	if _, err := testDb.ExecContext(ctx, qry, o1, o2, 1); err != nil {
-		t.Error(err)
+	if err := prepExec(ctx, conn, qry,
+		driver.NamedValue{Value: o1, Ordinal: 1},
+		driver.NamedValue{Value: o2, Ordinal: 2},
+		driver.NamedValue{Value: 1, Ordinal: 3},
+	); err != nil {
+		t.Error(errors.Wrapf(err, "%s [%#v, %#v]", qry, o1, o2))
 	}
 }
 
@@ -2098,7 +2119,11 @@ func TestCancel(t *testing.T) {
 		var cnt int
 		const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
 		if err := db.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
-			t.Fatal(errors.Wrap(err, qryCount))
+			if strings.Contains(err.Error(), "ORA-00942:") {
+				t.Skip(err.Error())
+			} else {
+				t.Fatal(errors.Wrap(err, qryCount))
+			}
 		}
 		return cnt
 	}

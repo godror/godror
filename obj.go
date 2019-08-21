@@ -34,8 +34,8 @@ var _ = fmt.Printf
 
 // Object represents a dpiObject.
 type Object struct {
-	scratch Data
 	ObjectType
+	scratch   Data
 	dpiObject *C.dpiObject
 }
 

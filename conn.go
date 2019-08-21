@@ -48,6 +48,8 @@ var _ = driver.ConnBeginTx((*conn)(nil))
 var _ = driver.ConnPrepareContext((*conn)(nil))
 var _ = driver.Pinger((*conn)(nil))
 
+//var _ = driver.ExecerContext((*conn)(nil))
+
 type conn struct {
 	connParams     ConnectionParams
 	currentTT      TraceTag
