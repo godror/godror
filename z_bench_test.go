@@ -377,7 +377,7 @@ func createGeoTable(tableName string, rowCount int) error {
 }
 
 func TestSelectOrder(t *testing.T) {
-	defer parallel(t)()
+	t.Parallel()
 	const limit = 1013
 	var cnt int64
 	tbl := "user_objects"

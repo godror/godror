@@ -27,7 +27,7 @@ import (
 )
 
 func TestLOBAppend(t *testing.T) {
-	defer parallel(t)()
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -80,7 +80,7 @@ END;`
 }
 
 func TestStatWithLobs(t *testing.T) {
-	defer parallel(t)()
+	t.Parallel()
 	//defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
