@@ -37,7 +37,13 @@ BEGIN
   DBMS_LOB.createtemporary(tmp, TRUE, DBMS_LOB.SESSION);
   :1 := tmp;
 END;`
-	stmt, err := testDb.PrepareContext(ctx, qry)
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.WithMessage(err, qry))
 	}
@@ -49,7 +55,7 @@ END;`
 	t.Logf("tmp: %#v", tmp)
 
 	want := [...]byte{1, 2, 3, 4, 5}
-	if _, err := testDb.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		"BEGIN dbms_lob.append(:1, :2); END;",
 		tmp, goracle.Lob{Reader: bytes.NewReader(want[:])},
 	); err != nil {
@@ -58,7 +64,7 @@ END;`
 
 	if true {
 		// Either use DBMS_LOB.freetemporary
-		if _, err := testDb.ExecContext(ctx, "BEGIN dbms_lob.freetemporary(:1); END;", tmp); err != nil {
+		if _, err := tx.ExecContext(ctx, "BEGIN dbms_lob.freetemporary(:1); END;", tmp); err != nil {
 			t.Errorf("Failed to close temporary lob(%v): %+v", tmp, err)
 		}
 	} else {

@@ -45,15 +45,15 @@ func TestQueue(t *testing.T) {
 		tbl CONSTANT VARCHAR2(61) := '` + user + "." + qTblName + `';
 		q CONSTANT VARCHAR2(61) := '` + user + "." + qName + `';
 	BEGIN
-		BEGIN DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
 
-		DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, 'RAW');
-		DBMS_AQADM.CREATE_QUEUE(q, tbl);
-		DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
-		DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
-		DBMS_AQADM.start_queue(q);
+		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, 'RAW');
+		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
+		SYS.DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 	if _, err = conn.ExecContext(ctx, qry); err != nil {
 		t.Log(errors.Wrap(err, qry))
@@ -65,9 +65,9 @@ func TestQueue(t *testing.T) {
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
 			q CONSTANT VARCHAR2(61) := USER||'.'||:2;
 		BEGIN
-			BEGIN DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
 		END;`,
 			qTblName, qName,
 		)
@@ -147,16 +147,16 @@ func TestQueueObject(t *testing.T) {
 		q CONSTANT VARCHAR2(61) := '` + user + "." + qName + `';
 		typ CONSTANT VARCHAR2(61) := '` + user + "." + qTypName + `';
 	BEGIN
-		BEGIN DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
 
-		DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, typ);
-		DBMS_AQADM.CREATE_QUEUE(q, tbl);
+		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, typ);
+		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
 
-		DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
-		DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
-		DBMS_AQADM.start_queue(q);
+		SYS.DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
 			t.Log(errors.Wrap(err, plus.String()+"\n"+qry))
@@ -169,9 +169,9 @@ func TestQueueObject(t *testing.T) {
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
 			q CONSTANT VARCHAR2(61) := USER||'.'||:2;
 		BEGIN
-			BEGIN DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
 		END;`,
 			qTblName, qName,
 		)

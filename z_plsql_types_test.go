@@ -830,14 +830,20 @@ END;
 	var a_statuscode_list_i string
 	var a_type_list_o driver.Rows
 
-	typ, err := goracle.GetObjectType(ctx, testDb, "test_cwo_tbl_t")
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	typ, err := goracle.GetObjectType(ctx, tx, "test_cwo_tbl_t")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a_mcalist_i, err = typ.NewObject(); err != nil {
 		t.Fatal(err)
 	}
-	if typ, err = goracle.GetObjectType(ctx, testDb, "test_cwo_rec_t"); err != nil {
+	if typ, err = goracle.GetObjectType(ctx, tx, "test_cwo_rec_t"); err != nil {
 		t.Fatal(err)
 	}
 	elt, err := typ.NewObject()
@@ -852,7 +858,7 @@ END;
 	}
 
 	const qry = `BEGIN test_cwo_getSum(:v1,:v2,:v3,:v4,:v5,:v6,:v7,:v8,:v9); END;`
-	if _, err := testDb.ExecContext(ctx, qry,
+	if _, err := tx.ExecContext(ctx, qry,
 		sql.Named("v1", sql.Out{Dest: &p_operation_id, In: true}),
 		sql.Named("v2", &a_languagecode_i),
 		sql.Named("v3", &a_username_i),
@@ -866,7 +872,7 @@ END;
 		t.Fatal(err)
 	}
 
-	rows, err := goracle.WrapRows(ctx, testDb, a_type_list_o)
+	rows, err := goracle.WrapRows(ctx, tx, a_type_list_o)
 	if err != nil {
 		t.Fatal(err)
 	}
