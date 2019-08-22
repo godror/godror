@@ -402,7 +402,7 @@ func (c *conn) init() error {
 
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
-	const qry = "SELECT LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
+	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.PrepareContext(ctx, qry)
@@ -410,7 +410,7 @@ func (c *conn) init() error {
 		return errors.Wrap(err, qry)
 	}
 	defer st.Close()
-	rows, err := st.Query([]driver.Value{}) //lint:ignore SA1019 - it's hard to use QueryContext here
+	rows, err := st.Query(nil) //lint:ignore SA1019 - it's hard to use QueryContext here
 	if err != nil {
 		if Log != nil {
 			Log("qry", qry, "error", err)
@@ -418,32 +418,48 @@ func (c *conn) init() error {
 		return nil
 	}
 	defer rows.Close()
-	var timezone string
-	vals := []driver.Value{timezone}
-	for {
-		if err = rows.Next(vals); err != nil {
-			if err == io.EOF {
-				break
+	var dbTZ, timezone string
+	vals := []driver.Value{dbTZ, timezone}
+	if err = rows.Next(vals); err != nil && err != io.EOF {
+		return errors.Wrap(err, qry)
+	}
+	dbTZ = vals[0].(string)
+	timezone = vals[1].(string)
+	if Log != nil {
+		Log("dbTZ", dbTZ, "timezone", timezone)
+	}
+	now := time.Now()
+	_, localOff := now.Local().Zone()
+	var tz *time.Location
+	off := localOff
+	var ok bool
+	if dbTZ != "" && strings.Contains(dbTZ, "/") {
+		tz, err = time.LoadLocation(dbTZ)
+		if ok = err == nil; ok {
+			if tz == time.Local {
+				return nil
 			}
-			return errors.Wrap(err, qry)
-		}
-		timezone = vals[0].(string)
-		if timezone != "" {
-			break
+			_, off = now.In(tz).Zone()
+		} else if Log != nil {
+			Log("LoadLocation", dbTZ, "error", err)
 		}
 	}
-	if timezone == "" {
-		return errors.New("empty timezone")
-	}
-	if off, err := parseTZ(timezone); err != nil {
-		return errors.Wrap(err, timezone)
-	} else {
-		// This is dangerous, but I just cannot get whether the DB time zone
-		// setting has DST or not - DBTIMEZONE returns just a fixed offset.
-		if _, localOff := time.Now().Local().Zone(); localOff != off {
-			c.tzOffSecs = off
-			c.timeZone = time.FixedZone(timezone, c.tzOffSecs)
+	if !ok {
+		if timezone == "" {
+			return errors.New("empty timezone")
 		}
+		if off, err = parseTZ(timezone); err != nil {
+			return errors.Wrap(err, timezone)
+		}
+	}
+	// This is dangerous, but I just cannot get whether the DB time zone
+	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
+	if off != localOff {
+		c.tzOffSecs = off
+		if tz == nil {
+			tz = time.FixedZone(timezone, c.tzOffSecs)
+		}
+		c.timeZone = tz
 	}
 	if Log != nil {
 		Log("timezone", timezone, "tz", c.timeZone, "offSecs", c.tzOffSecs)

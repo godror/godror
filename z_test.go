@@ -2038,18 +2038,18 @@ func TestGetDBTimeZone(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	qry := "SELECT DBTIMEZONE, SESSIONTIMEZONE FROM DUAL"
-	var dbTz, tz string
-	if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTz, &tz); err != nil {
+	qry := "SELECT DBTIMEZONE, SESSIONTIMEZONE, SYSTIMESTAMP||'' FROM DUAL"
+	var dbTz, tz, ts string
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &ts); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
-	t.Log("db timezone:", dbTz, "session timezone:", tz)
+	t.Log("db timezone:", dbTz, "session timezone:", tz, "timestamp:", ts)
 
-	today := time.Now().Truncate(24 * time.Hour)
+	today := time.Now().Truncate(time.Second)
 	for i, tim := range []time.Time{today, today.AddDate(0, 6, 0)} {
 		t.Log("local:", tim.Format(time.RFC3339))
 
-		qry = "SELECT TO_DATE('" + tim.Format("2006-01-02") + " 00:00:00', 'YYYY-MM-DD HH24:MI:SS') FROM DUAL"
+		qry = "SELECT TO_DATE('" + tim.Format("2006-01-02 15:04:05") + "', 'YYYY-MM-DD HH24:MI:SS') FROM DUAL"
 		var dbTime time.Time
 		if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTime); err != nil {
 			t.Fatal(errors.Wrap(err, qry))
@@ -2058,7 +2058,7 @@ func TestGetDBTimeZone(t *testing.T) {
 		if !dbTime.Equal(tim) {
 			msg := fmt.Sprintf("db says %s, local is %s", dbTime.Format(time.RFC3339), tim.Format(time.RFC3339))
 			if i == 0 {
-				t.Error(msg)
+				t.Error("ERROR:", msg)
 			} else {
 				t.Log(msg)
 			}
