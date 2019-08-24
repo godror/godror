@@ -722,7 +722,7 @@ END;`
 		}
 	}
 }
-func prepExec(ctx context.Context, testCon goracle.Conn, qry string, args ...driver.NamedValue) error {
+func prepExec(ctx context.Context, testCon driver.ConnPrepareContext, qry string, args ...driver.NamedValue) error {
 	stmt, err := testCon.PrepareContext(ctx, qry)
 	if err != nil {
 		return errors.Wrap(err, qry)

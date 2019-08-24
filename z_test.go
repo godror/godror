@@ -1942,8 +1942,8 @@ func TestIssue134(t *testing.T) {
 	,TASK_TYPE VARCHAR2(100)
 	,QUANTITY NUMBER );
 CREATE OR REPLACE TYPE test_PRJ_TASK_TAB_TYPE IS TABLE OF test_PRJ_TASK_OBJ_TYPE;
-CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (p_create_task_i IN PRJ_TASK_TAB_TYPE,
-	p_create_activity_i IN PRJ_ACTIVITY_TAB_TYPE,
+CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
+    p_create_task_i IN test_PRJ_TASK_TAB_TYPE,
 	p_project_id_i IN NUMBER) IS BEGIN NULL; END;`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1957,36 +1957,32 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (p_create_task_i IN PRJ_TA
 	}
 	defer cleanup()
 
-	conn, err := goracle.DriverConn(ctx, testDb)
+	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var o1, o2 *goracle.Object
+	defer tx.Rollback()
+	conn, err := goracle.DriverConn(ctx, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ot, err := conn.GetObjectType("TEST_PRJ_TASK_TAB_TYPE")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o1, err = ot.NewObject(); err != nil {
+	defer ot.Close()
+	obj, err := ot.NewObject()
+	if err != nil {
 		t.Fatal(err)
 	}
-	qry := "BEGIN :1 := test_prj_task_tab_type(); END;"
-	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: o1}); err != nil {
-		t.Fatal(errors.Wrap(err, qry))
-	}
-	if o2, err = ot.NewObject(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: o2}); err != nil {
-		t.Fatal(errors.Wrap(err, qry))
-	}
-	t.Logf("o1=%#v, o2=%#v", o1, o2)
-	qry = "BEGIN test_create_task_activity(:1, :2, :3); END;"
+	defer obj.Close()
+	t.Logf("obj=%#v", obj)
+	qry := "BEGIN test_create_task_activity(:1, :2); END;"
 	if err := prepExec(ctx, conn, qry,
-		driver.NamedValue{Value: o1, Ordinal: 1},
-		driver.NamedValue{Value: o2, Ordinal: 2},
+		driver.NamedValue{Value: &obj, Ordinal: 1},
 		driver.NamedValue{Value: 1, Ordinal: 3},
 	); err != nil {
-		t.Error(errors.Wrapf(err, "%s [%#v, %#v]", qry, o1, o2))
+		t.Error(errors.Wrapf(err, "%s [%#v, 1]", qry, obj))
 	}
 }
 
