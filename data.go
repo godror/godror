@@ -310,6 +310,9 @@ func (d *Data) Set(v interface{}) error {
 		d.dpiData = &C.dpiData{isNull: 1}
 	}
 	switch x := v.(type) {
+	case int32:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(int64(x))
 	case int64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(x)

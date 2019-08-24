@@ -102,7 +102,7 @@ func (O *Object) Set(name string, v interface{}) error {
 	return O.SetAttribute(name, &O.scratch)
 }
 
-// ResetAttributes prepare all atributes for use the object as IN parameter
+// ResetAttributes prepare all attributes for use the object as IN parameter
 func (O *Object) ResetAttributes() error {
 	var data Data
 	for _, attr := range O.Attributes {
@@ -408,7 +408,9 @@ func (t ObjectType) NewObject() (*Object, error) {
 		C.free(unsafe.Pointer(obj))
 		return nil, t.getError()
 	}
-	return &Object{ObjectType: t, dpiObject: obj}, nil
+	O := &Object{ObjectType: t, dpiObject: obj}
+	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532<Paste>
+	return O, O.ResetAttributes()
 }
 
 // NewCollection returns a new Collection object with ObjectType type.

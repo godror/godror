@@ -632,18 +632,18 @@ func TestPlSqlObjectDirect(t *testing.T) {
 
 	const crea = `CREATE OR REPLACE PACKAGE test_pkg_obj IS
   TYPE int_tab_typ IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
-  TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(1000), dt DATE);
+  TYPE rec_typ IS RECORD (int PLS_INTEGER, num NUMBER, vc VARCHAR2(1000), c CHAR(10), dt DATE);
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 
-  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ);
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ, p_int IN PLS_INTEGER);
 END;`
 	const crea2 = `CREATE OR REPLACE PACKAGE BODY test_pkg_obj IS
-  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ) IS
+  PROCEDURE modify(p_obj IN OUT NOCOPY tab_typ, p_int IN PLS_INTEGER) IS
     v_idx PLS_INTEGER := NVL(p_obj.LAST, 0) + 1;
   BEGIN
-    p_obj(v_idx).int := p_obj.COUNT;
+    p_obj(v_idx).int := p_int;
     p_obj(v_idx).num := 314/100;
-	p_obj(v_idx).vc  := 'abraka dabra';
+	p_obj(v_idx).vc  := 'abraka';
 	p_obj(v_idx).c   := 'X';
 	p_obj(v_idx).dt  := SYSDATE;
   END modify;
@@ -684,7 +684,11 @@ END;`
 		t.Fatal(err)
 	}
 	defer elt.Close()
+	elt.ResetAttributes()
 	if err = elt.Set("C", "Z"); err != nil {
+		t.Fatal(err)
+	}
+	if err = elt.Set("INT", int32(-2)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -692,8 +696,11 @@ END;`
 	t.Logf("elt: %s", elt)
 	coll.AppendObject(elt)
 
-	const mod = "BEGIN test_pkg_obj.modify(:1); END;"
-	if err = prepExec(ctx, testCon, mod, driver.NamedValue{Ordinal: 1, Value: coll}); err != nil {
+	const mod = "BEGIN test_pkg_obj.modify(:1, :2); END;"
+	if err = prepExec(ctx, testCon, mod,
+		driver.NamedValue{Ordinal: 1, Value: coll},
+		driver.NamedValue{Ordinal: 2, Value: 42},
+	); err != nil {
 		t.Error(err)
 	}
 	t.Logf("coll: %s", coll)
@@ -702,17 +709,14 @@ END;`
 		if err = coll.GetItem(&data, i); err != nil {
 			t.Fatal(err)
 		}
+		elt.ResetAttributes()
 		elt = data.GetObject()
 
 		t.Logf("elt[%d]: %s", i, elt)
 		for attr := range elt.Attributes {
 			val, err := elt.Get(attr)
 			if err != nil {
-				if attr == "INT" {
-					t.Log(err, attr)
-				} else {
-					t.Error(err, attr)
-				}
+				t.Error(err, attr)
 			}
 			t.Logf("elt[%d].%s=%v", i, attr, val)
 		}
