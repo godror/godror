@@ -891,3 +891,108 @@ END;
 		t.Logf("%d. %d", i, n)
 	}
 }
+
+func BenchmarkObjArray(b *testing.B) {
+	cleanup := func() { testDb.Exec("DROP FUNCTION test_objarr"); testDb.Exec("DROP TYPE test_vc2000_arr") }
+	cleanup()
+	qry := "CREATE OR REPLACE TYPE test_vc2000_arr AS TABLE OF VARCHAR2(2000)"
+	if _, err := testDb.Exec(qry); err != nil {
+		b.Fatal(errors.Wrap(err, qry))
+	}
+	defer cleanup()
+	qry = `CREATE OR REPLACE FUNCTION test_objarr(p_arr IN test_vc2000_arr) RETURN PLS_INTEGER IS BEGIN RETURN p_arr.COUNT; END;`
+	if _, err := testDb.Exec(qry); err != nil {
+		b.Fatal(errors.Wrap(err, qry))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	b.Run("object", func(b *testing.B) {
+		b.StopTimer()
+		const qry = `BEGIN :1 := test_objarr(:2); END;`
+		stmt, err := testDb.PrepareContext(ctx, qry)
+		if err != nil {
+			b.Fatal(errors.Wrap(err, qry))
+		}
+		defer stmt.Close()
+		typ, err := goracle.GetObjectType(ctx, testDb, "TEST_VC2000_ARR")
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer typ.Close()
+		obj, err := typ.NewObject()
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer obj.Close()
+		coll := obj.Collection()
+
+		var rc int
+		b.StartTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			length, err := coll.Len()
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+			if b.N < 1024 {
+				for length < b.N {
+					if err = coll.Append(fmt.Sprintf("--test--%010d--", i)); err != nil {
+						b.Fatal(err)
+					}
+					length++
+				}
+			}
+			if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &rc}, obj); err != nil {
+				b.Fatal(err)
+			}
+			if rc != length {
+				b.Error("got", rc, "wanted", length)
+			}
+		}
+	})
+
+	b.Run("plsarr", func(b *testing.B) {
+		b.StopTimer()
+		const qry = `DECLARE
+  TYPE vc2000_tab_typ IS TABLE OF VARCHAR2(2000) INDEX BY PLS_INTEGER;
+  v_tbl vc2000_tab_typ := :1;
+  v_idx PLS_INTEGER;
+  v_arr test_vc2000_arr := test_vc2000_arr();
+BEGIN
+  -- copy the PL/SQL associative array to the nested table:
+  v_idx := v_tbl.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_arr.EXTEND;
+    v_arr(v_arr.LAST) := v_tbl(v_idx);
+    v_idx := v_tbl.NEXT(v_idx);
+  END LOOP;
+  -- call the procedure:
+  :2 := test_objarr(p_arr=>v_arr);
+END;`
+		stmt, err := testDb.PrepareContext(ctx, qry)
+		if err != nil {
+			b.Fatal(errors.Wrap(err, qry))
+		}
+		defer stmt.Close()
+		b.StartTimer()
+
+		var rc int
+		var array []string
+		for i := 0; i < b.N; i++ {
+			if b.N < 1024 {
+				for len(array) < b.N {
+					array = append(array, fmt.Sprintf("--test--%010d--", i))
+				}
+			}
+			if _, err := stmt.ExecContext(ctx, goracle.PlSQLArrays, array, sql.Out{Dest: &rc}); err != nil {
+				b.Fatal(err)
+			}
+			if rc != len(array) {
+				b.Error(rc)
+			}
+		}
+	})
+}
