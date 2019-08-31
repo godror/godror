@@ -89,6 +89,10 @@ const (
 	DpiMajorVersion = C.DPI_MAJOR_VERSION
 	// DpiMinorVersion is the wanted minor version of the underlying ODPI-C library.
 	DpiMinorVersion = C.DPI_MINOR_VERSION
+	// DpiPatchLevel is the patch level version of the underlying ODPI-C library
+	DpiPatchLevel = C.DPI_PATCH_LEVEL
+	// DpiVersionNumber is the underlying ODPI-C version as one number (Major * 10000 + Minor * 100 + Patch)
+	DpiVersionNumber = C.DPI_VERSION_NUMBER
 
 	// DriverName is set on the connection to be seen in the DB
 	DriverName = "gopkg.in/goracle.v2 : " + Version

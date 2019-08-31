@@ -722,7 +722,11 @@ END;`
 		for attr := range elt.Attributes {
 			val, err := elt.Get(attr)
 			if err != nil {
-				t.Error(err, attr)
+				if goracle.DpiVersionNumber <= 30201 {
+					t.Log(err, attr)
+				} else {
+					t.Error(err, attr)
+				}
 			}
 			t.Logf("elt[%d].%s=%v", i, attr, val)
 		}
