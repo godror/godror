@@ -603,7 +603,13 @@ END;`
 		var out bool
 		var num int
 		if _, err := conn.ExecContext(ctx, qry, in, sql.Out{Dest: &out}, sql.Out{Dest: &num}); err != nil {
-			t.Errorf("%q: %v", qry, err)
+			if srv, err := goracle.ServerVersion(ctx, conn); err != nil {
+				t.Log(err)
+			} else if srv.Version < 18 {
+				t.Skipf("%q: %v", qry, err)
+			} else {
+				t.Errorf("%q: %v", qry, err)
+			}
 			continue
 		}
 		t.Logf("in:%v not:%v num:%v", in, out, num)
