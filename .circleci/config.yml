@@ -30,11 +30,12 @@ jobs:
       - run: go get -t .
       - run: go test -c -covermode=atomic .
       - run: |
-          docker run -ti --rm
-              -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME
-              -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD
-              -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB
-              -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
-              oracle-instant-client:12.2
+          set -x
+          docker run -ti --rm \
+              -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME \
+              -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD \
+              -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB \
+              -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro \
+              oracle-instant-client:12.2 \
               /goracle.v2.test -test.coverprofile=coverage.txt -test.v
       - run: bash <(curl -s https://codecov.io/bash)
