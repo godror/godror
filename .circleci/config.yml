@@ -36,7 +36,7 @@ jobs:
 
       - run:
           name: Unzip Oracle Instant Client
-          command: test -s /usr/lib/oracle/instantclient_19_3/libclntsh.so || sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib'
+          command: test -s /usr/lib/oracle/instantclient_19_3/libclntsh.so || sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib/oracle'
 
       - run:
           name: ldconfig
