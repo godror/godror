@@ -27,6 +27,7 @@ jobs:
       - checkout
 
       # specify any bash command here prefixed with `run: `
+      - run: go get -t .
       - run: go test -c -covermode=atomic .
       - run: |
           docker run -ti --rm
