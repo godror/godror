@@ -16,15 +16,27 @@ jobs:
     working_directory: /go/src/gopkg.in/goracle.v2
 
     steps:
+      - checkout
+
+      - restore_cache:
+          key: oracle-instantclient-19-3
+
       - run:
           name: Download Oracle Instant Client
-          command: wget -O instantclient-basic-linux-x64.zip https://download.oracle.com/otn_software/linux/instantclient/193000/instantclient-basic-linux.x64-19.3.0.0.0dbru.zip
+          command: test -s instantclient-basic-linux-x64.zip || wget -O instantclient-basic-linux-x64.zip https://download.oracle.com/otn_software/linux/instantclient/193000/instantclient-basic-linux.x64-19.3.0.0.0dbru.zip
+
+      - save_cache:
+          key: oracle-instantclient-19-3
+          paths:
+            - instantclient-basic-linux-x64.zip
 
       - run:
           name: Unzip Oracle Instant Client
-          command: sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib && ldconfig -v /usr/lib/oracle/instantclient_19_3'
+          command: test -s /usr/lib/oracle/instantclient_19_3/libclntsh.so || sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib'
 
-      - checkout
+      - run:
+          name: ldconfig
+          command: sudo ldconfig -v /usr/lib/oracle/instantclient_19_3
 
       - run:
           name: Build test executable
