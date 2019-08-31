@@ -18,6 +18,10 @@ jobs:
     steps:
       - checkout
 
+      - run:
+          name: Build test executable
+          command: go test -c -covermode=atomic .
+
       - restore_cache:
           key: oracle-instantclient-19-3
 
@@ -39,12 +43,8 @@ jobs:
           command: sudo ldconfig -v /usr/lib/oracle/instantclient_19_3
 
       - run:
-          name: Build test executable
-          command: go test -c -covermode=atomic .
-
-      - run:
           name: Run goracle.v2.test
-          command: goracle.v2.test -test.coverprofile=coverage.txt -test.v
+          command: ./goracle.v2.test -test.coverprofile=coverage.txt -test.v
 
       - run:
           name: Upload coverage to codecov.io
