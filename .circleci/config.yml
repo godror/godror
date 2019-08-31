@@ -39,8 +39,12 @@ jobs:
           command: test -s /usr/lib/oracle/instantclient_19_3/libclntsh.so || sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib/oracle'
 
       - run:
+          name: Install Oracle Instant Client dependencies
+          command: sudo apt install libaio1
+
+      - run:
           name: ldconfig
-          command: sudo ldconfig -v /usr/lib/oracle/instantclient_19_3
+          command: sudo sh -c 'ldconfig -v /usr/lib/oracle/instantclient_19_3; ldd /usr/lib/oracle/instantclient_19_3/libclntsh.so'
 
       - run:
           name: Run goracle.v2.test
