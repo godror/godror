@@ -28,7 +28,7 @@ jobs:
             - goracle.v2.test
   test:
     docker:
-      - image: oracle-instant-client:12.2
+      - image: oracle/instantclient:19
 
     environment:
       GORACLE_DRV_TEST_USERNAME: test
@@ -52,5 +52,7 @@ workflows:
   build_and_test:
     jobs:
       - build
-      - test
+      - test:
+          requires:
+            - build
 
