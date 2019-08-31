@@ -13,21 +13,27 @@ jobs:
       # documented at https://circleci.com/docs/2.0/circleci-images/
       # - image: circleci/postgres:9.4
 
+    environment:
+      GORACLE_DRV_TEST_USERNAME: test
+      GORACLE_DRV_TEST_PASSWORD: test
+      GORACLE_DRV_TEST_DB: oracle.gthomas.eu:49161/se.oracle.gulacsi.eu
+
     #### TEMPLATE_NOTE: go expects specific checkout path representing url
     #### expecting it in the form of
     ####   /go/src/github.com/circleci/go-tool
     ####   /go/src/bitbucket.org/circleci/go-tool
-    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+    working_directory: /go/src/gopkg.in/goracle.v2
     steps:
       - checkout
 
       # specify any bash command here prefixed with `run: `
       - run: go test -c -covermode=atomic .
-      - run: docker run -ti --rm
-          -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME
-          -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD
-          -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB
-          -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
-          oracle-instant-client:12.2
-          /goracle.v2.test -test.coverprofile=coverage.txt -test.v
+      - run: |
+          docker run -ti --rm
+              -e GORACLE_DRV_TEST_USERNAME=$GORACLE_DRV_TEST_USERNAME
+              -e GORACLE_DRV_TEST_PASSWORD=$GORACLE_DRV_TEST_PASSWORD
+              -e GORACLE_DRV_TEST_DB=$GORACLE_DRV_TEST_DB
+              -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
+              oracle-instant-client:12.2
+              /goracle.v2.test -test.coverprofile=coverage.txt -test.v
       - run: bash <(curl -s https://codecov.io/bash)
