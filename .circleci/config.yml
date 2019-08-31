@@ -9,28 +9,6 @@ jobs:
 
     environment:
       GO111MODULE: "on"
-
-    working_directory: /go/src/gopkg.in/goracle.v2
-
-    steps:
-      - checkout
-
-      - run:
-          name: Install dependencies
-          command: go get -t .
-      - run:
-          name: build test executable
-          command: go test -c -covermode=atomic .
-
-      - save_cache:
-          key: goracle.v2.test-{{ .Revision }}-{{ arch }}
-          paths:
-            - goracle.v2.test
-  test:
-    docker:
-      - image: oracle/instantclient:19
-
-    environment:
       GORACLE_DRV_TEST_USERNAME: test
       GORACLE_DRV_TEST_PASSWORD: test
       GORACLE_DRV_TEST_DB: oracle.gthomas.eu:49161/se.oracle.gulacsi.eu
@@ -38,21 +16,24 @@ jobs:
     working_directory: /go/src/gopkg.in/goracle.v2
 
     steps:
-      - restore_cache:
-          key: goracle.v2.test-{{ .Revision }}-{{ arch }}
+      - run:
+          name: Download Oracle Instant Client
+          command: wget -O instantclient-basic-linux-x64.zip https://download.oracle.com/otn_software/linux/instantclient/193000/instantclient-basic-linux.x64-19.3.0.0.0dbru.zip
+
+      - run:
+          name: Unzip Oracle Instant Client
+          command: sudo sh -c 'mkdir -p /usr/lib/oracle && unzip instantclient-basic-linux-x64.zip -d /usr/lib && ldconfig -v /usr/lib/oracle/instantclient_19_3'
+
+      - checkout
+
+      - run:
+          name: Build test executable
+          command: go test -c -covermode=atomic .
 
       - run:
           name: Run goracle.v2.test
           command: goracle.v2.test -test.coverprofile=coverage.txt -test.v
+
       - run:
           name: Upload coverage to codecov.io
           command: bash <(curl -s https://codecov.io/bash)
-workflows:
-  version: 2
-  build_and_test:
-    jobs:
-      - build
-      - test:
-          requires:
-            - build
-
