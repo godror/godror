@@ -301,11 +301,12 @@ END;
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
-		t.Fatal(err)
+	qry = fmt.Sprintf("ALTER SESSION SET time_zone = 'UTC'")
+	if _, err = tx.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
 	}
 
-	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.Local)
+	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
 	for name, tC := range map[string]struct {
 		In   interface{}
 		Want string
@@ -325,7 +326,7 @@ END;
 		},
 		"dt_3": {
 			In:   []time.Time{epoch, epoch.AddDate(0, 0, -1), epoch.AddDate(0, 0, -2)},
-			Want: "1:2017-11-20T12:14:21\n2:2017-11-19T12:14:21\n3:2017-11-18T12:14:21\n",
+			Want: "1:2017-11-20T13:14:21\n2:2017-11-19T13:14:21\n3:2017-11-18T13:14:21\n",
 		},
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
