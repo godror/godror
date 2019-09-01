@@ -2069,9 +2069,9 @@ func TestGetDBTimeZone(t *testing.T) {
 	for i, tim := range []time.Time{today, today.AddDate(0, 6, 0)} {
 		t.Log("local:", tim.Format(time.RFC3339))
 
-		qry = "SELECT TO_DATE('" + tim.Format("2006-01-02 15:04:05") + "', 'YYYY-MM-DD HH24:MI:SS') FROM DUAL"
+		qry = "SELECT :1 FROM DUAL"
 		var dbTime time.Time
-		if err := tx.QueryRowContext(ctx, qry).Scan(&dbTime); err != nil {
+		if err := tx.QueryRowContext(ctx, qry, tim).Scan(&dbTime); err != nil {
 			t.Fatal(errors.Wrap(err, qry))
 		}
 		t.Log("db:", dbTime.Format(time.RFC3339))
