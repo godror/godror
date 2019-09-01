@@ -2054,7 +2054,7 @@ func TestGetDBTimeZone(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	qry := "ALTER SESSION SET time_zone = local"
+	qry := "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err := tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
