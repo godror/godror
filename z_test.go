@@ -296,6 +296,15 @@ END;
 		}
 	}
 
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
+		t.Fatal(err)
+	}
+
 	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.Local)
 	for name, tC := range map[string]struct {
 		In   interface{}
@@ -322,7 +331,7 @@ END;
 		typ := strings.SplitN(name, "_", 2)[0]
 		qry := "BEGIN :1 := " + pkg + ".in_" + typ + "(:2); END;"
 		var res string
-		if _, err := testDb.ExecContext(ctx, qry, goracle.PlSQLArrays,
+		if _, err := tx.ExecContext(ctx, qry, goracle.PlSQLArrays,
 			sql.Out{Dest: &res}, tC.In,
 		); err != nil {
 			t.Error(errors.Wrapf(err, "%q. %s %+v", name, qry, tC.In))
@@ -378,6 +387,9 @@ func TestInOutArray(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
+		t.Fatal(err)
+	}
 
 	pkg := strings.ToUpper("test_pkg" + tblSuffix)
 	qry := `CREATE OR REPLACE PACKAGE ` + pkg + ` AS
@@ -499,7 +511,7 @@ END;
 		today,
 	}
 
-	goracle.EnableDbmsOutput(ctx, testDb)
+	goracle.EnableDbmsOutput(ctx, conn)
 
 	opts := []cmp.Option{
 		cmp.Comparer(func(x, y time.Time) bool {
@@ -528,7 +540,7 @@ END;
 			nm := strings.SplitN(tC.Name, "-", 2)[0]
 			qry = "BEGIN " + pkg + ".inout_" + nm + "(:1); END;"
 			dst := copySlice(tC.In)
-			if _, err := testDb.ExecContext(ctx, qry,
+			if _, err := conn.ExecContext(ctx, qry,
 				goracle.PlSQLArrays,
 				sql.Out{Dest: dst, In: true},
 			); err != nil {
@@ -541,7 +553,7 @@ END;
 			}
 			t.Errorf("%s: %s", tC.Name, cmp.Diff(got, tC.Want))
 			var buf bytes.Buffer
-			if err := goracle.ReadDbmsOutput(ctx, &buf, testDb); err != nil {
+			if err := goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 				t.Error(err)
 			}
 			t.Log("OUTPUT:", buf.String())
@@ -550,7 +562,7 @@ END;
 
 	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	t.Run("p2", func(t *testing.T) {
-		if _, err := testDb.ExecContext(ctx,
+		if _, err := conn.ExecContext(ctx,
 			"BEGIN "+pkg+".p2(:1, :2, :3); END;",
 			goracle.PlSQLArrays,
 			//sql.Out{Dest: &intgr, In: true},
@@ -588,6 +600,9 @@ func TestOutParam(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
+		t.Fatal(err)
+	}
 	pkg := strings.ToUpper("test_p1" + tblSuffix)
 	qry := `CREATE OR REPLACE PROCEDURE
 ` + pkg + `(p_int IN OUT INTEGER, p_num IN OUT NUMBER, p_vc IN OUT VARCHAR2, p_dt IN OUT DATE, p_lob IN OUT CLOB)
@@ -599,13 +614,13 @@ BEGIN
   p_dt := NVL(p_dt + 1, SYSDATE);
   p_lob := NULL;
 END;`
-	if _, err = testDb.ExecContext(ctx, qry); err != nil {
+	if _, err = conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PROCEDURE " + pkg)
 
 	qry = "BEGIN " + pkg + "(:1, :2, :3, :4, :5); END;"
-	stmt, err := testDb.PrepareContext(ctx, qry)
+	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
@@ -1305,7 +1320,7 @@ func TestRanaOraIssue244(t *testing.T) {
 			"sql: transaction has already been committed or rolled back":
 			return
 		}
-		if strings.Contains(errS, "ORA-12516:") {
+		if strings.Contains(errS, "ORA-12516:") || strings.Contains(errS, "ORA-24496:") {
 			t.Log(err)
 		} else {
 			t.Error(err)
@@ -2034,12 +2049,21 @@ func TestGetDBTimeZone(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	qry := "SELECT DBTIMEZONE, SESSIONTIMEZONE, SYSTIMESTAMP||'' FROM DUAL"
-	var dbTz, tz, ts string
-	if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &ts); err != nil {
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	qry := "ALTER SESSION SET time_zone = local"
+	if _, err := tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Wrap(err, qry))
 	}
-	t.Log("db timezone:", dbTz, "session timezone:", tz, "timestamp:", ts)
+	qry = "SELECT DBTIMEZONE, SESSIONTIMEZONE, SYSTIMESTAMP||'', LOCALTIMESTAMP||'' FROM DUAL"
+	var dbTz, tz, sts, lts string
+	if err := tx.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &sts, &lts); err != nil {
+		t.Fatal(errors.Wrap(err, qry))
+	}
+	t.Log("db timezone:", dbTz, "session timezone:", tz, "systimestamp:", sts, "localtimestamp:", lts)
 
 	today := time.Now().Truncate(time.Second)
 	for i, tim := range []time.Time{today, today.AddDate(0, 6, 0)} {
@@ -2047,7 +2071,7 @@ func TestGetDBTimeZone(t *testing.T) {
 
 		qry = "SELECT TO_DATE('" + tim.Format("2006-01-02 15:04:05") + "', 'YYYY-MM-DD HH24:MI:SS') FROM DUAL"
 		var dbTime time.Time
-		if err := testDb.QueryRowContext(ctx, qry).Scan(&dbTime); err != nil {
+		if err := tx.QueryRowContext(ctx, qry).Scan(&dbTime); err != nil {
 			t.Fatal(errors.Wrap(err, qry))
 		}
 		t.Log("db:", dbTime.Format(time.RFC3339))
