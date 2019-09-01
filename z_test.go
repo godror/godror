@@ -746,7 +746,7 @@ func TestExecuteMany(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, "ALTER SESSION SET time_zone ='UTC'"); err != nil {
+	if _, err := tx.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
 		t.Fatal(err)
 	}
 	// This is instead of now: a nice moment in time right before the summer time shift
