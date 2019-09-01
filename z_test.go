@@ -850,7 +850,8 @@ func TestExecuteMany(t *testing.T) {
 		}
 		t.Logf("%d. dt=%v", i, dt)
 		if !dt.Equal(dates[i]) {
-			if dt.String() == "2017-10-29 02:27:53 +0100 CET" && dates[i].String() == "2017-10-29 00:27:53 +0000 UTC" {
+			if fmt.Sprintf("%v", dt) == "2017-10-29 02:27:53 +0100 CET" &&
+				fmt.Sprintf("%v", dates[i]) == "2017-10-29 00:27:53 +0000 UTC" {
 				t.Logf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
 			} else {
 				t.Errorf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
