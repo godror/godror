@@ -728,14 +728,9 @@ func TestExecuteMany(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	conn, err := testDb.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
 	tbl := "test_em" + tblSuffix
-	conn.ExecContext(ctx, "DROP TABLE "+tbl)
-	conn.ExecContext(ctx, "CREATE TABLE "+tbl+" (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	const num = 1000
@@ -746,7 +741,12 @@ func TestExecuteMany(t *testing.T) {
 	strs := make([]string, num)
 	dates := make([]time.Time, num)
 
-	if _, err := conn.ExecContext(ctx, "ALTER SESSION SET time_zone ='UTC'"); err != nil {
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "ALTER SESSION SET time_zone ='UTC'"); err != nil {
 		t.Fatal(err)
 	}
 	// This is instead of now: a nice moment in time right before the summer time shift
@@ -772,7 +772,7 @@ func TestExecuteMany(t *testing.T) {
 		{"f_vc", strs},
 		{"f_dt", dates},
 	} {
-		res, execErr := conn.ExecContext(ctx,
+		res, execErr := tx.ExecContext(ctx,
 			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
 			tc.Value)
 		if execErr != nil {
@@ -786,10 +786,16 @@ func TestExecuteMany(t *testing.T) {
 			t.Errorf("%d. %q: wanted %d rows, got %d", i, tc.Name, num, ra)
 		}
 	}
+	tx.Rollback()
 
-	conn.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
+	testDb.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
 
-	res, err := conn.ExecContext(ctx,
+	if tx, err = testDb.BeginTx(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
 		`INSERT INTO `+tbl+ //nolint:gas
 			` (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
 			VALUES
@@ -805,7 +811,7 @@ func TestExecuteMany(t *testing.T) {
 		t.Errorf("wanted %d rows, got %d", num, ra)
 	}
 
-	rows, err := conn.QueryContext(ctx,
+	rows, err := tx.QueryContext(ctx,
 		"SELECT * FROM "+tbl+" ORDER BY F_id", //nolint:gas
 	)
 	if err != nil {
