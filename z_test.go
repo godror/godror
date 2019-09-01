@@ -745,6 +745,10 @@ func TestExecuteMany(t *testing.T) {
 	floats := make([]float64, num)
 	strs := make([]string, num)
 	dates := make([]time.Time, num)
+
+	if _, err := conn.ExecContext(ctx, "ALTER SESSION SET time_zone ='UTC'"); err != nil {
+		t.Fatal(err)
+	}
 	// This is instead of now: a nice moment in time right before the summer time shift
 	now := time.Date(2017, 10, 29, 1, 27, 53, 0, time.Local).Truncate(time.Second)
 	ids := make([]int, num)
