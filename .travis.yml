@@ -12,15 +12,13 @@ go_import_path: gopkg.in/goracle.v2
 
 env:
     global:
+        - GO111MODULE=on
         - GORACLE_DRV_TEST_USERNAME=test
         - GORACLE_DRV_TEST_PASSWORD=test
         - GORACLE_DRV_TEST_DB=oracle.gthomas.eu:49161/se.oracle.gulacsi.eu
 
 before_install:
     - docker build -t oracle-instant-client:12.2 ./contrib/oracle-instant-client
-
-install:
-    - go get -t .
 
 script:
     - go test -c -covermode=atomic .
