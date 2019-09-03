@@ -63,6 +63,7 @@ type conn struct {
 	newSession    bool
 	timeZone      *time.Location
 	tzOffSecs     int
+	objTypes      map[string]ObjectType
 }
 
 func (c *conn) getError() error {
