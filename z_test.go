@@ -2001,7 +2001,6 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ot.Close()
 	obj, err := ot.NewObject()
 	if err != nil {
 		t.Fatal(err)
@@ -2231,7 +2230,6 @@ END;`
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cOt.Close()
 	t.Log(cOt)
 
 	// create object from the type

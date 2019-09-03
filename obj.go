@@ -409,6 +409,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 			c.objTypes = make(map[string]ObjectType)
 		}
 		c.objTypes[name] = t
+		c.objTypes[t.FullName()] = t
 	}
 	return t, err
 }
@@ -439,8 +440,10 @@ func (t ObjectType) NewCollection() (*ObjectCollection, error) {
 }
 
 // Close releases a reference to the object type.
-func (t *ObjectType) Close() error {
-
+func (t *ObjectType) close() error {
+	if t == nil {
+		return nil
+	}
 	for _, attr := range t.Attributes {
 		err := attr.Close()
 		if err != nil {

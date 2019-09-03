@@ -297,7 +297,6 @@ func TestPLSQLTypes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer objType.Close()
 
 		obj, err := objType.NewObject()
 		if err != nil {
@@ -337,7 +336,6 @@ func TestPLSQLTypes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer objType.Close()
 
 		for tName, tCase := range map[string]struct {
 			in      MyRecord
@@ -379,7 +377,6 @@ func TestPLSQLTypes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer objType.Close()
 
 		items := []*MyRecord{&MyRecord{ID: 1, Txt: "test - 2"}, &MyRecord{ID: 2, Txt: "test - 4"}}
 
@@ -430,7 +427,6 @@ func TestPLSQLTypes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer tableObjType.Close()
 
 		recordObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
@@ -674,7 +670,6 @@ END;`
 		t.Log(err)
 		t.Skipf("client=%d or server=%d < 12", clientVersion.Version, serverVersion.Version)
 	}
-	defer cOt.Close()
 	t.Log(cOt)
 
 	// create object from the type
@@ -930,7 +925,6 @@ func BenchmarkObjArray(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		defer typ.Close()
 		obj, err := typ.NewObject()
 		if err != nil {
 			b.Fatal(err)
