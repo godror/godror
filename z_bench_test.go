@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 	goracle "gopkg.in/goracle.v2"
 )
 
@@ -91,7 +91,7 @@ END tst_bench_25;`,
 			if strings.HasPrefix(qry, "DROP TABLE ") {
 				continue
 			}
-			b.Fatal(errors.Wrap(err, qry))
+			b.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 
@@ -205,7 +205,7 @@ END tst_bench_inout;`,
 			if strings.HasPrefix(qry, "DROP TABLE ") {
 				continue
 			}
-			b.Fatal(errors.Wrap(err, qry))
+			b.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 

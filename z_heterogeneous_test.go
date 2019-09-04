@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -47,7 +47,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 
 	var testHeterogeneousDB *sql.DB
 	if testHeterogeneousDB, err = sql.Open("goracle", testHeterogeneousConStr); err != nil {
-		t.Fatal(errors.Wrap(err, testHeterogeneousConStr))
+		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
 
@@ -67,7 +67,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
 	} {
 		if _, err := conn.ExecContext(ctx, qry); err != nil {
-			t.Skip(errors.Wrap(err, qry))
+			t.Skip(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 

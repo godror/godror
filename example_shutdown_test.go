@@ -20,7 +20,7 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -37,7 +37,7 @@ func exampleStartup(startupMode goracle.StartupMode) error {
 	dsn := "oracle://?sysdba=1&prelim=1"
 	db, err := sql.Open("goracle", dsn)
 	if err != nil {
-		log.Fatal(errors.Wrap(err, dsn))
+		log.Fatal(errors.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 
@@ -73,7 +73,7 @@ func ExampleShutdown() {
 	dsn := "oracle://?sysdba=1" // equivalent to "/ as sysdba"
 	db, err := sql.Open("goracle", dsn)
 	if err != nil {
-		log.Fatal(errors.Wrap(err, dsn))
+		log.Fatal(errors.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 

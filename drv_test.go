@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 func TestFromErrorInfo(t *testing.T) {
@@ -75,7 +75,7 @@ func TestParseTZ(t *testing.T) {
 	} {
 		i, err := parseTZ(k)
 		if err != nil {
-			t.Fatal(errors.Wrap(err, k))
+			t.Fatal(errors.Errorf("%s: %w", k, err))
 		}
 		if i != v {
 			t.Errorf("%s. got %d, wanted %d.", k, i, v)

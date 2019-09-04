@@ -34,7 +34,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 type stmtOptions struct {
@@ -204,7 +204,10 @@ func (st *statement) close() error {
 	if c == nil {
 		return driver.ErrBadConn
 	}
-	return errors.Wrap(c.getError(), "statement/dpiStmt_release")
+	if err := c.getError(); err != nil {
+		return errors.Errorf("statement/dpiStmt_release: %w", err)
+	}
+	return nil
 }
 
 func (st *statement) cleanup() error {
@@ -228,7 +231,10 @@ func (st *statement) cleanup() error {
 	if c == nil {
 		return driver.ErrBadConn
 	}
-	return errors.Wrap(c.getError(), "statement/dpiStmt_release")
+	if err := c.getError(); err != nil {
+		return errors.Errorf("statement/dpiStmt_release: %w", err)
+	}
+	return nil
 }
 
 // Exec executes a query that doesn't return rows, such
@@ -335,12 +341,12 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if err == nil {
 				var info C.dpiStmtInfo
 				if C.dpiStmt_getInfo(st.dpiStmt, &info) == C.DPI_FAILURE {
-					err = errors.Wrap(st.getError(), "getInfo")
+					err = errors.Errorf("getInfo: %w", st.getError())
 				}
 				st.isReturning = info.isReturning != 0
 				return
 			}
-			cdr, ok := errors.Cause(err).(interface {
+			cdr, ok := errors.Unwrap(err).(interface {
 				Code() int
 			})
 			if !ok {
@@ -356,7 +362,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			break
 		}
-		done <- maybeBadConn(errors.Wrapf(err, "dpiStmt_execute(mode=%d arrLen=%d)", mode, st.arrLen))
+		if err == nil {
+			done <- nil
+			return
+		}
+		done <- maybeBadConn(errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err))
 	}()
 
 	select {
@@ -393,7 +403,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			data := &st.data[i][0]
 			if C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) == C.DPI_FAILURE {
 				err = st.getError()
-				return nil, errors.Wrapf(closeIfBadConn(err), "%d.getReturnedData", i)
+				return nil, errors.Errorf("%d.getReturnedData: %w", i, closeIfBadConn(err))
 			}
 			if n == 0 {
 				st.data[i] = st.data[i][:0]
@@ -407,7 +417,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				if Log != nil {
 					Log("get", i, "error", err)
 				}
-				return nil, errors.Wrapf(closeIfBadConn(err), "%d. get[%d]", i, 0)
+				return nil, errors.Errorf("%d. get[%d]: %w", i, 0, closeIfBadConn(err))
 			}
 			continue
 		}
@@ -417,14 +427,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if Log != nil {
 				Log("msg", "getNumElementsInArray", "i", i, "error", err)
 			}
-			return nil, errors.Wrapf(closeIfBadConn(err), "%d.getNumElementsInArray", i)
+			return nil, errors.Errorf("%d.getNumElementsInArray: %w", i, closeIfBadConn(err))
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		if err = get(dest, st.data[i][:n]); err != nil {
 			if Log != nil {
 				Log("msg", "get", "i", i, "n", n, "error", err)
 			}
-			return nil, errors.Wrapf(closeIfBadConn(err), "%d. get", i)
+			return nil, errors.Errorf("%d. get: %w", i, closeIfBadConn(err))
 		}
 	}
 	var count C.uint64_t
@@ -504,7 +514,11 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				}
 			}
 		}
-		done <- maybeBadConn(errors.Wrap(err, "dpiStmt_execute"))
+		if err == nil {
+			done <- nil
+			return
+		}
+		done <- maybeBadConn(errors.Errorf("dpiStmt_execute: %w", err))
 	}()
 
 	select {
@@ -726,7 +740,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 
 		var err error
 		if value, err = st.bindVarTypeSwitch(info, &(st.gets[i]), value); err != nil {
-			return errors.Wrapf(err, "%d. arg", i+1)
+			return errors.Errorf("%d. arg: %w", i+1, err)
 		}
 
 		var rv reflect.Value
@@ -760,7 +774,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 				st.vars[i] = nil
 			}
 			if st.vars[i], st.data[i], err = st.newVar(vi); err != nil {
-				return errors.WithMessage(err, fmt.Sprintf("%d", i))
+				return errors.Errorf("%d: %w", i, err)
 			}
 			st.varInfos[i] = vi
 		}
@@ -773,7 +787,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 					Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
 				}
 				if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) == C.DPI_FAILURE {
-					return errors.Wrapf(st.getError(), "setNumElementsInArray[%d](%d)", i, 0)
+					return errors.Errorf("setNumElementsInArray[%d](%d): %w", i, 0, st.getError())
 				}
 			}
 			continue
@@ -784,7 +798,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 				Log("msg", "set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
 			}
 			if err := info.set(dv, data[:1], value); err != nil {
-				return errors.Wrapf(err, "set(data[%d][%d], %#v (%T))", i, 0, value, value)
+				return errors.Errorf("set(data[%d][%d], %#v (%T)): %w", i, 0, value, value, err)
 			}
 			continue
 		}
@@ -796,7 +810,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 				Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
 			}
 			if C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) == C.DPI_FAILURE {
-				return errors.Wrapf(st.getError(), "%+v.setNumElementsInArray[%d](%d)", dv, i, n)
+				return errors.Errorf("%+v.setNumElementsInArray[%d](%d): %w", dv, i, n, st.getError())
 			}
 		}
 		//fmt.Println("n:", len(st.data[i]))
@@ -809,7 +823,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		for i, v := range st.vars {
 			//if Log != nil {Log("C", "dpiStmt_bindByPos", "dpiStmt", st.dpiStmt, "i", i, "v", v) }
 			if C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) == C.DPI_FAILURE {
-				return errors.Wrapf(st.getError(), "bindByPos[%d]", i)
+				return errors.Errorf("bindByPos[%d]: %w", i, st.getError())
 			}
 		}
 		return nil
@@ -824,7 +838,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		res := C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i])
 		C.free(unsafe.Pointer(cName))
 		if res == C.DPI_FAILURE {
-			return errors.Wrapf(st.getError(), "bindByName[%q]", name)
+			return errors.Errorf("bindByName[%q]: %w", name, st.getError())
 		}
 	}
 	return nil
@@ -848,7 +862,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 				if isValuer {
 					var err error
 					if value, err = vlr.Value(); err != nil {
-						return value, errors.Wrap(err, "arg.Value()")
+						return value, errors.Errorf("arg.Value(): %w", err)
 					}
 					return st.bindVarTypeSwitch(info, get, value)
 				}
@@ -1109,7 +1123,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 		var err error
 		if value, err = vlr.Value(); err != nil {
-			return value, errors.Wrap(err, "arg.Value()")
+			return value, errors.Errorf("arg.Value(): %w", err)
 		}
 		return st.bindVarTypeSwitch(info, get, value)
 	}
@@ -1733,7 +1747,7 @@ func (c *conn) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
 		*row = &rows{
-			err: errors.Wrapf(io.EOF, "getNumQueryColumns: %v", c.getError()),
+			err: errors.Errorf("getNumQueryColumns: %w: %w", c.getError(), io.EOF),
 		}
 		return nil
 	}
@@ -1808,7 +1822,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		}
 		var lob *C.dpiLob
 		if C.dpiConn_newTempLob(c.dpiConn, typ, &lob) == C.DPI_FAILURE {
-			return errors.Wrapf(c.getError(), "newTempLob(typ=%d)", typ)
+			return errors.Errorf("newTempLob(typ=%d): %w", typ, c.getError())
 		}
 		var chunkSize C.uint32_t
 		_ = C.dpiLob_getChunkSize(lob, &chunkSize)
@@ -1900,7 +1914,7 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 		}
 		data[i].isNull = 0
 		if C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) == C.DPI_FAILURE {
-			return errors.WithMessage(c.getError(), "setFromObject")
+			return errors.Errorf("setFromObject: %w", c.getError())
 		}
 	}
 	return nil
@@ -1989,7 +2003,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 	var ti C.dpiDataTypeInfo
 	for i := 0; i < colCount; i++ {
 		if C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info) == C.DPI_FAILURE {
-			return nil, errors.Wrapf(st.getError(), "getQueryInfo[%d]", i)
+			return nil, errors.Errorf("getQueryInfo[%d]: %w", i, st.getError())
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
@@ -2042,11 +2056,11 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 
 		if C.dpiStmt_define(st.dpiStmt, C.uint32_t(i+1), r.vars[i]) == C.DPI_FAILURE {
-			return nil, errors.Wrapf(st.getError(), "define[%d]", i)
+			return nil, errors.Errorf("define[%d]: %w", i, st.getError())
 		}
 	}
 	if C.dpiStmt_addRef(st.dpiStmt) == C.DPI_FAILURE {
-		return &r, errors.Wrap(st.getError(), "dpiStmt_addRef")
+		return &r, errors.Errorf("dpiStmt_addRef: %w", st.getError())
 	}
 	st.columns = r.columns
 	return &r, nil

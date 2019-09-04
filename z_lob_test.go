@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 	goracle "gopkg.in/goracle.v2"
 )
 
@@ -45,7 +45,7 @@ END;`
 
 	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.WithMessage(err, qry))
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer stmt.Close()
 	var tmp goracle.Lob
@@ -97,7 +97,7 @@ func TestStatWithLobs(t *testing.T) {
 	}
 	defer ms.Close()
 	if _, err = ms.Fetch(ctx); err != nil {
-		if c, ok := errors.Cause(err).(interface{ Code() int }); ok && c.Code() == 942 {
+		if c, ok := errors.Unwrap(err).(interface{ Code() int }); ok && c.Code() == 942 {
 			t.Skip(err)
 			return
 		}

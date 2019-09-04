@@ -73,7 +73,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 const (
@@ -362,7 +362,7 @@ func (d *drv) init() error {
 
 	var v C.dpiVersionInfo
 	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
-		return errors.Wrap(d.getError(), "getClientVersion")
+		return errors.Errorf("%s: %w", "getClientVersion", d.getError())
 	}
 	d.clientVersion.set(&v)
 	return nil
@@ -423,7 +423,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return nil, errors.Wrap(d.getError(), "initConnCreateParams")
+		return nil, errors.Errorf("initConnCreateParams: %w", d.getError())
 	}
 	connCreateParams.authMode = authMode
 	connCreateParams.externalAuth = extAuth
@@ -481,7 +481,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}()
 	var commonCreateParams C.dpiCommonCreateParams
 	if C.dpiContext_initCommonCreateParams(d.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
-		return nil, errors.Wrap(d.getError(), "initCommonCreateParams")
+		return nil, errors.Errorf("initCommonCreateParams: %w", d.getError())
 	}
 	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
 	if P.EnableEvents {
@@ -507,7 +507,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			(**C.dpiConn)(unsafe.Pointer(&dc)),
 		) == C.DPI_FAILURE {
 			C.free(unsafe.Pointer(dc))
-			return nil, errors.Wrapf(d.getError(), "username=%q sid=%q params=%+v", P.Username, P.SID, connCreateParams)
+			return nil, errors.Errorf("username=%q sid=%q params=%+v: %w", P.Username, P.SID, connCreateParams, d.getError())
 		}
 		c.dpiConn = (*C.dpiConn)(dc)
 		c.currentUser = P.Username
@@ -517,7 +517,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
-		return nil, errors.Wrap(d.getError(), "initPoolCreateParams")
+		return nil, errors.Errorf("initPoolCreateParams: %w", d.getError())
 	}
 	poolCreateParams.minSessions = DefaultPoolMinSessions
 	if P.MinSessions >= 0 {
@@ -562,7 +562,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Wrapf(d.getError(), "params=%s extAuth=%v", P.String(), extAuth)
+		return nil, errors.Errorf("params=%s extAuth=%v: %w", P.String(), extAuth, d.getError())
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
 	d.mu.Lock()
@@ -575,7 +575,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 func (c *conn) acquireConn(user, pass string) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return errors.Wrap(c.getError(), "initConnCreateParams")
+		return errors.Errorf("initConnCreateParams: %w", "", c.getError())
 	}
 
 	dc := C.malloc(C.sizeof_void)
@@ -608,7 +608,7 @@ func (c *conn) acquireConn(user, pass string) error {
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dc))
-		return errors.Wrapf(c.getError(), "acquirePoolConnection")
+		return errors.Errorf("acquirePoolConnection: %w", c.getError())
 	}
 
 	c.mu.Lock()
@@ -710,7 +710,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
 		if i < 0 {
-			return P, errors.Errorf("no '/' in connection string")
+			return P, errors.New("no '/' in connection string")
 		}
 		P.Username, connString = connString[:i], connString[i+1:]
 
@@ -738,7 +738,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	u, err := url.Parse(connString)
 	if err != nil {
-		return P, errors.Wrap(err, connString)
+		return P, errors.Errorf("%s: %w", connString, err)
 	}
 	if usr := u.User; usr != nil {
 		P.Username = usr.Username()
@@ -793,7 +793,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		var err error
 		*task.Dest, err = strconv.Atoi(s)
 		if err != nil {
-			return P, errors.Wrap(err, task.Key+"="+s)
+			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
 		}
 	}
 	if P.MinSessions > P.MaxSessions {
@@ -942,7 +942,7 @@ func parseTZ(s string) (int, error) {
 	var tz int
 	if i := strings.IndexByte(s, ':'); i >= 0 {
 		if i64, err := strconv.ParseInt(s[i+1:], 10, 6); err != nil {
-			return tz, errors.Wrap(err, s)
+			return tz, errors.Errorf("%s: %w", s, err)
 		} else {
 			tz = int(i64)
 		}
@@ -952,7 +952,7 @@ func parseTZ(s string) (int, error) {
 		if i := strings.IndexByte(s, '/'); i >= 0 {
 			targetLoc, err := time.LoadLocation(s)
 			if err != nil {
-				return tz, errors.Wrap(err, s)
+				return tz, errors.Errorf("%s: %w", s, err)
 			}
 
 			_, localOffset := time.Now().In(targetLoc).Zone()
@@ -962,7 +962,7 @@ func parseTZ(s string) (int, error) {
 		}
 	}
 	if i64, err := strconv.ParseInt(s, 10, 5); err != nil {
-		return tz, errors.Wrap(err, s)
+		return tz, errors.Errorf("%s: %w", s, err)
 	} else {
 		if i64 < 0 {
 			tz = -tz

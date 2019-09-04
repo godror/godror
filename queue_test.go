@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -56,7 +56,7 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 	if _, err = conn.ExecContext(ctx, qry); err != nil {
-		t.Log(errors.Wrap(err, qry))
+		t.Log(errors.Errorf("%s: %w", qry, err))
 	}
 	defer func() {
 		conn.ExecContext(
@@ -131,7 +131,7 @@ func TestQueueObject(t *testing.T) {
 		"CREATE OR REPLACE TYPE " + user + "." + qTypName + " IS OBJECT (f_vc20 VARCHAR2(20), f_num NUMBER, f_dt DATE/*, f_arr " + arrTypName + "*/)",
 	} {
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Log(errors.Wrap(err, qry))
+			t.Log(errors.Errorf("%s: %w", qry, err))
 			continue
 		}
 		plus.WriteString(qry)
@@ -159,7 +159,7 @@ func TestQueueObject(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Log(errors.Wrap(err, plus.String()+"\n"+qry))
+			t.Log(errors.Errorf("%s\n%s:%w", plus.String(), qry, err))
 		}
 	}
 	defer func() {

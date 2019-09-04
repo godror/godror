@@ -25,7 +25,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 // QueryColumn is the described column.
@@ -213,7 +213,10 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 	qry := "BEGIN DBMS_OUTPUT.enable(1000000); END;"
 	_, err := conn.ExecContext(ctx, qry)
-	return errors.Wrap(err, qry)
+	if err != nil {
+		return errors.Errorf("%s: %w", qry, err)
+	}
+	return nil
 }
 
 // ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
@@ -224,7 +227,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	const qry = `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
 	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
-		return errors.Wrap(err, qry)
+		return errors.Errorf("%s: %w", qry, err)
 	}
 
 	lines := make([]string, maxNumLines)
@@ -237,7 +240,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 		numLines = int64(len(lines))
 		if _, err = stmt.ExecContext(ctx, params...); err != nil {
 			_ = bw.Flush()
-			return errors.Wrap(err, qry)
+			return errors.Errorf("%s: %w", qry, err)
 		}
 		for i := 0; i < int(numLines); i++ {
 			_, _ = bw.WriteString(lines[i])
@@ -300,7 +303,7 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	defer getConnMu.Unlock()
 	var c interface{}
 	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
-		return nil, errors.Wrap(err, "getConnection")
+		return nil, errors.Errorf("getConnection: %w", err)
 	}
 	return c.(*conn), nil
 }

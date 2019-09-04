@@ -26,7 +26,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 const MsgIDLength = 16
@@ -64,7 +64,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	}
 	value := C.CString(name)
 	if C.dpiConn_newQueue(Q.conn.dpiConn, value, C.uint(len(name)), payloadType, &Q.dpiQueue) == C.DPI_FAILURE {
-		err = errors.WithMessage(Q.conn.drv.getError(), "newQueue "+name)
+		err = errors.Errorf("newQueue %q: %w", name, Q.conn.drv.getError())
 	}
 	C.free(unsafe.Pointer(value))
 	return &Q, err
@@ -78,7 +78,7 @@ func (Q *Queue) Close() error {
 		return nil
 	}
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
-		return errors.WithMessage(c.getError(), "release")
+		return errors.Errorf("release: %w", c.getError())
 	}
 	return nil
 }
@@ -91,7 +91,7 @@ func (Q *Queue) EnqOptions() (EnqOptions, error) {
 	var E EnqOptions
 	var opts *C.dpiEnqOptions
 	if C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return E, errors.WithMessage(Q.drv.getError(), "getEnqOptions")
+		return E, errors.Errorf("getEnqOptions: %w", Q.drv.getError())
 	}
 	err := E.fromOra(Q.conn.drv, opts)
 	return E, err
@@ -102,7 +102,7 @@ func (Q *Queue) DeqOptions() (DeqOptions, error) {
 	var D DeqOptions
 	var opts *C.dpiDeqOptions
 	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return D, errors.WithMessage(Q.drv.getError(), "getDeqOptions")
+		return D, errors.Errorf("getDeqOptions: %w", Q.drv.getError())
 	}
 	err := D.fromOra(Q.conn.drv, opts)
 	return D, err
@@ -129,7 +129,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 		ok = C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
 	}
 	if ok == C.DPI_FAILURE {
-		return 0, errors.WithMessage(Q.conn.getError(), "dequeue")
+		return 0, errors.Errorf("dequeue: %w", Q.conn.getError())
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
@@ -165,7 +165,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 	}()
 	for i, m := range messages {
 		if C.dpiConn_newMsgProps(Q.conn.dpiConn, &props[i]) == C.DPI_FAILURE {
-			return errors.WithMessage(Q.conn.getError(), "newMsgProps")
+			return errors.Errorf("newMsgProps: %w", Q.conn.getError())
 		}
 		if err := m.toOra(Q.drv, props[i]); err != nil {
 			return err
@@ -179,7 +179,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		ok = C.dpiQueue_enqMany(Q.dpiQueue, C.uint(len(props)), &props[0])
 	}
 	if ok == C.DPI_FAILURE {
-		return errors.Wrapf(Q.conn.getError(), "enqueue %#v", messages)
+		return errors.Errorf("enqueue %#v: %w", messages, Q.conn.getError())
 	}
 	return nil
 }
@@ -204,7 +204,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 			return
 		}
 		if firstErr == nil {
-			firstErr = errors.WithMessage(d.getError(), name)
+			firstErr = errors.Errorf("%s: %w", name, d.getError())
 		}
 	}
 	if M.Correlation != "" {
@@ -249,7 +249,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.WithMessage(c.getError(), name)
+			firstErr = errors.Errorf("%s: %w", name, c.getError())
 		}
 		return false
 	}
@@ -356,7 +356,7 @@ func (E EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.WithMessage(d.getError(), msg)
+			firstErr = errors.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}
@@ -391,7 +391,7 @@ func (D DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.WithMessage(d.getError(), msg)
+			firstErr = errors.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}

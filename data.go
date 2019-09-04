@@ -28,7 +28,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 // Data holds the data to/from Oracle.
@@ -43,7 +43,7 @@ var ErrNotSupported = errors.New("not supported")
 // NewData creates a new Data structure for the given type, populated with the given type.
 func NewData(v interface{}) (*Data, error) {
 	if v == nil {
-		return nil, errors.Wrap(ErrNotSupported, "nil type")
+		return nil, errors.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	data := Data{dpiData: &C.dpiData{isNull: 1}}
 	return &data, data.Set(v)
@@ -304,7 +304,7 @@ func (d *Data) Get() interface{} {
 // Set the data.
 func (d *Data) Set(v interface{}) error {
 	if v == nil {
-		return errors.Wrap(ErrNotSupported, "nil type")
+		return errors.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	if d.dpiData == nil {
 		d.dpiData = &C.dpiData{isNull: 1}
@@ -357,7 +357,7 @@ func (d *Data) Set(v interface{}) error {
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
 	//d.SetRowid(x)
 	default:
-		return errors.Wrapf(ErrNotSupported, "%T", v)
+		return errors.Errorf("%T: %w", ErrNotSupported, v)
 	}
 	return nil
 }

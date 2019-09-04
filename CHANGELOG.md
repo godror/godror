@@ -6,12 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [2.20.0] - 2019-08-19
+## [2.20.0] - 2019-09-04
 ### Added
 - Queue support with Objects.
 
 ### Changed
 - Change Object Set/Get
+- use golang.org/x/xerrors instead of github.com/pkg/errors.
 
 ## [2.19.0] - 2019-08-15
 ### Changed

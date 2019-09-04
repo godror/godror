@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 
 	goracle "gopkg.in/goracle.v2"
 )
@@ -529,7 +529,7 @@ func TestSelectObjectTable(t *testing.T) {
 	END;`,
 	} {
 		if _, err := testDb.ExecContext(ctx, qry); err != nil {
-			t.Error(errors.Wrap(err, qry))
+			t.Error(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer cleanup()
@@ -537,13 +537,13 @@ func TestSelectObjectTable(t *testing.T) {
 	const qry = "select " + pkgName + ".FUNC_1('aa','bb') from dual"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Wrap(err, qry))
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var objI interface{}
 		if err = rows.Scan(&objI); err != nil {
-			t.Fatal(errors.Wrap(err, qry))
+			t.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 		obj := goracle.ObjectCollection{Object: objI.(*goracle.Object)}
 		defer obj.Close()
@@ -593,7 +593,7 @@ BEGIN
   p_num := CASE WHEN p_in THEN 1 ELSE 0 END;
 END;`
 	if _, err := conn.ExecContext(ctx, crQry); err != nil {
-		t.Fatal(errors.Wrap(err, crQry))
+		t.Fatal(errors.Errorf("%s: %w", crQry, err))
 	}
 	defer cleanup()
 
@@ -735,11 +735,14 @@ END;`
 func prepExec(ctx context.Context, testCon driver.ConnPrepareContext, qry string, args ...driver.NamedValue) error {
 	stmt, err := testCon.PrepareContext(ctx, qry)
 	if err != nil {
-		return errors.Wrap(err, qry)
+		return errors.Errorf("%s: %w", qry, err)
 	}
 	_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, args)
 	stmt.Close()
-	return errors.Wrap(err, qry)
+	if err != nil {
+		return errors.Errorf("%s: %w", qry, err)
+	}
+	return nil
 }
 
 func TestPlSqlObject(t *testing.T) {
@@ -758,7 +761,7 @@ func TestPlSqlObject(t *testing.T) {
   TYPE tab_typ IS TABLE OF rec_typ INDEX BY PLS_INTEGER;
 END;`
 	if _, err = conn.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Wrap(err, qry))
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer testDb.Exec("DROP PACKAGE " + pkg)
 
@@ -830,7 +833,7 @@ END;
 		}
 		qry = "CREATE OR" + qry
 		if _, err := testDb.ExecContext(ctx, qry); err != nil {
-			t.Fatal(errors.Wrap(err, qry))
+			t.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 
@@ -907,12 +910,12 @@ func BenchmarkObjArray(b *testing.B) {
 	cleanup()
 	qry := "CREATE OR REPLACE TYPE test_vc2000_arr AS TABLE OF VARCHAR2(2000)"
 	if _, err := testDb.Exec(qry); err != nil {
-		b.Fatal(errors.Wrap(err, qry))
+		b.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer cleanup()
 	qry = `CREATE OR REPLACE FUNCTION test_objarr(p_arr IN test_vc2000_arr) RETURN PLS_INTEGER IS BEGIN RETURN p_arr.COUNT; END;`
 	if _, err := testDb.Exec(qry); err != nil {
-		b.Fatal(errors.Wrap(err, qry))
+		b.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -923,7 +926,7 @@ func BenchmarkObjArray(b *testing.B) {
 		const qry = `BEGIN :1 := test_objarr(:2); END;`
 		stmt, err := testDb.PrepareContext(ctx, qry)
 		if err != nil {
-			b.Fatal(errors.Wrap(err, qry))
+			b.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 		defer stmt.Close()
 		typ, err := goracle.GetObjectType(ctx, testDb, "TEST_VC2000_ARR")
@@ -984,7 +987,7 @@ BEGIN
 END;`
 		stmt, err := testDb.PrepareContext(ctx, qry)
 		if err != nil {
-			b.Fatal(errors.Wrap(err, qry))
+			b.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 		defer stmt.Close()
 		b.StartTimer()

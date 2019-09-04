@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 func TestParseConnString(t *testing.T) {
@@ -106,7 +106,7 @@ func TestParseConnString(t *testing.T) {
 
 func TestMaybeBadConn(t *testing.T) {
 	want := driver.ErrBadConn
-	if got := maybeBadConn(errors.Wrap(want, "bad")); got != want {
+	if got := maybeBadConn(errors.Errorf("bad: %w", want)); got != want {
 		t.Errorf("got %v, wanted %v", got, want)
 	}
 }

@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 var _ = driver.Connector((*connector)(nil))
@@ -93,7 +93,7 @@ func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 			qry := fmt.Sprintf("ALTER SESSION SET %s = '%s'", k, strings.Replace(v, "'", "''", -1))
 			st, err := cx.Prepare(qry)
 			if err != nil {
-				return errors.Wrap(err, qry)
+				return errors.Errorf("%s: %w", qry, err)
 			}
 			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
 			st.Close()

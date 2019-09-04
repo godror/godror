@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 	goracle "gopkg.in/goracle.v2"
 )
 
@@ -45,7 +45,7 @@ func TestQRCN(t *testing.T) {
 	}
 	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
-		errS := errors.Cause(err).Error()
+		errS := errors.Unwrap(err).Error()
 		if strings.Contains(errS, "ORA-29970:") || strings.Contains(errS, "ORA-65131:") {
 			t.Skip(err.Error())
 		} else if strings.Contains(errS, "ORA-29972:") {
@@ -65,7 +65,7 @@ func TestQRCN(t *testing.T) {
 	qry := "SELECT regid, table_name FROM USER_CHANGE_NOTIFICATION_REGS"
 	rows, err := testDb.Query(qry)
 	if err != nil {
-		t.Fatal(errors.Wrap(err, qry))
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	t.Log("--- Registrations ---")
 	for rows.Next() {

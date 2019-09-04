@@ -22,7 +22,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 // Statement can Parse and Print Oracle connection descriptor (DESRIPTION=(ADDRESS=...)) format.
@@ -62,7 +62,7 @@ func (cs *Statement) Parse(s string) (string, error) {
 	}
 	i := strings.IndexByte(s[1:], '=') + 1
 	if i <= 0 || strings.Contains(s[1:i], ")") {
-		return s, errors.WithMessage(errors.New("no = after ("), s)
+		return s, errors.Errorf("no = after ( in %q", s)
 	}
 	cs.Name = s[1:i]
 	s = ltrim(s[i+1:])
@@ -72,7 +72,7 @@ func (cs *Statement) Parse(s string) (string, error) {
 	}
 	if s[0] != '(' {
 		if i = strings.IndexByte(s, ')'); i < 0 || strings.Contains(s[1:i], "(") {
-			return s, errors.WithMessage(errors.New("no ) after ="), s)
+			return s, errors.Errorf("no ) after = in %q", s)
 		}
 		cs.Value = s[:i]
 		s = ltrim(s[i+1:])

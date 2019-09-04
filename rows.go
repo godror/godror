@@ -30,7 +30,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pkg/errors"
+	errors "golang.org/x/xerrors"
 )
 
 var _ = driver.Rows((*rows)(nil))
@@ -91,7 +91,7 @@ func (r *rows) Close() error {
 	}
 	var err error
 	if C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
-		err = errors.Wrap(r.getError(), "rows/dpiStmt_release")
+		err = errors.Errorf("rows/dpiStmt_release: %w", r.getError())
 	}
 	return err
 }
@@ -280,7 +280,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if r.fetched == 0 {
 		var moreRows C.int
 		if C.dpiStmt_fetchRows(r.dpiStmt, C.uint32_t(r.statement.FetchRowCount()), &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
-			return errors.Wrap(r.getError(), "Next")
+			return errors.Errorf("Next: %w", r.getError())
 		}
 		if Log != nil {
 			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
@@ -296,7 +296,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				var n C.uint32_t
 				var data *C.dpiData
 				if C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data) == C.DPI_FAILURE {
-					return errors.Wrapf(r.getError(), "getReturnedData[%d]", i)
+					return errors.Errorf("getReturnedData[%d]: %w", i, r.getError())
 				}
 				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
@@ -471,7 +471,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			var colCount C.uint32_t
 			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
-				return errors.Wrap(r.getError(), "getNumQueryColumns")
+				return errors.Errorf("getNumQueryColumns: %w", r.getError())
 			}
 			st.Lock()
 			r2, err := st.openRows(int(colCount))
@@ -571,7 +571,7 @@ func (r *rows) getImplicitResult() {
 		r.origSt = st
 	}
 	if C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) == C.DPI_FAILURE {
-		r.nextRsErr = errors.Wrap(r.getError(), "getImplicitResult")
+		r.nextRsErr = errors.Errorf("getImplicitResult: %w", r.getError())
 	}
 }
 func (r *rows) HasNextResultSet() bool {
@@ -595,14 +595,14 @@ func (r *rows) NextResultSet() error {
 			return r.nextRsErr
 		}
 		if r.nextRs == nil {
-			return errors.Wrap(io.EOF, "getImplicitResult")
+			return errors.Errorf("getImplicitResult: %w", io.EOF)
 		}
 	}
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
-		return errors.Wrapf(io.EOF, "getNumQueryColumns: %v", r.getError())
+		return errors.Errorf("getNumQueryColumns: %w: %w", r.getError(), io.EOF)
 	}
 	// keep the originam statement for the succeeding NextResultSet calls.
 	nr, err := st.openRows(int(n))
