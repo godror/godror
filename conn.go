@@ -63,6 +63,7 @@ type conn struct {
 	newSession    bool
 	timeZone      *time.Location
 	tzOffSecs     int
+	objTypes      map[string]ObjectType
 }
 
 func (c *conn) getError() error {
@@ -145,10 +146,13 @@ func (c *conn) Close() error {
 	c.Lock()
 	defer c.Unlock()
 	c.setTraceTag(TraceTag{})
-	dpiConn := c.dpiConn
-	c.dpiConn = nil
+	dpiConn, objTypes := c.dpiConn, c.objTypes
+	c.dpiConn, c.objTypes = nil, nil
 	if dpiConn == nil {
 		return nil
+	}
+	for _, o := range objTypes {
+		o.close()
 	}
 	// Just to be sure, break anything in progress.
 	done := make(chan struct{})

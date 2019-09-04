@@ -387,8 +387,13 @@ func (t ObjectType) FullName() string {
 // The name is uppercased! Because here Oracle seems to be case-sensitive.
 // To leave it as is, enclose it in "-s!
 func (c *conn) GetObjectType(name string) (ObjectType, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
+	}
+	if o, ok := c.objTypes[name]; ok {
+		return o, nil
 	}
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
@@ -398,7 +403,15 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 		return ObjectType{}, errors.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, c.getError())
 	}
 	t := ObjectType{conn: c, dpiObjectType: objType}
-	return t, t.init()
+	err := t.init()
+	if err == nil {
+		if c.objTypes == nil {
+			c.objTypes = make(map[string]ObjectType)
+		}
+		c.objTypes[name] = t
+		c.objTypes[t.FullName()] = t
+	}
+	return t, err
 }
 
 // NewObject returns a new Object with ObjectType type.
@@ -427,8 +440,10 @@ func (t ObjectType) NewCollection() (*ObjectCollection, error) {
 }
 
 // Close releases a reference to the object type.
-func (t *ObjectType) Close() error {
-
+func (t *ObjectType) close() error {
+	if t == nil {
+		return nil
+	}
 	for _, attr := range t.Attributes {
 		err := attr.Close()
 		if err != nil {
