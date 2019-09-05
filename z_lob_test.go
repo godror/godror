@@ -97,7 +97,8 @@ func TestStatWithLobs(t *testing.T) {
 	}
 	defer ms.Close()
 	if _, err = ms.Fetch(ctx); err != nil {
-		if c, ok := errors.Unwrap(err).(interface{ Code() int }); ok && c.Code() == 942 {
+		var c interface{ Code() int }
+		if errors.As(err, &c); c.Code() == 942 {
 			t.Skip(err)
 			return
 		}
