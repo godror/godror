@@ -422,7 +422,7 @@ func (t ObjectType) NewObject() (*Object, error) {
 		return nil, t.getError()
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
-	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532<Paste>
+	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
 }
 

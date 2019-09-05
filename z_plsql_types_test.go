@@ -163,8 +163,13 @@ func (r MyTable) WriteObject() error {
 
 func createPackages(ctx context.Context) error {
 	qry := []string{`CREATE OR REPLACE PACKAGE test_pkg_types AS
+	TYPE my_other_record IS RECORD (
+		id    NUMBER(5),
+		txt   VARCHAR2(200)
+	);
 	TYPE my_record IS RECORD (
 		id    NUMBER(5),
+		other test_pkg_types.my_other_record,
 		txt   VARCHAR2(200)
 	);
 	TYPE my_table IS

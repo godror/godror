@@ -471,4 +471,5 @@ func (d *Data) reset() {
 	} else {
 		d.SetBytes(nil)
 	}
+	d.dpiData.isNull = 1
 }

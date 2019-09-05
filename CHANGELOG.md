@@ -6,16 +6,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
-- ObjectType cache in connection.
 
-## Changed
-- ObjectType.Close became unexported.
+### Changed
+- Object.reset set attributes to null.
 
 ## [2.20.0] - 2019-09-04
 ### Added
+- ObjectType cache in connection.
 - Queue support with Objects.
 
 ### Changed
+- ObjectType.Close became unexported.
 - Change Object Set/Get
 - use golang.org/x/xerrors instead of github.com/pkg/errors.
 
