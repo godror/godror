@@ -346,10 +346,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				st.isReturning = info.isReturning != 0
 				return
 			}
-			cdr, ok := errors.Unwrap(err).(interface {
-				Code() int
-			})
-			if !ok {
+			var cdr interface{ Code() int }
+			if !errors.As(err, &cdr) {
 				break
 			}
 			switch code := cdr.Code(); code {

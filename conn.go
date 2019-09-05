@@ -490,9 +490,8 @@ func maybeBadConn(err error) error {
 	if errors.Is(err, driver.ErrBadConn) {
 		return driver.ErrBadConn
 	}
-	if cd, ok := errors.Unwrap(err).(interface {
-		Code() int
-	}); ok {
+	var cd interface{ Code() int }
+	if errors.As(err, &cd) {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
 		switch cd.Code() {
 		case 0:
