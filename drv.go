@@ -813,6 +813,13 @@ type OraErr struct {
 	code    int
 }
 
+// AsOraErr returns the underlying *OraErr and whether it succeeded.
+func AsOraErr(err error) (*OraErr, bool) {
+	var oerr *OraErr
+	ok := errors.As(err, &oerr)
+	return oerr, ok
+}
+
 var _ = error((*OraErr)(nil))
 
 // Code returns the OraErr's error code.
