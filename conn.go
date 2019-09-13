@@ -80,7 +80,7 @@ func (c *conn) Break() error {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
-		return maybeBadConn(errors.Errorf("Break: %w", c.getError()))
+		return maybeBadConn(errors.Errorf("Break: %w", c.getError()), c)
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func (c *conn) Ping(ctx context.Context) error {
 		defer close(done)
 		failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
 		if failure {
-			done <- maybeBadConn(errors.Errorf("Ping: %w", c.getError()))
+			done <- maybeBadConn(errors.Errorf("Ping: %w", c.getError()), c)
 			return
 		}
 		done <- nil
@@ -145,6 +145,13 @@ func (c *conn) Close() error {
 	}
 	c.Lock()
 	defer c.Unlock()
+	return c.close(false)
+}
+
+func (c *conn) close(doNotReuse bool) error {
+	if c == nil {
+		return nil
+	}
 	c.setTraceTag(TraceTag{})
 	dpiConn, objTypes := c.dpiConn, c.objTypes
 	c.dpiConn, c.objTypes = nil, nil
@@ -160,14 +167,22 @@ func (c *conn) Close() error {
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
+			if Log != nil {
+				Log("msg", "TIMEOUT releasing connection")
+			}
 			C.dpiConn_breakExecution(dpiConn)
 		}
 	}()
-	rc := C.dpiConn_release(dpiConn)
+	var rc C.int
+	if doNotReuse {
+		rc = C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+	} else {
+		rc = C.dpiConn_release(dpiConn)
+	}
 	close(done)
 	var err error
 	if rc == C.DPI_FAILURE {
-		err = maybeBadConn(errors.Errorf("Close: %w", c.getError()))
+		err = maybeBadConn(errors.Errorf("Close: %w", c.getError()), nil) // avoid closing loop as maybeBadConn may call c.close if c is not nil!
 	}
 	return err
 }
@@ -235,7 +250,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 				stmt.Close()
 			}
 			if err != nil {
-				return nil, maybeBadConn(errors.Errorf("%s: %w", qry, err))
+				return nil, maybeBadConn(errors.Errorf("%s: %w", qry, err), c)
 			}
 		}
 		c.tranParams = todo
@@ -294,7 +309,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
 	) == C.DPI_FAILURE {
-		return nil, maybeBadConn(errors.Errorf("Prepare: %s: %w", query, c.getError()))
+		return nil, maybeBadConn(errors.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
 	return &statement{conn: c, dpiStmt: dpiStmt, query: query}, nil
 }
@@ -313,12 +328,12 @@ func (c *conn) endTran(isCommit bool) error {
 	//msg := "Commit"
 	if isCommit {
 		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(errors.Errorf("Commit: %w", c.getError()))
+			err = maybeBadConn(errors.Errorf("Commit: %w", c.getError()), c)
 		}
 	} else {
 		//msg = "Rollback"
 		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()))
+			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
 	c.Unlock()
@@ -483,11 +498,20 @@ func (c *conn) setCallTimeout(ctx context.Context) {
 	C.dpiConn_setCallTimeout(c.dpiConn, ms)
 }
 
-func maybeBadConn(err error) error {
+// maybeBadConn checks whether the error is because of a bad connection, and returns driver.ErrBadConn,
+// as database/sql requires.
+//
+// Also in this case, iff c != nil, closes it.
+func maybeBadConn(err error, c *conn) error {
 	if err == nil {
 		return nil
 	}
+	cl := func() {}
+	if c != nil {
+		cl = func() { c.close(true) }
+	}
 	if errors.Is(err, driver.ErrBadConn) {
+		cl()
 		return driver.ErrBadConn
 	}
 	var cd interface{ Code() int }
@@ -496,6 +520,7 @@ func maybeBadConn(err error) error {
 		switch cd.Code() {
 		case 0:
 			if strings.Contains(err.Error(), " DPI-1002: ") {
+				cl()
 				return driver.ErrBadConn
 			}
 			// cases by experience:
@@ -534,6 +559,7 @@ func maybeBadConn(err error) error {
 			27146, // post/wait initialization failed
 			28511, // lost RPC connection
 			56600: // an illegal OCI function call was issued
+			cl()
 			return driver.ErrBadConn
 		}
 	}

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - AsOraErr function
 
+### Changed
+- Really close the connection if it's bad. For #194.
+
 ## [2.20.1] - 2019-09-05
 ### Changed
 - Object.reset set attributes to null.

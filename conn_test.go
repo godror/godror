@@ -106,7 +106,7 @@ func TestParseConnString(t *testing.T) {
 
 func TestMaybeBadConn(t *testing.T) {
 	want := driver.ErrBadConn
-	if got := maybeBadConn(errors.Errorf("bad: %w", want)); got != want {
+	if got := maybeBadConn(errors.Errorf("bad: %w", want), nil); got != want {
 		t.Errorf("got %v, wanted %v", got, want)
 	}
 }

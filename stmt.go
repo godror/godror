@@ -364,7 +364,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			done <- nil
 			return
 		}
-		done <- maybeBadConn(errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err))
+		done <- maybeBadConn(errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err), nil)
 	}()
 
 	select {
@@ -454,6 +454,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			st.close()
+			st.conn.close(true)
 		}
 		return err
 	}
@@ -516,7 +517,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			done <- nil
 			return
 		}
-		done <- maybeBadConn(errors.Errorf("dpiStmt_execute: %w", err))
+		done <- maybeBadConn(errors.Errorf("dpiStmt_execute: %w", err), nil)
 	}()
 
 	select {
