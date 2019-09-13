@@ -26,6 +26,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -445,19 +446,34 @@ func (c *conn) init() error {
 	}
 	dbTZ = vals[0].(string)
 	timezone = vals[1].(string)
+
+	tz, off, err := calculateTZ(dbTZ, timezone)
+	if err != nil {
+		return err
+	}
+	c.timeZone, c.tzOffSecs = tz, off
+
+	if Log != nil {
+		Log("timezone", timezone, "tz", c.timeZone, "offSecs", c.tzOffSecs)
+	}
+	return nil
+}
+
+func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	if Log != nil {
 		Log("dbTZ", dbTZ, "timezone", timezone)
 	}
-	now := time.Now()
-	_, localOff := now.Local().Zone()
 	var tz *time.Location
+	now := time.Now()
+	_, localOff := time.Now().Local().Zone()
 	off := localOff
 	var ok bool
+	var err error
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		tz, err = time.LoadLocation(dbTZ)
 		if ok = err == nil; ok {
 			if tz == time.Local {
-				return nil
+				return tz, off, nil
 			}
 			_, off = now.In(tz).Zone()
 		} else if Log != nil {
@@ -465,26 +481,62 @@ func (c *conn) init() error {
 		}
 	}
 	if !ok {
-		if timezone == "" {
-			return errors.New("empty timezone")
-		}
-		if off, err = parseTZ(timezone); err != nil {
-			return errors.Errorf("%s: %w", timezone, err)
+		if timezone != "" {
+			if off, err = parseTZ(timezone); err != nil {
+				return tz, off, errors.Errorf("%s: %w", timezone, err)
+			}
+		} else if off, err = parseTZ(dbTZ); err != nil {
+			return tz, off, errors.Errorf("%s: %w", dbTZ, err)
 		}
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
-	if off != localOff {
-		c.tzOffSecs = off
-		if tz == nil {
-			tz = time.FixedZone(timezone, c.tzOffSecs)
+	if off != localOff && tz == nil {
+		tz = time.FixedZone(timezone, off)
+	}
+	return tz, off, nil
+}
+func parseTZ(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, io.EOF
+	}
+	if s == "Z" || s == "UTC" {
+		return 0, nil
+	}
+	var tz int
+	var ok bool
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		if i64, err := strconv.ParseInt(s[i+1:], 10, 6); err != nil {
+			return tz, errors.Errorf("%s: %w", s, err)
+		} else {
+			tz = int(i64 * 60)
 		}
-		c.timeZone = tz
+		s = s[:i]
+		ok = true
 	}
-	if Log != nil {
-		Log("timezone", timezone, "tz", c.timeZone, "offSecs", c.tzOffSecs)
+	if !ok {
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			targetLoc, err := time.LoadLocation(s)
+			if err != nil {
+				return tz, errors.Errorf("%s: %w", s, err)
+			}
+
+			_, localOffset := time.Now().In(targetLoc).Zone()
+
+			tz = localOffset
+			return tz, nil
+		}
 	}
-	return nil
+	if i64, err := strconv.ParseInt(s, 10, 5); err != nil {
+		return tz, errors.Errorf("%s: %w", s, err)
+	} else {
+		if i64 < 0 {
+			tz = -tz
+		}
+		tz += int(i64 * 3600)
+	}
+	return tz, nil
 }
 
 func (c *conn) setCallTimeout(ctx context.Context) {

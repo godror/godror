@@ -18,8 +18,6 @@ package goracle
 import (
 	"encoding/json"
 	"testing"
-
-	errors "golang.org/x/xerrors"
 )
 
 func TestFromErrorInfo(t *testing.T) {
@@ -65,20 +63,4 @@ func TestMarshalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(string(b))
-}
-
-func TestParseTZ(t *testing.T) {
-	for k, v := range map[string]int{
-		"00:00": 0, "+00:00": 0, "-00:00": 0,
-		"01:00": 3600, "+01:00": 3600, "-01:01": -3601,
-		"+02:03": 7203,
-	} {
-		i, err := parseTZ(k)
-		if err != nil {
-			t.Fatal(errors.Errorf("%s: %w", k, err))
-		}
-		if i != v {
-			t.Errorf("%s. got %d, wanted %d.", k, i, v)
-		}
-	}
 }

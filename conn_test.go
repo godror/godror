@@ -17,6 +17,8 @@ package goracle
 
 import (
 	"database/sql/driver"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -108,5 +110,42 @@ func TestMaybeBadConn(t *testing.T) {
 	want := driver.ErrBadConn
 	if got := maybeBadConn(errors.Errorf("bad: %w", want), nil); got != want {
 		t.Errorf("got %v, wanted %v", got, want)
+	}
+}
+
+func TestCalculateTZ(t *testing.T) {
+	for _, tC := range []struct {
+		dbTZ, timezone string
+		off            int
+		err            error
+	}{
+		{dbTZ: "Europe/Budapest", timezone: "+01:00", off: 7200},
+		{dbTZ: "+01:00", off: +3600},
+		{off: 1800, err: io.EOF},
+		{timezone: "+00:30", off: 1800},
+	} {
+		prefix := fmt.Sprintf("%q/%q", tC.dbTZ, tC.timezone)
+		_, off, err := calculateTZ(tC.dbTZ, tC.timezone)
+		t.Log(prefix, off, err)
+		if (err == nil) != (tC.err == nil) {
+			t.Errorf("ERR %s: wanted %v, got %v", prefix, tC.err, err)
+		} else if err == nil && off != tC.off {
+			t.Errorf("ERR %s: got %d, wanted %d.", prefix, off, tC.off)
+		}
+	}
+}
+func TestParseTZ(t *testing.T) {
+	for k, v := range map[string]int{
+		"00:00": 0, "+00:00": 0, "-00:00": 0,
+		"01:00": 3600, "+01:00": 3600, "-01:01": -3660,
+		"+02:03": 7380,
+	} {
+		i, err := parseTZ(k)
+		if err != nil {
+			t.Fatal(errors.Errorf("%s: %w", k, err))
+		}
+		if i != v {
+			t.Errorf("%s. got %d, wanted %d.", k, i, v)
+		}
 	}
 }
