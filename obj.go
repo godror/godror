@@ -469,6 +469,9 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 	if objectType == nil {
 		return nil, errors.New("objectType is nil")
 	}
+	if C.dpiObject_addRef(object) == C.DPI_FAILURE {
+		return nil, c.getError()
+	}
 	o := &Object{
 		ObjectType: ObjectType{dpiObjectType: objectType, conn: c},
 		dpiObject:  object,
