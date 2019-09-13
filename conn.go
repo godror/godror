@@ -121,6 +121,7 @@ func (c *conn) Ping(ctx context.Context) error {
 			return err
 		default:
 			_ = c.Break()
+			c.close(true)
 			return driver.ErrBadConn
 		}
 	}
@@ -508,7 +509,12 @@ func maybeBadConn(err error, c *conn) error {
 	}
 	cl := func() {}
 	if c != nil {
-		cl = func() { c.close(true) }
+		cl = func() {
+			if Log != nil {
+				Log("msg", "maybeBadConn close", "conn", c)
+			}
+			c.close(true)
+		}
 	}
 	if errors.Is(err, driver.ErrBadConn) {
 		cl()

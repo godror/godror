@@ -1374,7 +1374,7 @@ func TestExecHang(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	done := make(chan error, 3)
+	done := make(chan error, 13)
 	var wg sync.WaitGroup
 	for i := 0; i < cap(done); i++ {
 		wg.Add(1)

@@ -278,6 +278,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("error", driver.ErrBadConn)
 			}
 			st.close()
+			st.conn.close(true)
 		}
 		return err
 	}
@@ -385,6 +386,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			_ = st.Break()
 			st.cleanup()
+			st.conn.Close()
 			return nil, driver.ErrBadConn
 		}
 	}
@@ -454,7 +456,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			st.close()
-			st.conn.close(true)
+			st.conn.Close()
 		}
 		return err
 	}
@@ -537,6 +539,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			}
 			_ = st.Break()
 			st.cleanup()
+			st.conn.Close()
 			return nil, driver.ErrBadConn
 		}
 	}
