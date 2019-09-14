@@ -415,12 +415,15 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 }
 
 // NewObject returns a new Object with ObjectType type.
+//
+// As with all Objects, you MUST call Close on it when not needed anymore!
 func (t ObjectType) NewObject() (*Object, error) {
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
 	if C.dpiObjectType_createObject(t.dpiObjectType, &obj) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(obj))
 		return nil, t.getError()
 	}
+	// TODO(tgulacsi): dpiObject_addRef ?
 	O := &Object{ObjectType: t, dpiObject: obj}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()

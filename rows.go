@@ -266,6 +266,8 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 // size as the Columns() are wide.
 //
 // Next should return io.EOF when there are no more rows.
+//
+// As with all Objects, you MUST call Close on the returned Object instances when they're not needed anymore!
 func (r *rows) Next(dest []driver.Value) error {
 	if r.err != nil {
 		return r.err

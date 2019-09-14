@@ -192,6 +192,8 @@ func (d *Data) SetLob(lob *DirectLob) {
 }
 
 // GetObject gets Object from data.
+//
+// As with all Objects, you MUST call Close on it when not needed anymore!
 func (d *Data) GetObject() *Object {
 	if d == nil || d.dpiData == nil {
 		panic("null")
@@ -203,6 +205,9 @@ func (d *Data) GetObject() *Object {
 	o := C.dpiData_getObject(d.dpiData)
 	if o == nil {
 		return nil
+	}
+	if C.dpiObject_addRef(o) == C.DPI_FAILURE {
+		panic(d.ObjectType.getError())
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
 	obj.init()
