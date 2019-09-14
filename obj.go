@@ -423,7 +423,6 @@ func (t ObjectType) NewObject() (*Object, error) {
 		C.free(unsafe.Pointer(obj))
 		return nil, t.getError()
 	}
-	// TODO(tgulacsi): dpiObject_addRef ?
 	O := &Object{ObjectType: t, dpiObject: obj}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
