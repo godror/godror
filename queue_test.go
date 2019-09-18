@@ -92,6 +92,10 @@ func TestQueue(t *testing.T) {
 	t.Logf("deqOpts: %#v", deqOpts)
 
 	if err = q.Enqueue([]goracle.Message{goracle.Message{Raw: []byte("árvíztűrő tükörfúrógép")}}); err != nil {
+		var ec interface{ Code() int }
+		if errors.As(err, &ec) && ec.Code() == 24444 {
+			t.Skip(err)
+		}
 		t.Fatal("enqueue:", err)
 	}
 	msgs := make([]goracle.Message, 1)
@@ -215,6 +219,10 @@ func TestQueueObject(t *testing.T) {
 	}
 	t.Log("obj:", obj)
 	if err = q.Enqueue([]goracle.Message{goracle.Message{Object: obj}}); err != nil {
+		var ec interface{ Code() int }
+		if errors.As(err, &ec) && ec.Code() == 24444 {
+			t.Skip(err)
+		}
 		t.Fatal("enqueue:", err)
 	}
 	msgs := make([]goracle.Message, 1)

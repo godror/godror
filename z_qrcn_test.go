@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2019 Tamás Gulácsi
 //
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,6 @@ package goracle_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	errors "golang.org/x/xerrors"
@@ -45,16 +44,19 @@ func TestQRCN(t *testing.T) {
 	}
 	s, err := conn.NewSubscription("subscr", cb)
 	if err != nil {
-		errS := errors.Unwrap(err).Error()
-		if strings.Contains(errS, "ORA-29970:") || strings.Contains(errS, "ORA-65131:") {
-			t.Skip(err.Error())
-		} else if strings.Contains(errS, "ORA-29972:") {
-			t.Log("See \"https://docs.oracle.com/database/121/ADFNS/adfns_cqn.htm#ADFNS553\"")
-			var User string
-			_ = testDb.QueryRow("SELECT USER FROM DUAL").Scan(&User)
-			//t.Log("GRANT EXECUTE ON DBMS_CQ_NOTIFICATION TO "+User)
-			t.Log("GRANT CHANGE NOTIFICATION TO " + User + ";")
-			t.Skip(err.Error())
+		var ec interface{ Code() int }
+		if errors.As(err, &ec) {
+			switch ec.Code() {
+			case 29970, 65131:
+				t.Skip(err.Error())
+			case 1031, 29972:
+				t.Log("See \"https://docs.oracle.com/database/121/ADFNS/adfns_cqn.htm#ADFNS553\"")
+				var User string
+				_ = testDb.QueryRow("SELECT USER FROM DUAL").Scan(&User)
+				//t.Log("GRANT EXECUTE ON DBMS_CQ_NOTIFICATION TO "+User)
+				t.Log("GRANT CHANGE NOTIFICATION TO " + User + ";")
+				t.Skip(err.Error())
+			}
 		}
 		t.Fatalf("%+v", err)
 	}
