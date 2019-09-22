@@ -324,9 +324,9 @@ END;
 			In:   []string{"a", "", "cCc"},
 			Want: "1:a\n2:\n3:cCc\n",
 		},
-		"dt_3": {
-			In:   []time.Time{epoch, epoch.AddDate(0, 0, -1), epoch.AddDate(0, 0, -2)},
-			Want: "1:2017-11-20T13:14:21\n2:2017-11-19T13:14:21\n3:2017-11-18T13:14:21\n",
+		"dt_2": {
+			In:   []time.Time{epoch, epoch.AddDate(0, -6, 0)},
+			Want: "1:2017-11-20T12:14:21\n2:2017-05-20T12:14:21\n",
 		},
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
