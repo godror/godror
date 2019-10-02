@@ -37,8 +37,7 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
 static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
         uint32_t handleType, const char *userName, uint32_t userNameLength,
         const char *password, uint32_t passwordLength,
-        const dpiConnCreateParams *params, void **shardingKey,
-        void **superShardingKey, dpiError *error);
+        const dpiConnCreateParams *params, dpiError *error);
 static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
         void *handle, uint32_t handleType, uint32_t attribute,
         const char *action, dpiShardingKeyColumn *columns, uint8_t numColumns,
@@ -316,9 +315,20 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
         conn->sessionHandle = NULL;
 
     }
-
     conn->handle = NULL;
     conn->serverHandle = NULL;
+
+    // destroy sharding and super sharding key descriptors, if applicable
+    if (conn->shardingKey) {
+        dpiOci__descriptorFree(conn->shardingKey, DPI_OCI_DTYPE_SHARDING_KEY);
+        conn->shardingKey = NULL;
+    }
+    if (conn->superShardingKey) {
+        dpiOci__descriptorFree(conn->superShardingKey,
+                DPI_OCI_DTYPE_SHARDING_KEY);
+        conn->superShardingKey = NULL;
+    }
+
     return DPI_SUCCESS;
 }
 
@@ -417,7 +427,7 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
     // populate attributes on the session handle
     if (dpiConn__setAttributesFromCreateParams(conn, conn->sessionHandle,
             DPI_OCI_HTYPE_SESSION, userName, userNameLength, password,
-            passwordLength, createParams, NULL, NULL, error) < 0)
+            passwordLength, createParams, error) < 0)
         return DPI_FAILURE;
 
     // set the session handle on the service context handle
@@ -506,7 +516,6 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
         const char *connectString, uint32_t connectStringLength,
         dpiConnCreateParams *createParams, dpiPool *pool, dpiError *error)
 {
-    void *shardingKey = NULL, *superShardingKey = NULL;
     int externalAuth, status;
     void *authInfo;
     uint32_t mode;
@@ -548,8 +557,7 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
     // set attributes for create parameters
     if (dpiConn__setAttributesFromCreateParams(conn, authInfo,
             DPI_OCI_HTYPE_AUTHINFO, userName, userNameLength, password,
-            passwordLength, createParams, &shardingKey, &superShardingKey,
-            error) < 0) {
+            passwordLength, createParams, error) < 0) {
         dpiOci__handleFree(authInfo, DPI_OCI_HTYPE_AUTHINFO);
         return DPI_FAILURE;
     }
@@ -557,13 +565,6 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
     // get a session from the pool
     status = dpiConn__getSession(conn, mode, connectString,
             connectStringLength, createParams, authInfo, error);
-    if (status == DPI_SUCCESS && pool) {
-        if (shardingKey)
-            dpiOci__descriptorFree(shardingKey, DPI_OCI_DTYPE_SHARDING_KEY);
-        if (superShardingKey)
-            dpiOci__descriptorFree(superShardingKey,
-                    DPI_OCI_DTYPE_SHARDING_KEY);
-    }
     dpiOci__handleFree(authInfo, DPI_OCI_HTYPE_AUTHINFO);
     if (status < 0)
         return status;
@@ -864,8 +865,7 @@ static int dpiConn__setAppContext(void *handle, uint32_t handleType,
 static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
         uint32_t handleType, const char *userName, uint32_t userNameLength,
         const char *password, uint32_t passwordLength,
-        const dpiConnCreateParams *params, void **shardingKey,
-        void **superShardingKey, dpiError *error)
+        const dpiConnCreateParams *params, dpiError *error)
 {
     uint32_t purity;
 
@@ -896,17 +896,17 @@ static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
 
     // set sharding key and super sharding key parameters
     if (params->shardingKeyColumns && params->numShardingKeyColumns > 0) {
-        if (dpiConn__setShardingKey(conn, shardingKey, handle, handleType,
-                DPI_OCI_ATTR_SHARDING_KEY, "set sharding key",
+        if (dpiConn__setShardingKey(conn, &conn->shardingKey, handle,
+                handleType, DPI_OCI_ATTR_SHARDING_KEY, "set sharding key",
                 params->shardingKeyColumns, params->numShardingKeyColumns,
                 error) < 0)
             return DPI_FAILURE;
     }
     if (params->superShardingKeyColumns &&
             params->numSuperShardingKeyColumns > 0) {
-        if (dpiConn__setShardingKey(conn, superShardingKey, handle, handleType,
-                DPI_OCI_ATTR_SUPER_SHARDING_KEY, "set super sharding key",
-                params->superShardingKeyColumns,
+        if (dpiConn__setShardingKey(conn, &conn->superShardingKey, handle,
+                handleType, DPI_OCI_ATTR_SUPER_SHARDING_KEY,
+                "set super sharding key", params->superShardingKeyColumns,
                 params->numSuperShardingKeyColumns, error) < 0)
             return DPI_FAILURE;
     }

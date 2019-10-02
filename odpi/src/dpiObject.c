@@ -278,9 +278,10 @@ static int dpiObject__fromOracleValue(dpiObject *obj, dpiError *error,
             }
             break;
         case DPI_ORACLE_TYPE_NATIVE_INT:
-            if (nativeTypeNum == DPI_NATIVE_TYPE_INT64)
-                return dpiDataBuffer__fromOracleNumberAsInteger(&data->value,
-                        error, value->asNumber);
+            if (nativeTypeNum == DPI_NATIVE_TYPE_INT64) {
+                data->value.asInt64 = *value->asInt32;
+                return DPI_SUCCESS;
+            }
             break;
         case DPI_ORACLE_TYPE_NATIVE_FLOAT:
             if (nativeTypeNum == DPI_NATIVE_TYPE_FLOAT) {
@@ -440,6 +441,12 @@ static int dpiObject__toOracleValue(dpiObject *obj, dpiError *error,
             }
             break;
         case DPI_ORACLE_TYPE_NATIVE_INT:
+            if (nativeTypeNum == DPI_NATIVE_TYPE_INT64) {
+                buffer->asInt32 = (int32_t) data->value.asInt64;
+                *ociValue = &buffer->asInt32;
+                return DPI_SUCCESS;
+            }
+            break;
         case DPI_ORACLE_TYPE_NUMBER:
             *ociValue = &buffer->asNumber;
             if (nativeTypeNum == DPI_NATIVE_TYPE_INT64)
