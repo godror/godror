@@ -35,7 +35,7 @@ var zeroMsgID [MsgIDLength]byte
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
-	*conn
+	conn     *conn
 	dpiQueue *C.dpiQueue
 	name     string
 
@@ -91,7 +91,7 @@ func (Q *Queue) EnqOptions() (EnqOptions, error) {
 	var E EnqOptions
 	var opts *C.dpiEnqOptions
 	if C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return E, errors.Errorf("getEnqOptions: %w", Q.drv.getError())
+		return E, errors.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
 	}
 	err := E.fromOra(Q.conn.drv, opts)
 	return E, err
@@ -102,7 +102,7 @@ func (Q *Queue) DeqOptions() (DeqOptions, error) {
 	var D DeqOptions
 	var opts *C.dpiDeqOptions
 	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return D, errors.Errorf("getDeqOptions: %w", Q.drv.getError())
+		return D, errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
 	}
 	err := D.fromOra(Q.conn.drv, opts)
 	return D, err
@@ -167,7 +167,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		if C.dpiConn_newMsgProps(Q.conn.dpiConn, &props[i]) == C.DPI_FAILURE {
 			return errors.Errorf("newMsgProps: %w", Q.conn.getError())
 		}
-		if err := m.toOra(Q.drv, props[i]); err != nil {
+		if err := m.toOra(Q.conn.drv, props[i]); err != nil {
 			return err
 		}
 	}
