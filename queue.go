@@ -35,9 +35,10 @@ var zeroMsgID [MsgIDLength]byte
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
-	conn     *conn
-	dpiQueue *C.dpiQueue
-	name     string
+	conn           *conn
+	dpiQueue       *C.dpiQueue
+	payloadObjType ObjectType
+	name           string
 
 	mu    sync.Mutex
 	props []*C.dpiMsgProps
@@ -56,10 +57,10 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
-		if objType, err := Q.conn.GetObjectType(payloadObjectTypeName); err != nil {
+		if Q.payloadObjType, err = Q.conn.GetObjectType(payloadObjectTypeName); err != nil {
 			return nil, err
 		} else {
-			payloadType = objType.dpiObjectType
+			payloadType = Q.payloadObjType.dpiObjectType
 		}
 	}
 	value := C.CString(name)
@@ -133,7 +134,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
-		if err := messages[i].fromOra(Q.conn, p); err != nil {
+		if err := messages[i].fromOra(Q.conn, p, &Q.payloadObjType); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -242,7 +243,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	return firstErr
 }
 
-func (M *Message) fromOra(c *conn, props *C.dpiMsgProps) error {
+func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) error {
 	var firstErr error
 	OK := func(ok C.int, name string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -287,6 +288,9 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps) error {
 		tz := c.timeZone
 		if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
 			tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
+		}
+		if tz == nil {
+			tz = time.Local
 		}
 		M.Enqueued = time.Date(
 			int(ts.year), time.Month(ts.month), int(ts.day),
@@ -336,7 +340,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps) error {
 		if obj == nil {
 			M.Raw = append(make([]byte, 0, length), ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]...)
 		} else {
-			M.Object = &Object{dpiObject: obj}
+			M.Object = &Object{dpiObject: obj, ObjectType: *objType}
 		}
 	}
 	return nil
