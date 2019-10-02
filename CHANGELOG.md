@@ -5,16 +5,21 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.21.1] - 2019-10-02
+### Changed
+- Really close the connection if it's bad. For #194.
+- ODPI-C v3.2.2
+- de-embed conn from Queue.
+
+## [2.20.1] - 2019-09-05
 ### Added
 - AsOraErr function
 
 ### Changed
-- Really close the connection if it's bad. For #194.
-
-## [2.20.1] - 2019-09-05
-### Changed
 - Object.reset set attributes to null.
 - Use golang.org/x/xerrors instead of github.com/pkg/errors.
+- ObjectType.Close became unexported.
 
 ## [2.20.0] - 2019-09-04
 ### Added
