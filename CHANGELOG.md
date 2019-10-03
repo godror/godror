@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [2.21.3] - 2019-10-03
 ### Added
 - Export Queue.PayloadObjectType
-- Queue.SetEnqOptions, Queue.SetDeqOptions
+- Queue.SetEnqOptions, Queue.SetDeqOptions, Queue.SetDeqCorrelation
 
 ## [2.21.1] - 2019-10-02
 ### Changed
