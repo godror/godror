@@ -17,6 +17,7 @@ package goracle_test
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -233,5 +234,98 @@ func TestQueueObject(t *testing.T) {
 	t.Logf("received %d messages", n)
 	for _, m := range msgs[:n] {
 		t.Logf("got: %#v (%q)", m, string(m.Raw))
+	}
+}
+
+func TestWscQueue(t *testing.T) {
+	gCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var queueName, queueTypeName string
+	{
+		shortCtx, shortCancel := context.WithTimeout(gCtx, time.Second)
+		_, err := testDb.ExecContext(shortCtx, `BEGIN
+	:1 := DB_wsc.c_queue_name;
+	:2 := DB_wsc.c_queue_type_name;
+		END;`, sql.Out{Dest: &queueName}, sql.Out{Dest: &queueTypeName},
+		)
+		shortCancel()
+		if err != nil {
+			t.Skip(err)
+		}
+	}
+	for _, nm := range []string{"REQ", "RESP"} {
+		nm := nm
+		t.Run(nm, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			cx, err := testDb.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cx.Close()
+			Q, err := goracle.NewQueue(ctx, cx, queueName+"_"+nm, queueTypeName+"_"+nm)
+			if err != nil {
+				t.Skip(err)
+			}
+			defer Q.Close()
+			t.Log("Q:", Q.Name())
+			eOpts, err := Q.EnqOptions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			eOpts.DeliveryMode = goracle.DeliverPersistent
+			eOpts.Visibility = goracle.VisibleImmediate
+			t.Logf("eOpts=%+v", eOpts)
+			if err = Q.SetEnqOptions(eOpts); err != nil {
+				t.Fatal(err)
+			}
+
+			obj, err := Q.PayloadObjectType.NewObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer obj.Close()
+			if nm == "REQ" {
+				if err = obj.Set("FUNC", "EXIT"); err != nil {
+					t.Error(err)
+				}
+			} else {
+				if err = obj.Set("PAYLOAD", []byte("árvíztűrő tükörfúrógép")); err != nil {
+					t.Error(err)
+				}
+			}
+			msg := goracle.Message{Correlation: nm, Object: obj, Expiration: 30}
+			t.Logf("%s sends %+v", nm, msg)
+			if err = Q.Enqueue([]goracle.Message{msg}); err != nil {
+				t.Fatal(err)
+			}
+
+			dOpts, err := Q.DeqOptions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			dOpts.Correlation = nm
+			dOpts.DeliveryMode = goracle.DeliverPersistentOrBuffered
+			dOpts.Mode = goracle.DeqRemove
+			dOpts.Visibility = goracle.VisibleImmediate
+			if d, ok := ctx.Deadline(); ok {
+				dOpts.Wait = uint32(time.Until(d) / time.Second)
+			}
+			t.Logf("dOpts=%+v", dOpts)
+			if err = Q.SetDeqOptions(dOpts); err != nil {
+				t.Fatal(err)
+			}
+			msgs := make([]goracle.Message, 1)
+			n, err := Q.Dequeue(msgs)
+			t.Log("n:", n, "msgs", msgs[:n], "error", err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				t.Fatal("wanted 1 message, got 1")
+			}
+			t.Logf("%s received %+v", nm, msgs[0])
+		})
 	}
 }

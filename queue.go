@@ -130,7 +130,11 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 		ok = C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
 	}
 	if ok == C.DPI_FAILURE {
-		return 0, errors.Errorf("dequeue: %w", Q.conn.getError())
+		err := Q.conn.getError()
+		if code := err.(interface {Code()int}).Code(); code == 3156 {
+			return 0, context.DeadlineExceeded
+		}
+		return 0, errors.Errorf("dequeue: %w", err)
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
@@ -272,7 +276,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		M.Delay = int32(cint)
 	}
 
-	M.DeliveryMode = DeliverPersistent
+	M.DeliveryMode = DeliverPersistentOrBuffered
 	var mode C.dpiMessageDeliveryMode
 	if OK(C.dpiMsgProps_getDeliveryMode(props, &mode), "getDeliveryMode") {
 		M.DeliveryMode = DeliveryMode(mode)
@@ -357,7 +361,7 @@ type EnqOptions struct {
 	DeliveryMode   DeliveryMode
 }
 
-func (E EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
+func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -369,6 +373,8 @@ func (E EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 		return false
 	}
 
+	E.DeliveryMode = DeliverPersistent
+
 	var value *C.char
 	var length C.uint
 	if OK(C.dpiEnqOptions_getTransformation(opts, &value, &length), "getTransformation") {
@@ -379,6 +385,7 @@ func (E EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	if OK(C.dpiEnqOptions_getVisibility(opts, &vis), "getVisibility") {
 		E.Visibility = Visibility(vis)
 	}
+
 	return firstErr
 }
 
@@ -394,6 +401,7 @@ func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
 		return false
 	}
 
+	OK(C.dpiEnqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(E.DeliveryMode)), "setDeliveryMode")
 	cs := C.CString(E.Transformation)
 	OK(C.dpiEnqOptions_setTransformation(opts, cs, C.uint(len(E.Transformation))), "setTransformation")
 	C.free(unsafe.Pointer(cs))
@@ -415,12 +423,13 @@ type DeqOptions struct {
 	Condition, Consumer, Correlation string
 	MsgID, Transformation            string
 	Mode                             DeqMode
+	DeliveryMode DeliveryMode
 	Navigation                       DeqNavigation
 	Visibility                       Visibility
 	Wait                             uint32
 }
 
-func (D DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
+func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -450,6 +459,7 @@ func (D DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	if OK(C.dpiDeqOptions_getCorrelation(opts, &value, &length), "getCorrelation") {
 		D.Correlation = C.GoStringN(value, C.int(length))
 	}
+	D.DeliveryMode = DeliverPersistent
 	var mode C.dpiDeqMode
 	if OK(C.dpiDeqOptions_getMode(opts, &mode), "getMode") {
 		D.Mode = DeqMode(mode)
@@ -498,10 +508,11 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 	OK(C.dpiDeqOptions_setConsumerName(opts, cs, C.uint(len(D.Consumer))), "setConsumer")
 	C.free(unsafe.Pointer(cs))
 
-	cs = C.CString(D.Consumer)
+	cs = C.CString(D.Correlation)
 	OK(C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(D.Correlation))), "setCorrelation")
 	C.free(unsafe.Pointer(cs))
 
+	OK(C.dpiDeqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(D.DeliveryMode)), "setDeliveryMode") 
 	OK(C.dpiDeqOptions_setMode(opts, C.dpiDeqMode(D.Mode)), "setMode")
 
 	cs = C.CString(D.MsgID)
@@ -525,6 +536,22 @@ func (Q *Queue) SetDeqOptions(D DeqOptions) error {
 	}
 	return D.toOra(Q.conn.drv, opts)
 }
+
+// SetDeqCorrelation is a convenience function setting the Correlation DeqOption
+func (Q *Queue) SetDeqCorrelation(correlation string) error {
+	var opts *C.dpiDeqOptions
+	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
+		return errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
+	}
+	cs := C.CString(correlation)
+	ok := C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(correlation))) == C.DPI_FAILURE 
+	C.free(unsafe.Pointer(cs))
+	if !ok {
+		return errors.Errorf("setCorrelation: %w", Q.conn.drv.getError())
+	}
+	return nil
+}
+
 
 const (
 	NoWait      = uint32(0)
