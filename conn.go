@@ -412,7 +412,7 @@ func (c *conn) init() error {
 		c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
 	}
 
-	if c.timeZone != nil {
+	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
 		return nil
 	}
 	c.timeZone = time.Local
@@ -448,14 +448,14 @@ func (c *conn) init() error {
 	timezone = vals[1].(string)
 
 	tz, off, err := calculateTZ(dbTZ, timezone)
-	if err != nil {
+	if Log != nil {
+		Log("timezone", timezone, "tz", tz, "offSecs", off)
+	}
+	if err != nil || tz == nil {
 		return err
 	}
 	c.timeZone, c.tzOffSecs = tz, off
 
-	if Log != nil {
-		Log("timezone", timezone, "tz", c.timeZone, "offSecs", c.tzOffSecs)
-	}
 	return nil
 }
 

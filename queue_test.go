@@ -18,9 +18,9 @@ package goracle_test
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"io"
 	"io/ioutil"
+	"strings"
 	"testing"
 	"time"
 
@@ -336,7 +336,7 @@ func TestWscQueue(t *testing.T) {
 			}
 			t.Logf("%s received %+v", nm, msgs[0])
 			obj = msgs[0].Object
-			if nm =="REQ" {
+			if nm == "REQ" {
 				fun, err := obj.Get("FUNC")
 				if err != nil {
 					t.Error(err)

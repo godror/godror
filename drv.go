@@ -389,7 +389,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, err
 	}
 
-	c := conn{drv: d, connParams: P}
+	c := conn{drv: d, connParams: P, timeZone: time.Local}
 	connString := P.String()
 
 	defer func() {
