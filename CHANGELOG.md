@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [2.21.3] - 2019-10-03
+### Added
+- Export Queue.PayloadObjectType
+- Queue.SetEnqOptions, Queue.SetDeqOptions
+
 ## [2.21.1] - 2019-10-02
 ### Changed
 - Really close the connection if it's bad. For #194.

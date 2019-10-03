@@ -35,10 +35,10 @@ var zeroMsgID [MsgIDLength]byte
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
-	conn           *conn
-	dpiQueue       *C.dpiQueue
-	payloadObjType ObjectType
-	name           string
+	conn              *conn
+	dpiQueue          *C.dpiQueue
+	PayloadObjectType ObjectType
+	name              string
 
 	mu    sync.Mutex
 	props []*C.dpiMsgProps
@@ -53,14 +53,14 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	if err != nil {
 		return nil, err
 	}
-	Q := Queue{conn: cx.(*conn)}
+	Q := Queue{conn: cx.(*conn), name: name}
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
-		if Q.payloadObjType, err = Q.conn.GetObjectType(payloadObjectTypeName); err != nil {
+		if Q.PayloadObjectType, err = Q.conn.GetObjectType(payloadObjectTypeName); err != nil {
 			return nil, err
 		} else {
-			payloadType = Q.payloadObjType.dpiObjectType
+			payloadType = Q.PayloadObjectType.dpiObjectType
 		}
 	}
 	value := C.CString(name)
@@ -134,7 +134,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
-		if err := messages[i].fromOra(Q.conn, p, &Q.payloadObjType); err != nil {
+		if err := messages[i].fromOra(Q.conn, p, &Q.PayloadObjectType); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -182,6 +182,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 	if ok == C.DPI_FAILURE {
 		return errors.Errorf("enqueue %#v: %w", messages, Q.conn.getError())
 	}
+
 	return nil
 }
 
@@ -340,6 +341,9 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		if obj == nil {
 			M.Raw = append(make([]byte, 0, length), ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]...)
 		} else {
+			if C.dpiObject_addRef(obj) == C.DPI_FAILURE {
+				return objType.getError()
+			}
 			M.Object = &Object{dpiObject: obj, ObjectType: *objType}
 		}
 	}
@@ -376,6 +380,34 @@ func (E EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 		E.Visibility = Visibility(vis)
 	}
 	return firstErr
+}
+
+func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
+	var firstErr error
+	OK := func(ok C.int, msg string) bool {
+		if ok == C.DPI_SUCCESS {
+			return true
+		}
+		if firstErr == nil {
+			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+		}
+		return false
+	}
+
+	cs := C.CString(E.Transformation)
+	OK(C.dpiEnqOptions_setTransformation(opts, cs, C.uint(len(E.Transformation))), "setTransformation")
+	C.free(unsafe.Pointer(cs))
+	OK(C.dpiEnqOptions_setVisibility(opts, C.uint(E.Visibility)), "setVisibility")
+	return firstErr
+}
+
+// SetEnqOptions sets all the enqueue options
+func (Q *Queue) SetEnqOptions(E EnqOptions) error {
+	var opts *C.dpiEnqOptions
+	if C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
+		return errors.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
+	}
+	return E.toOra(Q.conn.drv, opts)
 }
 
 // DeqOptions are the options used to dequeue a message.
@@ -440,6 +472,58 @@ func (D DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 		D.Wait = uint32(u32)
 	}
 	return firstErr
+}
+
+func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
+	var firstErr error
+	OK := func(ok C.int, msg string) bool {
+		if ok == C.DPI_SUCCESS {
+			return true
+		}
+		if firstErr == nil {
+			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+		}
+		return false
+	}
+
+	cs := C.CString(D.Transformation)
+	OK(C.dpiDeqOptions_setTransformation(opts, cs, C.uint(len(D.Transformation))), "setTransformation")
+	C.free(unsafe.Pointer(cs))
+
+	cs = C.CString(D.Condition)
+	OK(C.dpiDeqOptions_setCondition(opts, cs, C.uint(len(D.Condition))), "setCondifion")
+	C.free(unsafe.Pointer(cs))
+
+	cs = C.CString(D.Consumer)
+	OK(C.dpiDeqOptions_setConsumerName(opts, cs, C.uint(len(D.Consumer))), "setConsumer")
+	C.free(unsafe.Pointer(cs))
+
+	cs = C.CString(D.Consumer)
+	OK(C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(D.Correlation))), "setCorrelation")
+	C.free(unsafe.Pointer(cs))
+
+	OK(C.dpiDeqOptions_setMode(opts, C.dpiDeqMode(D.Mode)), "setMode")
+
+	cs = C.CString(D.MsgID)
+	OK(C.dpiDeqOptions_setMsgId(opts, cs, C.uint(len(D.MsgID))), "setMsgId")
+	C.free(unsafe.Pointer(cs))
+
+	OK(C.dpiDeqOptions_setNavigation(opts, C.dpiDeqNavigation(D.Navigation)), "setNavigation")
+
+	OK(C.dpiDeqOptions_setVisibility(opts, C.dpiVisibility(D.Visibility)), "setVisibility")
+
+	OK(C.dpiDeqOptions_setWait(opts, C.uint(D.Wait)), "setWait")
+
+	return firstErr
+}
+
+// SetDeqOptions sets all the dequeue options
+func (Q *Queue) SetDeqOptions(D DeqOptions) error {
+	var opts *C.dpiDeqOptions
+	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
+		return errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
+	}
+	return D.toOra(Q.conn.drv, opts)
 }
 
 const (
