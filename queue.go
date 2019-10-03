@@ -131,7 +131,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	if ok == C.DPI_FAILURE {
 		err := Q.conn.getError()
-		if code := err.(interface {Code()int}).Code(); code == 3156 {
+		if code := err.(interface{ Code() int }).Code(); code == 3156 {
 			return 0, context.DeadlineExceeded
 		}
 		return 0, errors.Errorf("dequeue: %w", err)
@@ -276,7 +276,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		M.Delay = int32(cint)
 	}
 
-	M.DeliveryMode = DeliverPersistentOrBuffered
+	M.DeliveryMode = DeliverPersistent
 	var mode C.dpiMessageDeliveryMode
 	if OK(C.dpiMsgProps_getDeliveryMode(props, &mode), "getDeliveryMode") {
 		M.DeliveryMode = DeliveryMode(mode)
@@ -423,7 +423,7 @@ type DeqOptions struct {
 	Condition, Consumer, Correlation string
 	MsgID, Transformation            string
 	Mode                             DeqMode
-	DeliveryMode DeliveryMode
+	DeliveryMode                     DeliveryMode
 	Navigation                       DeqNavigation
 	Visibility                       Visibility
 	Wait                             uint32
@@ -512,7 +512,7 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 	OK(C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(D.Correlation))), "setCorrelation")
 	C.free(unsafe.Pointer(cs))
 
-	OK(C.dpiDeqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(D.DeliveryMode)), "setDeliveryMode") 
+	OK(C.dpiDeqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(D.DeliveryMode)), "setDeliveryMode")
 	OK(C.dpiDeqOptions_setMode(opts, C.dpiDeqMode(D.Mode)), "setMode")
 
 	cs = C.CString(D.MsgID)
@@ -544,14 +544,13 @@ func (Q *Queue) SetDeqCorrelation(correlation string) error {
 		return errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
 	}
 	cs := C.CString(correlation)
-	ok := C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(correlation))) == C.DPI_FAILURE 
+	ok := C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(correlation))) == C.DPI_FAILURE
 	C.free(unsafe.Pointer(cs))
 	if !ok {
 		return errors.Errorf("setCorrelation: %w", Q.conn.drv.getError())
 	}
 	return nil
 }
-
 
 const (
 	NoWait      = uint32(0)

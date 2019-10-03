@@ -19,6 +19,8 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"io"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -290,12 +292,18 @@ func TestWscQueue(t *testing.T) {
 				if err = obj.Set("FUNC", "EXIT"); err != nil {
 					t.Error(err)
 				}
+				if err = obj.Set("URL", "http://example.com"); err != nil {
+					t.Error(err)
+				}
 			} else {
+				if err = obj.Set("HIBASZOV", "OK"); err != nil {
+					t.Error(err)
+				}
 				if err = obj.Set("PAYLOAD", []byte("árvíztűrő tükörfúrógép")); err != nil {
 					t.Error(err)
 				}
 			}
-			msg := goracle.Message{Correlation: nm, Object: obj, Expiration: 30}
+			msg := goracle.Message{Correlation: nm, Object: obj, Expiration: 3}
 			t.Logf("%s sends %+v", nm, msg)
 			if err = Q.Enqueue([]goracle.Message{msg}); err != nil {
 				t.Fatal(err)
@@ -305,8 +313,9 @@ func TestWscQueue(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			dOpts.Correlation = nm
-			dOpts.DeliveryMode = goracle.DeliverPersistentOrBuffered
+			//dOpts.Correlation = nm
+			dOpts.DeliveryMode = goracle.DeliverPersistent
+			dOpts.Navigation = goracle.NavFirst
 			dOpts.Mode = goracle.DeqRemove
 			dOpts.Visibility = goracle.VisibleImmediate
 			if d, ok := ctx.Deadline(); ok {
@@ -316,7 +325,7 @@ func TestWscQueue(t *testing.T) {
 			if err = Q.SetDeqOptions(dOpts); err != nil {
 				t.Fatal(err)
 			}
-			msgs := make([]goracle.Message, 1)
+			msgs := make([]goracle.Message, 4)
 			n, err := Q.Dequeue(msgs)
 			t.Log("n:", n, "msgs", msgs[:n], "error", err)
 			if err != nil {
@@ -326,6 +335,34 @@ func TestWscQueue(t *testing.T) {
 				t.Fatal("wanted 1 message, got 1")
 			}
 			t.Logf("%s received %+v", nm, msgs[0])
+			obj = msgs[0].Object
+			if nm =="REQ" {
+				fun, err := obj.Get("FUNC")
+				if err != nil {
+					t.Error(err)
+				}
+				sURL, err := obj.Get("URL")
+				if err != nil {
+					t.Error(err)
+				}
+				t.Logf("%s. received func=%q url=%q", nm, fun, sURL)
+			} else {
+				hibaSzov, err := obj.Get("HIBASZOV")
+				if err != nil {
+					t.Error(err)
+				}
+				var payload []byte
+				pLoad, err := obj.Get("PAYLOAD")
+				if err != nil {
+					t.Error(err)
+				}
+				if r, ok := pLoad.(io.Reader); ok {
+					if payload, err = ioutil.ReadAll(r); err != nil {
+						t.Error(err)
+					}
+				}
+				t.Logf("%s. received hibaszov=%q payload=%q", nm, hibaSzov, payload)
+			}
 		})
 	}
 }
