@@ -33,6 +33,21 @@ const MsgIDLength = 16
 
 var zeroMsgID [MsgIDLength]byte
 
+// DefaultEnqOptions is the default set for NewQueue.
+var DefaultEnqOptions = EnqOptions{
+	Visibility:   VisibleImmediate,
+	DeliveryMode: DeliverPersistent,
+}
+
+// DefaultDeqOptions is the default set for NewQueue.
+var DefaultDeqOptions = DeqOptions{
+	Mode:         DeqRemove,
+	DeliveryMode: DeliverPersistent,
+	Navigation:   NavFirst,
+	Visibility:   VisibleImmediate,
+	Wait:         30,
+}
+
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
 	conn              *conn
@@ -68,7 +83,18 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		err = errors.Errorf("newQueue %q: %w", name, Q.conn.drv.getError())
 	}
 	C.free(unsafe.Pointer(value))
-	return &Q, err
+	if err != nil {
+		return nil, err
+	}
+	if err = Q.SetEnqOptions(DefaultEnqOptions); err != nil {
+		Q.Close()
+		return nil, err
+	}
+	if err = Q.SetDeqOptions(DefaultDeqOptions); err != nil {
+		Q.Close()
+		return nil, err
+	}
+	return &Q, nil
 }
 
 // Close the queue.
