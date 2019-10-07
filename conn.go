@@ -776,3 +776,8 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 	}
 	return nil
 }
+
+// Timezone returns the connection's timezone.
+func (c *conn) Timezone() *time.Location {
+	return c.timeZone
+}

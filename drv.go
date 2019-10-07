@@ -34,7 +34,8 @@
 //     prelim=0& \
 //     poolWaitTimeout=300& \
 //     poolSessionMaxLifetime=3600& \
-//     poolSessionTimeout=3000
+//     poolSessionTimeout=3000& \
+//     timezone=Local
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -640,6 +641,7 @@ type ConnectionParams struct {
 	HeterogeneousPool                        bool
 	StandaloneConnection                     bool
 	EnableEvents                             bool
+	Timezone                                 *time.Location
 }
 
 // String returns the string representation of ConnectionParams.
@@ -676,6 +678,10 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		io.WriteString(hsh, P.Password)
 		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
 	}
+	var tz string
+	if P.Timezone != nil {
+		tz = P.Timezone.String()
+	}
 	return (&url.URL{
 		Scheme: "oracle",
 		User:   url.UserPassword(P.Username, password),
@@ -686,12 +692,14 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
 				"standaloneConnection=%d&enableEvents=%d&"+
 				"heterogeneousPool=%d&prelim=%d&"+
-				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d",
+				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d"+
+				"timezone=%s",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
 				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
 				b2i(P.HeterogeneousPool), b2i(P.IsPrelim),
 				P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
+				tz,
 			),
 	}).String()
 }
@@ -770,6 +778,20 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	} {
 		*task.Dest = q.Get(task.Key) == "1"
 	}
+	if tz := q.Get("timezone"); tz != "" {
+		if tz == "local" {
+			P.Timezone = time.Local
+		} else if strings.Contains(tz, "/") {
+			if P.Timezone, err = time.LoadLocation(tz); err != nil {
+				return P, errors.Errorf("%s: %w", tz, err)
+			}
+		} else if off, err := parseTZ(tz); err == nil {
+			P.Timezone = time.FixedZone(tz, off)
+		} else {
+			return P, errors.Errorf("%s: %w", tz, err)
+		}
+	}
+
 	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
 	if P.IsPrelim {
 		P.ConnClass = ""

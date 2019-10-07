@@ -166,7 +166,7 @@ func TestQueueObject(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Log(errors.Errorf("%s\n%s:%w", plus.String(), qry, err))
+			t.Logf("%v", errors.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer func() {

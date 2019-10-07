@@ -53,7 +53,7 @@ var (
 
 var tblSuffix = "_" + strings.Replace(runtime.Version(), ".", "#", -1)
 
-const maxSessions = 64
+const maxSessions = 16
 
 func init() {
 	logger := &log.SwapLogger{}
@@ -82,7 +82,7 @@ func init() {
 	}
 
 	testDb.SetMaxIdleConns(maxSessions >> 1)
-	testDb.SetMaxOpenConns(maxSessions)
+	testDb.SetMaxOpenConns(maxSessions - 1)
 	testDb.SetConnMaxLifetime(10 * time.Minute)
 
 	if clientVersion, err = goracle.ClientVersion(context.Background(), testDb); err != nil {

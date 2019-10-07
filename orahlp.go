@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	errors "golang.org/x/xerrors"
 )
@@ -289,6 +290,8 @@ type Conn interface {
 	Startup(StartupMode) error
 	Shutdown(ShutdownMode) error
 	NewData(baseType interface{}, SliceLen, BufSize int) ([]*Data, error)
+
+	Timezone() *time.Location
 }
 
 // DriverConn returns the *goracle.conn of the database/sql.Conn
@@ -311,4 +314,12 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 // WrapRows transforms a driver.Rows into an *sql.Rows.
 func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
 	return q.QueryContext(ctx, wrapResultset, rset)
+}
+
+func Timezone(ctx context.Context, ex Execer) (*time.Location, error) {
+	c, err := getConn(ctx, ex)
+	if err != nil {
+		return nil, err
+	}
+	return c.Timezone(), nil
 }
