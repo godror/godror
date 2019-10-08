@@ -76,25 +76,32 @@ func init() {
 	testConStr = P.StringWithPassword()
 	var err error
 	if testDb, err = sql.Open("goracle", testConStr); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
-		//panic(err)
+		panic(errors.Errorf("%s: %w", err, testConStr))
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	if clientVersion, err = goracle.ClientVersion(ctx, conn); err != nil {
+		panic(err)
+	}
+	fmt.Println("Client:", clientVersion, "Timezone:", time.Local.String())
+	if serverVersion, err = goracle.ServerVersion(ctx, conn); err != nil {
+		panic(err)
+	}
+	dbTZ, err := goracle.Timezone(ctx, conn)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Server:", serverVersion, "Timezone:", dbTZ.String())
 
 	testDb.SetMaxIdleConns(maxSessions >> 1)
 	testDb.SetMaxOpenConns(maxSessions - 1)
 	testDb.SetConnMaxLifetime(10 * time.Minute)
-
-	if clientVersion, err = goracle.ClientVersion(context.Background(), testDb); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
-	}
-	if serverVersion, err = goracle.ServerVersion(context.Background(), testDb); err != nil {
-		fmt.Printf("ERROR: %+v\n", err)
-		return
-	}
-	fmt.Println("Server:", serverVersion)
-	fmt.Println("Client:", clientVersion)
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}

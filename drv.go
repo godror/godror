@@ -692,7 +692,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
 				"standaloneConnection=%d&enableEvents=%d&"+
 				"heterogeneousPool=%d&prelim=%d&"+
-				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d"+
+				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d&"+
 				"timezone=%s",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
