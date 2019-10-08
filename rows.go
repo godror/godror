@@ -443,7 +443,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			C.DPI_NATIVE_TYPE_LOB:
 			isClob := typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB
 			if isNull {
-				if isClob && r.ClobAsString() {
+				if isClob && (r.ClobAsString() || !r.LobAsReader()) {
 					dest[i] = ""
 				} else {
 					dest[i] = nil
@@ -451,9 +451,11 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn, IsClob: isClob}
-			if isClob && r.ClobAsString() {
+			if isClob && (r.ClobAsString() || !r.LobAsReader()) {
 				sb := stringBuilders.Get()
-				if _, err := io.Copy(sb, rdr); err != nil {
+				_, err := io.Copy(sb, rdr)
+				C.dpiLob_close(rdr.dpiLob)
+				if err != nil {
 					stringBuilders.Put(sb)
 					return err
 				}

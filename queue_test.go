@@ -238,4 +238,3 @@ func TestQueueObject(t *testing.T) {
 		t.Logf("got: %#v (%q)", m, string(m.Raw))
 	}
 }
-

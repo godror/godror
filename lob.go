@@ -98,6 +98,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr.sizePlusOne == 0 {
 		// never read size before
 		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
+			C.dpiLob_close(dlr.dpiLob)
+			dlr.dpiLob = nil
 			return 0, errors.Errorf("getSize: %w", dlr.getError())
 		}
 		dlr.sizePlusOne++
@@ -108,6 +110,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
+		C.dpiLob_close(dlr.dpiLob)
+		dlr.dpiLob = nil
 		err := dlr.getError()
 		if dlr.finished = err.(interface{ Code() int }).Code() == 1403; dlr.finished {
 			dlr.offset += n
@@ -123,6 +127,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	var err error
 	if n == 0 || dlr.offset+1 >= dlr.sizePlusOne {
+		C.dpiLob_close(dlr.dpiLob)
+		dlr.dpiLob = nil
+		dlr.finished = true
 		err = io.EOF
 	}
 	return int(n), err
