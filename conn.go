@@ -22,6 +22,7 @@ package goracle
 import "C"
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -409,7 +410,9 @@ func (c *conn) init() error {
 			return errors.Errorf("getServerVersion: %w", c.getError())
 		}
 		c.Server.set(&v)
-		c.Server.ServerRelease = C.GoStringN(release, C.int(releaseLen))
+		c.Server.ServerRelease = string(bytes.ReplaceAll(
+			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen], 
+			[]byte{'\n'}, []byte{';', ' '}))
 	}
 
 	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
