@@ -284,6 +284,7 @@ type Conn interface {
 	Break() error
 	Commit() error
 	Rollback() error
+	ClientVersion() (VersionInfo, error)
 	ServerVersion() (VersionInfo, error)
 	GetObjectType(name string) (ObjectType, error)
 	NewSubscription(string, func(Event)) (*Subscription, error)

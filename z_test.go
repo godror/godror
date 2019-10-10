@@ -79,24 +79,20 @@ func init() {
 		panic(errors.Errorf("%s: %w", err, testConStr))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	conn, err := testDb.Conn(ctx)
+	cx, err := goracle.DriverConn(ctx, testDb)
 	if err != nil {
-		panic(err)
+		panic(errors.Errorf("%s: %w", testConStr, err))
 	}
-	defer conn.Close()
-	if clientVersion, err = goracle.ClientVersion(ctx, conn); err != nil {
+	if clientVersion, err = cx.ClientVersion(); err != nil {
 		panic(err)
 	}
 	fmt.Println("Client:", clientVersion, "Timezone:", time.Local.String())
-	if serverVersion, err = goracle.ServerVersion(ctx, conn); err != nil {
+	if serverVersion, err = cx.ServerVersion(); err != nil {
 		panic(err)
 	}
-	dbTZ, err := goracle.Timezone(ctx, conn)
-	if err != nil {
-		panic(err)
-	}
+	dbTZ := cx.Timezone()
 	fmt.Println("Server:", serverVersion, "Timezone:", dbTZ.String())
 
 	testDb.SetMaxIdleConns(maxSessions >> 1)
