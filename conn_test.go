@@ -17,6 +17,7 @@ package goracle
 
 import (
 	"database/sql/driver"
+	"time"
 	"fmt"
 	"io"
 	"strings"
@@ -67,11 +68,11 @@ func TestParseConnString(t *testing.T) {
 		Want ConnectionParams
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200&poolSessionMaxLifetime=4000&poolSessionTimeout=2000",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
 				ConnClass: "POOLED", IsSysOper: true,
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
-				WaitTimeout: 200, MaxLifeTime: 4000, SessionTimeout: 2000}},
+				WaitTimeout: 200*time.Millisecond, MaxLifeTime: 4000*time.Second, SessionTimeout: 2000*time.Second}},
 
 		"@": {
 			In:   setP(wantAt.String(), wantAt.Password),

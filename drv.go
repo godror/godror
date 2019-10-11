@@ -32,9 +32,9 @@
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
 //     prelim=0& \
-//     poolWaitTimeout=300& \
-//     poolSessionMaxLifetime=3600& \
-//     poolSessionTimeout=3000& \
+//     poolWaitTimeout=5m& \
+//     poolSessionMaxLifetime=1h& \
+//     poolSessionTimeout=30s& \
 //     timezone=Local
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
@@ -110,11 +110,11 @@ const (
 	// It is the same as setting standaloneConnection=1
 	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
 	// DefaultSessionTimeout is the seconds before idle pool sessions get evicted
-	DefaultSessionTimeout = 300
+	DefaultSessionTimeout = 5 * time.Minute
 	// DefaultWaitTimeout is the milliseconds to wait for a session to become available
-	DefaultWaitTimeout = 3000
+	DefaultWaitTimeout = 30 * time.Second
 	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
-	DefaultMaxLifeTime = 3600
+	DefaultMaxLifeTime = 1 * time.Hour
 )
 
 // Number as string
@@ -537,17 +537,17 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 	poolCreateParams.externalAuth = extAuth
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
-	poolCreateParams.timeout = DefaultSessionTimeout
-	if P.SessionTimeout > 0 {
-		poolCreateParams.timeout = C.uint32_t(P.SessionTimeout) // seconds before idle pool sessions get evicted
+	poolCreateParams.timeout = C.uint32_t(DefaultSessionTimeout / time.Second)
+	if P.SessionTimeout > time.Second {
+		poolCreateParams.timeout = C.uint32_t(P.SessionTimeout / time.Second) // seconds before idle pool sessions get evicted
 	}
-	poolCreateParams.waitTimeout = DefaultWaitTimeout
-	if P.WaitTimeout > 0 {
-		poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout) // milliseconds to wait for a session to become available
+	poolCreateParams.waitTimeout = C.uint32_t(DefaultWaitTimeout / time.Millisecond)
+	if P.WaitTimeout > time.Millisecond {
+		poolCreateParams.waitTimeout = C.uint32_t(P.WaitTimeout / time.Millisecond) // milliseconds to wait for a session to become available
 	}
-	poolCreateParams.maxLifetimeSession = DefaultMaxLifeTime
+	poolCreateParams.maxLifetimeSession = C.uint32_t(DefaultMaxLifeTime / time.Second)
 	if P.MaxLifeTime > 0 {
-		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime) // maximum time in seconds till a pooled session may exist
+		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime/time.Second) // maximum time in seconds till a pooled session may exist
 	}
 
 	var dp *C.dpiPool
@@ -636,7 +636,7 @@ func (c *conn) acquireConn(user, pass string) error {
 type ConnectionParams struct {
 	Username, Password, SID, ConnClass       string
 	MinSessions, MaxSessions, PoolIncrement  int
-	WaitTimeout, MaxLifeTime, SessionTimeout int
+	WaitTimeout, MaxLifeTime, SessionTimeout time.Duration
 	IsSysDBA, IsSysOper, IsSysASM, IsPrelim  bool
 	HeterogeneousPool                        bool
 	StandaloneConnection                     bool
@@ -692,7 +692,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 				"sysdba=%d&sysoper=%d&sysasm=%d&"+
 				"standaloneConnection=%d&enableEvents=%d&"+
 				"heterogeneousPool=%d&prelim=%d&"+
-				"poolWaitTimeout=%d&poolSessionMaxLifetime=%d&poolSessionTimeout=%d&"+
+				"poolWaitTimeout=%s&poolSessionMaxLifetime=%s&poolSessionTimeout=%s&"+
 				"timezone=%s",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
@@ -804,9 +804,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
 		{&P.PoolIncrement, "poolIncrement"},
-		{&P.SessionTimeout, "poolSessionTimeout"},
-		{&P.WaitTimeout, "poolWaitTimeout"},
-		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -816,6 +813,35 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		*task.Dest, err = strconv.Atoi(s)
 		if err != nil {
 			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+		}
+	}
+	for _, task := range []struct {
+		Dest *time.Duration
+		Key  string
+	}{
+		{&P.SessionTimeout, "poolSessionTimeout"},
+		{&P.WaitTimeout, "poolWaitTimeout"},
+		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
+	} {
+		s := q.Get(task.Key)
+		if s == "" {
+			continue
+		}
+		var err error
+		*task.Dest, err = time.ParseDuration(s)
+		if err != nil {
+			if !strings.Contains(err.Error(), "time: missing unit in duration") {
+				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+			}
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+			}
+			base := time.Second
+			if task.Key == "poolWaitTimeout" {
+				base = time.Millisecond
+			}
+			*task.Dest = time.Duration(i) * base
 		}
 	}
 	if P.MinSessions > P.MaxSessions {

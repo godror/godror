@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 - set DefaultEnqOptions and DefaultDeqOptions in NewQueue.
+- make ConnectionParams.WaitTimeout, SessionMaxLifeTime, SessionTimeout be time.Duration.
 
 ## [2.21.3] - 2019-10-03
 ### Added

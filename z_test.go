@@ -67,6 +67,7 @@ func init() {
 		Password:    os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		SID:         os.Getenv("GORACLE_DRV_TEST_DB"),
 		MinSessions: 1, MaxSessions: maxSessions, PoolIncrement: 1,
+		WaitTimeout:  30 * time.Second,
 		ConnClass:    "POOLED",
 		EnableEvents: true,
 	}
@@ -522,10 +523,10 @@ END;
 	dtWant := make([]time.Time, len(dt))
 	for i, d := range dt {
 		if i < len(dt)-1 {
-		// p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
-		dtWant[i] = d.AddDate(0, 0, 1)
-	} else {
-		//p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+			// p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
+			dtWant[i] = d.AddDate(0, 0, 1)
+		} else {
+			//p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
 			dtWant[i] = d
 		}
 	}
