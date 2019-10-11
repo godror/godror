@@ -460,11 +460,12 @@ BEGIN
   DBMS_OUTPUT.PUT_LINE('p_dt.COUNT='||p_dt.COUNT||' FIRST='||p_dt.FIRST||' LAST='||p_dt.LAST);
   v_idx := p_dt.FIRST;
   WHILE v_idx IS NOT NULL LOOP
-  DBMS_OUTPUT.PUT_LINE(v_idx||'='||TO_CHAR(p_dt(v_idx), 'YYYY-MM-DD HH24:MI:SS'));
+    DBMS_OUTPUT.PUT_LINE(v_idx||'='||TO_CHAR(p_dt(v_idx), 'YYYY-MM-DD HH24:MI:SS'));
     p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
 	v_idx := p_dt.NEXT(v_idx);
   END LOOP;
   p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+  DBMS_OUTPUT.PUT_LINE('p_dt.COUNT='||p_dt.COUNT||' FIRST='||p_dt.FIRST||' LAST='||p_dt.LAST);
 END;
 
 PROCEDURE p2(
@@ -506,8 +507,11 @@ END;
 	numWant := []goracle.Number{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring", ""}[:2]
 	vcWant := []string{"string +", "bring +", "2"}
-	today := time.Now().Truncate(24 * time.Hour)
-	today = time.Date(today.Year(), today.Month(), today.Day(), today.Hour(), today.Minute(), today.Second(), 0, time.Local)
+	var today time.Time
+	qry = "SELECT TRUNC(SYSDATE) FROM DUAL"
+	if testDb.QueryRowContext(ctx, qry).Scan(&today); err != nil {
+		t.Fatal(err)
+	}
 	dt := []time.Time{
 		time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local),
 		{},
@@ -515,19 +519,31 @@ END;
 		today,
 	}
 	dt[1] = dt[0].Add(24 * time.Hour)
-	dtWant := dt
+	dtWant := make([]time.Time, len(dt))
+	for i, d := range dt {
+		if i < len(dt)-1 {
+		// p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
+		dtWant[i] = d.AddDate(0, 0, 1)
+	} else {
+		//p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+			dtWant[i] = d
+		}
+	}
+	dt = dt[:len(dt)-1]
 
 	goracle.EnableDbmsOutput(ctx, conn)
 
 	opts := []cmp.Option{
 		cmp.Comparer(func(x, y time.Time) bool {
+			return x.Equal(y)
+
 			d := x.Sub(y)
 			if d < 0 {
 				d *= -1
 			}
 			return d <= 2*time.Hour
 		}),
-	}[:0]
+	}
 
 	for _, tC := range []struct {
 		Name     string
@@ -552,12 +568,15 @@ END;
 			); err != nil {
 				t.Fatalf("%s\n%#v\n%+v", qry, dst, err)
 			}
-
 			got := reflect.ValueOf(dst).Elem().Interface()
+			if nm == "dt" {
+				t.Logf("\nin =%v\ngot=%v\nwt= %v", tC.In, got, tC.Want)
+			}
+
 			if cmp.Equal(got, tC.Want, opts...) {
 				return
 			}
-			t.Errorf("%s: %s", tC.Name, cmp.Diff(got, tC.Want))
+			t.Errorf("%s: %s", tC.Name, cmp.Diff(printSlice(tC.Want), printSlice(got)))
 			var buf bytes.Buffer
 			if err := goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 				t.Error(err)
@@ -1000,6 +1019,17 @@ func TestReadWriteLob(t *testing.T) {
 
 }
 
+func printSlice(orig interface{}) interface{} {
+	ro := reflect.ValueOf(orig)
+	if ro.Kind() == reflect.Ptr {
+		ro = ro.Elem()
+	}
+	ret := make([]string, 0, ro.Len())
+	for i := 0; i < ro.Len(); i++ {
+		ret = append(ret, fmt.Sprintf("%v", ro.Index(i).Interface()))
+	}
+	return ret
+}
 func copySlice(orig interface{}) interface{} {
 	ro := reflect.ValueOf(orig)
 	rc := reflect.New(reflect.TypeOf(orig)).Elem() // *[]s
