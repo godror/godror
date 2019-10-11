@@ -96,7 +96,7 @@ func init() {
 	fmt.Println("Server:", serverVersion, "Timezone:", dbTZ.String())
 
 	testDb.SetMaxIdleConns(maxSessions >> 1)
-	testDb.SetMaxOpenConns(maxSessions - 1)
+	testDb.SetMaxOpenConns(maxSessions)
 	testDb.SetConnMaxLifetime(10 * time.Minute)
 }
 
@@ -506,14 +506,16 @@ END;
 	numWant := []goracle.Number{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring", ""}[:2]
 	vcWant := []string{"string +", "bring +", "2"}
-	dt := []time.Time{time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local), {}, {}}[:2]
 	today := time.Now().Truncate(24 * time.Hour)
 	today = time.Date(today.Year(), today.Month(), today.Day(), today.Hour(), today.Minute(), today.Second(), 0, time.Local)
-	dtWant := []time.Time{
-		dt[0].Add(24 * time.Hour),
+	dt := []time.Time{
+		time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local),
+		{},
 		today.Add(-2 * 24 * time.Hour),
 		today,
 	}
+	dt[1] = dt[0].Add(24 * time.Hour)
+	dtWant := dt
 
 	goracle.EnableDbmsOutput(ctx, conn)
 
@@ -525,7 +527,7 @@ END;
 			}
 			return d <= 2*time.Hour
 		}),
-	}
+	}[:0]
 
 	for _, tC := range []struct {
 		Name     string
@@ -548,7 +550,7 @@ END;
 				goracle.PlSQLArrays,
 				sql.Out{Dest: dst, In: true},
 			); err != nil {
-				t.Fatalf("%s\n%+v", qry, err)
+				t.Fatalf("%s\n%#v\n%+v", qry, dst, err)
 			}
 
 			got := reflect.ValueOf(dst).Elem().Interface()
@@ -1001,7 +1003,7 @@ func TestReadWriteLob(t *testing.T) {
 func copySlice(orig interface{}) interface{} {
 	ro := reflect.ValueOf(orig)
 	rc := reflect.New(reflect.TypeOf(orig)).Elem() // *[]s
-	rc.Set(reflect.MakeSlice(ro.Type(), ro.Len(), ro.Cap()))
+	rc.Set(reflect.MakeSlice(ro.Type(), ro.Len(), ro.Cap()+1))
 	for i := 0; i < ro.Len(); i++ {
 		rc.Index(i).Set(ro.Index(i))
 	}
@@ -1099,6 +1101,9 @@ func TestOpenBadMemory(t *testing.T) {
 		t.Logf("Allocated %d: %d", i+1, mem.Alloc)
 	}
 	d := mem.Alloc - zero
+	if mem.Alloc < zero {
+		d = 0
+	}
 	t.Logf("atlast: %d", d)
 	if d > 64<<10 {
 		t.Errorf("Consumed more than 64KiB of memory: %d", d)

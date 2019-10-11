@@ -56,8 +56,10 @@ func (o stmtOptions) ExecMode() C.dpiExecMode {
 }
 
 func (o stmtOptions) ArraySize() int {
-	if o.arraySize <= 0 || o.arraySize > 32<<10 {
+	if o.arraySize <= 0 {
 		return DefaultArraySize
+	} else if o.arraySize > 1<<16 {
+		return 1 << 16
 	}
 	return o.arraySize
 }
