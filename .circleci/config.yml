@@ -5,13 +5,10 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.12.9
+      - image: circleci/golang:1.13.3
 
     environment:
       GO111MODULE: "on"
-      GORACLE_DRV_TEST_USERNAME: test
-      GORACLE_DRV_TEST_PASSWORD: test
-      GORACLE_DRV_TEST_DB: oracle.gthomas.eu:49161/se.oracle.gulacsi.eu
 
     working_directory: /go/src/gopkg.in/goracle.v2
 

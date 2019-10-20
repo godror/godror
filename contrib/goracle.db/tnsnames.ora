@@ -1,0 +1,15 @@
+goracle_high = (description= (address=(protocol=tcps)(port=1522)(host=adb.eu-frankfurt-1.oraclecloud.com))(connect_data=(service_name=zo0svnycldsrgbw_goracle_high.atp.oraclecloud.com))(security=(ssl_server_cert_dn=
+        "CN=adwc.eucom-central-1.oraclecloud.com,OU=Oracle BMCS FRANKFURT,O=Oracle Corporation,L=Redwood City,ST=California,C=US"))   )
+
+goracle_low = (description= (address=(protocol=tcps)(port=1522)(host=adb.eu-frankfurt-1.oraclecloud.com))(connect_data=(service_name=zo0svnycldsrgbw_goracle_low.atp.oraclecloud.com))(security=(ssl_server_cert_dn=
+        "CN=adwc.eucom-central-1.oraclecloud.com,OU=Oracle BMCS FRANKFURT,O=Oracle Corporation,L=Redwood City,ST=California,C=US"))   )
+
+goracle_medium = (description= (address=(protocol=tcps)(port=1522)(host=adb.eu-frankfurt-1.oraclecloud.com))(connect_data=(service_name=zo0svnycldsrgbw_goracle_medium.atp.oraclecloud.com))(security=(ssl_server_cert_dn=
+        "CN=adwc.eucom-central-1.oraclecloud.com,OU=Oracle BMCS FRANKFURT,O=Oracle Corporation,L=Redwood City,ST=California,C=US"))   )
+
+goracle_tp = (description= (address=(protocol=tcps)(port=1522)(host=adb.eu-frankfurt-1.oraclecloud.com))(connect_data=(service_name=zo0svnycldsrgbw_goracle_tp.atp.oraclecloud.com))(security=(ssl_server_cert_dn=
+        "CN=adwc.eucom-central-1.oraclecloud.com,OU=Oracle BMCS FRANKFURT,O=Oracle Corporation,L=Redwood City,ST=California,C=US"))   )
+
+goracle_tpurgent = (description= (address=(protocol=tcps)(port=1522)(host=adb.eu-frankfurt-1.oraclecloud.com))(connect_data=(service_name=zo0svnycldsrgbw_goracle_tpurgent.atp.oraclecloud.com))(security=(ssl_server_cert_dn=
+        "CN=adwc.eucom-central-1.oraclecloud.com,OU=Oracle BMCS FRANKFURT,O=Oracle Corporation,L=Redwood City,ST=California,C=US"))   )
+

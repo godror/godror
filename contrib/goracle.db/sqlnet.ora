@@ -1,0 +1,2 @@
+WALLET_LOCATION = (SOURCE = (METHOD = file) (METHOD_DATA = (DIRECTORY="/home/gthomas/src/gopkg.in/goracle.v2/contrib/goracle.db")))
+SSL_SERVER_DN_MATCH=yes

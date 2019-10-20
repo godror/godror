@@ -42,6 +42,8 @@ type MyRecord struct {
 	Txt string
 }
 
+type coder interface{ Code() int }
+
 func (r *MyRecord) Scan(src interface{}) error {
 
 	switch obj := src.(type) {
@@ -296,8 +298,9 @@ func TestPLSQLTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("Record", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
+	//t.Run("Record", func(t *testing.T) {
+	// you must have execute privilege on package and use uppercase
+	{
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
@@ -326,6 +329,10 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
 			if err != nil {
+				var cdr coder
+				if errors.As(err, &cdr); cdr.Code() == 21779 {
+					t.Skip(err)
+				}
 				t.Fatal(err)
 			}
 
@@ -333,10 +340,12 @@ func TestPLSQLTypes(t *testing.T) {
 				t.Errorf("%s: record got %v, wanted %v", tName, rec, tCase.want)
 			}
 		}
-	})
+	}
+	//})
 
-	t.Run("Record IN OUT", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
+	//t.Run("Record IN OUT", func(t *testing.T) {
+	// you must have execute privilege on package and use uppercase
+	{
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
@@ -374,7 +383,8 @@ func TestPLSQLTypes(t *testing.T) {
 				t.Errorf("%s: Txt got %s, wanted %s", tName, rec.Txt, tCase.wantTxt)
 			}
 		}
-	})
+	}
+	//})
 
 	t.Run("Table", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
@@ -406,6 +416,10 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			_, err = testDb.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
 			if err != nil {
+				var cdr coder
+				if errors.As(err, &cdr); cdr.Code() == 30757 {
+					t.Skip(err)
+				}
 				t.Fatal(err)
 			}
 
@@ -473,6 +487,10 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
 			if err != nil {
+				var cdr coder
+				if errors.As(err, &cdr); cdr.Code() == 30757 {
+					t.Skip(err)
+				}
 				t.Fatal(err)
 			}
 

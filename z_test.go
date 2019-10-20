@@ -27,6 +27,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -61,15 +62,46 @@ func init() {
 	if os.Getenv("VERBOSE") == "1" {
 		logger.Swap(tl)
 	}
+	if os.Getenv("GORACLE_DRV_TEST_DB") == "" && os.Getenv("TNS_ADMIN") == "" {
+		fmt.Println("Using default database for tests: contrib/goracle/env.sh")
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		wd = filepath.Join(wd, "contrib", "goracle.db")
+		os.Setenv("TNS_ADMIN", wd)
+		b, err := ioutil.ReadFile(filepath.Join(wd, "env.sh"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			const prefix = "export GORACLE_DRV_TEST_"
+			for _, line := range bytes.Split(b, []byte{'\n'}) {
+				if !bytes.HasPrefix(line, []byte(prefix)) {
+					continue
+				}
+				line = line[len(prefix):]
+				i := bytes.IndexByte(line, '=')
+				if i < 0 {
+					continue
+				}
+				k, v := string(line[:i]), string(line[i+1:])
+				fmt.Printf("export GORACLE_DRV_TEST_%s=%s\n", k, v)
+				os.Setenv("GORACLE_DRV_TEST_"+k, v)
+			}
+		}
+	}
 
 	P := goracle.ConnectionParams{
 		Username:    os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		Password:    os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		SID:         os.Getenv("GORACLE_DRV_TEST_DB"),
 		MinSessions: 1, MaxSessions: maxSessions, PoolIncrement: 1,
-		WaitTimeout:  30 * time.Second,
-		ConnClass:    "POOLED",
-		EnableEvents: true,
+		StandaloneConnection: os.Getenv("GORACLE_DRV_TEST_STANDALONE") == "1",
+		WaitTimeout:          10 * time.Second,
+		MaxLifeTime:          5 * time.Minute,
+		SessionTimeout:       30 * time.Second,
+		ConnClass:            "POOLED",
+		EnableEvents:         true,
 	}
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
