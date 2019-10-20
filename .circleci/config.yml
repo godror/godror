@@ -48,7 +48,7 @@ jobs:
           command: |
               pwd
               export -p
-              find
+              find -ls
 
       - run:
           name: Run goracle.v2.test
@@ -56,6 +56,7 @@ jobs:
               source $PWD/contrib/goracle.db/env.sh
               export TNS_ADMIN=$PWD/contrib/goracle.db
               export -p
+              find $TNS_ADMIN -ls
               ./goracle.v2.test -test.coverprofile=coverage.txt -test.v
 
       - run:
