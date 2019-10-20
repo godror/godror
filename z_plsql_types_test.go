@@ -373,6 +373,10 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
 			if err != nil {
+				var cdr coder
+				if errors.As(err, &cdr); cdr.Code() == 21779 {
+					t.Skip(err)
+				}
 				t.Fatal(err)
 			}
 
