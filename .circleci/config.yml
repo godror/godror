@@ -44,6 +44,13 @@ jobs:
           command: sudo sh -c 'ldconfig -v /usr/lib/oracle/instantclient_19_3; ldd /usr/lib/oracle/instantclient_19_3/libclntsh.so'
 
       - run:
+          name: Log environment
+          command: |
+              pwd
+              export -p
+              find
+
+      - run:
           name: Run goracle.v2.test
           command: ./goracle.v2.test -test.coverprofile=coverage.txt -test.v
 
