@@ -44,18 +44,13 @@ jobs:
           command: sudo sh -c 'ldconfig -v /usr/lib/oracle/instantclient_19_3; ldd /usr/lib/oracle/instantclient_19_3/libclntsh.so'
 
       - run:
-          name: Log environment
-          command: |
-              pwd
-              export -p
-              find -ls
-
-      - run:
           name: Run goracle.v2.test
           command: |
               source $PWD/contrib/goracle.db/env.sh
               export TNS_ADMIN=$PWD/contrib/goracle.db
               export -p
+              echo -e "WALLET_LOCATION=(SOURCE=(METHOD=file)(METHOD_DATA=(DIRECTORY=\"/go/src/gopkg.in/goracle.v2/contrib/goracle.db\")))\nSSL_SERVER_DN_MATCH=yes" >$PWD/contrib/goracle.db/sqlnet.ora
+              cat $TNS_ADMIN/sqlnet.ora
               find $TNS_ADMIN -ls
               ./goracle.v2.test -test.coverprofile=coverage.txt -test.v
 
