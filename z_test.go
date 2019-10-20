@@ -63,14 +63,18 @@ func init() {
 		logger.Swap(tl)
 	}
 	if os.Getenv("GORACLE_DRV_TEST_DB") == "" && os.Getenv("TNS_ADMIN") == "" {
-		fmt.Println("Using default database for tests: contrib/goracle/env.sh")
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
 		}
 		wd = filepath.Join(wd, "contrib", "goracle.db")
+		fn := filepath.Join(wd, "env.sh")
+		fmt.Println("Using default database for tests: ", fn)
+
+		fmt.Printf("export TNS_ADMIN=%s\n", wd)
 		os.Setenv("TNS_ADMIN", wd)
-		b, err := ioutil.ReadFile(filepath.Join(wd, "env.sh"))
+
+		b, err := ioutil.ReadFile(fn)
 		if err != nil {
 			fmt.Println(err)
 		} else {
