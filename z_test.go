@@ -73,7 +73,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		defer os.RemoveAll(tempDir)
+		//defer os.RemoveAll(tempDir)
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
 			sfh, err := os.Open(filepath.Join(wd, nm))
 			if err != nil {

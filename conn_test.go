@@ -120,7 +120,7 @@ func TestCalculateTZ(t *testing.T) {
 		off            int
 		err            error
 	}{
-		{dbTZ: "Europe/Budapest", timezone: "+01:00", off: 7200},
+		{dbTZ: "Europe/Budapest", timezone: "+01:00", off: 3600},
 		{dbTZ: "+01:00", off: +3600},
 		{off: 1800, err: io.EOF},
 		{timezone: "+00:30", off: 1800},
