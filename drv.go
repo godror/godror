@@ -547,7 +547,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 	poolCreateParams.maxLifetimeSession = C.uint32_t(DefaultMaxLifeTime / time.Second)
 	if P.MaxLifeTime > 0 {
-		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime/time.Second) // maximum time in seconds till a pooled session may exist
+		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime / time.Second) // maximum time in seconds till a pooled session may exist
 	}
 
 	var dp *C.dpiPool

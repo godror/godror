@@ -17,11 +17,11 @@ package goracle
 
 import (
 	"database/sql/driver"
-	"time"
 	"fmt"
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	errors "golang.org/x/xerrors"
@@ -72,7 +72,7 @@ func TestParseConnString(t *testing.T) {
 			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
 				ConnClass: "POOLED", IsSysOper: true,
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
-				WaitTimeout: 200*time.Millisecond, MaxLifeTime: 4000*time.Second, SessionTimeout: 2000*time.Second}},
+				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second}},
 
 		"@": {
 			In:   setP(wantAt.String(), wantAt.Password),

@@ -62,20 +62,55 @@ func init() {
 	if os.Getenv("VERBOSE") == "1" {
 		logger.Swap(tl)
 	}
-	if os.Getenv("GORACLE_DRV_TEST_DB") == "" && os.Getenv("TNS_ADMIN") == "" {
+	if os.Getenv("GORACLE_DRV_USERNAME") == "" &&
+		(os.Getenv("GORACLE_DRV_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
 		}
 		wd = filepath.Join(wd, "contrib", "goracle.db")
+		tempDir, err := ioutil.TempDir("", "goracle_drv_test-")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(tempDir)
+		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
+			sfh, err := os.Open(filepath.Join(wd, nm))
+			if err != nil {
+				panic(err)
+			}
+			dfh, err := os.Create(filepath.Join(tempDir, nm))
+			if err != nil {
+				sfh.Close()
+				panic(err)
+			}
+			_, err = io.Copy(dfh, sfh)
+			sfh.Close()
+			dfh.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+		b, err := ioutil.ReadFile(filepath.Join(wd, "sqlnet.ora"))
+		if err != nil {
+			panic(err)
+		}
+		if err = ioutil.WriteFile(
+			filepath.Join(tempDir, "sqlnet.ora"),
+			bytes.Replace(b,
+				[]byte(`DIRECTORY="/go/src/gopkg.in/goracle.v2/contrib/goracle.db"`),
+				[]byte(`DIRECTORY="`+wd+`"`), 1),
+			0644,
+		); err != nil {
+			panic(err)
+		}
+
 		fn := filepath.Join(wd, "env.sh")
 		fmt.Println("Using default database for tests: ", fn)
-
 		fmt.Printf("export TNS_ADMIN=%s\n", wd)
-		os.Setenv("TNS_ADMIN", wd)
+		os.Setenv("TNS_ADMIN", tempDir)
 
-		b, err := ioutil.ReadFile(fn)
-		if err != nil {
+		if b, err = ioutil.ReadFile(fn); err != nil {
 			fmt.Println(err)
 		} else {
 			const prefix = "export GORACLE_DRV_TEST_"
