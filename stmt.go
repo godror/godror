@@ -268,6 +268,8 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 // ExecContext executes a query that doesn't return rows, such as an INSERT or UPDATE.
 //
 // ExecContext must honor the context timeout and return when it is canceled.
+//
+// Cancelation/timeout is honored, execution is broken, but you may have to disable out-of-bound execution - see https://github.com/oracle/odpi/issues/116 for details.
 func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) (res driver.Result, err error) {
 	if err = ctx.Err(); err != nil {
 		return nil, err
@@ -388,8 +390,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			_ = st.Break()
 			st.cleanup()
-			st.conn.Close()
-			return nil, driver.ErrBadConn
+			if err := st.conn.Close(); err != nil {
+				return nil, err
+			}
+			return nil, ctx.Err()
 		}
 	}
 
@@ -449,6 +453,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 // QueryContext executes a query that may return rows, such as a SELECT.
 //
 // QueryContext must honor the context timeout and return when it is canceled.
+//
+// Cancelation/timeout is honored, execution is broken, but you may have to disable out-of-bound execution - see https://github.com/oracle/odpi/issues/116 for details.
 func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -541,8 +547,10 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			}
 			_ = st.Break()
 			st.cleanup()
-			st.conn.Close()
-			return nil, driver.ErrBadConn
+			if err := st.conn.Close(); err != nil {
+				return nil, err
+			}
+			return nil, ctx.Err()
 		}
 	}
 	rows, err := st.openRows(int(colCount))
