@@ -390,7 +390,8 @@ func TestPLSQLTypes(t *testing.T) {
 	}
 	//})
 
-	t.Run("Table", func(t *testing.T) {
+	//t.Run("Table", func(t *testing.T) {
+	{
 		// you must have execute privilege on package and use uppercase
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
@@ -442,9 +443,11 @@ func TestPLSQLTypes(t *testing.T) {
 				}
 			}
 		}
-	})
+	}
+	//})
 
-	t.Run("Table IN", func(t *testing.T) {
+	//t.Run("Table IN", func(t *testing.T) {
+	{
 		// you must have execute privilege on package and use uppercase
 		tableObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
@@ -513,7 +516,8 @@ func TestPLSQLTypes(t *testing.T) {
 				}
 			}
 		}
-	})
+	}
+	//})
 
 }
 
