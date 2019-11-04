@@ -157,13 +157,14 @@ func (O *Object) Collection() *ObjectCollection {
 
 // Close releases a reference to the object.
 func (O *Object) Close() error {
-	if O.dpiObject == nil {
+	obj := O.dpiObject
+	O.dpiObject = nil
+	if obj == nil {
 		return nil
 	}
-	if rc := C.dpiObject_release(O.dpiObject); rc == C.DPI_FAILURE {
+	if C.dpiObject_release(obj) == C.DPI_FAILURE {
 		return errors.Errorf("error on close object: %w", O.getError())
 	}
-	O.dpiObject = nil
 
 	return nil
 }
@@ -446,21 +447,21 @@ func (t *ObjectType) close() error {
 	if t == nil {
 		return nil
 	}
-	for _, attr := range t.Attributes {
+	attributes, d := t.Attributes, t.dpiObjectType
+	t.Attributes, t.dpiObjectType = nil, nil
+
+	for _, attr := range attributes {
 		err := attr.Close()
 		if err != nil {
 			return err
 		}
 	}
 
-	t.Attributes = nil
-	d := t.dpiObjectType
-	t.dpiObjectType = nil
 	if d == nil {
 		return nil
 	}
 
-	if rc := C.dpiObjectType_release(d); rc == C.DPI_FAILURE {
+	if C.dpiObjectType_release(d) == C.DPI_FAILURE {
 		return errors.Errorf("error on close object type: %w", t.getError())
 	}
 
@@ -581,11 +582,11 @@ type ObjectAttribute struct {
 // Close the ObjectAttribute.
 func (A ObjectAttribute) Close() error {
 	attr := A.dpiObjectAttr
+	A.dpiObjectAttr = nil
+
 	if attr == nil {
 		return nil
 	}
-
-	A.dpiObjectAttr = nil
 	if C.dpiObjectAttr_release(attr) == C.DPI_FAILURE {
 		return A.getError()
 	}

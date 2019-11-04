@@ -84,13 +84,16 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	}
 	C.free(unsafe.Pointer(value))
 	if err != nil {
+		cx.Close()
 		return nil, err
 	}
 	if err = Q.SetEnqOptions(DefaultEnqOptions); err != nil {
+		cx.Close()
 		Q.Close()
 		return nil, err
 	}
 	if err = Q.SetDeqOptions(DefaultDeqOptions); err != nil {
+		cx.Close()
 		Q.Close()
 		return nil, err
 	}

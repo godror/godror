@@ -62,7 +62,7 @@ func (c connector) Connect(context.Context) (driver.Conn, error) {
 		return conn, err
 	}
 	if err = c.onInit(conn); err != nil {
-		conn.Close()
+		conn.close(true)
 		return nil, err
 	}
 	return conn, nil

@@ -72,17 +72,14 @@ func (r *rows) Close() error {
 	if r == nil {
 		return nil
 	}
-	r.columns = nil
-	r.data = nil
-	for _, v := range r.vars {
+	vars, st := r.vars, r.statement
+	r.columns, r.vars, r.data, r.statement, r.nextRs = nil, nil, nil, nil, nil
+	for _, v := range vars {
 		C.dpiVar_release(v)
 	}
-	r.vars = nil
-	if r.statement == nil {
+	if st == nil {
 		return nil
 	}
-	st := r.statement
-	r.statement = nil
 
 	st.Lock()
 	defer st.Unlock()

@@ -217,9 +217,10 @@ func (st *statement) cleanup() error {
 		return nil
 	}
 
-	for _, v := range st.vars {
-		C.dpiVar_release(v)
-	}
+	vars := st.vars
+	c := st.conn
+	st.isSlice = nil
+	st.query = ""
 	st.data = nil
 	st.vars = nil
 	st.varInfos = nil
@@ -227,8 +228,11 @@ func (st *statement) cleanup() error {
 	st.dests = nil
 	st.columns = nil
 	st.dpiStmt = nil
-	c := st.conn
 	st.conn = nil
+
+	for _, v := range vars {
+		C.dpiVar_release(v)
+	}
 
 	if c == nil {
 		return driver.ErrBadConn
@@ -279,7 +283,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			if Log != nil {
-				Log("error", driver.ErrBadConn)
+				Log("error", err)
 			}
 			st.close()
 			st.conn.close(true)
@@ -463,8 +467,11 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
+			if Log != nil {
+				Log("error", err)
+			}
 			st.close()
-			st.conn.Close()
+			st.conn.close(true)
 		}
 		return err
 	}
