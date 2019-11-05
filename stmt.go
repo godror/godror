@@ -187,38 +187,14 @@ func (st *statement) Close() error {
 	st.Lock()
 	defer st.Unlock()
 
-	return st.close()
+	return st.close(false)
 }
-func (st *statement) close() error {
-	if st == nil {
-		return nil
-	}
-	dpiStmt := st.dpiStmt
-	c := st.conn
-	st.cleanup()
-
-	var si C.dpiStmtInfo
-	if dpiStmt != nil &&
-		C.dpiStmt_getInfo(dpiStmt, &si) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
-		C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
-		return nil
-	}
-	if c == nil {
-		return driver.ErrBadConn
-	}
-	if err := c.getError(); err != nil {
-		return errors.Errorf("statement/dpiStmt_release: %w", err)
-	}
-	return nil
-}
-
-func (st *statement) cleanup() error {
+func (st *statement) close(keepDpiStmt bool) error {
 	if st == nil {
 		return nil
 	}
 
-	vars := st.vars
-	c := st.conn
+	c, dpiStmt, vars := st.conn, st.dpiStmt, st.vars
 	st.isSlice = nil
 	st.query = ""
 	st.data = nil
@@ -236,6 +212,14 @@ func (st *statement) cleanup() error {
 		}
 	}
 
+	if !keepDpiStmt {
+		var si C.dpiStmtInfo
+		if dpiStmt != nil &&
+			C.dpiStmt_getInfo(dpiStmt, &si) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
+			C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
+			return nil
+		}
+	}
 	if c == nil {
 		return driver.ErrBadConn
 	}
@@ -287,7 +271,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if Log != nil {
 				Log("error", err)
 			}
-			st.close()
+			st.close(false)
 			st.conn.close(true)
 		}
 		return err
@@ -395,7 +379,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "BREAK statement")
 			}
 			_ = st.Break()
-			st.cleanup()
+			st.close(true)
 			if err := st.conn.Close(); err != nil {
 				return nil, err
 			}
@@ -472,7 +456,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			if Log != nil {
 				Log("error", err)
 			}
-			st.close()
+			st.close(false)
 			st.conn.close(true)
 		}
 		return err
@@ -555,7 +539,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				Log("msg", "BREAK query")
 			}
 			_ = st.Break()
-			st.cleanup()
+			st.close(true)
 			if err := st.conn.Close(); err != nil {
 				return nil, err
 			}
