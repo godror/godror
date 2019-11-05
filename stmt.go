@@ -230,8 +230,10 @@ func (st *statement) cleanup() error {
 	st.dpiStmt = nil
 	st.conn = nil
 
-	for _, v := range vars {
-		C.dpiVar_release(v)
+	for _, v := range vars[:cap(vars)] {
+		if v != nil {
+			C.dpiVar_release(v)
+		}
 	}
 
 	if c == nil {
@@ -633,12 +635,10 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	if Log != nil {
 		Log("enter", "bindVars", "args", args)
 	}
-	if cap(st.vars) < len(args) || cap(st.varInfos) < len(args) {
-		for i, v := range st.vars {
-			if v != nil {
-				C.dpiVar_release(v)
-				st.vars[i], st.varInfos[i] = nil, varInfo{}
-			}
+	for i, v := range st.vars[:cap(st.vars)] {
+		if v != nil {
+			C.dpiVar_release(v)
+			st.vars[i], st.varInfos[i] = nil, varInfo{}
 		}
 	}
 	var named bool
@@ -788,10 +788,6 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 			return errors.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
 		if st.vars[i] == nil || st.data[i] == nil || st.varInfos[i] != vi {
-			if st.vars[i] != nil {
-				C.dpiVar_release(st.vars[i])
-				st.vars[i] = nil
-			}
 			if st.vars[i], st.data[i], err = st.newVar(vi); err != nil {
 				return errors.Errorf("%d: %w", i, err)
 			}

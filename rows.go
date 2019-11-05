@@ -74,8 +74,10 @@ func (r *rows) Close() error {
 	}
 	vars, st := r.vars, r.statement
 	r.columns, r.vars, r.data, r.statement, r.nextRs = nil, nil, nil, nil, nil
-	for _, v := range vars {
-		C.dpiVar_release(v)
+	for _, v := range vars[:cap(vars)] {
+		if v != nil {
+			C.dpiVar_release(v)
+		}
 	}
 	if st == nil {
 		return nil
