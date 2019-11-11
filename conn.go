@@ -22,7 +22,6 @@ package goracle
 import "C"
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -410,7 +409,7 @@ func (c *conn) init() error {
 			return errors.Errorf("getServerVersion: %w", c.getError())
 		}
 		c.Server.set(&v)
-		c.Server.ServerRelease = string(bytes.ReplaceAll(
+		c.Server.ServerRelease = string(bytesReplaceAll(
 			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
 			[]byte{'\n'}, []byte{';', ' '}))
 	}
