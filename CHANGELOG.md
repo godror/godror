@@ -5,9 +5,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.23.0]
 ### Added
 - Conn.Timezone() returns the connection's timezone
 - allow setting the timezone with Timezone ConnectionParam.
+- newPassword new connection parameter for changing password on standalone connection.
 
 ### Changed
 - set DefaultEnqOptions and DefaultDeqOptions in NewQueue.

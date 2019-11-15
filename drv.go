@@ -35,7 +35,8 @@
 //     poolWaitTimeout=5m& \
 //     poolSessionMaxLifetime=1h& \
 //     poolSessionTimeout=30s& \
-//     timezone=Local
+//     timezone=Local& \
+//     newPassword=
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -458,7 +459,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		}
 	}
 
-	var cUserName, cPassword *C.char
+	var cUserName, cPassword, cNewPassword *C.char
 	if !(P.Username == "" && P.Password == "") {
 		cUserName, cPassword = C.CString(P.Username), C.CString(P.Password)
 	}
@@ -472,6 +473,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		if cUserName != nil {
 			C.free(unsafe.Pointer(cUserName))
 			C.free(unsafe.Pointer(cPassword))
+		}
+		if cNewPassword != nil {
+			C.free(unsafe.Pointer(cNewPassword))
 		}
 		if cSid != nil {
 			C.free(unsafe.Pointer(cSid))
@@ -494,6 +498,11 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
+		if P.NewPassword != "" {
+			cNewPassword = C.CString(P.NewPassword)
+			connCreateParams.newPassword = cNewPassword
+			connCreateParams.newPasswordLength = C.uint32_t(len(P.NewPassword))
+		}
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
 			Log("C", "dpiConn_create", "params", P.String(), "common", commonCreateParams, "conn", connCreateParams)
@@ -552,7 +561,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams))
+		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams), "newPassword")
 	}
 	if C.dpiPool_create(
 		d.dpiContext,
@@ -634,7 +643,9 @@ func (c *conn) acquireConn(user, pass string) error {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	Username, Password, SID, ConnClass       string
+	Username, Password, SID, ConnClass string
+	// NewPassword is used iff StandaloneConnection is true!
+	NewPassword                              string
 	MinSessions, MaxSessions, PoolIncrement  int
 	WaitTimeout, MaxLifeTime, SessionTimeout time.Duration
 	IsSysDBA, IsSysOper, IsSysASM, IsPrelim  bool
@@ -672,11 +683,16 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
 	}
 	// params should be sorted lexicographically
-	password := P.Password
+	password, newPassword := P.Password, P.NewPassword
 	if !withPassword {
 		hsh := fnv.New64()
 		io.WriteString(hsh, P.Password)
 		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
+		if newPassword != "" {
+			hsh.Reset()
+			io.WriteString(hsh, P.NewPassword)
+			newPassword = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
+		}
 	}
 	var tz string
 	if P.Timezone != nil {
@@ -693,13 +709,13 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 				"standaloneConnection=%d&enableEvents=%d&"+
 				"heterogeneousPool=%d&prelim=%d&"+
 				"poolWaitTimeout=%s&poolSessionMaxLifetime=%s&poolSessionTimeout=%s&"+
-				"timezone=%s",
+				"timezone=%s&newPassword=%s",
 				P.PoolIncrement, P.MaxSessions, P.MinSessions,
 				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
 				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
 				b2i(P.HeterogeneousPool), b2i(P.IsPrelim),
 				P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-				tz,
+				tz, newPassword,
 			),
 	}).String()
 }
@@ -795,6 +811,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
 	if P.IsPrelim {
 		P.ConnClass = ""
+	}
+	if P.StandaloneConnection {
+		P.NewPassword = q.Get("newPassword")
 	}
 
 	for _, task := range []struct {
