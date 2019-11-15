@@ -561,7 +561,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams), "newPassword")
+		Log("C", "dpiPool_create", "username", P.Username, "conn", connString, "sid", P.SID, "common", commonCreateParams, "pool", fmt.Sprintf("%#v", poolCreateParams))
 	}
 	if C.dpiPool_create(
 		d.dpiContext,
@@ -678,45 +678,56 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host, path = host[:i], host[i:]
 	}
-	cc := ""
-	if class {
-		cc = fmt.Sprintf("connectionClass=%s&", url.QueryEscape(P.ConnClass))
+	q := make(url.Values, 32)
+	s := P.ConnClass
+	if !class {
+		s = ""
 	}
-	// params should be sorted lexicographically
-	password, newPassword := P.Password, P.NewPassword
-	if !withPassword {
+	q.Add("connectionClass", s)
+
+	password := P.Password
+	if withPassword {
+		q.Add("newPassword", P.NewPassword)
+	} else {
 		hsh := fnv.New64()
 		io.WriteString(hsh, P.Password)
 		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
-		if newPassword != "" {
+		if P.NewPassword != "" {
 			hsh.Reset()
 			io.WriteString(hsh, P.NewPassword)
-			newPassword = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
+			q.Add("newPassword", "SECRET-"+base64.URLEncoding.EncodeToString(hsh.Sum(nil)))
 		}
 	}
-	var tz string
+	s = ""
 	if P.Timezone != nil {
-		tz = P.Timezone.String()
+		s = P.Timezone.String()
 	}
+	q.Add("timezone", s)
+	B := func(b bool) string {
+		if b {
+			return "1"
+		}
+		return "0"
+	}
+	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
+	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
+	q.Add("poolIncrement", strconv.Itoa(P.PoolIncrement))
+	q.Add("sysdba", B(P.IsSysDBA))
+	q.Add("sysoper", B(P.IsSysOper))
+	q.Add("sysasm", B(P.IsSysASM))
+	q.Add("standaloneConnection", B(P.StandaloneConnection))
+	q.Add("enableEvents", B(P.EnableEvents))
+	q.Add("heterogeneousPool", B(P.HeterogeneousPool))
+	q.Add("prelim", B(P.IsPrelim))
+	q.Add("poolWaitTimeout", P.WaitTimeout.String())
+	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
+	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	return (&url.URL{
-		Scheme: "oracle",
-		User:   url.UserPassword(P.Username, password),
-		Host:   host,
-		Path:   path,
-		RawQuery: cc +
-			fmt.Sprintf("poolIncrement=%d&poolMaxSessions=%d&poolMinSessions=%d&"+
-				"sysdba=%d&sysoper=%d&sysasm=%d&"+
-				"standaloneConnection=%d&enableEvents=%d&"+
-				"heterogeneousPool=%d&prelim=%d&"+
-				"poolWaitTimeout=%s&poolSessionMaxLifetime=%s&poolSessionTimeout=%s&"+
-				"timezone=%s&newPassword=%s",
-				P.PoolIncrement, P.MaxSessions, P.MinSessions,
-				b2i(P.IsSysDBA), b2i(P.IsSysOper), b2i(P.IsSysASM),
-				b2i(P.StandaloneConnection), b2i(P.EnableEvents),
-				b2i(P.HeterogeneousPool), b2i(P.IsPrelim),
-				P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-				tz, newPassword,
-			),
+		Scheme:   "oracle",
+		User:     url.UserPassword(P.Username, password),
+		Host:     host,
+		Path:     path,
+		RawQuery: q.Encode(),
 	}).String()
 }
 
