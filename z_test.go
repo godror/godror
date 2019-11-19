@@ -2384,3 +2384,45 @@ END;`
 		}
 	}
 }
+
+func TestNewPassword(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const user, oldPassword, newPassword = "test_expired", "oldPassw0rd_long", "newPassw0rd_longer"
+	// GRANT CREATE USER, DROP USER TO test
+	// GRANT CREATE SESSION TO test WITH ADMIN OPTION
+	qry := "CREATE USER " + user + " IDENTIFIED BY " + oldPassword + " PASSWORD EXPIRE"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP USER " + user)
+
+	qry = "GRANT CREATE SESSION TO " + user
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(err)
+	}
+
+	P, err := goracle.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.Username, P.Password = user, oldPassword
+	P.StandaloneConnection = true
+	P.NewPassword = newPassword
+	{
+		db, err := sql.Open("goracle", P.StringWithPassword())
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+
+	P.Password, P.NewPassword = P.NewPassword, ""
+	{
+		db, err := sql.Open("goracle", P.StringWithPassword())
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+}
