@@ -417,8 +417,9 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			authMode |= elt.Mode
 		}
 	}
-	if P.IsPrelim {
-		// The shared memory may not exist when Oracle is shut down.
+	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
+	if P.IsPrelim || P.StandaloneConnection {
+		// Prelim: the shared memory may not exist when Oracle is shut down.
 		P.ConnClass = ""
 	}
 
