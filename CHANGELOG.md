@@ -6,13 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
-- Support to change password with NewPassword ConnectionParams.
 
 ## [2.23.0]
 ### Added
 - Conn.Timezone() returns the connection's timezone
 - allow setting the timezone with Timezone ConnectionParam.
-- newPassword new connection parameter for changing password on standalone connection.
+- Support to change password with NewPassword ConnectionParams.
 
 ### Changed
 - set DefaultEnqOptions and DefaultDeqOptions in NewQueue.
