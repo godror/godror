@@ -2386,26 +2386,35 @@ END;`
 }
 
 func TestNewPassword(t *testing.T) {
+	P, err := goracle.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	const user, oldPassword, newPassword = "test_expired", "oldPassw0rd_long", "newPassw0rd_longer"
+
+	testDb.Exec("DROP USER " + user)
 	// GRANT CREATE USER, DROP USER TO test
 	// GRANT CREATE SESSION TO test WITH ADMIN OPTION
 	qry := "CREATE USER " + user + " IDENTIFIED BY " + oldPassword + " PASSWORD EXPIRE"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		if strings.Contains(err.Error(), "ORA-01031:") {
+			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.Username + ";\n" +
+				"GRANT CREATE SESSION TO " + P.Username + " WITH AMDIN OPTION;\n")
+		}
 		t.Fatal(err)
 	}
 	defer testDb.Exec("DROP USER " + user)
 
 	qry = "GRANT CREATE SESSION TO " + user
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		if strings.Contains(err.Error(), "ORA-01031:") {
+			t.Log("Please issue this:\nGRANT CREATE SESSION TO " + P.Username + " WITH ADMIN OPTION;\n")
+		}
 		t.Fatal(err)
 	}
 
-	P, err := goracle.ParseConnString(testConStr)
-	if err != nil {
-		t.Fatal(err)
-	}
 	P.Username, P.Password = user, oldPassword
 	P.StandaloneConnection = true
 	P.NewPassword = newPassword
