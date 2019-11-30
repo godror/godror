@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 
+## [2.23.2]
+### Changed
+- Close statement (and dpiStmt) on Break/bad conn.
+
 ## [2.23.0]
 ### Added
 - Conn.Timezone() returns the connection's timezone
