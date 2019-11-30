@@ -98,7 +98,7 @@ func init() {
 		if err = ioutil.WriteFile(
 			filepath.Join(tempDir, "sqlnet.ora"),
 			bytes.Replace(b,
-				[]byte(`DIRECTORY="/go/src/gopkg.in/goracle.v2/contrib/goracle.db"`),
+				[]byte(`DIRECTORY="?/network/admin"`),
 				[]byte(`DIRECTORY="`+wd+`"`), 1),
 			0644,
 		); err != nil {
