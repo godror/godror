@@ -147,7 +147,7 @@ func (c *conn) Close() error {
 	}
 	c.Lock()
 	defer c.Unlock()
-	return c.close(false)
+	return c.close(true)
 }
 
 func (c *conn) close(doNotReuse bool) error {
@@ -177,6 +177,7 @@ func (c *conn) close(doNotReuse bool) error {
 	}()
 	var rc C.int
 	if doNotReuse {
+		defer C.dpiConn_release(dpiConn)
 		rc = C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
 	} else {
 		rc = C.dpiConn_release(dpiConn)
@@ -712,7 +713,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 	}
 
 	if c.dpiConn != nil {
-		if err := c.Close(); err != nil {
+		if err := c.close(false); err != nil {
 			return driver.ErrBadConn
 		}
 	}
