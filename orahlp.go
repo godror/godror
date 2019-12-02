@@ -57,7 +57,7 @@ func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, e
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer c.close(false)
 
 	stmt, err := c.PrepareContext(ctx, qry)
 	if err != nil {
