@@ -2402,6 +2402,7 @@ func TestNewPassword(t *testing.T) {
 		if strings.Contains(err.Error(), "ORA-01031:") {
 			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.Username + ";\n" +
 				"GRANT CREATE SESSION TO " + P.Username + " WITH AMDIN OPTION;\n")
+			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
