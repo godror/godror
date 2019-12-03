@@ -153,6 +153,7 @@ extern unsigned long dpiDebugLevel;
 // define values used for getting/setting OCI attributes
 #define DPI_OCI_ATTR_DATA_SIZE                      1
 #define DPI_OCI_ATTR_DATA_TYPE                      2
+#define DPI_OCI_ATTR_ENV                            5
 #define DPI_OCI_ATTR_PRECISION                      5
 #define DPI_OCI_ATTR_SCALE                          6
 #define DPI_OCI_ATTR_NAME                           4
@@ -165,6 +166,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_ROW_COUNT                      9
 #define DPI_OCI_ATTR_PREFETCH_ROWS                  11
 #define DPI_OCI_ATTR_PARAM_COUNT                    18
+#define DPI_OCI_ATTR_ROWID                          19
 #define DPI_OCI_ATTR_USERNAME                       22
 #define DPI_OCI_ATTR_PASSWORD                       23
 #define DPI_OCI_ATTR_STMT_TYPE                      24
@@ -296,6 +298,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_SKIP                      577
 #define DPI_OCI_ATTR_SODA_LIMIT                     578
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
+#define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -435,6 +438,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SODA_COLL_CREATE_MAP                0x00010000
 #define DPI_OCI_SODA_INDEX_DROP_FORCE               0x00010000
 #define DPI_OCI_TRANS_TWOPHASE                      0x01000000
+#define DPI_OCI_SECURE_NOTIFICATION                 0x20000000
 
 //-----------------------------------------------------------------------------
 // Macros
@@ -528,6 +532,8 @@ typedef enum {
     DPI_ERR_EXT_AUTH_INVALID_PROXY,
     DPI_ERR_QUEUE_NO_PAYLOAD,
     DPI_ERR_QUEUE_WRONG_PAYLOAD_TYPE,
+    DPI_ERR_ORACLE_CLIENT_UNSUPPORTED,
+    DPI_ERR_MISSING_SHARDING_KEY,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -597,6 +603,25 @@ typedef struct {
     uint32_t maxLifetimeSession;
 } dpiPoolCreateParams__v30;
 
+// structure used for creating pools (3.2)
+typedef struct {
+    uint32_t minSessions;
+    uint32_t maxSessions;
+    uint32_t sessionIncrement;
+    int pingInterval;
+    int pingTimeout;
+    int homogeneous;
+    int externalAuth;
+    dpiPoolGetMode getMode;
+    const char *outPoolName;
+    uint32_t outPoolNameLength;
+    uint32_t timeout;
+    uint32_t waitTimeout;
+    uint32_t maxLifetimeSession;
+    const char *plsqlFixupCallback;
+    uint32_t plsqlFixupCallbackLength;
+} dpiPoolCreateParams__v32;
+
 // structure used for creating connections (3.0)
 typedef struct {
     dpiAuthMode authMode;
@@ -643,6 +668,28 @@ typedef struct {
     uint8_t groupingType;
 } dpiSubscrCreateParams__v30;
 
+// structure used for creating subscriptions (3.2)
+typedef struct {
+    dpiSubscrNamespace subscrNamespace;
+    dpiSubscrProtocol protocol;
+    dpiSubscrQOS qos;
+    dpiOpCode operations;
+    uint32_t portNumber;
+    uint32_t timeout;
+    const char *name;
+    uint32_t nameLength;
+    dpiSubscrCallback callback;
+    void *callbackContext;
+    const char *recipientName;
+    uint32_t recipientNameLength;
+    const char *ipAddress;
+    uint32_t ipAddressLength;
+    uint8_t groupingClass;
+    uint32_t groupingValue;
+    uint8_t groupingType;
+    uint64_t outRegId;
+} dpiSubscrCreateParams__v32;
+
 
 //-----------------------------------------------------------------------------
 // OCI type definitions
@@ -662,6 +709,17 @@ typedef struct {
     uint8_t minute;
     uint8_t second;
 } dpiOciDate;
+
+// alternative representation of OCI Date type used for sharding
+typedef struct {
+    uint8_t century;
+    uint8_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+} dpiShardingOciDate;
 
 // representation of OCI XID type (two-phase commit)
 typedef struct {
@@ -738,6 +796,7 @@ typedef struct {
     void *baseDate;                     // midnight, January 1, 1970
     int threaded;                       // threaded mode enabled?
     int events;                         // events mode enabled?
+    int externalHandle;                 // external handle?
 } dpiEnv;
 
 // used to manage all errors that take place in the library; the implementation
@@ -995,6 +1054,7 @@ struct dpiStmt {
     uint64_t rowCount;                  // rows affected or rows fetched so far
     uint64_t bufferMinRow;              // row num of first row in buffers
     uint16_t statementType;             // type of statement
+    dpiRowid *lastRowid;                // rowid of last affected row
     int isOwned;                        // owned by structure?
     int hasRowsToFetch;                 // potentially more rows to fetch?
     int scrollable;                     // scrollable cursor?
@@ -1101,6 +1161,7 @@ struct dpiSubscr {
     dpiSubscrQOS qos;                   // quality of service flags
     dpiSubscrCallback callback;         // callback when event is propagated
     void *callbackContext;              // context pointer for callback
+    int clientInitiated;                // client initiated?
     int registered;                     // registered with database?
 };
 
@@ -1253,7 +1314,8 @@ int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
 //-----------------------------------------------------------------------------
 void dpiEnv__free(dpiEnv *env, dpiError *error);
 int dpiEnv__init(dpiEnv *env, const dpiContext *context,
-        const dpiCommonCreateParams *params, dpiError *error);
+        const dpiCommonCreateParams *params, void *externalHandle,
+        dpiError *error);
 int dpiEnv__getEncodingInfo(dpiEnv *env, dpiEncodingInfo *info);
 
 
@@ -1747,7 +1809,7 @@ int dpiOci__stringPtr(void *envHandle, void *handle, char **ptr);
 int dpiOci__stringResize(void *envHandle, void **handle, uint32_t newSize,
         dpiError *error);
 int dpiOci__stringSize(void *envHandle, void *handle, uint32_t *size);
-int dpiOci__subscriptionRegister(dpiConn *conn, void **handle,
+int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, uint32_t mode,
         dpiError *error);
 int dpiOci__subscriptionUnRegister(dpiConn *conn, dpiSubscr *subscr,
         dpiError *error);

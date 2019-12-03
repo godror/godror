@@ -64,23 +64,6 @@ static int dpiConn__attachExternal(dpiConn *conn, void *externalHandle,
         return DPI_FAILURE;
     }
 
-    // allocate a new service context handle which will use the new environment
-    // handle independent of the original service context handle
-    conn->handle = NULL;
-    if (dpiOci__handleAlloc(conn->env->handle, &conn->handle,
-            DPI_OCI_HTYPE_SVCCTX, "allocate service context handle",
-            error) < 0)
-        return DPI_FAILURE;
-
-    // set these handles on the newly created service context
-    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, conn->serverHandle,
-            0, DPI_OCI_ATTR_SERVER, "set server handle", error) < 0)
-        return DPI_FAILURE;
-    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-            conn->sessionHandle, 0, DPI_OCI_ATTR_SESSION, "set session handle",
-            error) < 0)
-        return DPI_FAILURE;
-
     return DPI_SUCCESS;
 }
 
@@ -223,8 +206,6 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
 
     // handle connections created with an external handle
     if (conn->externalHandle) {
-        if (conn->handle)
-            dpiOci__handleFree(conn->handle, DPI_OCI_HTYPE_SVCCTX);
         conn->sessionHandle = NULL;
 
     // handle standalone connections
@@ -344,6 +325,8 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error)
 {
+    void *envHandle = NULL;
+
     // allocate handle lists for statements, LOBs and objects
     if (dpiHandleList__create(&conn->openStmts, error) < 0)
         return DPI_FAILURE;
@@ -352,8 +335,29 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
     if (dpiHandleList__create(&conn->objects, error) < 0)
         return DPI_FAILURE;
 
+    // if an external service context handle is provided, acquire the
+    // environment handle from it; need a temporary environment handle in order
+    // to do so
+    if (createParams->externalHandle) {
+        error->env = conn->env;
+        if (dpiOci__envNlsCreate(&conn->env->handle, DPI_OCI_DEFAULT, 0, 0,
+                error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__handleAlloc(conn->env->handle, &error->handle,
+                DPI_OCI_HTYPE_ERROR, "allocate temp OCI error", error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__attrGet(createParams->externalHandle, DPI_OCI_HTYPE_SVCCTX,
+                &envHandle, NULL, DPI_OCI_ATTR_ENV, "get env handle",
+                error) < 0)
+            return DPI_FAILURE;
+        dpiOci__handleFree(conn->env->handle, DPI_OCI_HTYPE_ENV);
+        error->handle = NULL;
+        conn->env->handle = NULL;
+    }
+
     // initialize environment (for non-pooled connections)
-    if (!pool && dpiEnv__init(conn->env, context, commonParams, error) < 0)
+    if (!pool && dpiEnv__init(conn->env, context, commonParams, envHandle,
+            error) < 0)
         return DPI_FAILURE;
 
     // if a handle is specified, use it
@@ -519,6 +523,12 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
     int externalAuth, status;
     void *authInfo;
     uint32_t mode;
+
+    // clear pointers if length is 0
+    if (userNameLength == 0)
+        userName = NULL;
+    if (passwordLength == 0)
+        password = NULL;
 
     // set things up for the call to acquire a session
     if (pool) {
@@ -904,6 +914,9 @@ static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
     }
     if (params->superShardingKeyColumns &&
             params->numSuperShardingKeyColumns > 0) {
+        if (params->numShardingKeyColumns == 0)
+            return dpiError__set(error, "ensure sharding key",
+                    DPI_ERR_MISSING_SHARDING_KEY);
         if (dpiConn__setShardingKey(conn, &conn->superShardingKey, handle,
                 handleType, DPI_OCI_ATTR_SUPER_SHARDING_KEY,
                 "set super sharding key", params->superShardingKeyColumns,
@@ -1009,13 +1022,14 @@ static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
 static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
         dpiShardingKeyColumn *column, dpiError *error)
 {
+    dpiShardingOciDate shardingDateValue;
+    uint32_t colLen = 0, descType = 0;
     const dpiOracleType *oracleType;
     dpiOciNumber numberValue;
+    int convertOk, status;
     dpiOciDate dateValue;
-    uint32_t colLen = 0;
     void *col = NULL;
     uint16_t colType;
-    int convertOk;
 
     oracleType = dpiOracleType__getFromNum(column->oracleTypeNum, error);
     if (!oracleType)
@@ -1058,13 +1072,60 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
             }
             break;
         case DPI_ORACLE_TYPE_DATE:
-            col = &dateValue;
-            colLen = sizeof(dateValue);
-            colType = DPI_SQLT_DAT;
             if (column->nativeTypeNum == DPI_NATIVE_TYPE_TIMESTAMP) {
                 if (dpiDataBuffer__toOracleDate(&column->value,
                         &dateValue) < 0)
                     return DPI_FAILURE;
+                convertOk = 1;
+            } else if (column->nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE) {
+                if (dpiDataBuffer__toOracleDateFromDouble(&column->value,
+                        conn->env, error, &dateValue) < 0)
+                    return DPI_FAILURE;
+                convertOk = 1;
+            }
+
+            // for sharding only, the type must be SQLT_DAT, which uses a
+            // different format for storing the date values
+            if (convertOk) {
+                col = &shardingDateValue;
+                colLen = sizeof(shardingDateValue);
+                colType = DPI_SQLT_DAT;
+                shardingDateValue.century =
+                        ((uint8_t) (dateValue.year / 100)) + 100;
+                shardingDateValue.year = (dateValue.year % 100) + 100;
+                shardingDateValue.month = dateValue.month;
+                shardingDateValue.day = dateValue.day;
+                shardingDateValue.hour = dateValue.hour + 1;
+                shardingDateValue.minute = dateValue.minute + 1;
+                shardingDateValue.second = dateValue.second + 1;
+            }
+            break;
+        case DPI_ORACLE_TYPE_TIMESTAMP:
+        case DPI_ORACLE_TYPE_TIMESTAMP_TZ:
+        case DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
+            colLen = sizeof(void*);
+            colType = DPI_SQLT_TIMESTAMP;
+            if (column->nativeTypeNum == DPI_NATIVE_TYPE_TIMESTAMP) {
+                descType = DPI_OCI_DTYPE_TIMESTAMP;
+                if (dpiOci__descriptorAlloc(conn->env->handle, &col, descType,
+                        "alloc timestamp", error) < 0)
+                    return DPI_FAILURE;
+                if (dpiDataBuffer__toOracleTimestamp(&column->value, conn->env,
+                        error, col, 0) < 0) {
+                    dpiOci__descriptorFree(col, descType);
+                    return DPI_FAILURE;
+                }
+                convertOk = 1;
+            } else if (column->nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE) {
+                descType = DPI_OCI_DTYPE_TIMESTAMP_LTZ;
+                if (dpiOci__descriptorAlloc(conn->env->handle, &col, descType,
+                        "alloc LTZ timestamp", error) < 0)
+                    return DPI_FAILURE;
+                if (dpiDataBuffer__toOracleTimestampFromDouble(&column->value,
+                        conn->env, error, col) < 0) {
+                    dpiOci__descriptorFree(col, descType);
+                    return DPI_FAILURE;
+                }
                 convertOk = 1;
             }
             break;
@@ -1074,8 +1135,11 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
     if (!convertOk)
         return dpiError__set(error, "check type", DPI_ERR_NOT_SUPPORTED);
 
-    return dpiOci__shardingKeyColumnAdd(shardingKey, col, colLen, colType,
+    status = dpiOci__shardingKeyColumnAdd(shardingKey, col, colLen, colType,
             error);
+    if (descType)
+        dpiOci__descriptorFree(col, descType);
+    return status;
 }
 
 
@@ -1685,15 +1749,15 @@ int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
     // validate parameters
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(conn, releaseString)
-    DPI_CHECK_PTR_NOT_NULL(conn, releaseStringLength)
     DPI_CHECK_PTR_NOT_NULL(conn, versionInfo)
 
     // get server version
     if (dpiConn__getServerVersion(conn, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    *releaseString = conn->releaseString;
-    *releaseStringLength = conn->releaseStringLength;
+    if (releaseString)
+        *releaseString = conn->releaseString;
+    if (releaseStringLength)
+        *releaseStringLength = conn->releaseStringLength;
     memcpy(versionInfo, &conn->versionInfo, sizeof(dpiVersionInfo));
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }

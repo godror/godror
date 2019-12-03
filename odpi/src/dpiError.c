@@ -202,6 +202,7 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
                 conn->deadSession = 1;
                 break;
             case  3136: // inbound connection timed out
+            case  3156: // OCI call timed out
             case 12161: // TNS:internal error: partial data received
                 callTimeout = 0;
                 if (conn->env->versionInfo->versionNum >= 18)

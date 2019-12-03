@@ -85,4 +85,6 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1069: proxy user name must be enclosed in [] when using external authentication", // DPI_ERR_EXT_AUTH_INVALID_PROXY
     "DPI-1070: no payload provided in message properties", // DPI_ERR_QUEUE_NO_PAYLOAD
     "DPI-1071: payload type in message properties must match the payload type of the queue", // DPI_ERR_QUEUE_WRONG_PAYLOAD_TYPE
+    "DPI-1072: the Oracle Client library version is unsupported", // DPI_ERR_ORACLE_CLIENT_UNSUPPORTED
+    "DPI-1073: sharding key is required when specifying a super sharding key", // DPI_ERR_MISSING_SHARDING_KEY
 };

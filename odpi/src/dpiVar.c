@@ -1215,7 +1215,8 @@ static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
         dynBytes = &var->buffer.dynamicBytes[pos];
         if (dpiVar__allocateDynamicBytes(dynBytes, valueLength, error) < 0)
             return DPI_FAILURE;
-        memcpy(dynBytes->chunks->ptr, value, valueLength);
+        if (valueLength > 0)
+            memcpy(dynBytes->chunks->ptr, value, valueLength);
         dynBytes->numChunks = 1;
         dynBytes->chunks->length = valueLength;
         bytes->ptr = dynBytes->chunks->ptr;
@@ -1468,6 +1469,10 @@ int dpiVar__setValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
                 case DPI_ORACLE_TYPE_NUMBER:
                     return dpiDataBuffer__toOracleNumberFromDouble(
                             &data->value, error, &buffer->data.asNumber[pos]);
+                case DPI_ORACLE_TYPE_DATE:
+                    return dpiDataBuffer__toOracleDateFromDouble(
+                            &data->value, var->env, error,
+                            &buffer->data.asDate[pos]);
                 case DPI_ORACLE_TYPE_TIMESTAMP:
                 case DPI_ORACLE_TYPE_TIMESTAMP_TZ:
                 case DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
@@ -1527,6 +1532,7 @@ static int dpiVar__validateTypes(const dpiOracleType *oracleType,
         dpiNativeTypeNum nativeTypeNum, dpiError *error)
 {
     switch (oracleType->oracleTypeNum) {
+        case DPI_ORACLE_TYPE_DATE:
         case DPI_ORACLE_TYPE_TIMESTAMP:
         case DPI_ORACLE_TYPE_TIMESTAMP_TZ:
         case DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
@@ -1682,7 +1688,7 @@ int dpiVar_setFromBytes(dpiVar *var, uint32_t pos, const char *value,
 
     if (dpiVar__checkArraySize(var, pos, __func__, &error) < 0)
         return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(var, value)
+    DPI_CHECK_PTR_AND_LENGTH(var, value)
     if (var->nativeTypeNum != DPI_NATIVE_TYPE_BYTES &&
             var->nativeTypeNum != DPI_NATIVE_TYPE_LOB) {
         dpiError__set(&error, "native type", DPI_ERR_NOT_SUPPORTED);

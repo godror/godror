@@ -321,6 +321,8 @@ int dpiStmt__close(dpiStmt *stmt, const char *tag, uint32_t tagLength,
     dpiStmt__clearBatchErrors(stmt);
     dpiStmt__clearBindVars(stmt, error);
     dpiStmt__clearQueryVars(stmt, error);
+    if (stmt->lastRowid)
+        dpiGen__setRefCount(stmt->lastRowid, error, -1);
     if (stmt->handle) {
         if (stmt->parentStmt) {
             dpiGen__setRefCount(stmt->parentStmt, error, -1);
@@ -787,6 +789,42 @@ static int dpiStmt__getBatchErrors(dpiStmt *stmt, dpiError *error)
     if (overallStatus < 0)
         dpiStmt__clearBatchErrors(stmt);
     return overallStatus;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiStmt__getRowCount() [INTERNAL]
+//   Return the number of rows affected by the last DML executed (for insert,
+// update, delete and merge) or the number of rows fetched (for queries). In
+// all other cases, 0 is returned.
+//-----------------------------------------------------------------------------
+static int dpiStmt__getRowCount(dpiStmt *stmt, uint64_t *count,
+        dpiError *error)
+{
+    uint32_t rowCount32;
+
+    if (stmt->statementType == DPI_STMT_TYPE_SELECT)
+        *count = stmt->rowCount;
+    else if (stmt->statementType != DPI_STMT_TYPE_INSERT &&
+            stmt->statementType != DPI_STMT_TYPE_UPDATE &&
+            stmt->statementType != DPI_STMT_TYPE_DELETE &&
+            stmt->statementType != DPI_STMT_TYPE_MERGE &&
+            stmt->statementType != DPI_STMT_TYPE_CALL &&
+            stmt->statementType != DPI_STMT_TYPE_BEGIN &&
+            stmt->statementType != DPI_STMT_TYPE_DECLARE) {
+        *count = 0;
+    } else if (stmt->env->versionInfo->versionNum < 12) {
+        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &rowCount32, 0,
+                DPI_OCI_ATTR_ROW_COUNT, "get row count", error) < 0)
+            return DPI_FAILURE;
+        *count = rowCount32;
+    } else {
+        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, count, 0,
+                DPI_OCI_ATTR_UB8_ROW_COUNT, "get row count", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    return DPI_SUCCESS;
 }
 
 
@@ -1542,6 +1580,46 @@ int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info)
 
 
 //-----------------------------------------------------------------------------
+// dpiStmt_getLastRowid() [PUBLIC]
+//   Returns the rowid of the last row that was affected by a DML statement. If
+// no rows were affected by the last statement executed or the last statement
+// executed was not a DML statement, NULL is returned.
+//-----------------------------------------------------------------------------
+int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid)
+{
+    uint64_t rowCount;
+    dpiError error;
+
+    if (dpiStmt__check(stmt, __func__, &error) < 0)
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(stmt, rowid)
+    *rowid = NULL;
+    if (stmt->statementType == DPI_STMT_TYPE_INSERT ||
+            stmt->statementType == DPI_STMT_TYPE_UPDATE ||
+            stmt->statementType == DPI_STMT_TYPE_DELETE ||
+            stmt->statementType == DPI_STMT_TYPE_MERGE) {
+        if (dpiStmt__getRowCount(stmt, &rowCount, &error) < 0)
+            return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+        if (rowCount > 0) {
+            if (stmt->lastRowid) {
+                dpiGen__setRefCount(stmt->lastRowid, &error, -1);
+                stmt->lastRowid = NULL;
+            }
+            if (dpiRowid__allocate(stmt->conn, &stmt->lastRowid, &error) < 0)
+                return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+            if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT,
+                    stmt->lastRowid->handle, 0, DPI_OCI_ATTR_ROWID,
+                    "get last rowid", &error) < 0)
+                return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+            *rowid = stmt->lastRowid;
+        }
+    }
+
+    return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiStmt_getNumQueryColumns() [PUBLIC]
 //   Returns the number of query columns associated with a statement. If the
 // statement does not refer to a query, 0 is returned.
@@ -1631,33 +1709,14 @@ int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
 //-----------------------------------------------------------------------------
 int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count)
 {
-    uint32_t rowCount32;
     dpiError error;
+    int status;
 
     if (dpiStmt__check(stmt, __func__, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(stmt, count)
-    if (stmt->statementType == DPI_STMT_TYPE_SELECT)
-        *count = stmt->rowCount;
-    else if (stmt->statementType != DPI_STMT_TYPE_INSERT &&
-            stmt->statementType != DPI_STMT_TYPE_UPDATE &&
-            stmt->statementType != DPI_STMT_TYPE_DELETE &&
-            stmt->statementType != DPI_STMT_TYPE_MERGE &&
-            stmt->statementType != DPI_STMT_TYPE_CALL &&
-            stmt->statementType != DPI_STMT_TYPE_BEGIN &&
-            stmt->statementType != DPI_STMT_TYPE_DECLARE) {
-        *count = 0;
-    } else if (stmt->env->versionInfo->versionNum < 12) {
-        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &rowCount32, 0,
-                DPI_OCI_ATTR_ROW_COUNT, "get row count", &error) < 0)
-            return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-        *count = rowCount32;
-    } else {
-        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, count, 0,
-                DPI_OCI_ATTR_UB8_ROW_COUNT, "get row count", &error) < 0)
-            return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    }
-    return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
+    status = dpiStmt__getRowCount(stmt, count, &error);
+    return dpiGen__endPublicFn(stmt, status, &error);
 }
 
 

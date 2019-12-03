@@ -1844,13 +1844,17 @@ static int dpiOci__loadLibValidate(dpiError *error)
     // determine the OCI client version information
     if (dpiOci__loadSymbol("OCIClientVersion",
             (void**) &dpiOciSymbols.fnClientVersion, NULL) < 0)
-        return dpiError__set(error, "check Oracle Client version",
-                DPI_ERR_ORACLE_CLIENT_TOO_OLD, 0, 0, 11, 2);
+        return dpiError__set(error, "load symbol OCIClientVersion",
+                DPI_ERR_ORACLE_CLIENT_UNSUPPORTED);
+    memset(&dpiOciLibVersionInfo, 0, sizeof(dpiOciLibVersionInfo));
     (*dpiOciSymbols.fnClientVersion)(&dpiOciLibVersionInfo.versionNum,
             &dpiOciLibVersionInfo.releaseNum,
             &dpiOciLibVersionInfo.updateNum,
             &dpiOciLibVersionInfo.portReleaseNum,
             &dpiOciLibVersionInfo.portUpdateNum);
+    if (dpiOciLibVersionInfo.versionNum == 0)
+        return dpiError__set(error, "get OCI client version",
+                DPI_ERR_ORACLE_CLIENT_UNSUPPORTED);
     dpiOciLibVersionInfo.fullVersionNum = (uint32_t)
             DPI_ORACLE_VERSION_TO_NUMBER(dpiOciLibVersionInfo.versionNum,
                     dpiOciLibVersionInfo.releaseNum,
@@ -3498,7 +3502,8 @@ int dpiOci__stringSize(void *envHandle, void *handle, uint32_t *size)
 // dpiOci__subscriptionRegister() [INTERNAL]
 //   Wrapper for OCISubscriptionRegister().
 //-----------------------------------------------------------------------------
-int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, dpiError *error)
+int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, uint32_t mode,
+        dpiError *error)
 {
     int status;
 
@@ -3506,7 +3511,7 @@ int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, dpiError *error)
             dpiOciSymbols.fnSubscriptionRegister)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnSubscriptionRegister)(conn->handle, handle, 1,
-            error->handle, DPI_OCI_DEFAULT);
+            error->handle, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "register");
 }
 
@@ -3518,13 +3523,16 @@ int dpiOci__subscriptionRegister(dpiConn *conn, void **handle, dpiError *error)
 int dpiOci__subscriptionUnRegister(dpiConn *conn, dpiSubscr *subscr,
         dpiError *error)
 {
+    uint32_t mode;
     int status;
 
     DPI_OCI_LOAD_SYMBOL("OCISubscriptionUnRegister",
             dpiOciSymbols.fnSubscriptionUnRegister)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    mode = (subscr->clientInitiated) ? DPI_OCI_SECURE_NOTIFICATION :
+            DPI_OCI_DEFAULT;
     status = (*dpiOciSymbols.fnSubscriptionUnRegister)(conn->handle,
-            subscr->handle, error->handle, DPI_OCI_DEFAULT);
+            subscr->handle, error->handle, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "unregister");
 }
 

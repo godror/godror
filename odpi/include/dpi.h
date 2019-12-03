@@ -44,8 +44,8 @@
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   3
-#define DPI_MINOR_VERSION   2
-#define DPI_PATCH_LEVEL     2
+#define DPI_MINOR_VERSION   3
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -571,6 +571,7 @@ struct dpiPoolCreateParams {
     uint32_t maxLifetimeSession;
     const char *plsqlFixupCallback;
     uint32_t plsqlFixupCallbackLength;
+    uint32_t maxSessionsPerShard;
 };
 
 // structure used for transferring query metadata from ODPI-C
@@ -643,6 +644,7 @@ struct dpiSubscrCreateParams {
     uint32_t groupingValue;
     uint8_t groupingType;
     uint64_t outRegId;
+    int clientInitiated;
 };
 
 // structure used for transferring messages in subscription callbacks
@@ -1696,6 +1698,9 @@ int dpiStmt_getImplicitResult(dpiStmt *stmt, dpiStmt **implicitResult);
 
 // return information about the statement
 int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info);
+
+// get the rowid of the last row affected by a DML statement
+int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid);
 
 // get the number of query columns (zero implies the statement is not a query)
 int dpiStmt_getNumQueryColumns(dpiStmt *stmt, uint32_t *numQueryColumns);

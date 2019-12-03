@@ -159,6 +159,17 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             return DPI_FAILURE;
     }
 
+    // set the maximum number of sessions per shard (valid in 18.3 and higher)
+    if (pool->env->versionInfo->versionNum > 18 ||
+            (pool->env->versionInfo->versionNum == 18 &&
+             pool->env->versionInfo->releaseNum >= 3)) {
+        if (dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL, (void*)
+                &createParams->maxSessionsPerShard, 0,
+                DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD,
+                "set max sessions per shard", error) < 0)
+            return DPI_FAILURE;
+    }
+
     // set reamining attributes directly
     pool->homogeneous = createParams->homogeneous;
     pool->externalAuth = createParams->externalAuth;
@@ -388,7 +399,7 @@ int dpiPool_create(const dpiContext *context, const char *userName,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
 
     // initialize environment
-    if (dpiEnv__init(tempPool->env, context, commonParams, &error) < 0) {
+    if (dpiEnv__init(tempPool->env, context, commonParams, NULL, &error) < 0) {
         dpiPool__free(tempPool, &error);
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     }

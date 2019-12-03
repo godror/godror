@@ -464,7 +464,7 @@ int dpiLob_setFromBytes(dpiLob *lob, const char *value, uint64_t valueLength)
 
     if (dpiLob__check(lob, __func__, &error) < 0)
         return dpiGen__endPublicFn(lob, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(lob, value)
+    DPI_CHECK_PTR_AND_LENGTH(lob, value)
     status = dpiLob__setFromBytes(lob, value, valueLength, &error);
     return dpiGen__endPublicFn(lob, status, &error);
 }
