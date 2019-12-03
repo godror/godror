@@ -409,8 +409,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 		if c.objTypes == nil {
 			c.objTypes = make(map[string]ObjectType)
 		}
-		c.objTypes[name] = t
-		c.objTypes[t.FullName()] = t
+		c.objTypes[name] = t		
 	}
 	return t, err
 }
