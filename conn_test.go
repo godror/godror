@@ -80,6 +80,16 @@ func TestParseConnString(t *testing.T) {
 
 		"xo":            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
 		"heterogeneous": {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
+
+		"ipv6": {
+			In: "oracle://[::1]:12345/dbname",
+			Want: ConnectionParams{
+				SID:         "[::1]:12345/dbname",
+				ConnClass:   "GORACLE",
+				MinSessions: 1, MaxSessions: 1000, PoolIncrement: 1,
+				WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
+			},
+		},
 	} {
 		t.Log(tCase.In)
 		P, err := ParseConnString(tCase.In)

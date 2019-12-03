@@ -781,6 +781,11 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.Password, _ = usr.Password()
 	}
 	P.SID = u.Hostname()
+	// IPv6 literal address brackets are removed by u.Hostname,
+	// so we have to put them back
+	if strings.HasPrefix(u.Host, "[") && !strings.Contains(P.SID[1:], "]") {
+		P.SID = "[" + P.SID + "]"
+	}
 	if u.Port() != "" {
 		P.SID += ":" + u.Port()
 	}
