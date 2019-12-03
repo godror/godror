@@ -160,7 +160,13 @@ func (c *conn) close(doNotReuse bool) error {
 	if dpiConn == nil {
 		return nil
 	}
+	seen := make(map[string]struct{}, len(objTypes))
 	for _, o := range objTypes {
+        nm := o.FullName()
+        if _, seen := seen[nm]; seen {
+            continue
+        }
+        seen[nm] = struct{}{}
 		o.close()
 	}
 	// Just to be sure, break anything in progress.
