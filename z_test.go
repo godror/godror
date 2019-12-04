@@ -1124,7 +1124,11 @@ func TestOpenClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error("CLOSE:", err)
+		}
+	}()
 	db.SetMaxIdleConns(1)
 	db.SetMaxOpenConns(3)
 	ctx, cancel := context.WithCancel(context.Background())

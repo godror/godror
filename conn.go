@@ -162,11 +162,11 @@ func (c *conn) close(doNotReuse bool) error {
 	}
 	seen := make(map[string]struct{}, len(objTypes))
 	for _, o := range objTypes {
-        nm := o.FullName()
-        if _, seen := seen[nm]; seen {
-            continue
-        }
-        seen[nm] = struct{}{}
+		nm := o.FullName()
+		if _, seen := seen[nm]; seen {
+			continue
+		}
+		seen[nm] = struct{}{}
 		o.close()
 	}
 	// Just to be sure, break anything in progress.
@@ -181,19 +181,12 @@ func (c *conn) close(doNotReuse bool) error {
 			C.dpiConn_breakExecution(dpiConn)
 		}
 	}()
-	var rc C.int
-	if doNotReuse {
-		defer C.dpiConn_release(dpiConn)
-		rc = C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
-	} else {
-		rc = C.dpiConn_release(dpiConn)
-	}
+	defer C.dpiConn_release(dpiConn)
 	close(done)
-	var err error
-	if rc == C.DPI_FAILURE {
-		err = maybeBadConn(errors.Errorf("Close: %w", c.getError()), nil) // avoid closing loop as maybeBadConn may call c.close if c is not nil!
+	if doNotReuse {
+		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
 	}
-	return err
+	return nil
 }
 
 // Begin starts and returns a new transaction.
