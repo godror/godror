@@ -160,6 +160,8 @@ func (c *conn) close(doNotReuse bool) error {
 	if dpiConn == nil {
 		return nil
 	}
+	defer C.dpiConn_release(dpiConn)
+
 	seen := make(map[string]struct{}, len(objTypes))
 	for _, o := range objTypes {
 		nm := o.FullName()
@@ -169,6 +171,10 @@ func (c *conn) close(doNotReuse bool) error {
 		seen[nm] = struct{}{}
 		o.close()
 	}
+	if !doNotReuse {
+		return nil
+	}
+
 	// Just to be sure, break anything in progress.
 	done := make(chan struct{})
 	go func() {
@@ -181,11 +187,8 @@ func (c *conn) close(doNotReuse bool) error {
 			C.dpiConn_breakExecution(dpiConn)
 		}
 	}()
-	defer C.dpiConn_release(dpiConn)
+	C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
 	close(done)
-	if doNotReuse {
-		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
-	}
 	return nil
 }
 
