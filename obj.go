@@ -558,7 +558,14 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	t.Precision = int16(typ.precision)
 	t.Scale = int8(typ.scale)
 	t.FsPrecision = uint8(typ.fsPrecision)
-	return t.init()
+	err := t.init()
+	if err == nil {
+		if t.conn.objTypes == nil {
+			t.conn.objTypes = make(map[string]ObjectType)
+		}
+		t.conn.objTypes[t.FullName()] = *t
+	}
+	return err
 }
 func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, error) {
 	if conn == nil {
