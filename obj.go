@@ -406,11 +406,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	t := ObjectType{conn: c, dpiObjectType: objType}
 	err := t.init()
 	if err == nil {
-		if c.objTypes == nil {
-			c.objTypes = make(map[string]ObjectType)
-		}
 		c.objTypes[name] = t
-		c.objTypes[t.FullName()] = t
 	}
 	return t, err
 }
@@ -499,8 +495,11 @@ func (t *ObjectType) init() error {
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
 	t.CollectionOf = nil
-	numAttributes := int(info.numAttributes)
+	if t.conn.objTypes == nil {
+		t.conn.objTypes = make(map[string]ObjectType)
+	}
 
+	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
 		t.CollectionOf = &ObjectType{conn: t.conn}
 		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo); err != nil {
@@ -513,6 +512,7 @@ func (t *ObjectType) init() error {
 	}
 	if numAttributes == 0 {
 		t.Attributes = map[string]ObjectAttribute{}
+		t.conn.objTypes[t.FullName()] = *t
 		return nil
 	}
 	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
@@ -544,6 +544,7 @@ func (t *ObjectType) init() error {
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
+	t.conn.objTypes[t.FullName()] = *t
 	return nil
 }
 
@@ -558,14 +559,7 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	t.Precision = int16(typ.precision)
 	t.Scale = int8(typ.scale)
 	t.FsPrecision = uint8(typ.fsPrecision)
-	if err := t.init(); err != nil {
-		return err
-	}		
-	if t.conn.objTypes == nil {
-		t.conn.objTypes = make(map[string]ObjectType)
-	}
-	t.conn.objTypes[t.FullName()] = *t	
-	return nil
+	return t.init()
 }
 func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, error) {
 	if conn == nil {
