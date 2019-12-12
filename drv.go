@@ -1061,6 +1061,8 @@ func (c connector) Driver() driver.Driver { return c.drv }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // which calls the given onInit if the connection is new.
+//
+// For an example, see NewSessionIniter.
 func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
 	cxr, err := defaultDrv.OpenConnector(name)
 	if err != nil {
@@ -1076,7 +1078,7 @@ func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector
 func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 	return func(cx driver.Conn) error {
 		for k, v := range m {
-			qry := fmt.Sprintf("ALTER SESSION SET %s = '%s'", k, strings.Replace(v, "'", "''", -1))
+			qry := fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1))
 			st, err := cx.Prepare(qry)
 			if err != nil {
 				return errors.Errorf("%s: %w", qry, err)
