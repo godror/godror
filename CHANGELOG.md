@@ -166,7 +166,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Use ODPI-C v3.1.1
 ### Added
-- Make goracle.drv implement driver.DriverContext with OpenConnector.
+- Make godror.drv implement driver.DriverContext with OpenConnector.
 
 ## [2.12.2] - 2019-02-15
 ### Changed

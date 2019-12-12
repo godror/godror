@@ -3,20 +3,20 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"context"
 	"testing"
 
 	errors "golang.org/x/xerrors"
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 func TestQRCN(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := goracle.DriverConn(ctx, testDb)
+	conn, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,8 +27,8 @@ func TestQRCN(t *testing.T) {
 	}
 	defer testDb.Exec("DROP TABLE test_subscr")
 
-	var events []goracle.Event
-	cb := func(e goracle.Event) {
+	var events []godror.Event
+	cb := func(e godror.Event) {
 		t.Log(e)
 		events = append(events, e)
 	}

@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"bytes"
@@ -31,14 +31,14 @@ import (
 	"golang.org/x/sync/errgroup"
 	errors "golang.org/x/xerrors"
 
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 var (
 	testDb *sql.DB
 	tl     = &testLogger{}
 
-	clientVersion, serverVersion goracle.VersionInfo
+	clientVersion, serverVersion godror.VersionInfo
 	testConStr                   string
 )
 
@@ -48,7 +48,7 @@ const maxSessions = 16
 
 func init() {
 	logger := &log.SwapLogger{}
-	goracle.Log = logger.Log
+	godror.Log = logger.Log
 	if os.Getenv("VERBOSE") == "1" {
 		logger.Swap(tl)
 	}
@@ -58,7 +58,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		wd = filepath.Join(wd, "contrib", "goracle.db")
+		wd = filepath.Join(wd, "contrib", "godror.db")
 		tempDir, err := ioutil.TempDir("", "goracle_drv_test-")
 		if err != nil {
 			panic(err)
@@ -120,7 +120,7 @@ func init() {
 		}
 	}
 
-	P := goracle.ConnectionParams{
+	P := godror.ConnectionParams{
 		Username:    os.Getenv("GORACLE_DRV_TEST_USERNAME"),
 		Password:    os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
 		SID:         os.Getenv("GORACLE_DRV_TEST_DB"),
@@ -137,13 +137,13 @@ func init() {
 	}
 	testConStr = P.StringWithPassword()
 	var err error
-	if testDb, err = sql.Open("goracle", testConStr); err != nil {
+	if testDb, err = sql.Open("godror", testConStr); err != nil {
 		panic(errors.Errorf("%s: %w", err, testConStr))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cx, err := goracle.DriverConn(ctx, testDb)
+	cx, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		panic(errors.Errorf("%s: %w", testConStr, err))
 	}
@@ -235,7 +235,7 @@ func TestDescribeQuery(t *testing.T) {
 	defer cancel()
 
 	const qry = "SELECT * FROM user_tab_cols"
-	cols, err := goracle.DescribeQuery(ctx, testDb, qry)
+	cols, err := godror.DescribeQuery(ctx, testDb, qry)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
@@ -263,7 +263,7 @@ func TestParseOnly(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+"(t VARCHAR2(1))", goracle.ParseOnly()); err != nil {
+	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+"(t VARCHAR2(1))", godror.ParseOnly()); err != nil {
 		t.Fatal(err)
 	}
 	if got := cnt(); got != 1 {
@@ -348,7 +348,7 @@ END;
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
-	compileErrors, err := goracle.GetCompileErrors(testDb, false)
+	compileErrors, err := godror.GetCompileErrors(testDb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,12 +377,12 @@ END;
 		Want string
 	}{
 		//"int_0":{In:[]int32{}, Want:""},
-		"num_0": {In: []goracle.Number{}, Want: ""},
+		"num_0": {In: []godror.Number{}, Want: ""},
 		"vc_0":  {In: []string{}, Want: ""},
 		"dt_0":  {In: []time.Time{}, Want: ""},
 
 		"num_3": {
-			In:   []goracle.Number{"1", "2.72", "-3.14"},
+			In:   []godror.Number{"1", "2.72", "-3.14"},
 			Want: "1:1\n2:2.72\n3:-3.14\n",
 		},
 		"vc_3": {
@@ -397,7 +397,7 @@ END;
 		typ := strings.SplitN(name, "_", 2)[0]
 		qry := "BEGIN :1 := " + pkg + ".in_" + typ + "(:2); END;"
 		var res string
-		if _, err := tx.ExecContext(ctx, qry, goracle.PlSQLArrays,
+		if _, err := tx.ExecContext(ctx, qry, godror.PlSQLArrays,
 			sql.Out{Dest: &res}, tC.In,
 		); err != nil {
 			t.Error(errors.Errorf("%q. %s %+v: %w", name, qry, tC.In, err))
@@ -422,7 +422,7 @@ func TestDbmsOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if err := goracle.EnableDbmsOutput(ctx, conn); err != nil {
+	if err := godror.EnableDbmsOutput(ctx, conn); err != nil {
 		t.Fatal(err)
 	}
 
@@ -433,7 +433,7 @@ func TestDbmsOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
+	if err := godror.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 		t.Error(err)
 	}
 	t.Log(buf.String())
@@ -549,7 +549,7 @@ END;
 	if _, err = testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
-	compileErrors, err := goracle.GetCompileErrors(testDb, false)
+	compileErrors, err := godror.GetCompileErrors(testDb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,8 +565,8 @@ END;
 	intgr := []int32{3, 1, 4, 0, 0}[:3]
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	_ = intgrWant
-	num := []goracle.Number{"3.14", "-2.48", ""}[:2]
-	numWant := []goracle.Number{"1.57", "-1.24", "2"}
+	num := []godror.Number{"3.14", "-2.48", ""}[:2]
+	numWant := []godror.Number{"1.57", "-1.24", "2"}
 	vc := []string{"string", "bring", ""}[:2]
 	vcWant := []string{"string +", "bring +", "2"}
 	var today time.Time
@@ -593,7 +593,7 @@ END;
 	}
 	dt = dt[:len(dt)-1]
 
-	goracle.EnableDbmsOutput(ctx, conn)
+	godror.EnableDbmsOutput(ctx, conn)
 
 	opts := []cmp.Option{
 		cmp.Comparer(func(x, y time.Time) bool {
@@ -625,7 +625,7 @@ END;
 			qry = "BEGIN " + pkg + ".inout_" + nm + "(:1); END;"
 			dst := copySlice(tC.In)
 			if _, err := conn.ExecContext(ctx, qry,
-				goracle.PlSQLArrays,
+				godror.PlSQLArrays,
 				sql.Out{Dest: dst, In: true},
 			); err != nil {
 				t.Fatalf("%s\n%#v\n%+v", qry, dst, err)
@@ -640,18 +640,18 @@ END;
 			}
 			t.Errorf("%s: %s", tC.Name, cmp.Diff(printSlice(tC.Want), printSlice(got)))
 			var buf bytes.Buffer
-			if err := goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
+			if err := godror.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 				t.Error(err)
 			}
 			t.Log("OUTPUT:", buf.String())
 		})
 	}
 
-	//lob := []goracle.Lob{goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	//lob := []godror.Lob{godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	t.Run("p2", func(t *testing.T) {
 		if _, err := conn.ExecContext(ctx,
 			"BEGIN "+pkg+".p2(:1, :2, :3); END;",
-			goracle.PlSQLArrays,
+			godror.PlSQLArrays,
 			//sql.Out{Dest: &intgr, In: true},
 			sql.Out{Dest: &num, In: true},
 			sql.Out{Dest: &vc, In: true},
@@ -714,10 +714,10 @@ END;`
 	defer stmt.Close()
 
 	var intgr int = 3
-	num := goracle.Number("3.14")
+	num := godror.Number("3.14")
 	var vc string = "string"
 	var dt time.Time = time.Date(2017, 6, 18, 7, 5, 51, 0, time.Local)
-	var lob goracle.Lob = goracle.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}
+	var lob godror.Lob = godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}
 	if _, err := stmt.ExecContext(ctx,
 		sql.Out{Dest: &intgr, In: true},
 		sql.Out{Dest: &num, In: true},
@@ -790,7 +790,7 @@ func TestSelectRefCursorWrap(t *testing.T) {
 			continue
 		}
 		t.Logf("%T", intf)
-		sub, err := goracle.WrapRows(ctx, testDb, intf.(driver.Rows))
+		sub, err := godror.WrapRows(ctx, testDb, intf.(driver.Rows))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -821,7 +821,7 @@ func TestExecuteMany(t *testing.T) {
 
 	const num = 1000
 	ints := make([]int, num)
-	nums := make([]goracle.Number, num)
+	nums := make([]godror.Number, num)
 	int32s := make([]int32, num)
 	floats := make([]float64, num)
 	strs := make([]string, num)
@@ -841,7 +841,7 @@ func TestExecuteMany(t *testing.T) {
 	for i := range nums {
 		ids[i] = i
 		ints[i] = i << 1
-		nums[i] = goracle.Number(strconv.Itoa(i))
+		nums[i] = godror.Number(strconv.Itoa(i))
 		int32s[i] = int32(i)
 		floats[i] = float64(i) / float64(3.14)
 		strs[i] = fmt.Sprintf("%x", i)
@@ -984,8 +984,8 @@ func TestReadWriteLob(t *testing.T) {
 			continue
 		}
 		if _, err = stmt.Exec(tN*2+1,
-			goracle.Lob{Reader: bytes.NewReader(tC.Bytes)},
-			goracle.Lob{Reader: strings.NewReader(tC.String), IsClob: true},
+			godror.Lob{Reader: bytes.NewReader(tC.Bytes)},
+			godror.Lob{Reader: strings.NewReader(tC.String), IsClob: true},
 		); err != nil {
 			t.Errorf("%d/2. (%v, %q): %v", tN, tC.Bytes, tC.String, err)
 		}
@@ -993,7 +993,7 @@ func TestReadWriteLob(t *testing.T) {
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(ctx,
 			"SELECT F_id, F_blob, F_clob FROM "+tbl+" WHERE F_id IN (:1, :2)", //nolint:gas
-			goracle.LobAsReader(),
+			godror.LobAsReader(),
 			2*tN, 2*tN+1)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
@@ -1007,7 +1007,7 @@ func TestReadWriteLob(t *testing.T) {
 				continue
 			}
 			t.Logf("%d. blob=%+v clob=%+v", id, blob, clob)
-			if clob, ok := clob.(*goracle.Lob); !ok {
+			if clob, ok := clob.(*godror.Lob); !ok {
 				t.Errorf("%d. %T is not LOB", id, blob)
 			} else {
 				var got []byte
@@ -1018,7 +1018,7 @@ func TestReadWriteLob(t *testing.T) {
 					t.Errorf("%d. got %q for CLOB, wanted %q", id, got, tC.String)
 				}
 			}
-			if blob, ok := blob.(*goracle.Lob); !ok {
+			if blob, ok := blob.(*godror.Lob); !ok {
 				t.Errorf("%d. %T is not LOB", id, blob)
 			} else {
 				var got []byte
@@ -1035,7 +1035,7 @@ func TestReadWriteLob(t *testing.T) {
 
 	rows, err := conn.QueryContext(ctx,
 		"SELECT F_clob FROM "+tbl+"", //nolint:gas
-		goracle.ClobAsString())
+		godror.ClobAsString())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1049,7 +1049,7 @@ func TestReadWriteLob(t *testing.T) {
 	}
 
 	qry := "SELECT CURSOR(SELECT f_id, f_clob FROM " + tbl + " WHERE ROWNUM <= 10) FROM DUAL"
-	rows, err = testDb.QueryContext(ctx, qry, goracle.ClobAsString())
+	rows, err = testDb.QueryContext(ctx, qry, godror.ClobAsString())
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
@@ -1104,13 +1104,13 @@ func copySlice(orig interface{}) interface{} {
 
 func TestOpenClose(t *testing.T) {
 	t.Parallel()
-	cs, err := goracle.ParseConnString(testConStr)
+	cs, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cs.MinSessions, cs.MaxSessions = 1, 5
 	t.Log(cs.String())
-	db, err := sql.Open("goracle", cs.StringWithPassword())
+	db, err := sql.Open("godror", cs.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1123,7 +1123,7 @@ func TestOpenClose(t *testing.T) {
 	db.SetMaxOpenConns(3)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	const module = "goracle.v2.test-OpenClose "
+	const module = "godror.v2.test-OpenClose "
 	stmt, err := db.PrepareContext(ctx, "SELECT COUNT(0) FROM v$session WHERE module LIKE '"+module+"%'")
 	if err != nil {
 		if strings.Contains(err.Error(), "ORA-12516:") {
@@ -1144,16 +1144,16 @@ func TestOpenClose(t *testing.T) {
 	if n > 0 {
 		t.Logf("sessCount=%d at start!", n)
 	}
-	var tt goracle.TraceTag
+	var tt godror.TraceTag
 	for i := 0; i < 10; i++ {
 		tt.Module = fmt.Sprintf("%s%d", module, 2*i)
-		ctx = goracle.ContextWithTraceTag(ctx, tt)
+		ctx = godror.ContextWithTraceTag(ctx, tt)
 		tx1, err1 := db.BeginTx(ctx, nil)
 		if err1 != nil {
 			t.Fatal(err1)
 		}
 		tt.Module = fmt.Sprintf("%s%d", module, 2*i+1)
-		ctx = goracle.ContextWithTraceTag(ctx, tt)
+		ctx = godror.ContextWithTraceTag(ctx, tt)
 		tx2, err2 := db.BeginTx(ctx, nil)
 		if err2 != nil {
 			if strings.Contains(err2.Error(), "ORA-12516:") {
@@ -1187,7 +1187,7 @@ func TestOpenBadMemory(t *testing.T) {
 	zero := mem.Alloc
 	for i := 0; i < 100; i++ {
 		badConStr := strings.Replace(testConStr, "@", fmt.Sprintf("BAD%dBAD@", i), 1)
-		db, err := sql.Open("goracle", badConStr)
+		db, err := sql.Open("godror", badConStr)
 		if err != nil {
 			t.Fatalf("bad connection string %q didn't produce error!", badConStr)
 		}
@@ -1238,7 +1238,7 @@ func TestSelectFloat(t *testing.T) {
 		NInt    sql.NullInt64
 		String  string
 		NString sql.NullString
-		Number  goracle.Number
+		Number  godror.Number
 	}
 	var n numbers
 	var i1, i2, i3 interface{}
@@ -1452,7 +1452,7 @@ func TestRanaOraIssue244(t *testing.T) {
 
 func TestNumberMarshal(t *testing.T) {
 	t.Parallel()
-	var n goracle.Number
+	var n godror.Number
 	if err := testDb.QueryRow("SELECT 6000370006565900000073 FROM DUAL").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
@@ -1466,7 +1466,7 @@ func TestNumberMarshal(t *testing.T) {
 		t.Errorf("got %q, wanted without scientific notation", b)
 	}
 	if b, err = json.Marshal(struct {
-		N goracle.Number
+		N godror.Number
 	}{N: n},
 	); err != nil {
 		t.Fatal(err)
@@ -1727,7 +1727,7 @@ func TestNullIntoNum(t *testing.T) {
 
 func TestPing(t *testing.T) {
 	t.Parallel()
-	badDB, err := sql.Open("goracle", "bad/passw@1.1.1.1")
+	badDB, err := sql.Open("godror", "bad/passw@1.1.1.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1750,9 +1750,9 @@ func TestPing(t *testing.T) {
 
 func TestNoConnectionPooling(t *testing.T) {
 	t.Parallel()
-	db, err := sql.Open("goracle",
+	db, err := sql.Open("godror",
 		strings.Replace(
-			strings.Replace(testConStr, "POOLED", goracle.NoConnectionPoolingConnectionClass, 1),
+			strings.Replace(testConStr, "POOLED", godror.NoConnectionPoolingConnectionClass, 1),
 			"standaloneConnection=0", "standaloneConnection=1", 1,
 		),
 	)
@@ -1848,7 +1848,7 @@ func TestSDO(t *testing.T) {
 	}
 	defer rows.Close()
 	if false {
-		goracle.Log = func(kv ...interface{}) error {
+		godror.Log = func(kv ...interface{}) error {
 			t.Helper()
 			t.Log(kv)
 			return nil
@@ -1861,7 +1861,7 @@ func TestSDO(t *testing.T) {
 			t.Error(errors.Errorf("%s: %w", "scan", err))
 		}
 		t.Log(dmp, isNull)
-		obj := intf.(*goracle.Object)
+		obj := intf.(*godror.Object)
 		//t.Log("obj:", obj)
 		printObj(t, "", obj)
 	}
@@ -1870,7 +1870,7 @@ func TestSDO(t *testing.T) {
 	}
 }
 
-func printObj(t *testing.T, name string, obj *goracle.Object) {
+func printObj(t *testing.T, name string, obj *godror.Object) {
 	if obj == nil {
 		return
 	}
@@ -1880,9 +1880,9 @@ func printObj(t *testing.T, name string, obj *goracle.Object) {
 		if err != nil {
 			t.Errorf("ERROR: %+v", err)
 		}
-		if ss, ok := sub.(*goracle.Object); ok {
+		if ss, ok := sub.(*godror.Object); ok {
 			printObj(t, name+"."+key, ss)
-		} else if coll, ok := sub.(*goracle.ObjectCollection); ok {
+		} else if coll, ok := sub.(*godror.ObjectCollection); ok {
 			slice, err := coll.AsSlice(nil)
 			t.Logf("%s.%s. %+v", name, key, slice)
 			if err != nil {
@@ -1937,7 +1937,7 @@ func TestSelectCustomType(t *testing.T) {
 	rows, err := conn.QueryContext(ctx,
 		"SELECT nm, typ, id, created FROM "+tbl+" WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY id",
 		sql.Named("alpha", nums),
-		goracle.MagicTypeConversion(), sql.Named("beta", numbers),
+		godror.MagicTypeConversion(), sql.Named("beta", numbers),
 	)
 	if err != nil {
 		t.Fatalf("%+v", err)
@@ -2023,7 +2023,7 @@ func TestStartupShutdown(t *testing.T) {
 	if os.Getenv("GORACLE_DB_SHUTDOWN") != "1" {
 		t.Skip("GORACLE_DB_SHUTDOWN != 1, skipping shutdown/startup test")
 	}
-	p, err := goracle.ParseConnString(testConStr)
+	p, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", testConStr, err))
 	}
@@ -2033,7 +2033,7 @@ func TestStartupShutdown(t *testing.T) {
 	if !p.IsPrelim {
 		p.IsPrelim = true
 	}
-	db, err := sql.Open("goracle", p.StringWithPassword())
+	db, err := sql.Open("godror", p.StringWithPassword())
 	if err != nil {
 		t.Fatal(err, p.StringWithPassword())
 	}
@@ -2041,17 +2041,17 @@ func TestStartupShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := goracle.DriverConn(ctx, db)
+	conn, err := godror.DriverConn(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = conn.Shutdown(goracle.ShutdownTransactionalLocal); err != nil {
+	if err = conn.Shutdown(godror.ShutdownTransactionalLocal); err != nil {
 		t.Error(err)
 	}
-	if err = conn.Shutdown(goracle.ShutdownFinal); err != nil {
+	if err = conn.Shutdown(godror.ShutdownFinal); err != nil {
 		t.Error(err)
 	}
-	if err = conn.Startup(goracle.StartupDefault); err != nil {
+	if err = conn.Startup(godror.StartupDefault); err != nil {
 		t.Error(err)
 	}
 }
@@ -2099,7 +2099,7 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	conn, err := goracle.DriverConn(ctx, tx)
+	conn, err := godror.DriverConn(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2212,7 +2212,7 @@ func TestNumberBool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
-	rows, err := testDb.QueryContext(ctx, qry, goracle.NumberAsString())
+	rows, err := testDb.QueryContext(ctx, qry, godror.NumberAsString())
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
@@ -2231,7 +2231,7 @@ func TestCancel(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip cancel test")
 	}
-	db, err := sql.Open("goracle", testConStr)
+	db, err := sql.Open("godror", testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2298,7 +2298,7 @@ func TestCancel(t *testing.T) {
 func TestObject(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	testCon, err := goracle.DriverConn(ctx, testDb)
+	testCon, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2361,7 +2361,7 @@ END;`
 		t.Error(err)
 	}
 	t.Logf("coll: %s", coll)
-	var data goracle.Data
+	var data godror.Data
 	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 		if err = coll.GetItem(&data, i); err != nil {
 			t.Fatal(err)
@@ -2380,7 +2380,7 @@ END;`
 }
 
 func TestNewPassword(t *testing.T) {
-	P, err := goracle.ParseConnString(testConStr)
+	P, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2414,7 +2414,7 @@ func TestNewPassword(t *testing.T) {
 	P.StandaloneConnection = true
 	P.NewPassword = newPassword
 	{
-		db, err := sql.Open("goracle", P.StringWithPassword())
+		db, err := sql.Open("godror", P.StringWithPassword())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2423,7 +2423,7 @@ func TestNewPassword(t *testing.T) {
 
 	P.Password, P.NewPassword = P.NewPassword, ""
 	{
-		db, err := sql.Open("goracle", P.StringWithPassword())
+		db, err := sql.Open("godror", P.StringWithPassword())
 		if err != nil {
 			t.Fatal(err)
 		}

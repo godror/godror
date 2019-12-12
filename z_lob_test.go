@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	errors "golang.org/x/xerrors"
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 func TestLOBAppend(t *testing.T) {
@@ -38,8 +38,8 @@ END;`
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer stmt.Close()
-	var tmp goracle.Lob
-	if _, err := stmt.ExecContext(ctx, goracle.LobAsReader(), sql.Out{Dest: &tmp}); err != nil {
+	var tmp godror.Lob
+	if _, err := stmt.ExecContext(ctx, godror.LobAsReader(), sql.Out{Dest: &tmp}); err != nil {
 		t.Fatalf("Failed to create temporary lob: %+v", err)
 	}
 	t.Logf("tmp: %#v", tmp)
@@ -47,7 +47,7 @@ END;`
 	want := [...]byte{1, 2, 3, 4, 5}
 	if _, err := tx.ExecContext(ctx,
 		"BEGIN dbms_lob.append(:1, :2); END;",
-		tmp, goracle.Lob{Reader: bytes.NewReader(want[:])},
+		tmp, godror.Lob{Reader: bytes.NewReader(want[:])},
 	); err != nil {
 		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}

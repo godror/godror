@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle
+package godror
 
 // #cgo LDFLAGS: -ldl -lpthread
 import "C"

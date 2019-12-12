@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 	errors "golang.org/x/xerrors"
 
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
@@ -26,7 +26,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	const proxyPassword = "myPassword"
 	const proxyUser = "test_proxyUser"
 
-	cs, err := goracle.ParseConnString(testConStr)
+	cs, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	t.Log(testHeterogeneousConStr)
 
 	var testHeterogeneousDB *sql.DB
-	if testHeterogeneousDB, err = sql.Open("goracle", testHeterogeneousConStr); err != nil {
+	if testHeterogeneousDB, err = sql.Open("godror", testHeterogeneousConStr); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
@@ -66,7 +66,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		Want string
 	}{
 		"noContext": {In: ctx, Want: username},
-		"proxyUser": {In: goracle.ContextWithUserPassw(ctx, proxyUser, proxyPassword), Want: proxyUser},
+		"proxyUser": {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword), Want: proxyUser},
 	} {
 		t.Run(tName, func(t *testing.T) {
 			var result string

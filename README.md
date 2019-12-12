@@ -1,12 +1,12 @@
-[![Travis](https://travis-ci.org/go-goracle/goracle.svg?branch=v2)](https://travis-ci.org/go-goracle/goracle)
-[![CircleCI](https://circleci.com/gh/go-goracle/goracle.svg?style=svg)](https://circleci.com/gh/go-goracle/goracle)
-[![GoDoc](https://godoc.org/gopkg.in/goracle.v2?status.svg)](http://godoc.org/gopkg.in/goracle.v2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/go-goracle/goracle)](https://goreportcard.com/report/github.com/go-goracle/goracle)
-[![codecov](https://codecov.io/gh/go-goracle/goracle/branch/master/graph/badge.svg)](https://codecov.io/gh/go-goracle/goracle)
+[![Travis](https://travis-ci.org/godror/godror.svg?branch=v2)](https://travis-ci.org/godror/godror)
+[![CircleCI](https://circleci.com/gh/godror/godror.svg?style=svg)](https://circleci.com/gh/godror/godror)
+[![GoDoc](https://godoc.org/github.com/godror/godror?status.svg)](http://godoc.org/github.com/godror/godror)
+[![Go Report Card](https://goreportcard.com/badge/github.com/godror/godror)](https://goreportcard.com/report/github.com/godror/godror)
+[![codecov](https://codecov.io/gh/godror/godror/branch/master/graph/badge.svg)](https://codecov.io/gh/godror/godror)
 
-# goracle
+# Go DRiver for ORacle
 
-[goracle](https://godoc.org/pkg/gopkg.in/goracle.v2) is a package which is a
+[godror](https://godoc.org/pkg/github.com/godror/godror) is a package which is a
 [database/sql/driver.Driver](http://golang.org/pkg/database/sql/driver/#Driver)
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
@@ -18,12 +18,12 @@ One can download it from https://www.oracle.com/database/technologies/instant-cl
 
 ## Connect
 
-In `sql.Open("goracle", connString)`, you can provide the classic "user/passw@service_name"
+In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
 as connString, or an URL like "oracle://user:passw@service_name".
 
 You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does redact the password
-(for security, to avoid logging it - see https://github.com/go-goracle/goracle/issues/79).
+(for security, to avoid logging it - see https://github.com/godror/godror/issues/79).
 So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
@@ -39,16 +39,16 @@ TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/inst
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
 
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
-`goracle.ContextWithUserPassw`.
+`godror.ContextWithUserPassw`.
 
 ## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored procedures
 with OUT parameters, or sending/retrieving PL/SQL array types - just give a
-`goracle.PlSQLArrays` Option within the parameters of `Exec`!
+`godror.PlSQLArrays` Option within the parameters of `Exec`!
 
-The array size of the returned PL/SQL arrays can be set with `goracle.ArraySize(2000)`
+The array size of the returned PL/SQL arrays can be set with `godror.ArraySize(2000)`
 
 * the default is 1024.
 
@@ -60,7 +60,7 @@ Correctness and simplicity is more important than speed, but the underlying ODPI
 helps a lot with the lower levels, so the performance is not bad.
 
 Queries are prefetched (256 rows by default, can be changed by adding a
-`goracle.FetchRowCount(1000)` argument to the call of Query),
+`godror.FetchRowCount(1000)` argument to the call of Query),
 but you can speed up INSERT/UPDATE/DELETE statements
 by providing all the subsequent parameters at once, by putting each param's subsequent
 elements in a separate slice:
@@ -76,28 +76,28 @@ do
 
 ## Logging
 
-Goracle uses `github.com/go-kit/kit/log`'s concept of a `Log` function.
-Either set `goracle.Log` to a logging function globally,
+godror uses `github.com/go-kit/kit/log`'s concept of a `Log` function.
+Either set `godror.Log` to a logging function globally,
 or (better) set the logger in the Context of ExecContext or QueryContext:
 
-    db.QueryContext(goracle.ContextWithLog(ctx, logger.Log), qry)
+    db.QueryContext(godror.ContextWithLog(ctx, logger.Log), qry)
 
 ## Tracing
 
 To set ClientIdentifier, ClientInfo, Module, Action and DbOp on the session,
-to be seen in the Database by the Admin, set goracle.TraceTag on the Context:
+to be seen in the Database by the Admin, set godror.TraceTag on the Context:
 
-    db.QueryContext(goracle.ContextWithTraceTag(goracle.TraceTag{
+    db.QueryContext(godror.ContextWithTraceTag(godror.TraceTag{
     	Module: "processing",
     	Action: "first",
     }), qry)
 
 ## Extras
 
-To use the goracle-specific functions, you'll need a `*goracle.conn`.
-That's what `goracle.DriverConn` is for!
+To use the godror-specific functions, you'll need a `*godror.conn`.
+That's what `godror.DriverConn` is for!
 See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
-[NewSubscription](https://godoc.org/gopkg.in/goracle.v2#Subscription).
+[NewSubscription](https://godoc.org/github.com/godror/godror#Subscription).
 
 ### Calling stored procedures
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
@@ -105,7 +105,7 @@ Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 ### Using cursors returned by stored procedures
 Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
 then either use the `driver.Rows` interface,
-or transform it into a regular `*sql.Rows` with `goracle.WrapRows`,
+or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
 or (since Go 1.12) just Scan into `*sql.Rows`.
 
 For examples, see Anthony Tuininga's
@@ -128,7 +128,7 @@ Just use plain old `string` !
 
 ### NUMBER
 
-`NUMBER`s are transferred as `goracle.Number` (which is a `string`) to Go under the hood.
+`NUMBER`s are transferred as `godror.Number` (which is a `string`) to Go under the hood.
 This ensures that we don't lose any precision (Oracle's NUMBER has 38 decimal digits),
 and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string`, as you wish.
 
@@ -162,11 +162,11 @@ See #121.
 
 Just
 
-    go get gopkg.in/goracle.v2
+    go get github.com/godror/godror
 
 Or if you prefer `dep`
 
-    dep ensure -add gopkg.in/goracle.v2
+    dep ensure -add github.com/godror/godror
 
 and you're ready to go!
 
@@ -177,14 +177,14 @@ Note that Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
 Just as with other Go projects, you don't want to change the import paths, but you can hack on the library
 in place, just set up different remotes:
 
-    cd $GOPATH.src/gopkg.in/goracle.v2
-    git remote add upstream https://github.com/go-goracle/goracle.git
+    cd $GOPATH.src/github.com/godror/godror
+    git remote add upstream https://github.com/godror/godror.git
     git fetch upstream
     git checkout -b master upstream/master
 
     git checkout -f master
     git pull upstream master
-    git remote add fork git@github.com:mygithubacc/goracle
+    git remote add fork git@github.com:mygithubacc/godror
     git checkout -b newfeature upstream/master
 
 Change, experiment as you wish, then
@@ -192,7 +192,7 @@ Change, experiment as you wish, then
     git commit -m 'my great changes' *.go
     git push fork newfeature
 
-and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/goracle`, `newfeature` branch.
+and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godror`, `newfeature` branch.
 
 ### pre-commit
 

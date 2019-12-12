@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"context"
@@ -12,26 +12,26 @@ import (
 
 	errors "golang.org/x/xerrors"
 
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 // ExampleStartup calls exampleStartup to start a database.
 func ExampleStartup() {
-	if err := exampleStartup(goracle.StartupDefault); err != nil {
+	if err := exampleStartup(godror.StartupDefault); err != nil {
 		log.Fatal(err)
 	}
 }
-func exampleStartup(startupMode goracle.StartupMode) error {
+func exampleStartup(startupMode godror.StartupMode) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	dsn := "oracle://?sysdba=1&prelim=1"
-	db, err := sql.Open("goracle", dsn)
+	db, err := sql.Open("godror", dsn)
 	if err != nil {
 		log.Fatal(errors.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 
-	oraDB, err := goracle.DriverConn(ctx, db)
+	oraDB, err := godror.DriverConn(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func exampleStartup(startupMode goracle.StartupMode) error {
 	}
 	// You cannot alter database on the prelim_auth connection.
 	// So open a new connection and complete startup, as Startup starts pmon.
-	db2, err := sql.Open("goracle", "oracle://?sysdba=1")
+	db2, err := sql.Open("godror", "oracle://?sysdba=1")
 	if err != nil {
 		return err
 	}
@@ -61,21 +61,21 @@ func exampleStartup(startupMode goracle.StartupMode) error {
 // ExampleShutdown is an example of how to shut down a database.
 func ExampleShutdown() {
 	dsn := "oracle://?sysdba=1" // equivalent to "/ as sysdba"
-	db, err := sql.Open("goracle", dsn)
+	db, err := sql.Open("godror", dsn)
 	if err != nil {
 		log.Fatal(errors.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 
-	if err = exampleShutdown(db, goracle.ShutdownTransactionalLocal); err != nil {
+	if err = exampleShutdown(db, godror.ShutdownTransactionalLocal); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func exampleShutdown(db *sql.DB, shutdownMode goracle.ShutdownMode) error {
+func exampleShutdown(db *sql.DB, shutdownMode godror.ShutdownMode) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	oraDB, err := goracle.DriverConn(ctx, db)
+	oraDB, err := godror.DriverConn(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func exampleShutdown(db *sql.DB, shutdownMode goracle.ShutdownMode) error {
 		return err
 	}
 	// If we abort the shutdown process is over immediately.
-	if shutdownMode == goracle.ShutdownAbort {
+	if shutdownMode == godror.ShutdownAbort {
 		return nil
 	}
 
@@ -97,7 +97,7 @@ func exampleShutdown(db *sql.DB, shutdownMode goracle.ShutdownMode) error {
 		return err
 	}
 	log.Println("Finishing shutdown")
-	if err = oraDB.Shutdown(goracle.ShutdownFinal); err != nil {
+	if err = oraDB.Shutdown(godror.ShutdownFinal); err != nil {
 		return err
 	}
 	return nil

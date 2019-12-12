@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle
+package godror
 
 import (
 	"bufio"
@@ -286,7 +286,7 @@ type Conn interface {
 	Timezone() *time.Location
 }
 
-// DriverConn returns the *goracle.conn of the database/sql.Conn
+// DriverConn returns the *godror.conn of the database/sql.Conn
 func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }

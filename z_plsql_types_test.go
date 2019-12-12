@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"bytes"
@@ -17,17 +17,17 @@ import (
 
 	errors "golang.org/x/xerrors"
 
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
-var _ goracle.ObjectScanner = new(MyRecord)
-var _ goracle.ObjectWriter = new(MyRecord)
+var _ godror.ObjectScanner = new(MyRecord)
+var _ godror.ObjectWriter = new(MyRecord)
 
-var _ goracle.ObjectScanner = new(MyTable)
+var _ godror.ObjectScanner = new(MyTable)
 
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
-	*goracle.Object
+	*godror.Object
 	ID  int64
 	Txt string
 }
@@ -37,7 +37,7 @@ type coder interface{ Code() int }
 func (r *MyRecord) Scan(src interface{}) error {
 
 	switch obj := src.(type) {
-	case *goracle.Object:
+	case *godror.Object:
 		id, err := obj.Get("ID")
 		if err != nil {
 			return err
@@ -57,7 +57,7 @@ func (r *MyRecord) Scan(src interface{}) error {
 	return nil
 }
 
-// WriteObject update goracle.Object with struct attributes values.
+// WriteObject update godror.Object with struct attributes values.
 // Implement this method if you need the record as an input parameter.
 func (r MyRecord) WriteObject() error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
@@ -66,7 +66,7 @@ func (r MyRecord) WriteObject() error {
 		return err
 	}
 
-	var data goracle.Data
+	var data godror.Data
 	err = r.GetAttribute(&data, "ID")
 	if err != nil {
 		return err
@@ -89,18 +89,18 @@ func (r MyRecord) WriteObject() error {
 
 // MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
-	*goracle.ObjectCollection
+	*godror.ObjectCollection
 	Items []*MyRecord
 }
 
 func (t *MyTable) Scan(src interface{}) error {
 
 	switch obj := src.(type) {
-	case *goracle.Object:
-		collection := goracle.ObjectCollection{Object: obj}
+	case *godror.Object:
+		collection := godror.ObjectCollection{Object: obj}
 		t.Items = make([]*MyRecord, 0)
 		for i, err := collection.First(); err == nil; i, err = collection.Next(i) {
-			var data goracle.Data
+			var data godror.Data
 			err = collection.GetItem(&data, i)
 			if err != nil {
 				return err
@@ -131,7 +131,7 @@ func (r MyTable) WriteObject() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := goracle.DriverConn(ctx, testDb)
+	conn, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		return err
 	}
@@ -264,11 +264,11 @@ func TestPLSQLTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	serverVersion, err := goracle.ServerVersion(ctx, testDb)
+	serverVersion, err := godror.ServerVersion(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientVersion, err := goracle.ClientVersion(ctx, testDb)
+	clientVersion, err := godror.ClientVersion(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestPLSQLTypes(t *testing.T) {
 	}
 	defer dropPackages(ctx)
 
-	conn, err := goracle.DriverConn(ctx, testDb)
+	conn, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: &goracle.ObjectCollection{obj}}
+			tb := MyTable{ObjectCollection: &godror.ObjectCollection{obj}}
 			params := []interface{}{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -478,7 +478,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: &goracle.ObjectCollection{obj}, Items: tCase.want.Items}
+			tb := MyTable{ObjectCollection: &godror.ObjectCollection{obj}, Items: tCase.want.Items}
 			params := []interface{}{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
@@ -562,14 +562,14 @@ func TestSelectObjectTable(t *testing.T) {
 		if err = rows.Scan(&objI); err != nil {
 			t.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
-		obj := goracle.ObjectCollection{Object: objI.(*goracle.Object)}
+		obj := godror.ObjectCollection{Object: objI.(*godror.Object)}
 		defer obj.Close()
 		t.Log(obj.FullName())
 		i, err := obj.First()
 		if err != nil {
 			t.Fatal(err)
 		}
-		var objData, attrData goracle.Data
+		var objData, attrData godror.Data
 		for {
 			if err = obj.GetItem(&objData, i); err != nil {
 				t.Fatal(err)
@@ -600,7 +600,7 @@ func TestFuncBool(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if err = goracle.EnableDbmsOutput(ctx, conn); err != nil {
+	if err = godror.EnableDbmsOutput(ctx, conn); err != nil {
 		t.Error(err)
 	}
 	const crQry = "CREATE OR REPLACE PROCEDURE " + pkgName + `(p_in IN BOOLEAN, p_not OUT BOOLEAN, p_num OUT NUMBER) IS
@@ -620,7 +620,7 @@ END;`
 		var out bool
 		var num int
 		if _, err := conn.ExecContext(ctx, qry, in, sql.Out{Dest: &out}, sql.Out{Dest: &num}); err != nil {
-			if srv, err := goracle.ServerVersion(ctx, conn); err != nil {
+			if srv, err := godror.ServerVersion(ctx, conn); err != nil {
 				t.Log(err)
 			} else if srv.Version < 18 {
 				t.Skipf("%q: %v", qry, err)
@@ -636,7 +636,7 @@ END;`
 		}
 		if num != want || out != !in {
 			buf.Reset()
-			if err = goracle.ReadDbmsOutput(ctx, &buf, conn); err != nil {
+			if err = godror.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 				t.Error(err)
 			}
 			t.Log(buf.String())
@@ -648,7 +648,7 @@ END;`
 func TestPlSqlObjectDirect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	testCon, err := goracle.DriverConn(ctx, testDb)
+	testCon, err := godror.DriverConn(ctx, testDb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,8 +680,8 @@ END;`
 	}
 
 	//defer tl.enableLogging(t)()
-	clientVersion, _ := goracle.ClientVersion(ctx, testDb)
-	serverVersion, _ := goracle.ServerVersion(ctx, testDb)
+	clientVersion, _ := godror.ClientVersion(ctx, testDb)
+	serverVersion, _ := godror.ServerVersion(ctx, testDb)
 	t.Logf("clientVersion: %#v, serverVersion: %#v", clientVersion, serverVersion)
 	cOt, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
 	if err != nil {
@@ -726,7 +726,7 @@ END;`
 		t.Error(err)
 	}
 	t.Logf("coll: %s", coll)
-	var data goracle.Data
+	var data godror.Data
 	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 		if err = coll.GetItem(&data, i); err != nil {
 			t.Fatal(err)
@@ -738,7 +738,7 @@ END;`
 		for attr := range elt.Attributes {
 			val, err := elt.Get(attr)
 			if err != nil {
-				if goracle.DpiVersionNumber <= 30201 {
+				if godror.DpiVersionNumber <= 30201 {
 					t.Log(err, attr)
 				} else {
 					t.Error(err, attr)
@@ -788,7 +788,7 @@ END;`
 	defer tx.Rollback()
 
 	defer tl.enableLogging(t)()
-	ot, err := goracle.GetObjectType(ctx, tx, pkg+strings.ToUpper(".int_tab_typ"))
+	ot, err := godror.GetObjectType(ctx, tx, pkg+strings.ToUpper(".int_tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
 			t.Fatal(fmt.Sprintf("%+v", err))
@@ -857,7 +857,7 @@ END;
 	var a_languagecode_i string
 	var a_username_i string
 	var a_channelcode_i string
-	var a_mcalist_i *goracle.Object
+	var a_mcalist_i *godror.Object
 	var a_validfrom_i string
 	var a_validto_i string
 	var a_statuscode_list_i string
@@ -869,14 +869,14 @@ END;
 	}
 	defer tx.Rollback()
 
-	typ, err := goracle.GetObjectType(ctx, tx, "test_cwo_tbl_t")
+	typ, err := godror.GetObjectType(ctx, tx, "test_cwo_tbl_t")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a_mcalist_i, err = typ.NewObject(); err != nil {
 		t.Fatal(err)
 	}
-	if typ, err = goracle.GetObjectType(ctx, tx, "test_cwo_rec_t"); err != nil {
+	if typ, err = godror.GetObjectType(ctx, tx, "test_cwo_rec_t"); err != nil {
 		t.Fatal(err)
 	}
 	elt, err := typ.NewObject()
@@ -905,7 +905,7 @@ END;
 		t.Fatal(err)
 	}
 
-	rows, err := goracle.WrapRows(ctx, tx, a_type_list_o)
+	rows, err := godror.WrapRows(ctx, tx, a_type_list_o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -945,7 +945,7 @@ func BenchmarkObjArray(b *testing.B) {
 			b.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 		defer stmt.Close()
-		typ, err := goracle.GetObjectType(ctx, testDb, "TEST_VC2000_ARR")
+		typ, err := godror.GetObjectType(ctx, testDb, "TEST_VC2000_ARR")
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1015,7 +1015,7 @@ END;`
 					array = append(array, fmt.Sprintf("--test--%010d--", i))
 				}
 			}
-			if _, err := stmt.ExecContext(ctx, goracle.PlSQLArrays, array, sql.Out{Dest: &rc}); err != nil {
+			if _, err := stmt.ExecContext(ctx, godror.PlSQLArrays, array, sql.Out{Dest: &rc}); err != nil {
 				b.Fatal(err)
 			}
 			if rc != len(array) {

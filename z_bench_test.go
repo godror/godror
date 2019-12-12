@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"context"
@@ -15,10 +15,10 @@ import (
 	"time"
 
 	errors "golang.org/x/xerrors"
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
-// go install && go test -c && ./goracle.v2.test -test.run=^$ -test.bench=Insert25 -test.cpuprofile=/tmp/insert25.prof && go tool pprof ./goracle.v2.test /tmp/insert25.prof
+// go install && go test -c && ./godror.v2.test -test.run=^$ -test.bench=Insert25 -test.cpuprofile=/tmp/insert25.prof && go tool pprof ./godror.v2.test /tmp/insert25.prof
 
 func BenchmarkPlSQLArrayInsert25(b *testing.B) {
 	defer func() {
@@ -112,7 +112,7 @@ END tst_bench_25;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = goracle.ContextWithLog(ctx, nil)
+	ctx = godror.ContextWithLog(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
@@ -122,11 +122,11 @@ END tst_bench_25;`,
 	b.ResetTimer()
 	for i := 0; i < b.N; i += n {
 		if _, err := tx.ExecContext(ctx, qry,
-			goracle.PlSQLArrays,
+			godror.PlSQLArrays,
 			dates, keys, ips, zones, plans, banners, referrers, countries, regions,
 		); err != nil {
 			if strings.Contains(err.Error(), "PLS-00905") || strings.Contains(err.Error(), "ORA-06508") {
-				b.Log(goracle.GetCompileErrors(testDb, false))
+				b.Log(godror.GetCompileErrors(testDb, false))
 			}
 			//b.Log(dates, keys, ips, zones, plans, banners, referrers, countries, regions)
 			b.Fatal(err)
@@ -135,7 +135,7 @@ END tst_bench_25;`,
 	b.StopTimer()
 }
 
-// go install && go test -c && ./goracle.v2.test -test.run=^. -test.bench=InOut -test.cpuprofile=/tmp/inout.prof && go tool pprof -cum ./goracle.v2.test /tmp/inout.prof
+// go install && go test -c && ./godror.v2.test -test.run=^. -test.bench=InOut -test.cpuprofile=/tmp/inout.prof && go tool pprof -cum ./godror.v2.test /tmp/inout.prof
 
 func BenchmarkPlSQLArrayInOut(b *testing.B) {
 	defer func() {
@@ -226,7 +226,7 @@ END tst_bench_inout;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = goracle.ContextWithLog(ctx, nil)
+	ctx = godror.ContextWithLog(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
@@ -234,7 +234,7 @@ END tst_bench_inout;`,
 	defer tx.Rollback()
 
 	params := []interface{}{
-		goracle.PlSQLArrays,
+		godror.PlSQLArrays,
 		sql.Out{Dest: &dates, In: true},
 		sql.Out{Dest: &keys, In: true},
 		sql.Out{Dest: &ips, In: true},
@@ -250,7 +250,7 @@ END tst_bench_inout;`,
 	for i := 0; i < b.N; i += n {
 		if _, err := tx.ExecContext(ctx, qry, params...); err != nil {
 			if strings.Contains(err.Error(), "PLS-00905") || strings.Contains(err.Error(), "ORA-06508") {
-				b.Log(goracle.GetCompileErrors(testDb, false))
+				b.Log(godror.GetCompileErrors(testDb, false))
 			}
 			//b.Log(dates, keys, ips, zones, plans, banners, referrers, countries, regions)
 			b.Fatal(err)
@@ -410,7 +410,7 @@ func TestSelectOrder(t *testing.T) {
 	}
 }
 
-// go test -c && ./goracle.v2.test -test.run=^$ -test.bench=Date -test.cpuprofile=/tmp/cpu.prof && go tool pprof goracle.v2.test /tmp/cpu.prof
+// go test -c && ./godror.v2.test -test.run=^$ -test.bench=Date -test.cpuprofile=/tmp/cpu.prof && go tool pprof godror.v2.test /tmp/cpu.prof
 func BenchmarkSelectDate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; {
@@ -456,7 +456,7 @@ func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
 		b.StopTimer()
 		rows, err := testDb.Query(
 			"SELECT location FROM "+geoTableName, //nolint:gas
-			goracle.FetchRowCount(prefetchLen))
+			godror.FetchRowCount(prefetchLen))
 		if err != nil {
 			b.Fatal(err)
 		}

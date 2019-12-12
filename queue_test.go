@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package goracle_test
+package godror_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	errors "golang.org/x/xerrors"
 
-	goracle "gopkg.in/goracle.v2"
+	godror "github.com/godror/godror"
 )
 
 func TestQueue(t *testing.T) {
@@ -66,7 +66,7 @@ func TestQueue(t *testing.T) {
 		)
 	}()
 
-	q, err := goracle.NewQueue(ctx, conn, qName, "")
+	q, err := godror.NewQueue(ctx, conn, qName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,14 +84,14 @@ func TestQueue(t *testing.T) {
 	}
 	t.Logf("deqOpts: %#v", deqOpts)
 
-	if err = q.Enqueue([]goracle.Message{goracle.Message{Raw: []byte("árvíztűrő tükörfúrógép")}}); err != nil {
+	if err = q.Enqueue([]godror.Message{godror.Message{Raw: []byte("árvíztűrő tükörfúrógép")}}); err != nil {
 		var ec interface{ Code() int }
 		if errors.As(err, &ec) && ec.Code() == 24444 {
 			t.Skip(err)
 		}
 		t.Fatal("enqueue:", err)
 	}
-	msgs := make([]goracle.Message, 1)
+	msgs := make([]godror.Message, 1)
 	n, err := q.Dequeue(msgs)
 	if err != nil {
 		t.Error("dequeue:", err)
@@ -174,7 +174,7 @@ func TestQueueObject(t *testing.T) {
 		)
 	}()
 
-	q, err := goracle.NewQueue(ctx, conn, qName, qTypName)
+	q, err := godror.NewQueue(ctx, conn, qName, qTypName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestQueueObject(t *testing.T) {
 	}
 	t.Logf("deqOpts: %#v", deqOpts)
 
-	oTyp, err := goracle.GetObjectType(ctx, conn, qTypName)
+	oTyp, err := godror.GetObjectType(ctx, conn, qTypName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,14 +211,14 @@ func TestQueueObject(t *testing.T) {
 		t.Error(err)
 	}
 	t.Log("obj:", obj)
-	if err = q.Enqueue([]goracle.Message{goracle.Message{Object: obj}}); err != nil {
+	if err = q.Enqueue([]godror.Message{godror.Message{Object: obj}}); err != nil {
 		var ec interface{ Code() int }
 		if errors.As(err, &ec) && ec.Code() == 24444 {
 			t.Skip(err)
 		}
 		t.Fatal("enqueue:", err)
 	}
-	msgs := make([]goracle.Message, 1)
+	msgs := make([]godror.Message, 1)
 	n, err := q.Dequeue(msgs)
 	if err != nil {
 		t.Error("dequeue:", err)
