@@ -1,12 +1,12 @@
 module github.com/godror/godror
 
-require (
-	github.com/go-kit/kit v0.8.0
-	github.com/google/go-cmp v0.2.0
-	github.com/pkg/errors v0.8.0
-	golang.org/x/sync v0.0.0-20190423024810-112230192c58
-	golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7
-	gopkg.in/goracle.v2 v2.24.0
-)
+go 1.12
 
-go 1.13
+require (
+	github.com/go-kit/kit v0.9.0
+	github.com/go-logfmt/logfmt v0.4.0 // indirect
+	github.com/go-stack/stack v1.8.0 // indirect
+	github.com/google/go-cmp v0.3.1
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
+)

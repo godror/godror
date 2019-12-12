@@ -52,14 +52,14 @@ func init() {
 	if os.Getenv("VERBOSE") == "1" {
 		logger.Swap(tl)
 	}
-	if os.Getenv("GORACLE_DRV_USERNAME") == "" &&
-		(os.Getenv("GORACLE_DRV_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
+	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
+		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
 		}
-		wd = filepath.Join(wd, "contrib", "godror.db")
-		tempDir, err := ioutil.TempDir("", "goracle_drv_test-")
+		wd = filepath.Join(wd, "contrib", "free.db")
+		tempDir, err := ioutil.TempDir("", "godror_drv_test-")
 		if err != nil {
 			panic(err)
 		}
@@ -103,7 +103,7 @@ func init() {
 		if b, err = ioutil.ReadFile(fn); err != nil {
 			fmt.Println(err)
 		} else {
-			const prefix = "export GORACLE_DRV_TEST_"
+			const prefix = "export GODROR_TEST_"
 			for _, line := range bytes.Split(b, []byte{'\n'}) {
 				if !bytes.HasPrefix(line, []byte(prefix)) {
 					continue
@@ -114,18 +114,18 @@ func init() {
 					continue
 				}
 				k, v := string(line[:i]), string(line[i+1:])
-				fmt.Printf("export GORACLE_DRV_TEST_%s=%s\n", k, v)
-				os.Setenv("GORACLE_DRV_TEST_"+k, v)
+				fmt.Printf("export GODROR_TEST_%s=%s\n", k, v)
+				os.Setenv("GODROR_TEST_"+k, v)
 			}
 		}
 	}
 
 	P := godror.ConnectionParams{
-		Username:    os.Getenv("GORACLE_DRV_TEST_USERNAME"),
-		Password:    os.Getenv("GORACLE_DRV_TEST_PASSWORD"),
-		SID:         os.Getenv("GORACLE_DRV_TEST_DB"),
+		Username:    os.Getenv("GODROR_TEST_USERNAME"),
+		Password:    os.Getenv("GODROR_TEST_PASSWORD"),
+		SID:         os.Getenv("GODROR_TEST_DB"),
 		MinSessions: 1, MaxSessions: maxSessions, PoolIncrement: 1,
-		StandaloneConnection: os.Getenv("GORACLE_DRV_TEST_STANDALONE") == "1",
+		StandaloneConnection: os.Getenv("GODROR_TEST_STANDALONE") == "1",
 		WaitTimeout:          10 * time.Second,
 		MaxLifeTime:          5 * time.Minute,
 		SessionTimeout:       30 * time.Second,
@@ -2020,8 +2020,8 @@ func TestImplicitResults(t *testing.T) {
 }
 
 func TestStartupShutdown(t *testing.T) {
-	if os.Getenv("GORACLE_DB_SHUTDOWN") != "1" {
-		t.Skip("GORACLE_DB_SHUTDOWN != 1, skipping shutdown/startup test")
+	if os.Getenv("GODROR_DB_SHUTDOWN") != "1" {
+		t.Skip("GODROR_DB_SHUTDOWN != 1, skipping shutdown/startup test")
 	}
 	p, err := godror.ParseConnString(testConStr)
 	if err != nil {

@@ -75,7 +75,7 @@ func TestParseConnString(t *testing.T) {
 			In: "oracle://[::1]:12345/dbname",
 			Want: ConnectionParams{
 				SID:         "[::1]:12345/dbname",
-				ConnClass:   "GORACLE",
+				ConnClass:   "GODROR",
 				MinSessions: 1, MaxSessions: 1000, PoolIncrement: 1,
 				WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
 			},

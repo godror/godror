@@ -23,8 +23,8 @@ If applicable, add screenshots to help explain your problem.
 **Your oracle client version**
 e.g. 12.2.0.1.0
 
-**Your goracle version**
-e.g. 2.16.3
+**Your godror version**
+e.g. v0.0.1
 
 **Your go version**
 e.g. 1.12.0

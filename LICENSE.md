@@ -1,4 +1,4 @@
-goracle
+godror
 =======
 
 Copyright 2017, 2018, 2019 Tamás Gulácsi

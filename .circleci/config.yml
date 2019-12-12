@@ -10,7 +10,7 @@ jobs:
     environment:
       GO111MODULE: "on"
 
-    working_directory: /go/src/gopkg.in/goracle.v2
+    working_directory: /go/src/github.com/godror/godror
 
     steps:
       - checkout
@@ -44,15 +44,15 @@ jobs:
           command: sudo sh -c 'ldconfig -v /usr/lib/oracle/instantclient_19_3; ldd /usr/lib/oracle/instantclient_19_3/libclntsh.so'
 
       - run:
-          name: Run goracle.v2.test
+          name: Run godror.test
           command: |
-              source $PWD/contrib/goracle.db/env.sh
-              export TNS_ADMIN=$PWD/contrib/goracle.db
+              source $PWD/contrib/free.db/env.sh
+              export TNS_ADMIN=$PWD/contrib/free.db
               export -p
-              echo -e "WALLET_LOCATION=(SOURCE=(METHOD=file)(METHOD_DATA=(DIRECTORY=\"/go/src/gopkg.in/goracle.v2/contrib/goracle.db\")))\nSSL_SERVER_DN_MATCH=yes" >$PWD/contrib/goracle.db/sqlnet.ora
+              echo -e "WALLET_LOCATION=(SOURCE=(METHOD=file)(METHOD_DATA=(DIRECTORY=\"/go/src/github.com/godror/godror/contrib/free.db\")))\nSSL_SERVER_DN_MATCH=yes" >$PWD/contrib/free.db/sqlnet.ora
               cat $TNS_ADMIN/sqlnet.ora
               find $TNS_ADMIN -ls
-              ./goracle.v2.test -test.coverprofile=coverage.txt -test.v
+              ./godror.test -test.coverprofile=coverage.txt -test.v
 
       - run:
           name: Upload coverage to codecov.io

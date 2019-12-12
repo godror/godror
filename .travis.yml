@@ -8,7 +8,7 @@ services:
 go:
     - "1.13.3"
 
-go_import_path: gopkg.in/goracle.v2
+go_import_path: github.com/godror/godror
 
 env:
     global:
@@ -20,10 +20,10 @@ before_install:
 script:
     - go test -c -covermode=atomic .
     - docker run -ti --rm
-        -v $(pwd)/contrib/goracle.db:/contrib/goracle.db:ro
-        -v $(pwd)/goracle.v2.test:/goracle.v2.test:ro
+        -v $(pwd)/contrib/free.db:/contrib/free.db:ro
+        -v $(pwd)/godror.test:/godror.test:ro
         oracle-instant-client:12.2
-        /goracle.v2.test -test.coverprofile=coverage.txt -test.v
+        /godror.test -test.coverprofile=coverage.txt -test.v
 
 after_success:
     - bash <(curl -s https://codecov.io/bash)

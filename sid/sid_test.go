@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode"
 
-	"gopkg.in/goracle.v2/sid"
+	"github.com/godror/godror/sid"
 )
 
 func TestParseDescription(t *testing.T) {
