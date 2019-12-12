@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 
+## [2.24.0]
+### Changed
+- License: SPDX-License-Identifier: UPL-1.0 OR APL-2.0
+
 ## [2.23.5]
 ### Changed
 - ODPI-C v3.3.0
