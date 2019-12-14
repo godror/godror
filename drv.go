@@ -87,7 +87,9 @@ const (
 	DpiVersionNumber = C.DPI_VERSION_NUMBER
 
 	// DriverName is set on the connection to be seen in the DB
-	DriverName = "github.com/godror/godror : " + Version
+	//
+	// It cannot be longer than 30 bytes !
+	DriverName = "godror : " + Version
 
 	// DefaultPoolMinSessions specifies the default value for minSessions for pool creation.
 	DefaultPoolMinSessions = 1
