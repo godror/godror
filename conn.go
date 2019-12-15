@@ -43,19 +43,19 @@ var _ = driver.Pinger((*conn)(nil))
 //var _ = driver.ExecerContext((*conn)(nil))
 
 type conn struct {
-	connParams     ConnectionParams
 	currentTT      TraceTag
+	connParams     ConnectionParams
 	Client, Server VersionInfo
 	tranParams     tranParams
 	sync.RWMutex
 	currentUser string
 	*drv
 	dpiConn       *C.dpiConn
+	timeZone      *time.Location
+	objTypes      map[string]ObjectType
+	tzOffSecs     int
 	inTransaction bool
 	newSession    bool
-	timeZone      *time.Location
-	tzOffSecs     int
-	objTypes      map[string]ObjectType
 }
 
 func (c *conn) getError() error {
