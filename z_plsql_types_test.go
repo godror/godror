@@ -89,7 +89,7 @@ func (r MyRecord) WriteObject() error {
 
 // MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
-	*godror.ObjectCollection
+	godror.ObjectCollection
 	Items []*MyRecord
 }
 
@@ -97,7 +97,7 @@ func (t *MyTable) Scan(src interface{}) error {
 
 	switch obj := src.(type) {
 	case *godror.Object:
-		collection := godror.ObjectCollection{Object: obj}
+		collection := obj.Collection()
 		t.Items = make([]*MyRecord, 0)
 		for i, err := collection.First(); err == nil; i, err = collection.Next(i) {
 			var data godror.Data
@@ -404,7 +404,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: &godror.ObjectCollection{obj}}
+			tb := MyTable{ObjectCollection: obj.Collection()}
 			params := []interface{}{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -478,7 +478,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: &godror.ObjectCollection{obj}, Items: tCase.want.Items}
+			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items}
 			params := []interface{}{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
@@ -562,7 +562,7 @@ func TestSelectObjectTable(t *testing.T) {
 		if err = rows.Scan(&objI); err != nil {
 			t.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
-		obj := godror.ObjectCollection{Object: objI.(*godror.Object)}
+		obj := objI.(*godror.Object).Collection()
 		defer obj.Close()
 		t.Log(obj.FullName())
 		i, err := obj.First()
