@@ -1920,13 +1920,13 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	case *Object:
 		d := Data{
 			ObjectType: out.ObjectType,
-			dpiData:    &data[0],
+			dpiData:    data[0],
 		}
 		*out = *d.GetObject()
 	case ObjectScanner:
 		d := Data{
 			ObjectType: out.ObjectRef().ObjectType,
-			dpiData:    &data[0],
+			dpiData:    data[0],
 		}
 		return out.Scan(d.GetObject())
 	default:
