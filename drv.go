@@ -326,17 +326,17 @@ func newDrv() *drv {
 var _ = driver.Driver((*drv)(nil))
 
 type drv struct {
-	clientVersion VersionInfo
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
+	clientVersion VersionInfo
 }
 
 type connPool struct {
 	dpiPool       *C.dpiPool
-	serverVersion VersionInfo
 	timeZone      *time.Location
 	tzOffSecs     int
+	serverVersion VersionInfo
 }
 
 func (d *drv) init() error {
@@ -641,11 +641,11 @@ type ConnectionParams struct {
 	NewPassword                              string
 	MinSessions, MaxSessions, PoolIncrement  int
 	WaitTimeout, MaxLifeTime, SessionTimeout time.Duration
+	Timezone                                 *time.Location
 	IsSysDBA, IsSysOper, IsSysASM, IsPrelim  bool
 	HeterogeneousPool                        bool
 	StandaloneConnection                     bool
 	EnableEvents                             bool
-	Timezone                                 *time.Location
 }
 
 // String returns the string representation of ConnectionParams.
@@ -952,15 +952,15 @@ func b2i(b bool) uint8 {
 // VersionInfo holds version info returned by Oracle DB.
 type VersionInfo struct {
 	ServerRelease                                           string
-	Version, Release, Update, PortRelease, PortUpdate, Full int
+	Version, Release, Update, PortRelease, PortUpdate, Full uint8
 }
 
 func (V *VersionInfo) set(v *C.dpiVersionInfo) {
 	*V = VersionInfo{
-		Version: int(v.versionNum),
-		Release: int(v.releaseNum), Update: int(v.updateNum),
-		PortRelease: int(v.portReleaseNum), PortUpdate: int(v.portUpdateNum),
-		Full: int(v.fullVersionNum),
+		Version: uint8(v.versionNum),
+		Release: uint8(v.releaseNum), Update: uint8(v.updateNum),
+		PortRelease: uint8(v.portReleaseNum), PortUpdate: uint8(v.portUpdateNum),
+		Full: uint8(v.fullVersionNum),
 	}
 }
 func (V VersionInfo) String() string {
@@ -1017,9 +1017,9 @@ func ContextWithLog(ctx context.Context, logF func(...interface{}) error) contex
 var _ = driver.Connector((*connector)(nil))
 
 type connector struct {
-	ConnectionParams
 	*drv
 	onInit func(driver.Conn) error
+	ConnectionParams
 }
 
 // OpenConnector must parse the name in the same format that Driver.Open
