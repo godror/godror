@@ -40,13 +40,13 @@ var DefaultDeqOptions = DeqOptions{
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
+	PayloadObjectType ObjectType
+	props             []*C.dpiMsgProps
+	name              string
 	conn              *conn
 	dpiQueue          *C.dpiQueue
-	PayloadObjectType ObjectType
-	name              string
 
-	mu    sync.Mutex
-	props []*C.dpiMsgProps
+	mu sync.Mutex
 }
 
 // NewQueue creates a new Queue.
@@ -211,15 +211,15 @@ func (Q *Queue) Enqueue(messages []Message) error {
 
 // Message is a message - either received or being sent.
 type Message struct {
-	DeliveryMode            DeliveryMode
+	Correlation, ExceptionQ string
 	Enqueued                time.Time
+	MsgID, OriginalMsgID    [16]byte
+	Raw                     []byte
 	Delay, Expiration       int32
 	Priority, NumAttempts   int32
-	Correlation, ExceptionQ string
-	MsgID, OriginalMsgID    [16]byte
-	State                   MessageState
-	Raw                     []byte
 	Object                  *Object
+	DeliveryMode            DeliveryMode
+	State                   MessageState
 }
 
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
