@@ -160,7 +160,7 @@ func (c *conn) close(doNotReuse bool) error {
 			continue
 		}
 		seen[nm] = struct{}{}
-		o.close()
+		o.close(doNotReuse)
 	}
 	if !doNotReuse {
 		return nil

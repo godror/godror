@@ -379,7 +379,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "BREAK statement")
 			}
 			_ = st.Break()
-			st.close(false)
+			// For some reasons this SIGSEGVs if not not keepDpiStmt (try to close it),
+			st.close(true)
+			// so we hope that the following conn.Close closes the dpiStmt, too.
 			if err := st.conn.Close(); err != nil {
 				return nil, err
 			}
@@ -539,7 +541,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				Log("msg", "BREAK query")
 			}
 			_ = st.Break()
-			st.close(false)
+			// For some reasons this SIGSEGVs if not not keepDpiStmt (try to close it),
+			st.close(true)
+			// so we hope that the following conn.Close closes the dpiStmt, too.
 			if err := st.conn.Close(); err != nil {
 				return nil, err
 			}

@@ -436,7 +436,7 @@ func (t ObjectType) NewCollection() (ObjectCollection, error) {
 }
 
 // Close releases a reference to the object type.
-func (t *ObjectType) close() error {
+func (t *ObjectType) close(doNotReuse bool) error {
 	if t == nil {
 		return nil
 	}
@@ -450,7 +450,7 @@ func (t *ObjectType) close() error {
 		}
 	}
 
-	if d == nil {
+	if d == nil || !doNotReuse {
 		return nil
 	}
 
