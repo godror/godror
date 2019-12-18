@@ -815,6 +815,7 @@ func ContextWithLog(ctx context.Context, logF func(...interface{}) error) contex
 	return context.WithValue(ctx, logCtxKey, logF)
 }
 
+var _ = driver.DriverContext((*drv)(nil))
 var _ = driver.Connector((*connector)(nil))
 
 type connector struct {
