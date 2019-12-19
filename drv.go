@@ -115,19 +115,15 @@ const (
 // or analog to be race-free.
 var Log func(...interface{}) error
 
-var defaultDrv *drv
+var defaultDrv = &Drv{}
 
 func init() {
-	defaultDrv = &drv{pools: make(map[string]*connPool)}
 	sql.Register("godror", defaultDrv)
 }
 
-// DefaultDriver returns the same driver which has been registered with sql.Open as "godror".
-func DefaultDriver() driver.Driver { return defaultDrv }
+var _ = driver.Driver((*Drv)(nil))
 
-var _ = driver.Driver((*drv)(nil))
-
-type drv struct {
+type Drv struct {
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
@@ -141,9 +137,12 @@ type connPool struct {
 	serverVersion VersionInfo
 }
 
-func (d *drv) init() error {
+func (d *Drv) init() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.pools == nil {
+		d.pools = make(map[string]*connPool)
+	}
 	if d.dpiContext != nil {
 		return nil
 	}
@@ -166,7 +165,7 @@ func (d *drv) init() error {
 
 // Open returns a new connection to the database.
 // The name is a string in a driver-specific format.
-func (d *drv) Open(connString string) (driver.Conn, error) {
+func (d *Drv) Open(connString string) (driver.Conn, error) {
 	P, err := ParseConnString(connString)
 	if err != nil {
 		return nil, err
@@ -176,11 +175,11 @@ func (d *drv) Open(connString string) (driver.Conn, error) {
 	return conn, maybeBadConn(err, conn)
 }
 
-func (d *drv) ClientVersion() (VersionInfo, error) {
+func (d *Drv) ClientVersion() (VersionInfo, error) {
 	return d.clientVersion, nil
 }
 
-func (d *drv) openConn(P ConnectionParams) (*conn, error) {
+func (d *Drv) openConn(P ConnectionParams) (*conn, error) {
 	if err := d.init(); err != nil {
 		return nil, err
 	}
@@ -379,7 +378,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 func (c *conn) acquireConn(user, pass string) error {
 	var connCreateParams C.dpiConnCreateParams
-	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Errorf("initConnCreateParams: %w", "", c.getError())
 	}
 
@@ -404,7 +403,7 @@ func (c *conn) acquireConn(user, pass string) error {
 	}
 
 	c.drv.mu.Lock()
-	pool := c.pools[c.connParams.String()]
+	pool := c.drv.pools[c.connParams.String()]
 	c.drv.mu.Unlock()
 	if C.dpiPool_acquireConnection(
 		pool.dpiPool,
@@ -743,7 +742,7 @@ func newErrorInfo(code int, message string) C.dpiErrorInfo {
 // against deadcode
 var _ = newErrorInfo
 
-func (d *drv) getError() *OraErr {
+func (d *Drv) getError() *OraErr {
 	if d == nil || d.dpiContext == nil {
 		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
 	}
@@ -824,18 +823,18 @@ func ContextWithLog(ctx context.Context, logF func(...interface{}) error) contex
 	return context.WithValue(ctx, logCtxKey, logF)
 }
 
-var _ = driver.DriverContext((*drv)(nil))
+var _ = driver.DriverContext((*Drv)(nil))
 var _ = driver.Connector((*connector)(nil))
 
 type connector struct {
-	*drv
+	drv    *Drv
 	onInit func(driver.Conn) error
 	ConnectionParams
 }
 
 // OpenConnector must parse the name in the same format that Driver.Open
 // parses the name parameter.
-func (d *drv) OpenConnector(name string) (driver.Connector, error) {
+func (d *Drv) OpenConnector(name string) (driver.Connector, error) {
 	P, err := ParseConnString(name)
 	if err != nil {
 		return nil, err
@@ -875,15 +874,24 @@ func (c connector) Driver() driver.Driver { return c.drv }
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // which calls the given onInit if the connection is new.
 //
-// For an example, see NewSessionIniter.
-func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
-	cxr, err := defaultDrv.OpenConnector(name)
+// For an onInit example, see NewSessionIniter.
+func (d *Drv) NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
+	cxr, err := d.OpenConnector(name)
 	if err != nil {
 		return nil, err
 	}
 	cx := cxr.(connector)
 	cx.onInit = onInit
 	return cx, err
+}
+
+// NewConnector returns a driver.Connector to be used with sql.OpenDB,
+// (for the default Driver registered with godror)
+// which calls the given onInit if the connection is new.
+//
+// For an onInit example, see NewSessionIniter.
+func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
+	return defaultDrv.NewConnector(name, onInit)
 }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,

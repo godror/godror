@@ -222,7 +222,7 @@ type Message struct {
 	State                   MessageState
 }
 
-func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
+func (M *Message) toOra(d *Drv, props *C.dpiMsgProps) error {
 	var firstErr error
 	OK := func(ok C.int, name string) {
 		if ok == C.DPI_SUCCESS {
@@ -380,7 +380,7 @@ type EnqOptions struct {
 	DeliveryMode   DeliveryMode
 }
 
-func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
+func (E *EnqOptions) fromOra(d *Drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -408,7 +408,7 @@ func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	return firstErr
 }
 
-func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
+func (E EnqOptions) toOra(d *Drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -448,7 +448,7 @@ type DeqOptions struct {
 	Wait                             uint32
 }
 
-func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
+func (D *DeqOptions) fromOra(d *Drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {
@@ -503,7 +503,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	return firstErr
 }
 
-func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
+func (D DeqOptions) toOra(d *Drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
 		if ok == C.DPI_SUCCESS {

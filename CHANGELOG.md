@@ -6,9 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [2.9.2]
+## [0.10.0]
 ### Added
 - onInit parameter in the connection url (and OnInit in ConnectionParams)
+- export Drv to be able to register new driver wrapping *godror.Drv.
 
 ### Changed
 - Make Data embed dpiData, not *dpiData

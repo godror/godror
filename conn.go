@@ -47,15 +47,15 @@ type conn struct {
 	connParams     ConnectionParams
 	Client, Server VersionInfo
 	tranParams     tranParams
-	sync.RWMutex
-	currentUser string
-	*drv
-	dpiConn       *C.dpiConn
-	timeZone      *time.Location
-	objTypes      map[string]ObjectType
-	tzOffSecs     int
-	inTransaction bool
-	newSession    bool
+	mu             sync.RWMutex
+	currentUser    string
+	drv            *Drv
+	dpiConn        *C.dpiConn
+	timeZone       *time.Location
+	objTypes       map[string]ObjectType
+	tzOffSecs      int
+	inTransaction  bool
+	newSession     bool
 }
 
 func (c *conn) getError() error {
@@ -66,8 +66,8 @@ func (c *conn) getError() error {
 }
 
 func (c *conn) Break() error {
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if Log != nil {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
@@ -76,6 +76,8 @@ func (c *conn) Break() error {
 	}
 	return nil
 }
+
+func (c *conn) ClientVersion() (VersionInfo, error) { return c.drv.ClientVersion() }
 
 // Ping checks the connection's state.
 //
@@ -90,8 +92,8 @@ func (c *conn) Ping(ctx context.Context) error {
 	if err := c.ensureContextUser(ctx); err != nil {
 		return err
 	}
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
@@ -136,8 +138,8 @@ func (c *conn) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.close(true)
 }
 
@@ -252,19 +254,19 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.tranParams = todo
 	}
 
-	c.RLock()
+	c.mu.RLock()
 	inTran := c.inTransaction
-	c.RUnlock()
+	c.mu.RUnlock()
 	if inTran {
 		return nil, errors.New("already in transaction")
 	}
-	c.Lock()
+	c.mu.Lock()
 	c.inTransaction = true
-	c.Unlock()
+	c.mu.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.Lock()
+		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.Unlock()
+		c.mu.Unlock()
 	}
 	return c, nil
 }
@@ -284,9 +286,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, err
 	}
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.Lock()
+		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.Unlock()
+		c.mu.Unlock()
 	}
 	if query == getConnection {
 		if Log != nil {
@@ -299,8 +301,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	var dpiStmt *C.dpiStmt
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
@@ -316,7 +318,7 @@ func (c *conn) Rollback() error {
 	return c.endTran(false)
 }
 func (c *conn) endTran(isCommit bool) error {
-	c.Lock()
+	c.mu.Lock()
 	c.inTransaction = false
 	c.tranParams = tranParams{}
 
@@ -332,7 +334,7 @@ func (c *conn) endTran(isCommit bool) error {
 			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
-	c.Unlock()
+	c.mu.Unlock()
 	//fmt.Printf("%p.%s\n", c, msg)
 	return err
 }
@@ -734,8 +736,8 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		}
 	}
 
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if err := c.acquireConn(up[0], up[1]); err != nil {
 		return err
