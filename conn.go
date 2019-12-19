@@ -385,7 +385,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init() error {
+func (c *conn) init(onInit []string) error {
 	if c.Client.Version == 0 {
 		var err error
 		if c.Client, err = c.drv.ClientVersion(); err != nil {
@@ -408,8 +408,28 @@ func (c *conn) init() error {
 			[]byte{'\n'}, []byte{';', ' '}, -1))
 	}
 
-	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
+	doOnInit := func() error {
+		if len(onInit) == 0 {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
+		defer cancel()
+		for _, qry := range onInit {
+			st, err := c.PrepareContext(ctx, qry)
+			if err != nil {
+				return errors.Errorf("%s: %w", qry, err)
+			}
+			_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
+			st.Close()
+			if err != nil {
+				return errors.Errorf("%s: %w", qry, err)
+			}
+		}
 		return nil
+	}
+
+	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
+		return doOnInit()
 	}
 	c.timeZone = time.Local
 	_, c.tzOffSecs = time.Now().In(c.timeZone).Zone()
@@ -452,7 +472,7 @@ func (c *conn) init() error {
 	}
 	c.timeZone, c.tzOffSecs = tz, off
 
-	return nil
+	return doOnInit()
 }
 
 func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
@@ -718,7 +738,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		return err
 	}
 
-	return c.init()
+	return c.init(nil)
 }
 
 // StartupMode for the database.

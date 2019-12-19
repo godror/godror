@@ -26,7 +26,8 @@
 //     poolSessionMaxLifetime=1h& \
 //     poolSessionTimeout=30s& \
 //     timezone=Local& \
-//     newPassword=
+//     newPassword= \
+//     onInit=ALTER+SESSION+SET+current_schema%3Dmy_schema
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -242,7 +243,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			if err := c.acquireConn("", ""); err != nil {
 				return nil, err
 			}
-			err := c.init()
+			err := c.init(P.OnInit)
 			if err == nil {
 				c.mu.Lock()
 				dp.serverVersion = c.Server
@@ -316,7 +317,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		c.dpiConn = (*C.dpiConn)(dc)
 		c.currentUser = P.Username
 		c.newSession = true
-		err := c.init()
+		err := c.init(P.OnInit)
 		return &c, err
 	}
 	var poolCreateParams C.dpiPoolCreateParams
@@ -437,6 +438,7 @@ func (c *conn) acquireConn(user, pass string) error {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
+	OnInit                             []string
 	Username, Password, SID, ConnClass string
 	// NewPassword is used iff StandaloneConnection is true!
 	NewPassword                              string
@@ -516,6 +518,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
+	q["onInit"] = P.OnInit
 	return (&url.URL{
 		Scheme:   "oracle",
 		User:     url.UserPassword(P.Username, password),
@@ -681,6 +684,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	} else if P.PoolIncrement < 1 {
 		P.PoolIncrement = 1
 	}
+	P.OnInit = q["onInit"]
 	return P, nil
 }
 

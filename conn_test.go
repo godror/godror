@@ -80,6 +80,14 @@ func TestParseConnString(t *testing.T) {
 				WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
 			},
 		},
+
+		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
+			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
+				ConnClass: "POOLED", IsSysOper: true,
+				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
+				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+				OnInit: []string{"a", "b"},
+			}},
 	} {
 		t.Log(tCase.In)
 		P, err := ParseConnString(tCase.In)
