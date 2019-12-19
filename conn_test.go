@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestParseConnString(t *testing.T) {
+	t.Parallel()
 	wantAt := ConnectionParams{
 		Username:       "cc",
 		Password:       "c@c*1",
@@ -95,7 +97,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: %v", tName, err)
 			continue
 		}
-		if P != tCase.Want {
+		if !reflect.DeepEqual(P, tCase.Want) {
 			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P))
 			continue
 		}
@@ -105,7 +107,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: parseConnString %v", tName, err)
 			continue
 		}
-		if P != Q {
+		if !reflect.DeepEqual(P, Q) {
 			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
 			continue
 		}

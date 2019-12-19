@@ -423,7 +423,7 @@ func (c *conn) acquireConn(user, pass string) error {
 	c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
 	c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
 	c.mu.Unlock()
-	err := c.init()
+	err := c.init(c.connParams.OnInit)
 	if err == nil {
 		c.mu.Lock()
 		pool.serverVersion = c.Server
@@ -686,6 +686,11 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	P.OnInit = q["onInit"]
 	return P, nil
+}
+
+// SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
+func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
+	P.OnInit = append(P.OnInit, fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1)))
 }
 
 // OraErr is an error holding the ORA-01234 code and the message.

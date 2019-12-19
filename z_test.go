@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-logfmt/logfmt"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
 	errors "golang.org/x/xerrors"
@@ -50,6 +51,7 @@ func init() {
 	logger := &log.SwapLogger{}
 	godror.Log = logger.Log
 	if os.Getenv("VERBOSE") == "1" {
+		tl.enc = logfmt.NewEncoder(os.Stderr)
 		logger.Swap(tl)
 	}
 	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
@@ -166,12 +168,24 @@ var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]
 
 type testLogger struct {
 	sync.RWMutex
+	enc      *logfmt.Encoder
 	Ts       []*testing.T
 	beHelped []*testing.T
 }
 
 func (tl *testLogger) Log(args ...interface{}) error {
-	fmt.Println(args...)
+	if tl.enc != nil {
+		for i := 1; i < len(args); i += 2 {
+			switch args[i].(type) {
+			case string, fmt.Stringer:
+			default:
+				args[i] = fmt.Sprintf("%+v", args[i])
+			}
+		}
+		tl.enc.Reset()
+		tl.enc.EncodeKeyvals(args...)
+		tl.enc.EndRecord()
+	}
 	return tl.GetLog()(args)
 }
 func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
@@ -2428,5 +2442,36 @@ func TestNewPassword(t *testing.T) {
 			t.Fatal(err)
 		}
 		db.Close()
+	}
+}
+
+func TestOnInit(t *testing.T) {
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const numChars = "#@"
+	P.SetSessionParamOnInit("nls_numeric_characters", numChars)
+	t.Log(P.String())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	db, err := sql.Open("godror", P.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
+	var v, n string
+	if err = db.QueryRowContext(ctx, qry).Scan(&v, &n); err != nil {
+		t.Error(err)
+	}
+	t.Logf("v=%q n=%q", v, n)
+	if v != numChars {
+		t.Errorf("got %q wanted %q", v, numChars)
+	}
+	if n != "12#3" {
+		t.Errorf("got %q wanted 12#3", n)
 	}
 }

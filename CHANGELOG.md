@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [2.9.2]
 ### Added
+- onInit parameter in the connection url (and OnInit in ConnectionParams)
+
 ### Changed
 - Make Data embed dpiData, not *dpiData
 

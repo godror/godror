@@ -392,13 +392,36 @@ func (c *conn) init(onInit []string) error {
 			return err
 		}
 	}
+	doOnInit := func() error { return nil }
+	if len(onInit) != 0 {
+		doOnInit = func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
+			defer cancel()
+			for _, qry := range onInit {
+				if Log != nil {
+					Log("onInit", qry)
+				}
+				st, err := c.PrepareContext(ctx, qry)
+				if err != nil {
+					return errors.Errorf("%s: %w", qry, err)
+				}
+				_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
+				st.Close()
+				if err != nil {
+					return errors.Errorf("%s: %w", qry, err)
+				}
+			}
+			return nil
+		}
+	}
+
 	if c.Server.Version == 0 {
 		var v C.dpiVersionInfo
 		var release *C.char
 		var releaseLen C.uint32_t
 		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
 			if c.connParams.IsPrelim {
-				return nil
+				return doOnInit()
 			}
 			return errors.Errorf("getServerVersion: %w", c.getError())
 		}
@@ -406,26 +429,6 @@ func (c *conn) init(onInit []string) error {
 		c.Server.ServerRelease = string(bytes.Replace(
 			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
 			[]byte{'\n'}, []byte{';', ' '}, -1))
-	}
-
-	doOnInit := func() error {
-		if len(onInit) == 0 {
-			return nil
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
-		defer cancel()
-		for _, qry := range onInit {
-			st, err := c.PrepareContext(ctx, qry)
-			if err != nil {
-				return errors.Errorf("%s: %w", qry, err)
-			}
-			_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
-			st.Close()
-			if err != nil {
-				return errors.Errorf("%s: %w", qry, err)
-			}
-		}
-		return nil
 	}
 
 	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
@@ -452,7 +455,7 @@ func (c *conn) init(onInit []string) error {
 		if Log != nil {
 			Log("qry", qry, "error", err)
 		}
-		return nil
+		return doOnInit()
 	}
 	defer rows.Close()
 	var dbTZ, timezone string
