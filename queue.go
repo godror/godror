@@ -334,7 +334,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		if n > MsgIDLength {
 			n = MsgIDLength
 		}
-		copy(M.MsgID[:], (*((*[1 << 30]byte)(unsafe.Pointer(&value))))[:n:n])
+		copy(M.MsgID[:], C.GoBytes(unsafe.Pointer(value), n))
 	}
 
 	M.OriginalMsgID = zeroMsgID
@@ -343,7 +343,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		if n > MsgIDLength {
 			n = MsgIDLength
 		}
-		copy(M.OriginalMsgID[:], (*((*[1 << 30]byte)(unsafe.Pointer(&value))))[:n:n])
+		copy(M.OriginalMsgID[:], C.GoBytes(unsafe.Pointer(value), n))
 	}
 
 	M.Priority = 0
@@ -362,7 +362,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	var obj *C.dpiObject
 	if OK(C.dpiMsgProps_getPayload(props, &obj, &value, &length), "getPayload") {
 		if obj == nil {
-			M.Raw = append(make([]byte, 0, length), ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]...)
+			M.Raw = C.GoBytes(unsafe.Pointer(value), C.int(length))
 		} else {
 			if C.dpiObject_addRef(obj) == C.DPI_FAILURE {
 				return objType.getError()

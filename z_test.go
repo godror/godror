@@ -596,15 +596,7 @@ END;
 	godror.EnableDbmsOutput(ctx, conn)
 
 	opts := []cmp.Option{
-		cmp.Comparer(func(x, y time.Time) bool {
-			return x.Equal(y)
-
-			d := x.Sub(y)
-			if d < 0 {
-				d *= -1
-			}
-			return d <= 2*time.Hour
-		}),
+		cmp.Comparer(func(x, y time.Time) bool { return x.Equal(y) }),
 	}
 
 	for _, tC := range []struct {

@@ -15,8 +15,8 @@ import (
 	godror "github.com/godror/godror"
 )
 
-// ExampleStartup calls exampleStartup to start a database.
-func ExampleStartup() {
+// ExampleStartupMode calls exampleStartup to start a database.
+func ExampleStartupMode() {
 	if err := exampleStartup(godror.StartupDefault); err != nil {
 		log.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func exampleStartup(startupMode godror.StartupMode) error {
 	return nil
 }
 
-// ExampleShutdown is an example of how to shut down a database.
-func ExampleShutdown() {
+// ExampleShutdownMode is an example of how to shut down a database.
+func ExampleShutdownMode() {
 	dsn := "oracle://?sysdba=1" // equivalent to "/ as sysdba"
 	db, err := sql.Open("godror", dsn)
 	if err != nil {
