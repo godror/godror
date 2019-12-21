@@ -304,6 +304,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	// execute
 	go func() {
 		defer close(done)
+		var err error
 	Loop:
 		for i := 0; i < 3; i++ {
 			if err = ctx.Err(); err != nil {
