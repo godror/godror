@@ -18,9 +18,17 @@ import "C"
 import (
 	"log"
 	"strings"
+	"sync"
 	"unsafe"
 
 	errors "golang.org/x/xerrors"
+)
+
+// Cannot pass *Subscription to C, so pass an uint64 that points to this map entry
+var (
+	subscriptionsMu sync.Mutex
+	subscriptions   = make(map[uint64]*Subscription)
+	subscriptionsID uint64
 )
 
 // CallbackSubscr is the callback for C code on subscription event.
@@ -30,7 +38,9 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 	if ctx == nil {
 		return
 	}
-	subscr := (*Subscription)(ctx)
+	subscriptionsMu.Lock()
+	subscr := subscriptions[*((*uint64)(ctx))]
+	subscriptionsMu.Unlock()
 
 	getRows := func(rws *C.dpiSubscrMessageRow, rwsNum C.uint32_t) []RowEvent {
 		if rwsNum == 0 {
@@ -151,7 +161,14 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 	}
 	// typedef void (*dpiSubscrCallback)(void* context, dpiSubscrMessage *message);
 	params.callback = C.dpiSubscrCallback(C.CallbackSubscrDebug)
-	params.callbackContext = unsafe.Pointer(&subscr)
+	// cannot pass &subscr to C, so pass indirectly
+	subscriptionsMu.Lock()
+	subscriptionsID++
+	subscrID := (*C.uint64_t)(C.malloc(8))
+	*subscrID = C.uint64_t(subscriptionsID)
+	subscriptions[subscriptionsID] = &subscr
+	subscriptionsMu.Unlock()
+	params.callbackContext = unsafe.Pointer(subscrID)
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
 
