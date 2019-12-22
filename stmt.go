@@ -340,7 +340,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 					err = errors.Errorf("getInfo: %w", st.getError())
 				}
 				st.isReturning = info.isReturning != 0
-				return
+				break
 			}
 			var cdr interface{ Code() int }
 			if !errors.As(err, &cdr) {

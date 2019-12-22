@@ -366,7 +366,7 @@ END;
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	qry = fmt.Sprintf("ALTER SESSION SET time_zone = 'UTC'")
+	qry = "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err = tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}

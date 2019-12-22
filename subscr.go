@@ -134,6 +134,7 @@ type Subscription struct {
 	conn      *conn
 	dpiSubscr *C.dpiSubscr
 	callback  func(Event)
+	ID        uint64
 }
 
 func (s *Subscription) getError() error { return s.conn.getError() }
@@ -164,10 +165,11 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 	// cannot pass &subscr to C, so pass indirectly
 	subscriptionsMu.Lock()
 	subscriptionsID++
+	subscr.ID = subscriptionsID
+	subscriptions[subscr.ID] = &subscr
+	subscriptionsMu.Unlock()
 	subscrID := (*C.uint64_t)(C.malloc(8))
 	*subscrID = C.uint64_t(subscriptionsID)
-	subscriptions[subscriptionsID] = &subscr
-	subscriptionsMu.Unlock()
 	params.callbackContext = unsafe.Pointer(subscrID)
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
@@ -221,6 +223,9 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 //
 // This code is EXPERIMENTAL yet!
 func (s *Subscription) Close() error {
+	subscriptionsMu.Lock()
+	delete(subscriptions, s.ID)
+	subscriptionsMu.Unlock()
 	dpiSubscr := s.dpiSubscr
 	conn := s.conn
 	s.conn = nil
