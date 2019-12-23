@@ -690,8 +690,8 @@ const userpwCtxKey = ctxKey("userPw")
 
 // ContextWithUserPassw returns a context with the specified user and password,
 // to be used with heterogeneous pools.
-func ContextWithUserPassw(ctx context.Context, user, password string) context.Context {
-	return context.WithValue(ctx, userpwCtxKey, [2]string{user, password})
+func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
+	return context.WithValue(ctx, userpwCtxKey, [3]string{user, password, connClass})
 }
 
 func (c *conn) ensureContextUser(ctx context.Context) error {
@@ -699,9 +699,9 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		return nil
 	}
 
-	var up [2]string
+	var up [3]string
 	var ok bool
-	if up, ok = ctx.Value(userpwCtxKey).([2]string); !ok || up[0] == c.currentUser {
+	if up, ok = ctx.Value(userpwCtxKey).([3]string); !ok || up[0] == c.currentUser {
 		return nil
 	}
 
@@ -714,7 +714,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 	c.Lock()
 	defer c.Unlock()
 
-	if err := c.acquireConn(up[0], up[1]); err != nil {
+	if err := c.acquireConn(up[0], up[1], up[2]); err != nil {
 		return err
 	}
 

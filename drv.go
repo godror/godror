@@ -216,19 +216,6 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		P.ConnClass = ""
 	}
 
-	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
-	var connCreateParams C.dpiConnCreateParams
-	if C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return nil, errors.Errorf("initConnCreateParams: %w", d.getError())
-	}
-	connCreateParams.authMode = authMode
-	connCreateParams.externalAuth = extAuth
-	if P.ConnClass != "" {
-		cConnClass := C.CString(P.ConnClass)
-		defer C.free(unsafe.Pointer(cConnClass))
-		connCreateParams.connectionClass = cConnClass
-		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
-	}
 	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
 		d.mu.Lock()
 		dp := d.pools[connString]
@@ -239,7 +226,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			c.Client, c.Server = d.clientVersion, dp.serverVersion
 			c.timeZone, c.tzOffSecs = dp.timeZone, dp.tzOffSecs
 			c.mu.Unlock()
-			if err := c.acquireConn("", ""); err != nil {
+			if err := c.acquireConn("", "", P.ConnClass); err != nil {
 				return nil, err
 			}
 			err := c.init()
@@ -253,7 +240,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		}
 	}
 
-	var cUserName, cPassword, cNewPassword *C.char
+	extAuth := C.int(b2i(P.Username == "" && P.Password == ""))
+	var cUserName, cPassword, cNewPassword, cConnClass *C.char
 	if !(P.Username == "" && P.Password == "") {
 		cUserName, cPassword = C.CString(P.Username), C.CString(P.Password)
 	}
@@ -261,7 +249,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if P.SID != "" {
 		cSid = C.CString(P.SID)
 	}
-	cUTF8, cConnClass := C.CString("AL32UTF8"), C.CString(P.ConnClass)
+	cUTF8 := C.CString("AL32UTF8")
 	cDriverName := C.CString(DriverName)
 	defer func() {
 		if cUserName != nil {
@@ -275,8 +263,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			C.free(unsafe.Pointer(cSid))
 		}
 		C.free(unsafe.Pointer(cUTF8))
-		C.free(unsafe.Pointer(cConnClass))
 		C.free(unsafe.Pointer(cDriverName))
+		if cConnClass != nil {
+			C.free(unsafe.Pointer(cConnClass))
+		}
 	}()
 	var commonCreateParams C.dpiCommonCreateParams
 	if C.dpiContext_initCommonCreateParams(d.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
@@ -292,10 +282,21 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
+		var connCreateParams C.dpiConnCreateParams
+		if C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+			return nil, errors.Errorf("initConnCreateParams: %w", d.getError())
+		}
+		connCreateParams.authMode = authMode
+		connCreateParams.externalAuth = extAuth
 		if P.NewPassword != "" {
 			cNewPassword = C.CString(P.NewPassword)
 			connCreateParams.newPassword = cNewPassword
 			connCreateParams.newPasswordLength = C.uint32_t(len(P.NewPassword))
+		}
+		if P.ConnClass != "" {
+			cConnClass = C.CString(P.ConnClass)
+			connCreateParams.connectionClass = cConnClass
+			connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 		}
 		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
@@ -376,7 +377,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	return d.openConn(P)
 }
 
-func (c *conn) acquireConn(user, pass string) error {
+func (c *conn) acquireConn(user, pass, connClass string) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Errorf("initConnCreateParams: %w", c.getError())
@@ -386,7 +387,7 @@ func (c *conn) acquireConn(user, pass string) error {
 	if Log != nil {
 		Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
 	}
-	var cUserName, cPassword *C.char
+	var cUserName, cPassword, cConnClass *C.char
 	defer func() {
 		if cUserName != nil {
 			C.free(unsafe.Pointer(cUserName))
@@ -394,12 +395,20 @@ func (c *conn) acquireConn(user, pass string) error {
 		if cPassword != nil {
 			C.free(unsafe.Pointer(cPassword))
 		}
+		if cConnClass != nil {
+			C.free(unsafe.Pointer(cConnClass))
+		}
 	}()
 	if user != "" {
 		cUserName = C.CString(user)
 	}
 	if pass != "" {
 		cPassword = C.CString(pass)
+	}
+	if connClass != "" {
+		cConnClass = C.CString(connClass)
+		connCreateParams.connectionClass = cConnClass
+		connCreateParams.connectionClassLength = C.uint32_t(len(connClass))
 	}
 
 	c.drv.mu.Lock()

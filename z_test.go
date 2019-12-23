@@ -2422,3 +2422,40 @@ func TestNewPassword(t *testing.T) {
 		db.Close()
 	}
 }
+
+func TestConnClass(t *testing.T) {
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	const connClass = "fc8153b840"
+	P.ConnClass = connClass
+
+	db, err := sql.Open("godror", P.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	const qry = "SELECT username,program,cclass_name FROM v$cpool_conn_info"
+	rows, err := db.QueryContext(ctx, qry)
+	if err != nil {
+		var oerr *godror.OraErr
+		if errors.As(err, &oerr) && oerr.Code() == 942 {
+			t.Skip(err)
+		}
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var usr, prg, class string
+		if err = rows.Scan(&usr, &prg, &class); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(usr, prg, class)
+	}
+}

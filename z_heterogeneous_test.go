@@ -66,7 +66,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		Want string
 	}{
 		"noContext": {In: ctx, Want: username},
-		"proxyUser": {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword), Want: proxyUser},
+		"proxyUser": {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword, ""), Want: proxyUser},
 	} {
 		t.Run(tName, func(t *testing.T) {
 			var result string
