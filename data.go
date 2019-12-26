@@ -25,6 +25,7 @@ import (
 type Data struct {
 	ObjectType    ObjectType
 	dpiData       C.dpiData
+	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
 }
 
@@ -196,8 +197,10 @@ func (d *Data) GetObject() *Object {
 	if o == nil {
 		return nil
 	}
-	if C.dpiObject_addRef(o) == C.DPI_FAILURE {
-		panic(d.ObjectType.getError())
+	if !d.implicitObj {
+		if C.dpiObject_addRef(o) == C.DPI_FAILURE {
+			panic(d.ObjectType.getError())
+		}
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
 	obj.init()

@@ -47,6 +47,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	data.reset()
 	data.NativeTypeNum = attr.NativeTypeNum
 	data.ObjectType = attr.ObjectType
+	data.implicitObj = true
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
 	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
@@ -256,6 +257,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	data.reset()
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 	data.ObjectType = *O.CollectionOf
+	data.implicitObj = true
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return errors.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.getError())
 	}
@@ -404,6 +406,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	err := t.init()
 	if err == nil {
 		c.objTypes[name] = t
+		c.objTypes[t.FullName()] = t
 	}
 	return t, err
 }
@@ -442,6 +445,13 @@ func (t *ObjectType) close(doNotReuse bool) error {
 	}
 	attributes, d := t.Attributes, t.dpiObjectType
 	t.Attributes, t.dpiObjectType = nil, nil
+
+	if t.CollectionOf != nil {
+		err := t.CollectionOf.close(false)
+		if err != nil {
+			return err
+		}
+	}
 
 	for _, attr := range attributes {
 		err := attr.Close()
@@ -507,9 +517,12 @@ func (t *ObjectType) init() error {
 			t.CollectionOf.Name = t.Name
 		}
 	}
+	if ot, ok := t.conn.objTypes[t.FullName()]; ok {
+		t.Attributes = ot.Attributes
+		return nil
+	}
 	if numAttributes == 0 {
 		t.Attributes = map[string]ObjectAttribute{}
-		t.conn.objTypes[t.FullName()] = *t
 		return nil
 	}
 	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
@@ -541,7 +554,6 @@ func (t *ObjectType) init() error {
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
-	t.conn.objTypes[t.FullName()] = *t
 	return nil
 }
 
@@ -587,6 +599,12 @@ func (A ObjectAttribute) Close() error {
 	}
 	if C.dpiObjectAttr_release(attr) == C.DPI_FAILURE {
 		return A.getError()
+	}
+	if A.ObjectType.dpiObjectType != nil {
+		err := A.ObjectType.close(false)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
