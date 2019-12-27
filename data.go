@@ -373,10 +373,11 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 		return nil, err
 	}
 
-	_, dpiData, err := c.newVar(vi)
+	v, dpiData, err := c.newVar(vi)
 	if err != nil {
 		return nil, err
 	}
+	defer C.dpiVar_release(v)
 
 	data := make([]*Data, sliceLen)
 	for i := 0; i < sliceLen; i++ {
