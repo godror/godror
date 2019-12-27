@@ -461,6 +461,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 func (d *Data) reset() {
 	d.NativeTypeNum = 0
 	d.ObjectType = ObjectType{}
+	d.implicitObj = false
 	d.SetBytes(nil)
 	d.dpiData.isNull = 1
 }
