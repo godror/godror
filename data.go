@@ -25,6 +25,7 @@ import (
 type Data struct {
 	ObjectType    ObjectType
 	dpiData       C.dpiData
+	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
 }
 
@@ -196,8 +197,10 @@ func (d *Data) GetObject() *Object {
 	if o == nil {
 		return nil
 	}
-	if C.dpiObject_addRef(o) == C.DPI_FAILURE {
-		panic(d.ObjectType.getError())
+	if !d.implicitObj {
+		if C.dpiObject_addRef(o) == C.DPI_FAILURE {
+			panic(d.ObjectType.getError())
+		}
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
 	obj.init()
@@ -370,10 +373,11 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 		return nil, err
 	}
 
-	_, dpiData, err := c.newVar(vi)
+	v, dpiData, err := c.newVar(vi)
 	if err != nil {
 		return nil, err
 	}
+	defer C.dpiVar_release(v)
 
 	data := make([]*Data, sliceLen)
 	for i := 0; i < sliceLen; i++ {
@@ -458,6 +462,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 func (d *Data) reset() {
 	d.NativeTypeNum = 0
 	d.ObjectType = ObjectType{}
+	d.implicitObj = false
 	d.SetBytes(nil)
 	d.dpiData.isNull = 1
 }
