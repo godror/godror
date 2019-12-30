@@ -285,8 +285,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	st.isReturning = false
 
-	st.conn.RLock()
-	defer st.conn.RUnlock()
+	st.conn.mu.RLock()
+	defer st.conn.mu.RUnlock()
 
 	// bind variables
 	if err = st.bindVars(args, Log); err != nil {
@@ -468,8 +468,8 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	st.Lock()
 	defer st.Unlock()
 	st.isReturning = false
-	st.conn.RLock()
-	defer st.conn.RUnlock()
+	st.conn.mu.RLock()
+	defer st.conn.mu.RUnlock()
 
 	switch st.query {
 	case getConnection:

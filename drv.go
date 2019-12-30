@@ -26,7 +26,8 @@
 //     poolSessionMaxLifetime=1h& \
 //     poolSessionTimeout=30s& \
 //     timezone=Local& \
-//     newPassword=
+//     newPassword= \
+//     onInit=ALTER+SESSION+SET+current_schema%3Dmy_schema
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -114,15 +115,11 @@ const (
 // or analog to be race-free.
 var Log func(...interface{}) error
 
-var defaultDrv *drv
+var defaultDrv = &drv{}
 
 func init() {
-	defaultDrv = &drv{pools: make(map[string]*connPool)}
 	sql.Register("godror", defaultDrv)
 }
-
-// DefaultDriver returns the same driver which has been registered with sql.Open as "godror".
-func DefaultDriver() driver.Driver { return defaultDrv }
 
 var _ = driver.Driver((*drv)(nil))
 
@@ -143,6 +140,9 @@ type connPool struct {
 func (d *drv) init() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.pools == nil {
+		d.pools = make(map[string]*connPool)
+	}
 	if d.dpiContext != nil {
 		return nil
 	}
@@ -229,7 +229,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			if err := c.acquireConn("", "", P.ConnClass); err != nil {
 				return nil, err
 			}
-			err := c.init()
+			err := c.init(P.OnInit)
 			if err == nil {
 				c.mu.Lock()
 				dp.serverVersion = c.Server
@@ -317,7 +317,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		c.dpiConn = (*C.dpiConn)(dc)
 		c.currentUser = P.Username
 		c.newSession = true
-		err := c.init()
+		err := c.init(P.OnInit)
 		return &c, err
 	}
 	var poolCreateParams C.dpiPoolCreateParams
@@ -379,8 +379,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 func (c *conn) acquireConn(user, pass, connClass string) error {
 	var connCreateParams C.dpiConnCreateParams
-	if C.dpiContext_initConnCreateParams(c.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return errors.Errorf("initConnCreateParams: %w", c.getError())
+	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+		return errors.Errorf("initConnCreateParams: %w", "", c.getError())
 	}
 
 	dc := C.malloc(C.sizeof_void)
@@ -412,7 +412,7 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 	}
 
 	c.drv.mu.Lock()
-	pool := c.pools[c.connParams.String()]
+	pool := c.drv.pools[c.connParams.String()]
 	c.drv.mu.Unlock()
 	if C.dpiPool_acquireConnection(
 		pool.dpiPool,
@@ -431,7 +431,7 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 	c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
 	c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
 	c.mu.Unlock()
-	err := c.init()
+	err := c.init(c.connParams.OnInit)
 	if err == nil {
 		c.mu.Lock()
 		pool.serverVersion = c.Server
@@ -446,6 +446,7 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
+	OnInit                             []string
 	Username, Password, SID, ConnClass string
 	// NewPassword is used iff StandaloneConnection is true!
 	NewPassword                              string
@@ -525,6 +526,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
+	q["onInit"] = P.OnInit
 	return (&url.URL{
 		Scheme:   "oracle",
 		User:     url.UserPassword(P.Username, password),
@@ -690,7 +692,13 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	} else if P.PoolIncrement < 1 {
 		P.PoolIncrement = 1
 	}
+	P.OnInit = q["onInit"]
 	return P, nil
+}
+
+// SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
+func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
+	P.OnInit = append(P.OnInit, fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1)))
 }
 
 // OraErr is an error holding the ORA-01234 code and the message.
@@ -828,7 +836,7 @@ var _ = driver.DriverContext((*drv)(nil))
 var _ = driver.Connector((*connector)(nil))
 
 type connector struct {
-	*drv
+	drv    *drv
 	onInit func(driver.Conn) error
 	ConnectionParams
 }
@@ -875,15 +883,24 @@ func (c connector) Driver() driver.Driver { return c.drv }
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // which calls the given onInit if the connection is new.
 //
-// For an example, see NewSessionIniter.
-func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
-	cxr, err := defaultDrv.OpenConnector(name)
+// For an onInit example, see NewSessionIniter.
+func (d *drv) NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
+	cxr, err := d.OpenConnector(name)
 	if err != nil {
 		return nil, err
 	}
 	cx := cxr.(connector)
 	cx.onInit = onInit
 	return cx, err
+}
+
+// NewConnector returns a driver.Connector to be used with sql.OpenDB,
+// (for the default Driver registered with godror)
+// which calls the given onInit if the connection is new.
+//
+// For an onInit example, see NewSessionIniter.
+func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
+	return defaultDrv.NewConnector(name, onInit)
 }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,

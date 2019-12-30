@@ -47,15 +47,15 @@ type conn struct {
 	connParams     ConnectionParams
 	Client, Server VersionInfo
 	tranParams     tranParams
-	sync.RWMutex
-	currentUser string
-	*drv
-	dpiConn       *C.dpiConn
-	timeZone      *time.Location
-	objTypes      map[string]ObjectType
-	tzOffSecs     int
-	inTransaction bool
-	newSession    bool
+	mu             sync.RWMutex
+	currentUser    string
+	drv            *drv
+	dpiConn        *C.dpiConn
+	timeZone       *time.Location
+	objTypes       map[string]ObjectType
+	tzOffSecs      int
+	inTransaction  bool
+	newSession     bool
 }
 
 func (c *conn) getError() error {
@@ -66,8 +66,8 @@ func (c *conn) getError() error {
 }
 
 func (c *conn) Break() error {
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if Log != nil {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
@@ -76,6 +76,8 @@ func (c *conn) Break() error {
 	}
 	return nil
 }
+
+func (c *conn) ClientVersion() (VersionInfo, error) { return c.drv.ClientVersion() }
 
 // Ping checks the connection's state.
 //
@@ -90,8 +92,8 @@ func (c *conn) Ping(ctx context.Context) error {
 	if err := c.ensureContextUser(ctx); err != nil {
 		return err
 	}
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
@@ -136,8 +138,8 @@ func (c *conn) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.close(true)
 }
 
@@ -252,19 +254,19 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.tranParams = todo
 	}
 
-	c.RLock()
+	c.mu.RLock()
 	inTran := c.inTransaction
-	c.RUnlock()
+	c.mu.RUnlock()
 	if inTran {
 		return nil, errors.New("already in transaction")
 	}
-	c.Lock()
+	c.mu.Lock()
 	c.inTransaction = true
-	c.Unlock()
+	c.mu.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.Lock()
+		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.Unlock()
+		c.mu.Unlock()
 	}
 	return c, nil
 }
@@ -284,9 +286,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, err
 	}
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.Lock()
+		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.Unlock()
+		c.mu.Unlock()
 	}
 	if query == getConnection {
 		if Log != nil {
@@ -299,8 +301,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	var dpiStmt *C.dpiStmt
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
@@ -316,7 +318,7 @@ func (c *conn) Rollback() error {
 	return c.endTran(false)
 }
 func (c *conn) endTran(isCommit bool) error {
-	c.Lock()
+	c.mu.Lock()
 	c.inTransaction = false
 	c.tranParams = tranParams{}
 
@@ -332,7 +334,7 @@ func (c *conn) endTran(isCommit bool) error {
 			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
-	c.Unlock()
+	c.mu.Unlock()
 	//fmt.Printf("%p.%s\n", c, msg)
 	return err
 }
@@ -385,20 +387,43 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init() error {
+func (c *conn) init(onInit []string) error {
 	if c.Client.Version == 0 {
 		var err error
 		if c.Client, err = c.drv.ClientVersion(); err != nil {
 			return err
 		}
 	}
+	doOnInit := func() error { return nil }
+	if len(onInit) != 0 {
+		doOnInit = func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
+			defer cancel()
+			for _, qry := range onInit {
+				if Log != nil {
+					Log("onInit", qry)
+				}
+				st, err := c.PrepareContext(ctx, qry)
+				if err != nil {
+					return errors.Errorf("%s: %w", qry, err)
+				}
+				_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
+				st.Close()
+				if err != nil {
+					return errors.Errorf("%s: %w", qry, err)
+				}
+			}
+			return nil
+		}
+	}
+
 	if c.Server.Version == 0 {
 		var v C.dpiVersionInfo
 		var release *C.char
 		var releaseLen C.uint32_t
 		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
 			if c.connParams.IsPrelim {
-				return nil
+				return doOnInit()
 			}
 			return errors.Errorf("getServerVersion: %w", c.getError())
 		}
@@ -409,7 +434,7 @@ func (c *conn) init() error {
 	}
 
 	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
-		return nil
+		return doOnInit()
 	}
 	c.timeZone = time.Local
 	_, c.tzOffSecs = time.Now().In(c.timeZone).Zone()
@@ -432,7 +457,7 @@ func (c *conn) init() error {
 		if Log != nil {
 			Log("qry", qry, "error", err)
 		}
-		return nil
+		return doOnInit()
 	}
 	defer rows.Close()
 	var dbTZ, timezone string
@@ -452,7 +477,7 @@ func (c *conn) init() error {
 	}
 	c.timeZone, c.tzOffSecs = tz, off
 
-	return nil
+	return doOnInit()
 }
 
 func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
@@ -711,14 +736,14 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		}
 	}
 
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if err := c.acquireConn(up[0], up[1], up[2]); err != nil {
 		return err
 	}
 
-	return c.init()
+	return c.init(nil)
 }
 
 // StartupMode for the database.
