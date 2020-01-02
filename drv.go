@@ -380,7 +380,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 func (c *conn) acquireConn(user, pass, connClass string) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-		return errors.Errorf("initConnCreateParams: %w", "", c.getError())
+		return errors.Errorf("initConnCreateParams: %w", c.getError())
 	}
 
 	dc := C.malloc(C.sizeof_void)

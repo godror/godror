@@ -395,7 +395,7 @@ func (c *conn) init(onInit []string) error {
 		}
 	}
 	doOnInit := func() error { return nil }
-	if len(onInit) != 0 {
+	if c.newSession && len(onInit) != 0 {
 		doOnInit = func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
 			defer cancel()
