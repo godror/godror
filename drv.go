@@ -187,13 +187,13 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	c := conn{drv: d, connParams: P, timeZone: time.Local}
 	connString := P.String()
 
-	defer func() {
-		d.mu.Lock()
-		if Log != nil {
-			Log("pools", d.pools, "conn", P.String())
-		}
-		d.mu.Unlock()
-	}()
+	if Log != nil {
+		defer func() {
+			d.mu.Lock()
+			Log("pools", d.pools, "conn", P.String(), "drv", fmt.Sprintf("%p", d))
+			d.mu.Unlock()
+		}()
+	}
 
 	authMode := C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
 	// OR all the modes together
@@ -214,6 +214,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if P.IsPrelim || P.StandaloneConnection {
 		// Prelim: the shared memory may not exist when Oracle is shut down.
 		P.ConnClass = ""
+		P.HeterogeneousPool = false
 	}
 
 	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
@@ -298,10 +299,10 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			connCreateParams.connectionClass = cConnClass
 			connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 		}
-		dc := C.malloc(C.sizeof_void)
 		if Log != nil {
 			Log("C", "dpiConn_create", "params", P.String(), "common", commonCreateParams, "conn", connCreateParams)
 		}
+		dc := C.malloc(C.sizeof_void)
 		if C.dpiConn_create(
 			d.dpiContext,
 			cUserName, C.uint32_t(len(P.Username)),
@@ -383,7 +384,6 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 		return errors.Errorf("initConnCreateParams: %w", c.getError())
 	}
 
-	dc := C.malloc(C.sizeof_void)
 	if Log != nil {
 		Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
 	}
@@ -413,7 +413,11 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 
 	c.drv.mu.Lock()
 	pool := c.drv.pools[c.connParams.String()]
+	if Log != nil {
+		Log("pools", c.drv.pools, "drv", fmt.Sprintf("%p", c.drv))
+	}
 	c.drv.mu.Unlock()
+	dc := C.malloc(C.sizeof_void)
 	if C.dpiPool_acquireConnection(
 		pool.dpiPool,
 		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),

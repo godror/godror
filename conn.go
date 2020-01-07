@@ -723,10 +723,8 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 	if !c.connParams.HeterogeneousPool {
 		return nil
 	}
-
-	var up [3]string
-	var ok bool
-	if up, ok = ctx.Value(userpwCtxKey).([3]string); !ok || up[0] == c.currentUser {
+	up, ok := ctx.Value(userpwCtxKey).([3]string)
+	if !ok || up[0] == c.currentUser {
 		return nil
 	}
 
@@ -743,7 +741,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		return err
 	}
 
-	return c.init(nil)
+	return c.init(c.connParams.OnInit)
 }
 
 // StartupMode for the database.

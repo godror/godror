@@ -23,7 +23,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	const proxyPassword = "myPassword"
+	const proxyPassword = "myPassword666myPassword"
 	const proxyUser = "test_proxyUser"
 
 	cs, err := godror.ParseConnString(testConStr)
