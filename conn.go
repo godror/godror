@@ -720,7 +720,7 @@ func ContextWithUserPassw(ctx context.Context, user, password, connClass string)
 }
 
 func (c *conn) ensureContextUser(ctx context.Context) error {
-	if !c.connParams.HeterogeneousPool {
+	if !(c.connParams.HeterogeneousPool || c.connParams.StandaloneConnection) {
 		return nil
 	}
 	up, ok := ctx.Value(userpwCtxKey).([3]string)
