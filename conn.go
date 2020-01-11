@@ -33,7 +33,7 @@ const wrapResultset = "--WRAP_RESULTSET--"
 // with 32-bit platforms. The size of a `C.dpiData` is 32 Byte on a 64-bit system, `C.dpiSubscrMessageTable` is 40 bytes.
 // So this is 2^25.
 // See https://github.com/go-godror/godror/issues/73#issuecomment-401281714
-const maxArraySize = (1<<32)/C.sizeof_dpiSubscrMessageTable - 1
+const maxArraySize = (1<<30)/C.sizeof_dpiSubscrMessageTable - 1
 
 var _ = driver.Conn((*conn)(nil))
 var _ = driver.ConnBeginTx((*conn)(nil))
