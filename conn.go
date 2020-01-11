@@ -734,7 +734,7 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 		}
 	}
 
-	return c.acquireConn(up[0], up[1], up[2])
+	return c.acquireConn(up[0], up[1], up[2], nil)
 }
 
 // StartupMode for the database.

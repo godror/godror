@@ -9,8 +9,8 @@ import (
 	"context"
 	"testing"
 
-	errors "golang.org/x/xerrors"
 	godror "github.com/godror/godror"
+	errors "golang.org/x/xerrors"
 )
 
 func TestQRCN(t *testing.T) {

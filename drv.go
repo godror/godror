@@ -186,7 +186,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, err
 	}
 
-	c := conn{drv: d, connParams: P, timeZone: time.Local}
+	c := conn{drv: d, connParams: P, timeZone: time.Local, Client: d.clientVersion}
 	connString := P.String()
 
 	if Log != nil {
@@ -214,17 +214,15 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 			c.Client, c.Server = d.clientVersion, dp.serverVersion
 			c.timeZone, c.tzOffSecs = dp.timeZone, dp.tzOffSecs
 			c.mu.Unlock()
-			if err := c.acquireConn("", "", P.ConnClass); err != nil {
+			c.connParams = P
+			if err := c.acquireConn("", "", "", dp); err != nil {
 				return nil, err
 			}
-			err := c.init(P.OnInit)
-			if err == nil {
-				c.mu.Lock()
-				dp.serverVersion = c.Server
-				dp.timeZone, dp.tzOffSecs = c.timeZone, c.tzOffSecs
-				c.mu.Unlock()
-			}
-			return &c, err
+			c.mu.Lock()
+			dp.serverVersion = c.Server
+			dp.timeZone, dp.tzOffSecs = c.timeZone, c.tzOffSecs
+			c.mu.Unlock()
+			return &c, nil
 		}
 	}
 
@@ -267,7 +265,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
 		// no pool
-		return &c, c.acquireConn(P.Username, P.Password, P.ConnClass)
+		c.connParams = P
+		return &c, c.acquireConn(P.Username, P.Password, P.ConnClass, nil)
 	}
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
@@ -319,14 +318,16 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, errors.Errorf("params=%s extAuth=%v: %w", P.String(), extAuth, d.getError())
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
+	pool := &connPool{dpiPool: dp}
 	d.mu.Lock()
-	d.pools[connString] = &connPool{dpiPool: dp}
+	d.pools[connString] = pool
 	d.mu.Unlock()
 
-	return &c, c.acquireConn(P.Username, P.Password, P.ConnClass)
+	c.connParams = P
+	return &c, c.acquireConn("", "", "", pool)
 }
 
-func (c *conn) acquireConn(user, pass, connClass string) error {
+func (c *conn) acquireConn(user, pass, connClass string, pool *connPool) error {
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Errorf("initConnCreateParams: %w", c.drv.getError())
@@ -361,8 +362,7 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 		connCreateParams.connectionClassLength = C.uint32_t(len(connClass))
 	}
 
-	var pool *connPool
-	if !(c.connParams.IsSysDBA || c.connParams.IsSysOper || c.connParams.IsSysASM || c.connParams.IsPrelim || c.connParams.StandaloneConnection) {
+	if pool == nil && !(c.connParams.IsSysDBA || c.connParams.IsSysOper || c.connParams.IsSysASM || c.connParams.IsPrelim || c.connParams.StandaloneConnection) {
 		c.drv.mu.Lock()
 		pool = c.drv.pools[c.connParams.String()]
 		if Log != nil {
@@ -371,84 +371,87 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 		c.drv.mu.Unlock()
 	}
 
-	if pool == nil {
-		var commonCreateParams C.dpiCommonCreateParams
-		if C.dpiContext_initCommonCreateParams(c.drv.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
-			return errors.Errorf("initCommonCreateParams: %w", c.drv.getError())
-		}
-		commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
-		if c.connParams.EnableEvents {
-			commonCreateParams.createMode |= C.DPI_MODE_CREATE_EVENTS
-		}
-		commonCreateParams.encoding = cUTF8
-		commonCreateParams.nencoding = cUTF8
-		commonCreateParams.driverName = cDriverName
-		commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
-
-		if c.connParams.SID != "" {
-			cSid = C.CString(c.connParams.SID)
-		}
-		connCreateParams.authMode = c.connParams.authMode()
-		extAuth := C.int(b2i(user == "" && pass == ""))
-		connCreateParams.externalAuth = extAuth
-		if c.connParams.NewPassword != "" {
-			cNewPassword = C.CString(c.connParams.NewPassword)
-			connCreateParams.newPassword = cNewPassword
-			connCreateParams.newPasswordLength = C.uint32_t(len(c.connParams.NewPassword))
-		}
-		if Log != nil {
-			Log("C", "dpiConn_create", "params", c.connParams.String(), "common", commonCreateParams, "conn", connCreateParams)
-		}
+	if pool != nil {
 		dc := C.malloc(C.sizeof_void)
-		if C.dpiConn_create(
-			c.drv.dpiContext,
-			cUserName, C.uint32_t(len(user)),
-			cPassword, C.uint32_t(len(pass)),
-			cSid, C.uint32_t(len(c.connParams.SID)),
-			&commonCreateParams,
+		if C.dpiPool_acquireConnection(
+			pool.dpiPool,
+			cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),
 			&connCreateParams,
 			(**C.dpiConn)(unsafe.Pointer(&dc)),
 		) == C.DPI_FAILURE {
 			C.free(unsafe.Pointer(dc))
-			return errors.Errorf("username=%q sid=%q params=%+v: %w", user, c.connParams.SID, connCreateParams, c.drv.getError())
+			return errors.Errorf("acquirePoolConnection(user=%q, params=%#v): %w", user, connCreateParams, c.getError())
 		}
+
+		c.mu.Lock()
 		c.dpiConn = (*C.dpiConn)(dc)
-		c.currentUser = user
-		c.newSession = true
-		c.connParams.Username, c.connParams.Password, c.connParams.ConnClass = user, pass, connClass
-		if c.connParams.NewPassword != "" {
-			c.connParams.Password, c.connParams.NewPassword = c.connParams.NewPassword, ""
+		if user != "" {
+			c.currentUser = user
+		} else {
+			user = c.connParams.Username
 		}
+		c.newSession = connCreateParams.outNewSession == 1
+		c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
+		c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
+		c.mu.Unlock()
 		err := c.init(c.connParams.OnInit)
+		if err == nil {
+			c.mu.Lock()
+			pool.serverVersion = c.Server
+			pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
+			c.mu.Unlock()
+		}
+
 		return err
 	}
+	var commonCreateParams C.dpiCommonCreateParams
+	if C.dpiContext_initCommonCreateParams(c.drv.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
+		return errors.Errorf("initCommonCreateParams: %w", c.drv.getError())
+	}
+	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
+	if c.connParams.EnableEvents {
+		commonCreateParams.createMode |= C.DPI_MODE_CREATE_EVENTS
+	}
+	commonCreateParams.encoding = cUTF8
+	commonCreateParams.nencoding = cUTF8
+	commonCreateParams.driverName = cDriverName
+	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
+	if c.connParams.SID != "" {
+		cSid = C.CString(c.connParams.SID)
+	}
+	connCreateParams.authMode = c.connParams.authMode()
+	extAuth := C.int(b2i(user == "" && pass == ""))
+	connCreateParams.externalAuth = extAuth
+	if c.connParams.NewPassword != "" {
+		cNewPassword = C.CString(c.connParams.NewPassword)
+		connCreateParams.newPassword = cNewPassword
+		connCreateParams.newPasswordLength = C.uint32_t(len(c.connParams.NewPassword))
+	}
+	if Log != nil {
+		Log("C", "dpiConn_create", "params", c.connParams.String(), "common", commonCreateParams, "conn", connCreateParams)
+	}
 	dc := C.malloc(C.sizeof_void)
-	if C.dpiPool_acquireConnection(
-		pool.dpiPool,
-		cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),
+	if C.dpiConn_create(
+		c.drv.dpiContext,
+		cUserName, C.uint32_t(len(user)),
+		cPassword, C.uint32_t(len(pass)),
+		cSid, C.uint32_t(len(c.connParams.SID)),
+		&commonCreateParams,
 		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dc))
-		return errors.Errorf("acquirePoolConnection: %w", c.getError())
+		return errors.Errorf("username=%q sid=%q params=%+v: %w", user, c.connParams.SID, connCreateParams, c.drv.getError())
 	}
-
-	c.mu.Lock()
 	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
-	c.newSession = connCreateParams.outNewSession == 1
-	c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
-	c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
-	c.mu.Unlock()
-	err := c.init(c.connParams.OnInit)
-	if err == nil {
-		c.mu.Lock()
-		pool.serverVersion = c.Server
-		pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
-		c.mu.Unlock()
+	c.newSession = true
+	c.connParams.Username, c.connParams.Password, c.connParams.ConnClass = user, pass, connClass
+	if c.connParams.NewPassword != "" {
+		c.connParams.Password, c.connParams.NewPassword = c.connParams.NewPassword, ""
 	}
-
+	err := c.init(c.connParams.OnInit)
 	return err
 }
 

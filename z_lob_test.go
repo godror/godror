@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	errors "golang.org/x/xerrors"
 	godror "github.com/godror/godror"
+	errors "golang.org/x/xerrors"
 )
 
 func TestLOBAppend(t *testing.T) {
