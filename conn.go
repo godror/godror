@@ -394,11 +394,18 @@ func (c *conn) init(onInit []string) error {
 			return err
 		}
 	}
-	doOnInit := func() error { return nil }
-	if c.newSession && len(onInit) != 0 {
-		doOnInit = func() error {
+
+	if err := c.initVersionTZ(); err != nil || len(onInit) == 0 || !c.newSession {
+		return err
+	}
+	if Log != nil {
+		Log("newSession", c.newSession, "onInit", onInit)
+	}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
 			defer cancel()
+			if Log != nil {
+				Log("doOnInit", len(onInit))
+			}
 			for _, qry := range onInit {
 				if Log != nil {
 					Log("onInit", qry)
@@ -414,16 +421,16 @@ func (c *conn) init(onInit []string) error {
 				}
 			}
 			return nil
-		}
 	}
 
+func (c *conn) initVersionTZ() error {
 	if c.Server.Version == 0 {
 		var v C.dpiVersionInfo
 		var release *C.char
 		var releaseLen C.uint32_t
 		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
 			if c.connParams.IsPrelim {
-				return doOnInit()
+				return nil
 			}
 			return errors.Errorf("getServerVersion: %w", c.getError())
 		}
@@ -434,7 +441,7 @@ func (c *conn) init(onInit []string) error {
 	}
 
 	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
-		return doOnInit()
+		return nil
 	}
 	c.timeZone = time.Local
 	_, c.tzOffSecs = time.Now().In(c.timeZone).Zone()
@@ -457,7 +464,7 @@ func (c *conn) init(onInit []string) error {
 		if Log != nil {
 			Log("qry", qry, "error", err)
 		}
-		return doOnInit()
+		return nil
 	}
 	defer rows.Close()
 	var dbTZ, timezone string
@@ -477,7 +484,7 @@ func (c *conn) init(onInit []string) error {
 	}
 	c.timeZone, c.tzOffSecs = tz, off
 
-	return doOnInit()
+	return nil
 }
 
 func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {

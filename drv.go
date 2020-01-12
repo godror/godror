@@ -340,10 +340,10 @@ func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
 
 	c.mu.Lock()
 	c.dpiConn = (*C.dpiConn)(dc)
-	c.currentUser = c.connParams.Username
+	c.currentUser = P.Username
 	c.newSession = connCreateParams.outNewSession == 1
 	c.mu.Unlock()
-	err := c.init(c.connParams.OnInit)
+	err := c.init(P.OnInit)
 	if err == nil {
 		c.mu.Lock()
 		dp.serverVersion = c.Server
@@ -355,15 +355,15 @@ func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
 }
 
 func (c *conn) acquireConn(user, pass, connClass string) error {
-	if !(c.connParams.IsSysDBA || c.connParams.IsSysOper || c.connParams.IsSysASM || c.connParams.IsPrelim || c.connParams.StandaloneConnection) {
+	P := c.connParams
+	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
 		c.drv.mu.Lock()
-		pool := c.drv.pools[c.connParams.String()]
+		pool := c.drv.pools[P.String()]
 		if Log != nil {
 			Log("pools", c.drv.pools, "drv", fmt.Sprintf("%p", c.drv))
 		}
 		c.drv.mu.Unlock()
 		if pool != nil {
-			P := c.connParams
 			P.Username, P.Password, P.ConnClass = user, pass, connClass
 			return pool.acquireConn(c, P)
 		}
@@ -407,7 +407,7 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 		return errors.Errorf("initCommonCreateParams: %w", c.drv.getError())
 	}
 	commonCreateParams.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
-	if c.connParams.EnableEvents {
+	if P.EnableEvents {
 		commonCreateParams.createMode |= C.DPI_MODE_CREATE_EVENTS
 	}
 	commonCreateParams.encoding = cUTF8
@@ -415,41 +415,44 @@ func (c *conn) acquireConn(user, pass, connClass string) error {
 	commonCreateParams.driverName = cDriverName
 	commonCreateParams.driverNameLength = C.uint32_t(len(DriverName))
 
-	if c.connParams.SID != "" {
-		cSid = C.CString(c.connParams.SID)
+	if P.SID != "" {
+		cSid = C.CString(P.SID)
 	}
-	connCreateParams.authMode = c.connParams.authMode()
+	connCreateParams.authMode = P.authMode()
 	extAuth := C.int(b2i(user == "" && pass == ""))
 	connCreateParams.externalAuth = extAuth
-	if c.connParams.NewPassword != "" {
-		cNewPassword = C.CString(c.connParams.NewPassword)
+	if P.NewPassword != "" {
+		cNewPassword = C.CString(P.NewPassword)
 		connCreateParams.newPassword = cNewPassword
-		connCreateParams.newPasswordLength = C.uint32_t(len(c.connParams.NewPassword))
+		connCreateParams.newPasswordLength = C.uint32_t(len(P.NewPassword))
 	}
 	if Log != nil {
-		Log("C", "dpiConn_create", "params", c.connParams.String(), "common", commonCreateParams, "conn", connCreateParams)
+		Log("C", "dpiConn_create", "params", P.String(), "common", commonCreateParams, "conn", connCreateParams)
 	}
 	dc := C.malloc(C.sizeof_void)
 	if C.dpiConn_create(
 		c.drv.dpiContext,
 		cUserName, C.uint32_t(len(user)),
 		cPassword, C.uint32_t(len(pass)),
-		cSid, C.uint32_t(len(c.connParams.SID)),
+		cSid, C.uint32_t(len(P.SID)),
 		&commonCreateParams,
 		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dc))
-		return errors.Errorf("username=%q sid=%q params=%+v: %w", user, c.connParams.SID, connCreateParams, c.drv.getError())
+		return errors.Errorf("username=%q sid=%q params=%+v: %w", user, P.SID, connCreateParams, c.drv.getError())
 	}
+	c.mu.Lock()
 	c.dpiConn = (*C.dpiConn)(dc)
 	c.currentUser = user
 	c.newSession = true
-	c.connParams.Username, c.connParams.Password, c.connParams.ConnClass = user, pass, connClass
-	if c.connParams.NewPassword != "" {
-		c.connParams.Password, c.connParams.NewPassword = c.connParams.NewPassword, ""
+	P.Username, P.Password, P.ConnClass = user, pass, connClass
+	if P.NewPassword != "" {
+		P.Password, P.NewPassword = P.NewPassword, ""
 	}
-	return c.init(c.connParams.OnInit)
+	c.connParams = P
+	c.mu.Unlock()
+	return c.init(P.OnInit)
 }
 
 // ConnectionParams holds the params for a connection (pool).
