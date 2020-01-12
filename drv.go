@@ -186,7 +186,8 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, err
 	}
 
-	c := conn{drv: d, connParams: P, timeZone: time.Local, Client: d.clientVersion}
+	P.Comb()
+	c := &conn{drv: d, connParams: P, timeZone: time.Local, Client: d.clientVersion}
 	connString := P.String()
 
 	if Log != nil {
@@ -197,32 +198,14 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		}()
 	}
 
-	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
-	if P.IsPrelim || P.StandaloneConnection {
-		// Prelim: the shared memory may not exist when Oracle is shut down.
-		P.ConnClass = ""
-		P.HeterogeneousPool = false
-	}
-
 	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
 		d.mu.Lock()
 		dp := d.pools[connString]
 		d.mu.Unlock()
 		if dp != nil {
 			//Proxy authenticated connections to database will be provided by methods with context
-			c.mu.Lock()
-			c.Client, c.Server = d.clientVersion, dp.serverVersion
-			c.timeZone, c.tzOffSecs = dp.timeZone, dp.tzOffSecs
-			c.mu.Unlock()
-			c.connParams = P
-			if err := c.acquireConn("", "", "", dp); err != nil {
-				return nil, err
-			}
-			c.mu.Lock()
-			dp.serverVersion = c.Server
-			dp.timeZone, dp.tzOffSecs = c.timeZone, c.tzOffSecs
-			c.mu.Unlock()
-			return &c, nil
+			err := dp.acquireConn(c, P)
+			return c, err
 		}
 	}
 
@@ -266,7 +249,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection {
 		// no pool
 		c.connParams = P
-		return &c, c.acquireConn(P.Username, P.Password, P.ConnClass, nil)
+		return c, c.acquireConn(P.Username, P.Password, P.ConnClass)
 	}
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams) == C.DPI_FAILURE {
@@ -323,11 +306,69 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	d.pools[connString] = pool
 	d.mu.Unlock()
 
-	c.connParams = P
-	return &c, c.acquireConn("", "", "", pool)
+	return c, pool.acquireConn(c, P)
 }
 
-func (c *conn) acquireConn(user, pass, connClass string, pool *connPool) error {
+func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
+	P.Comb()
+	c.mu.Lock()
+	c.connParams = P
+	c.Client, c.Server = c.drv.clientVersion, dp.serverVersion
+	c.timeZone, c.tzOffSecs = dp.timeZone, dp.tzOffSecs
+	c.mu.Unlock()
+
+	var connCreateParams C.dpiConnCreateParams
+	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+		return errors.Errorf("initConnCreateParams: %w", c.drv.getError())
+	}
+	if P.ConnClass != "" {
+		cConnClass := C.CString(P.ConnClass)
+		defer C.free(unsafe.Pointer(cConnClass))
+		connCreateParams.connectionClass = cConnClass
+		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
+	}
+	dc := C.malloc(C.sizeof_void)
+	if C.dpiPool_acquireConnection(
+		dp.dpiPool,
+		nil, 0, nil, 0,
+		&connCreateParams,
+		(**C.dpiConn)(unsafe.Pointer(&dc)),
+	) == C.DPI_FAILURE {
+		C.free(unsafe.Pointer(dc))
+		return errors.Errorf("acquirePoolConnection(user=%q, params=%#v): %w", P.Username, connCreateParams, c.getError())
+	}
+
+	c.mu.Lock()
+	c.dpiConn = (*C.dpiConn)(dc)
+	c.currentUser = c.connParams.Username
+	c.newSession = connCreateParams.outNewSession == 1
+	c.mu.Unlock()
+	err := c.init(c.connParams.OnInit)
+	if err == nil {
+		c.mu.Lock()
+		dp.serverVersion = c.Server
+		dp.timeZone, dp.tzOffSecs = c.timeZone, c.tzOffSecs
+		c.mu.Unlock()
+	}
+
+	return err
+}
+
+func (c *conn) acquireConn(user, pass, connClass string) error {
+	if !(c.connParams.IsSysDBA || c.connParams.IsSysOper || c.connParams.IsSysASM || c.connParams.IsPrelim || c.connParams.StandaloneConnection) {
+		c.drv.mu.Lock()
+		pool := c.drv.pools[c.connParams.String()]
+		if Log != nil {
+			Log("pools", c.drv.pools, "drv", fmt.Sprintf("%p", c.drv))
+		}
+		c.drv.mu.Unlock()
+		if pool != nil {
+			P := c.connParams
+			P.Username, P.Password, P.ConnClass = user, pass, connClass
+			return pool.acquireConn(c, P)
+		}
+	}
+
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Errorf("initConnCreateParams: %w", c.drv.getError())
@@ -360,49 +401,6 @@ func (c *conn) acquireConn(user, pass, connClass string, pool *connPool) error {
 		cConnClass = C.CString(connClass)
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(connClass))
-	}
-
-	if pool == nil && !(c.connParams.IsSysDBA || c.connParams.IsSysOper || c.connParams.IsSysASM || c.connParams.IsPrelim || c.connParams.StandaloneConnection) {
-		c.drv.mu.Lock()
-		pool = c.drv.pools[c.connParams.String()]
-		if Log != nil {
-			Log("pools", c.drv.pools, "drv", fmt.Sprintf("%p", c.drv))
-		}
-		c.drv.mu.Unlock()
-	}
-
-	if pool != nil {
-		dc := C.malloc(C.sizeof_void)
-		if C.dpiPool_acquireConnection(
-			pool.dpiPool,
-			cUserName, C.uint32_t(len(user)), cPassword, C.uint32_t(len(pass)),
-			&connCreateParams,
-			(**C.dpiConn)(unsafe.Pointer(&dc)),
-		) == C.DPI_FAILURE {
-			C.free(unsafe.Pointer(dc))
-			return errors.Errorf("acquirePoolConnection(user=%q, params=%#v): %w", user, connCreateParams, c.getError())
-		}
-
-		c.mu.Lock()
-		c.dpiConn = (*C.dpiConn)(dc)
-		if user != "" {
-			c.currentUser = user
-		} else {
-			user = c.connParams.Username
-		}
-		c.newSession = connCreateParams.outNewSession == 1
-		c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
-		c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
-		c.mu.Unlock()
-		err := c.init(c.connParams.OnInit)
-		if err == nil {
-			c.mu.Lock()
-			pool.serverVersion = c.Server
-			pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
-			c.mu.Unlock()
-		}
-
-		return err
 	}
 	var commonCreateParams C.dpiCommonCreateParams
 	if C.dpiContext_initCommonCreateParams(c.drv.dpiContext, &commonCreateParams) == C.DPI_FAILURE {
@@ -451,8 +449,7 @@ func (c *conn) acquireConn(user, pass, connClass string, pool *connPool) error {
 	if c.connParams.NewPassword != "" {
 		c.connParams.Password, c.connParams.NewPassword = c.connParams.NewPassword, ""
 	}
-	err := c.init(c.connParams.OnInit)
-	return err
+	return c.init(c.connParams.OnInit)
 }
 
 // ConnectionParams holds the params for a connection (pool).
@@ -549,6 +546,15 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}).String()
 }
 
+func (P *ConnectionParams) Comb() {
+	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
+	if P.IsPrelim || P.StandaloneConnection {
+		// Prelim: the shared memory may not exist when Oracle is shut down.
+		P.ConnClass = ""
+		P.HeterogeneousPool = false
+	}
+}
+
 // ParseConnString parses the given connection string into a struct.
 func ParseConnString(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
@@ -642,14 +648,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		}
 	}
 
-	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
-	if P.IsPrelim {
-		P.ConnClass = ""
-	}
-	if P.StandaloneConnection {
-		P.NewPassword = q.Get("newPassword")
-	}
-
 	for _, task := range []struct {
 		Dest *int
 		Key  string
@@ -706,6 +704,12 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.PoolIncrement = 1
 	}
 	P.OnInit = q["onInit"]
+
+	P.Comb()
+	if P.StandaloneConnection {
+		P.NewPassword = q.Get("newPassword")
+	}
+
 	return P, nil
 }
 
