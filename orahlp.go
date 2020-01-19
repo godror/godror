@@ -402,7 +402,7 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
 // This is required if you want to retrieve the output with ReadDbmsOutput later.
 func EnableDbmsOutput(ctx context.Context, conn Execer) error {
-	qry := "BEGIN DBMS_OUTPUT.enable(1000000); END;"
+	qry := "BEGIN DBMS_OUTPUT.enable(NULL); END;"
 	_, err := conn.ExecContext(ctx, qry)
 	if err != nil {
 		return errors.Errorf("%s: %w", qry, err)
@@ -411,6 +411,8 @@ func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 }
 
 // ReadDbmsOutput copies the DBMS_OUTPUT buffer into the given io.Writer.
+//
+// Be sure that you enable it beforehand (either with EnableDbmsOutput or with DBMS_OUTPUT.enable(NULL))
 func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	const maxNumLines = 128
 	bw := bufio.NewWriterSize(w, maxNumLines*(32<<10))
