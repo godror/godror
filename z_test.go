@@ -394,6 +394,7 @@ END;
 		"num_0": {In: []godror.Number{}, Want: ""},
 		"vc_0":  {In: []string{}, Want: ""},
 		"dt_0":  {In: []time.Time{}, Want: ""},
+		"dt_00": {In: []godror.NullTime{}, Want: ""},
 
 		"num_3": {
 			In:   []godror.Number{"1", "2.72", "-3.14"},
@@ -405,6 +406,10 @@ END;
 		},
 		"dt_2": {
 			In:   []time.Time{epoch, epoch.AddDate(0, -6, 0)},
+			Want: "1:2017-11-20T12:14:21\n2:2017-05-20T12:14:21\n",
+		},
+		"dt_02": {
+			In:   []godror.NullTime{{Valid: true, Time: epoch}, {Valid: true, Time: epoch.AddDate(0, -6, 0)}},
 			Want: "1:2017-11-20T12:14:21\n2:2017-05-20T12:14:21\n",
 		},
 	} {

@@ -1190,23 +1190,41 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	return nil
 }
 func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
-	if x, ok := v.(*time.Time); ok {
+	switch x := v.(type) {
+	case *time.Time:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = time.Time{}
 			return nil
 		}
 		c.dataGetTimeC(x, &data[0])
-		return nil
-	}
-	slice := v.(*[]time.Time)
-	n := len(data)
-	if cap(*slice) >= n {
-		*slice = (*slice)[:n]
-	} else {
-		*slice = make([]time.Time, n)
-	}
-	for i := range data {
-		c.dataGetTimeC(&((*slice)[i]), &data[i])
+
+	case *NullTime:
+		if x.Valid = len(data) == 0 || data[0].isNull == 1; x.Valid {
+			c.dataGetTimeC(&x.Time, &data[0])
+		}
+
+	case *[]time.Time:
+		n := len(data)
+		if cap(*x) >= n {
+			*x = (*x)[:n]
+		} else {
+			*x = make([]time.Time, n)
+		}
+		for i := range data {
+			c.dataGetTimeC(&((*x)[i]), &data[i])
+		}
+	case *[]NullTime:
+		n := len(data)
+		if cap(*x) >= n {
+			*x = (*x)[:n]
+		} else {
+			*x = make([]NullTime, n)
+		}
+		for i := range data {
+			if (*x)[i].Valid = data[i].isNull == 1; (*x)[i].Valid {
+				c.dataGetTimeC(&((*x)[i].Time), &data[i])
+			}
+		}
 	}
 	return nil
 }
@@ -1233,24 +1251,44 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		return dataSetNull(dv, data, nil)
 	}
 	times := []time.Time{{}}
-	if t, ok := vv.(time.Time); ok {
-		times[0] = t
-	} else {
-		var ok bool
-		if times, ok = vv.([]time.Time); !ok {
-			for i := range data {
-				data[i].isNull = 1
-			}
-			return nil
+	switch x := vv.(type) {
+	case time.Time:
+		times[0] = x
+		data[0].isNull = C.int(b2i(x.IsZero()))
+	case NullTime:
+		if data[0].isNull = C.int(b2i(!x.Valid)); x.Valid {
+			times[0] = x.Time
 		}
+
+	case []time.Time:
+		times = x
+		for i, t := range times {
+			data[i].isNull = C.int(b2i(t.IsZero()))
+		}
+	case []NullTime:
+		if cap(times) < len(x) {
+			times = make([]time.Time, len(x))
+		} else {
+			times = times[:len(x)]
+		}
+		for i, n := range x {
+			if data[i].isNull = C.int(b2i(!n.Valid)); n.Valid {
+				times[i] = x[i].Time
+			}
+		}
+
+	default:
+		for i := range data {
+			data[i].isNull = 1
+		}
+		return nil
 	}
+
 	tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
 	for i, t := range times {
-		if t.IsZero() {
-			data[i].isNull = 1
+		if data[i].isNull == 1 {
 			continue
 		}
-		data[i].isNull = 0
 		t = t.In(c.timeZone)
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
