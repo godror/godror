@@ -401,27 +401,27 @@ func (c *conn) init(onInit []string) error {
 	if Log != nil {
 		Log("newSession", c.newSession, "onInit", onInit)
 	}
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
-			defer cancel()
-			if Log != nil {
-				Log("doOnInit", len(onInit))
-			}
-			for _, qry := range onInit {
-				if Log != nil {
-					Log("onInit", qry)
-				}
-				st, err := c.PrepareContext(ctx, qry)
-				if err != nil {
-					return errors.Errorf("%s: %w", qry, err)
-				}
-				_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
-				st.Close()
-				if err != nil {
-					return errors.Errorf("%s: %w", qry, err)
-				}
-			}
-			return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
+	defer cancel()
+	if Log != nil {
+		Log("doOnInit", len(onInit))
 	}
+	for _, qry := range onInit {
+		if Log != nil {
+			Log("onInit", qry)
+		}
+		st, err := c.PrepareContext(ctx, qry)
+		if err != nil {
+			return errors.Errorf("%s: %w", qry, err)
+		}
+		_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
+		st.Close()
+		if err != nil {
+			return errors.Errorf("%s: %w", qry, err)
+		}
+	}
+	return nil
+}
 
 func (c *conn) initVersionTZ() error {
 	if c.Server.Version == 0 {
