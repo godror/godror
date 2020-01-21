@@ -2611,10 +2611,13 @@ func TestSelectTypes(t *testing.T) {
 				return fmt.Sprintf("unsupported datatype %s", datatype)
 			}
 		case godror.NullTime:
-			if x.Valid {
-				return x.Time.Format(time.RFC3339)
+			if !x.Valid {
+				return "NULL"
 			}
-			return "NULL"
+			if x.Time.IsZero() {
+				t.Errorf("zero NullTime.Time, and Valid!?")
+			}
+			return x.Time.Format(time.RFC3339)
 		case time.Time:
 			return x.Format(time.RFC3339)
 		default:

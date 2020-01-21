@@ -398,7 +398,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			C.DPI_NATIVE_TYPE_TIMESTAMP,
 			C.DPI_ORACLE_TYPE_DATE:
 			if isNull {
-				dest[i] = time.Time{}
+				dest[i] = nil
 				continue
 			}
 			ts := C.dpiData_getTimestamp(d)

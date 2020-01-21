@@ -7,7 +7,10 @@
 
 package godror
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+)
 
 // NullTime represents a time.Time that may be null. NullTime implements the Scanner interface so it can be used as a scan destination, similar to NullString.
 //
@@ -26,7 +29,7 @@ func (n *NullTime) Scan(value interface{}) error {
 		return nil
 	}
 	n.Valid = true
-	return convertAssign(&n.Time, value)
+	return n.Time.Scan(value)
 }
 
 // Value implements the driver Valuer interface.

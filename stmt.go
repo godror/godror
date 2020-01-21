@@ -1189,6 +1189,9 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	}
 	return nil
 }
+
+var _ = sql.Scanner((*NullTime)(nil))
+
 func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *time.Time:
@@ -1199,7 +1202,7 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 		c.dataGetTimeC(x, &data[0])
 
 	case *NullTime:
-		if x.Valid = len(data) == 0 || data[0].isNull == 1; x.Valid {
+		if x.Valid = !(len(data) == 0 || data[0].isNull == 1); x.Valid {
 			c.dataGetTimeC(&x.Time, &data[0])
 		}
 
@@ -1221,7 +1224,7 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 			*x = make([]NullTime, n)
 		}
 		for i := range data {
-			if (*x)[i].Valid = data[i].isNull == 1; (*x)[i].Valid {
+			if (*x)[i].Valid = !(data[i].isNull == 1); (*x)[i].Valid {
 				c.dataGetTimeC(&((*x)[i].Time), &data[i])
 			}
 		}

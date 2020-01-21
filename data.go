@@ -236,11 +236,14 @@ func (d *Data) GetTime() time.Time {
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset),
 	)
-
 }
 
 // SetTime sets Time to data.
 func (d *Data) SetTime(t time.Time) {
+	d.dpiData.isNull = C.int(b2i(t.IsZero()))
+	if d.dpiData.isNull == 0 {
+		return
+	}
 	_, z := t.Zone()
 	C.dpiData_setTimestamp(&d.dpiData,
 		C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
@@ -329,6 +332,11 @@ func (d *Data) Set(v interface{}) error {
 	case time.Time:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		d.SetTime(x)
+	case NullTime:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+		if d.dpiData.isNull = C.int(b2i(!x.Valid)); x.Valid {
+			d.SetTime(x.Time)
+		}
 	case time.Duration:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
 		d.SetIntervalDS(x)
@@ -436,7 +444,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 	case string, []string, nil:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 		bufSize = 32767
-	case time.Time, []time.Time:
+	case time.Time, []time.Time, NullTime, []NullTime:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 	case userType, []userType:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
