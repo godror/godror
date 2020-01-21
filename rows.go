@@ -234,7 +234,7 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 	case C.DPI_ORACLE_TYPE_TIMESTAMP, C.DPI_NATIVE_TYPE_TIMESTAMP,
 		C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
 		C.DPI_ORACLE_TYPE_DATE:
-		return reflect.TypeOf(time.Time{})
+		return reflect.TypeOf(NullTime{})
 	case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
 		return reflect.TypeOf(time.Duration(0))
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB:

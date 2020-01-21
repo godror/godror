@@ -2509,3 +2509,147 @@ func TestOnInit(t *testing.T) {
 		t.Errorf("got %q wanted 12#3", n)
 	}
 }
+
+func TestSelectTypes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const createQry = `CREATE TABLE TEST_TYPES (
+			A BFILE,
+			B BINARY_DOUBLE,
+			C BINARY_FLOAT,
+			D BLOB,
+			E CHAR(10),
+			F CLOB,
+			G DATE,
+			GN DATE,
+			H NUMBER(18 , 2),
+			I FLOAT(126),
+			J FLOAT(10),
+			K NUMBER(38 , 0),
+			L INTERVAL DAY TO SECOND(6),
+			M INTERVAL YEAR TO MONTH,
+			--N LONG,
+			P NCHAR(100),
+			Q NCLOB,
+			R NUMBER(18 , 2),
+			S NUMBER(18 , 2),
+			T NVARCHAR2(100),
+			U RAW(100),
+			V FLOAT(63),
+			W NUMBER(38 , 0),
+			X TIMESTAMP,
+			Y TIMESTAMP WITH LOCAL TIME ZONE,
+			Z TIMESTAMP WITH TIME ZONE,
+			AA VARCHAR2(100),
+			AB XMLTYPE
+		)`
+	testDb.ExecContext(ctx, "DROP TABLE test_types")
+	if _, err := testDb.ExecContext(ctx, createQry); err != nil {
+		t.Fatalf("%s: %+v", createQry, err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		testDb.ExecContext(ctx, "DROP TABLE test_types")
+	}()
+
+	const insertQry = `INSERT INTO test_types
+  (b, c, e, g, gn,
+   h, i, j,
+   k, r, s, u,
+   v, w, x, aa)
+  VALUES (3.14, 4.15, 'char(10)', TO_DATE('2020-01-21 09:16:36', 'YYYY-MM-DD HH24:MI:SS'), NULL,
+          1/3, 5.16, 6.17,
+          123456789012345678901234567890, 7.18, 8.19, HEXTORAW('deadbeef'),
+		  0.01, -3, SYSTIMESTAMP, 'varchar2(100)')`
+
+	if _, err := testDb.ExecContext(ctx, insertQry); err != nil {
+		t.Fatalf("%s: %+v", insertQry, err)
+	}
+	const qry = "SELECT * FROM test_types"
+
+	//get rows
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+
+	//get columns name
+	colsName, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("columns:", colsName)
+
+	//get types of query columns
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//total columns
+	totalColumns := len(colsName)
+
+	oracleFieldParse := func(datatype string, field interface{}) interface{} {
+		//DEBUG: print the type of field and datatype returned for the driver
+		t.Logf("%T\t%s\n", field, datatype)
+
+		if field == nil {
+			return nil
+		}
+		switch x := field.(type) {
+		case string:
+			return x
+		case godror.Number:
+			return string(x)
+		case []uint8:
+			switch datatype {
+			case "RAW", "LONG RAW":
+				return fmt.Sprintf("%x", x)
+			default:
+				return fmt.Sprintf("unsupported datatype %s", datatype)
+			}
+		case godror.NullTime:
+			if x.Valid {
+				return x.Time.Format(time.RFC3339)
+			}
+			return "NULL"
+		case time.Time:
+			return x.Format(time.RFC3339)
+		default:
+			return fmt.Sprintf("%v", field)
+		}
+	}
+
+	// create a slice of interface{}'s to represent each column,
+	// and a second slice to contain pointers to each item in the columns slice
+	columns := make([]interface{}, totalColumns)
+	recordPointers := make([]interface{}, totalColumns)
+	for i := range columns {
+		if types[i].DatabaseTypeName() == "DATE" {
+			var t godror.NullTime
+			recordPointers[i] = &t
+			columns[i] = t
+		} else {
+			recordPointers[i] = &columns[i]
+		}
+	}
+
+	//record destination
+	record := make([]interface{}, totalColumns)
+
+	for rows.Next() {
+		// Scan the result into the record pointers...
+		if err := rows.Scan(recordPointers...); err != nil {
+			t.Fatal(err)
+		}
+
+		//Parse each field of recordPointers for get a custom field depending the type
+		for idxCol := range recordPointers {
+			record[idxCol] = oracleFieldParse(types[idxCol].DatabaseTypeName(), reflect.ValueOf(recordPointers[idxCol]).Elem().Interface())
+		}
+
+		t.Log(record)
+	}
+}
