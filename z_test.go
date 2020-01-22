@@ -2573,6 +2573,10 @@ func TestSelectTypes(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, insertQry); err != nil {
 		t.Fatalf("%s: %+v", insertQry, err)
 	}
+	const insertQry2 = `INSERT INTO test_types (z) VALUES (cast(TO_TIMESTAMP_TZ('2018-02-15T14:00:00 01:00','yyyy-mm-dd"T"hh24:mi:ss TZH:TZM') as date))`
+	if _, err := testDb.ExecContext(ctx, insertQry2); err != nil {
+		t.Fatalf("%s: %+v", insertQry2, err)
+	}
 	const qry = "SELECT * FROM test_types"
 
 	//get rows
