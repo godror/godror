@@ -2057,7 +2057,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 				bufSize = 40
 			}
-		case C.DPI_ORACLE_TYPE_DATE:
+		case C.DPI_ORACLE_TYPE_DATE,
+			C.DPI_ORACLE_TYPE_TIMESTAMP, C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
 			ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 
 		case C.DPI_ORACLE_TYPE_BLOB:
