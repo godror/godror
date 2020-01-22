@@ -2135,25 +2135,28 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 
 func TestTsTZ(t *testing.T) {
 	t.Parallel()
-	qry := "SELECT FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '{{.TZ}}') FROM DUAL"
+	qry := `SELECT
+		FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '{{.TZ}}'),
+		TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}'),
+		CAST(TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}') AS DATE) FROM DUAL`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	defer tl.enableLogging(t)()
-	var ts time.Time
+	var ts1, ts2, dt time.Time
 	{
-		qry := strings.Replace(qry, "{{.TZ}}", "01:00", 1)
-		if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", qry, err))
+		qry := strings.Replace(strings.Replace(qry, "{{.TZ}}", "01:00", 3), "{{.TZDec}}", "TZH:TZM", 2)
+		if err := testDb.QueryRowContext(ctx, qry).Scan(&ts1, &ts2, &dt); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
 		}
 	}
-	qry = strings.Replace(qry, "{{.TZ}}", "Europe/Berlin", 1)
-	err := testDb.QueryRowContext(ctx, qry).Scan(&ts)
+	qry = strings.Replace(strings.Replace(qry, "{{.TZ}}", "Europe/Berlin", 3), "{{.TZDec}}", "TZR", 2)
+	err := testDb.QueryRowContext(ctx, qry).Scan(&ts1, &ts2, &dt)
 	if err != nil {
-		t.Log(errors.Errorf("%s: %w", qry, err))
+		t.Logf("%s: %+v", qry, err)
 	}
-	t.Log(ts)
-	if !ts.IsZero() {
+	t.Log(ts1, ts2, dt)
+	if !ts1.IsZero() {
 		return
 	}
 
@@ -2557,11 +2560,15 @@ func TestSelectTypes(t *testing.T) {
   (b, c, e, g, gn,
    h, i, j,
    k, r, s, u,
-   v, w, x, aa)
+   v, w, x, y,
+   z,
+   aa)
   VALUES (3.14, 4.15, 'char(10)', TO_DATE('2020-01-21 09:16:36', 'YYYY-MM-DD HH24:MI:SS'), NULL,
           1/3, 5.16, 6.17,
           123456789012345678901234567890, 7.18, 8.19, HEXTORAW('deadbeef'),
-		  0.01, -3, SYSTIMESTAMP, 'varchar2(100)')`
+		  0.01, -3, SYSTIMESTAMP, SYSTIMESTAMP,
+		  FROM_TZ(TO_TIMESTAMP('2018-02-15 14:00:00', 'YYYY-MM-DD HH24:MI:SS'), '00:00'),
+          'varchar2(100)')`
 
 	if _, err := testDb.ExecContext(ctx, insertQry); err != nil {
 		t.Fatalf("%s: %+v", insertQry, err)

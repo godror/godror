@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - NullTime to handle NULL DATE columns
 
 ### Changed
-- Return NullTime instead of time.Time for interface{} destination.
+- Return NullTime instead of time.Time for interface{} destination in column description.
 
 ## [0.10.0]
 ### Added
