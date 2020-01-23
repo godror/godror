@@ -54,6 +54,13 @@ func init() {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
 		logger.Swap(tl)
 	}
+	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
+		var err error
+		if time.Local, err = time.LoadLocation(tzName); err != nil {
+			panic(errors.Errorf("unknoqn GODROR_TIMEZONE=%q: %w", tzName, err))
+		}
+	}
+
 	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
 		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
@@ -2135,32 +2142,51 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 
 func TestTsTZ(t *testing.T) {
 	t.Parallel()
-	qry := `SELECT
-		FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '{{.TZ}}'),
-		TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}'),
-		CAST(TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}') AS DATE) FROM DUAL`
+	fields := []string{
+		"FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '{{.TZ}}')",
+		"TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}')",
+		"CAST(TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}') AS DATE)",
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	defer tl.enableLogging(t)()
-	var ts1, ts2, dt time.Time
-	{
-		qry := strings.Replace(strings.Replace(qry, "{{.TZ}}", "01:00", 3), "{{.TZDec}}", "TZH:TZM", 2)
-		if err := testDb.QueryRowContext(ctx, qry).Scan(&ts1, &ts2, &dt); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
+
+	dests := make([]interface{}, len(fields))
+
+	for _, Case := range []struct {
+		TZ, TZDec string
+	}{
+		{"01:00", "TZH:TZM"},
+		{"Europe/Berlin", "TZR"},
+	} {
+		repl := strings.NewReplacer("{{.TZ}}", Case.TZ, "{{.TZDec}}", Case.TZDec)
+		{
+			ds := make([]string, len(fields))
+			fs := make([]string, len(fields))
+			for i, f := range fields {
+				fs[i] = "DUMP(" + repl.Replace(f) + ")"
+				dests[i] = &ds[i]
+			}
+			qry := "SELECT " + strings.Join(fs, ", ") + " FROM DUAL"
+			if err := testDb.QueryRowContext(ctx, qry).Scan(dests...); err != nil {
+				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
+			}
+			t.Log(Case.TZ, "DUMP:", ds)
 		}
-	}
-	qry = strings.Replace(strings.Replace(qry, "{{.TZ}}", "Europe/Berlin", 3), "{{.TZDec}}", "TZR", 2)
-	err := testDb.QueryRowContext(ctx, qry).Scan(&ts1, &ts2, &dt)
-	if err != nil {
-		t.Logf("%s: %+v", qry, err)
-	}
-	t.Log(ts1, ts2, dt)
-	if !ts1.IsZero() {
-		return
+
+		qry := "SELECT " + repl.Replace(strings.Join(fields, ", ")) + " FROM DUAL"
+		ts := make([]time.Time, len(fields))
+		for i := range ts {
+			dests[i] = &ts[i]
+		}
+		if err := testDb.QueryRowContext(ctx, qry).Scan(dests...); err != nil {
+			t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
+		}
+		t.Log(Case.TZ, ts)
 	}
 
-	qry = "SELECT filename, version FROM v$timezone_file"
+	qry := "SELECT filename, version FROM v$timezone_file"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Log(qry, err)
@@ -2650,12 +2676,32 @@ func TestSelectTypes(t *testing.T) {
 		}
 	}
 
+	dumpRows := func() {
+		const qry = "SELECT DUMP(Z) FROM test_types"
+		rows, err := testDb.QueryContext(ctx, qry)
+		if err != nil {
+			t.Errorf("%s: %+v", qry, err)
+			return
+		}
+		defer rows.Close()
+		var i int
+		for rows.Next() {
+			var s string
+			if err = rows.Scan(&s); err != nil {
+				t.Fatal(err)
+			}
+			i++
+			t.Logf("%d. %q", i, s)
+		}
+	}
+
 	//record destination
 	record := make([]interface{}, totalColumns)
 
 	for rows.Next() {
 		// Scan the result into the record pointers...
 		if err := rows.Scan(recordPointers...); err != nil {
+			dumpRows()
 			t.Fatal(err)
 		}
 
