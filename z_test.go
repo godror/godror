@@ -2152,8 +2152,6 @@ func TestTsTZ(t *testing.T) {
 
 	defer tl.enableLogging(t)()
 
-	dests := make([]interface{}, len(fields))
-
 	for _, Case := range []struct {
 		TZ, TZDec string
 	}{
@@ -2161,29 +2159,25 @@ func TestTsTZ(t *testing.T) {
 		{"Europe/Berlin", "TZR"},
 	} {
 		repl := strings.NewReplacer("{{.TZ}}", Case.TZ, "{{.TZDec}}", Case.TZDec)
-		{
-			ds := make([]string, len(fields))
-			fs := make([]string, len(fields))
-			for i, f := range fields {
-				fs[i] = "DUMP(" + repl.Replace(f) + ")"
-				dests[i] = &ds[i]
+		for i, f := range fields {
+			f = repl.Replace(f)
+			qry := "SELECT DUMP(" + f + ") FROM DUAL"
+			var s string
+			if err := testDb.QueryRowContext(ctx, qry).Scan(&s); err != nil {
+				if Case.TZDec != "TZR" {
+					t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
+				}
+				t.Logf("%s: %s: %+v", Case.TZ, qry, err)
 			}
-			qry := "SELECT " + strings.Join(fs, ", ") + " FROM DUAL"
-			if err := testDb.QueryRowContext(ctx, qry).Scan(dests...); err != nil {
+			t.Logf("%s: DUMP[%d]: %q", Case.TZ, i, s)
+
+			qry = "SELECT " + f + " FROM DUAL"
+			var ts time.Time
+			if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
 				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
 			}
-			t.Log(Case.TZ, "DUMP:", ds)
+			t.Logf("%s: %d: %s", Case.TZ, i, ts)
 		}
-
-		qry := "SELECT " + repl.Replace(strings.Join(fields, ", ")) + " FROM DUAL"
-		ts := make([]time.Time, len(fields))
-		for i := range ts {
-			dests[i] = &ts[i]
-		}
-		if err := testDb.QueryRowContext(ctx, qry).Scan(dests...); err != nil {
-			t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
-		}
-		t.Log(Case.TZ, ts)
 	}
 
 	qry := "SELECT filename, version FROM v$timezone_file"
