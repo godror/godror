@@ -8,7 +8,8 @@
 package godror
 
 import (
-	"database/sql"
+	"database/sql/driver"
+	"fmt"
 	"time"
 )
 
@@ -29,7 +30,13 @@ func (n *NullTime) Scan(value interface{}) error {
 		return nil
 	}
 	n.Valid = true
-	return n.Time.Scan(value)
+	switch x := value.(type) {
+	case time.Time:
+		n.Time = x
+	default:
+		return fmt.Errorf("unsupported Scan, storing driver.Value type %T into type %T", value, &n.Time)
+	}
+	return nil
 }
 
 // Value implements the driver Valuer interface.
