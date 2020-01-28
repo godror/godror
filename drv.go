@@ -321,16 +321,40 @@ func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
 	if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
 		return errors.Errorf("initConnCreateParams: %w", c.drv.getError())
 	}
+	var cUserName, cPassword, cConnClass *C.char
+	defer func() {
+		if cUserName != nil {
+			C.free(unsafe.Pointer(cUserName))
+		}
+		if cPassword != nil {
+			C.free(unsafe.Pointer(cPassword))
+		}
+		if cConnClass != nil {
+			C.free(unsafe.Pointer(cConnClass))
+		}
+	}()
+
+	var lenUserName, lenPassword C.uint32_t
+	if P.HeterogeneousPool {
+		if P.Username != "" {
+			cUserName = C.CString(P.Username)
+			lenUserName = C.uint32_t(len(P.Username))
+		}
+		if P.Password != "" {
+			cPassword = C.CString(P.Password)
+			lenPassword = C.uint32_t(len(P.Password))
+		}
+	}
 	if P.ConnClass != "" {
 		cConnClass := C.CString(P.ConnClass)
-		defer C.free(unsafe.Pointer(cConnClass))
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
 	dc := C.malloc(C.sizeof_void)
 	if C.dpiPool_acquireConnection(
 		dp.dpiPool,
-		nil, 0, nil, 0,
+		cUserName, lenUserName, 
+		cPassword, lenPassword,
 		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),
 	) == C.DPI_FAILURE {

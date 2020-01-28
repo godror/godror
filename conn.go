@@ -737,6 +737,9 @@ func (c *conn) ensureContextUser(ctx context.Context) error {
 
 	if c.dpiConn != nil {
 		if err := c.close(false); err != nil {
+			if Log != nil {
+				Log("msg", "close connection", "error", err)
+			}
 			return driver.ErrBadConn
 		}
 	}

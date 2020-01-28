@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2020 Tamás Gulácsi
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -2429,7 +2429,7 @@ func TestNewPassword(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "ORA-01031:") {
 			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.Username + ";\n" +
-				"GRANT CREATE SESSION TO " + P.Username + " WITH AMDIN OPTION;\n")
+				"GRANT CREATE SESSION TO " + P.Username + " WITH ADMIN OPTION;\n")
 			t.Skip(err)
 		}
 		t.Fatal(err)

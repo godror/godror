@@ -52,14 +52,18 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 
 	for _, qry := range []string{
 		fmt.Sprintf("CREATE USER %s IDENTIFIED BY "+proxyPassword, proxyUser),
-		fmt.Sprintf("GRANT CONNECT TO %s", proxyUser),
 		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
 		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
 	} {
 		if _, err := conn.ExecContext(ctx, qry); err != nil {
+			if strings.Contains(err.Error(), "ORA-01031:") {
+				t.Log("Please issue this:\nGRANT CREATE USER, DROP USER, ALTER USER TO " + username + ";\n" +
+					"GRANT CREATE SESSION TO " + username + " WITH ADMIN OPTION;\n")
+			}
 			t.Skip(errors.Errorf("%s: %w", qry, err))
 		}
 	}
+	defer func() { testHeterogeneousDB.ExecContext(context.Background(), "DROP USER "+proxyUser) }()
 
 	for tName, tCase := range map[string]struct {
 		In   context.Context
