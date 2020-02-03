@@ -263,7 +263,8 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	if r.finished {
 		_ = r.Close()
-		return io.EOF
+		r.err = io.EOF
+		return r.err
 	}
 	if len(dest) != len(r.columns) {
 		return errors.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
@@ -276,10 +277,10 @@ func (r *rows) Next(dest []driver.Value) error {
 		if Log != nil {
 			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
-		if r.fetched == 0 {
-			r.finished = moreRows == 0
+		if r.finished = r.fetched == 0; r.finished {
 			_ = r.Close()
-			return io.EOF
+			r.err = io.EOF
+			return r.err
 		}
 		if r.data == nil {
 			r.data = make([][]C.dpiData, len(r.columns))
