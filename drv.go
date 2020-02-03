@@ -353,7 +353,7 @@ func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
 	dc := C.malloc(C.sizeof_void)
 	if C.dpiPool_acquireConnection(
 		dp.dpiPool,
-		cUserName, lenUserName, 
+		cUserName, lenUserName,
 		cPassword, lenPassword,
 		&connCreateParams,
 		(**C.dpiConn)(unsafe.Pointer(&dc)),

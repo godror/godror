@@ -2030,7 +2030,8 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 }
 
 func (st *statement) openRows(colCount int) (*rows, error) {
-	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchRowCount()))
+	sliceLen := st.FetchRowCount()
+	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(sliceLen))
 
 	r := rows{
 		statement: st,
@@ -2038,7 +2039,6 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
 	}
-	sliceLen := st.FetchRowCount()
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo

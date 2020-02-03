@@ -17,6 +17,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -271,8 +272,18 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	if r.fetched == 0 {
 		var moreRows C.int
-		if C.dpiStmt_fetchRows(r.dpiStmt, C.uint32_t(r.statement.FetchRowCount()), &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE {
-			return errors.Errorf("Next: %w", r.getError())
+		maxRows := C.uint32_t(r.statement.FetchRowCount())
+		r.statement.Lock()
+		failed := C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE
+		r.statement.Unlock()
+		if failed {
+			err := r.getError()
+			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
+				_ = r.Close()
+				r.err = io.EOF
+				return r.err
+			}
+			return errors.Errorf("Next: %w", err)
 		}
 		if Log != nil {
 			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
