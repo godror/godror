@@ -424,12 +424,9 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			ds := C.dpiData_getIntervalDS(d)
-			dest[i] = time.Duration(ds.days)*24*time.Hour +
-				time.Duration(ds.hours)*time.Hour +
-				time.Duration(ds.minutes)*time.Minute +
-				time.Duration(ds.seconds)*time.Second +
-				time.Duration(ds.fseconds)
+			var t time.Duration
+			dataGetIntervalDS(&t, d)
+			dest[i] = t
 		case C.DPI_ORACLE_TYPE_INTERVAL_YM, C.DPI_NATIVE_TYPE_INTERVAL_YM:
 			if isNull {
 				dest[i] = nil

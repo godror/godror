@@ -304,12 +304,14 @@ TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
 TYPE num_tab_typ IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
 TYPE vc_tab_typ IS TABLE OF VARCHAR2(100) INDEX BY PLS_INTEGER;
 TYPE dt_tab_typ IS TABLE OF DATE INDEX BY PLS_INTEGER;
+TYPE ids_tab_typ IS TABLE OF INTERVAL DAY TO SECOND INDEX BY PLS_INTEGER;
 --TYPE lob_tab_typ IS TABLE OF CLOB INDEX BY PLS_INTEGER;
 
 FUNCTION in_int(p_int IN int_tab_typ) RETURN VARCHAR2;
 FUNCTION in_num(p_num IN num_tab_typ) RETURN VARCHAR2;
 FUNCTION in_vc(p_vc IN vc_tab_typ) RETURN VARCHAR2;
 FUNCTION in_dt(p_dt IN dt_tab_typ) RETURN VARCHAR2;
+FUNCTION in_ids(p_dur IN ids_tab_typ) RETURN VARCHAR2;
 END;
 `
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
@@ -361,6 +363,17 @@ BEGIN
   WHILE v_idx IS NOT NULL LOOP
     v_res := v_res||v_idx||':'||TO_CHAR(p_dt(v_idx), 'YYYY-MM-DD"T"HH24:MI:SS')||CHR(10);
     v_idx := p_dt.NEXT(v_idx);
+  END LOOP;
+  RETURN(v_res);
+END;
+FUNCTION in_ids(p_dur IN ids_tab_typ) RETURN VARCHAR2 IS
+  V_idx PLS_INTEGER;
+  v_res VARCHAR2(32767);
+BEGIN
+  v_idx := p_dur.FIRST;
+  WHILE v_idx IS NOT NULL LOOP
+    v_res := v_res||v_idx||':'||TO_CHAR(p_dur(v_idx), 'YYYY-MM-DD"T"HH24:MI:SS')||CHR(10);
+    v_idx := p_dur.NEXT(v_idx);
   END LOOP;
   RETURN(v_res);
 END;
@@ -418,6 +431,11 @@ END;
 		"dt_02": {
 			In:   []godror.NullTime{{Valid: true, Time: epoch}, {Valid: true, Time: epoch.AddDate(0, -6, 0)}},
 			Want: "1:2017-11-20T12:14:21\n2:2017-05-20T12:14:21\n",
+		},
+
+		"ids_1": {
+			In:   []time.Duration{32 * time.Second},
+			Want: "1:32s\n",
 		},
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
@@ -2579,13 +2597,15 @@ func TestSelectTypes(t *testing.T) {
 	const insertQry = `INSERT INTO test_types
   (b, c, e, g, gn,
    h, i, j,
-   k, r, s, u,
+   k, l,
+   r, s, u,
    v, w, x, y,
    z,
    aa)
   VALUES (3.14, 4.15, 'char(10)', TO_DATE('2020-01-21 09:16:36', 'YYYY-MM-DD HH24:MI:SS'), NULL,
           1/3, 5.16, 6.17,
-          123456789012345678901234567890, 7.18, 8.19, HEXTORAW('deadbeef'),
+          123456789012345678901234567890, INTERVAL '8' HOUR,
+		  7.18, 8.19, HEXTORAW('deadbeef'),
 		  0.01, -3, SYSTIMESTAMP, SYSTIMESTAMP,
 		  FROM_TZ(TO_TIMESTAMP('2018-02-15 14:00:00', 'YYYY-MM-DD HH24:MI:SS'), '00:00'),
           'varchar2(100)')`

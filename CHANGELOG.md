@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.11.4]
+### Added
+- Accept time.Duration and insert it as INTERVAL DAY TO SECOND.
+
 ## [0.11.0]
 ### Added
 - NullTime to handle NULL DATE columns

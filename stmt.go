@@ -1091,6 +1091,13 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.conn.dataGetTime
 		}
 
+	case time.Duration:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS
+		info.set = st.conn.dataSetIntervalDS
+		if info.isOut {
+			*get = st.conn.dataGetIntervalDS
+		}
+
 	case Object:
 		info.objType = v.ObjectType.dpiObjectType
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
@@ -1300,6 +1307,73 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),
 			tzHour, tzMin,
 		)
+	}
+	return nil
+}
+
+func (c *conn) dataGetIntervalDS(v interface{}, data []C.dpiData) error {
+	switch x := v.(type) {
+	case *time.Duration:
+		if len(data) == 0 || data[0].isNull == 1 {
+			*x = 0
+			return nil
+		}
+		dataGetIntervalDS(x, &data[0])
+
+	case *[]time.Duration:
+		n := len(data)
+		if cap(*x) >= n {
+			*x = (*x)[:n]
+		} else {
+			*x = make([]time.Duration, n)
+		}
+		for i := range data {
+			dataGetIntervalDS(&((*x)[i]), &data[i])
+		}
+	}
+	return nil
+}
+
+func dataGetIntervalDS(t *time.Duration, d *C.dpiData) {
+	ds := C.dpiData_getIntervalDS(d)
+	*t = time.Duration(ds.days)*24*time.Hour +
+		time.Duration(ds.hours)*time.Hour +
+		time.Duration(ds.minutes)*time.Minute +
+		time.Duration(ds.seconds)*time.Second +
+		time.Duration(ds.fseconds)
+}
+
+func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
+	times := []time.Duration{0}
+	switch x := vv.(type) {
+	case time.Duration:
+		times[0] = x
+		data[0].isNull = C.int(b2i(x == 0))
+
+	case []time.Duration:
+		times = x
+		for i, t := range times {
+			data[i].isNull = C.int(b2i(t == 0))
+		}
+
+	default:
+		for i := range data {
+			data[i].isNull = 1
+		}
+		return nil
+	}
+
+	for i, t := range times {
+		if data[i].isNull == 1 {
+			continue
+		}
+		C.dpiData_setIntervalDS(&data[i],
+			C.int32_t(t/(24*time.Hour)), C.int32_t(t/time.Hour),
+			C.int32_t(t/time.Minute), C.int32_t(t/time.Second),
+			C.int32_t(t%time.Second))
 	}
 	return nil
 }
