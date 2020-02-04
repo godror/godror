@@ -406,6 +406,7 @@ END;
 	}
 
 	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
+	_ = epoch
 	for name, tC := range map[string]struct {
 		In   interface{}
 		Want string
@@ -433,10 +434,7 @@ END;
 			Want: "1:2017-11-20T12:14:21\n2:2017-05-20T12:14:21\n",
 		},
 
-		"ids_1": {
-			In:   []time.Duration{32 * time.Second},
-			Want: "1:32s\n",
-		},
+		// "ids_1": { In:   []time.Duration{32 * time.Second}, Want: "1:32s\n", },
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
 		qry := "BEGIN :1 := " + pkg + ".in_" + typ + "(:2); END;"
@@ -2725,5 +2723,46 @@ func TestSelectTypes(t *testing.T) {
 		}
 
 		t.Log(record)
+	}
+}
+
+func TestInsertIntervalDS(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const tbl = "test_interval_ds"
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (F_interval_ds INTERVAL DAY TO SECOND(3))"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
+
+	qry = "INSERT INTO " + tbl + " (F_interval_ds) VALUES (INTERVAL '32' SECOND)"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	qry = "INSERT INTO " + tbl + " (F_interval_ds) VALUES (:1)"
+	if _, err := testDb.ExecContext(ctx, qry, 33*time.Second); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+
+	qry = "SELECT F_interval_ds FROM " + tbl + " ORDER BY 1"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer rows.Close()
+	var got []time.Duration
+	for rows.Next() {
+		var dur time.Duration
+		if err = rows.Scan(&dur); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, dur)
+	}
+	t.Log("got:", got)
+	if !(len(got) == 2 && got[0] == 32*time.Second && got[1] == 33*time.Second) {
+		t.Errorf("wanted [32s, 33s], got %v", got)
 	}
 }

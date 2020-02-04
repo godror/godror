@@ -1312,6 +1312,9 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 }
 
 func (c *conn) dataGetIntervalDS(v interface{}, data []C.dpiData) error {
+	if Log != nil {
+		Log("msg", "dataGetIntervalDS", "data", data, "v", v)
+	}
 	switch x := v.(type) {
 	case *time.Duration:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -1341,6 +1344,9 @@ func dataGetIntervalDS(t *time.Duration, d *C.dpiData) {
 		time.Duration(ds.minutes)*time.Minute +
 		time.Duration(ds.seconds)*time.Second +
 		time.Duration(ds.fseconds)
+	if Log != nil {
+		Log("msg", "dataGetIntervalDS", "d", *d, "t", *t)
+	}
 }
 
 func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
@@ -1365,15 +1371,30 @@ func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		}
 		return nil
 	}
+	if Log != nil {
+		Log("msg", "dataSetIntervalDS", "data", data, "times", times)
+	}
 
 	for i, t := range times {
 		if data[i].isNull == 1 {
 			continue
 		}
-		C.dpiData_setIntervalDS(&data[i],
-			C.int32_t(t/(24*time.Hour)), C.int32_t(t/time.Hour),
-			C.int32_t(t/time.Minute), C.int32_t(t/time.Second),
-			C.int32_t(t%time.Second))
+		rem := t % (24 * time.Hour)
+		d := C.int32_t(t / (24 * time.Hour))
+		t, rem = rem, t%(time.Hour)
+		h := C.int32_t(t / time.Hour)
+		t, rem = rem, t%(time.Minute)
+		m := C.int32_t(t / time.Minute)
+		t, rem = rem, t%time.Second
+		s := C.int32_t(t / time.Second)
+		fs := C.int32_t(rem)
+		if Log != nil {
+			Log("i", i, "t", t, "day", d, "hour", h, "minute", m, "second", s, "fsecond", fs)
+		}
+		C.dpiData_setIntervalDS(&data[i], d, h, m, s, fs)
+		if Log != nil {
+			Log("i", i, "t", t, "data", data[i])
+		}
 	}
 	return nil
 }
