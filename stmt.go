@@ -1091,7 +1091,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.conn.dataGetTime
 		}
 
-	case time.Duration:
+	case time.Duration, []time.Duration:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS
 		info.set = st.conn.dataSetIntervalDS
 		if info.isOut {
