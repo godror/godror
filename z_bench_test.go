@@ -477,3 +477,18 @@ func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
 		rows.Close()
 	}
 }
+
+func BenchmarkSprintf(b *testing.B) {
+	ss := make([]string, 1024)
+	for i := int32(0); i < int32(b.N); i++ {
+		ss[i%1024] = fmt.Sprintf("%d-%d", i%42, 1+i%12)
+	}
+	b.Log(ss[0])
+}
+func BenchmarkStrconv(b *testing.B) {
+	ss := make([]string, 1024)
+	for i := int32(0); i < int32(b.N); i++ {
+		ss[i%1024] = strconv.Itoa(int(i%42)) + "-" + strconv.Itoa(int(1+i%12))
+	}
+	b.Log(ss[0])
+}

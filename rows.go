@@ -433,7 +433,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			ym := C.dpiData_getIntervalYM(d)
-			dest[i] = fmt.Sprintf("%dy%dm", ym.years, ym.months)
+			dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
 
 		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
 			C.DPI_ORACLE_TYPE_BLOB,
