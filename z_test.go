@@ -2766,3 +2766,63 @@ func TestInsertIntervalDS(t *testing.T) {
 		t.Errorf("wanted [32s, 33s], got %v", got)
 	}
 }
+func TestBool(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const tbl = "test_bool_t"
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (F_bool VARCHAR2(1))"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
+
+	qry = "INSERT INTO " + tbl + " (F_bool) VALUES ('Y')"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	qry = "INSERT INTO " + tbl + " (F_bool) VALUES (:1)"
+	if _, err := testDb.ExecContext(ctx, qry, booler(true)); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+
+	qry = "SELECT F_bool FROM " + tbl + " ORDER BY 1"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer rows.Close()
+	var got []bool
+	for rows.Next() {
+		var b booler
+		if err = rows.Scan(&b); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, bool(b))
+	}
+	t.Log("got:", got)
+	if !(len(got) == 2 && got[0] == true && got[1] == true) {
+		t.Errorf("wanted [true, true, got %v", got)
+	}
+}
+
+type booler bool
+
+func (b *booler) Scan(src interface{}) error {
+	switch x := src.(type) {
+	case int:
+		*b = x == 1
+	case string:
+		*b = x == "Y"
+	default:
+		return fmt.Errorf("unknown scanner source %T", src)
+	}
+	return nil
+}
+func (b booler) Value() (driver.Value, error) {
+	if b {
+		return "Y", nil
+	}
+	return "N", nil
+}
