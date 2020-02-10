@@ -106,6 +106,9 @@ func (o stmtOptions) NumberAsString() bool      { return o.numberAsString }
 type Option func(*stmtOptions)
 
 // BoolToString is an option that governs  convertsion from bool to string in the database.
+// This is for converting from bool to string, from outside of the database.
+//
+// For the other way around, use an sql.Scanner that converts from string to bool.
 func BoolToString(trueVal, falseVal string) Option {
 	return func(o *stmtOptions) { o.boolString = boolString{True: trueVal, False: falseVal} }
 }
