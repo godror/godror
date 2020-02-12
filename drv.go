@@ -258,10 +258,17 @@ func (c *conn) acquireFromPool(pool *connPool, P *ConnParams) error {
                 columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
                 columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
                 C.dpiData_setInt64(&tempData, C.int64_t(value.(int)))
-                columns[i].value = tempData.value
+            case string:
+                columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
+                columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+                strVal := value.(string)
+                cs := C.CString(strVal)
+                defer C.free(unsafe.Pointer(cs))
+                C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(strVal)))
             default:
                 return errors.New("Unsupported data type for sharding")
             }
+            columns[i].value = tempData.value
         }
         connCreateParams.shardingKeyColumns = &columns[0]
         connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
@@ -269,10 +276,10 @@ func (c *conn) acquireFromPool(pool *connPool, P *ConnParams) error {
 
     // acquire connection from the pool
     dc := C.malloc(C.sizeof_void)
-       if Log != nil {
-               Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
-       }
-       if C.dpiPool_acquireConnection(pool.dpiPool,
+    if Log != nil {
+        Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
+    }
+    if C.dpiPool_acquireConnection(pool.dpiPool,
             C._GoStringPtr(P.UserName), C.uint32_t(C._GoStringLen(P.UserName)),
             C._GoStringPtr(P.Password), C.uint32_t(C._GoStringLen(P.Password)),
             &connCreateParams,
@@ -281,20 +288,20 @@ func (c *conn) acquireFromPool(pool *connPool, P *ConnParams) error {
         return errors.Errorf("acquirePoolConnection: %w", c.getError())
     }
 
-       c.dpiConn = (*C.dpiConn)(dc)
-       c.currentUser = P.UserName
-       c.newSession = connCreateParams.outNewSession == 1
-       c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
-       c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
-       err := c.init([]string{})
-       if err == nil {
-               c.mu.Lock()
-               pool.serverVersion = c.Server
-               pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
-               c.mu.Unlock()
-       }
+    c.dpiConn = (*C.dpiConn)(dc)
+    c.currentUser = P.UserName
+    c.newSession = connCreateParams.outNewSession == 1
+    c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
+    c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
+    err := c.init([]string{})
+    if err == nil {
+        c.mu.Lock()
+        pool.serverVersion = c.Server
+        pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
+        c.mu.Unlock()
+    }
 
-       return err
+    return err
 }
 
 
