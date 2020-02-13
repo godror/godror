@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [0.12.0]
 ### Added
-- BoolToString option to convert from bool to string.
+- BoolToString option to convert from bool to string for DML statements.
 
 ### Changed
 - INTERVAL YEAR TO MONTHS format changes from %dy%dm to %d-%d, as Oracle uses it.

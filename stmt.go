@@ -105,10 +105,26 @@ func (o stmtOptions) NumberAsString() bool      { return o.numberAsString }
 // Option holds statement options.
 type Option func(*stmtOptions)
 
-// BoolToString is an option that governs  convertsion from bool to string in the database.
-// This is for converting from bool to string, from outside of the database.
+// BoolToString is an option that governs convertsion from bool to string in the database.
+// This is for converting from bool to string, from outside of the database
+// (which does not have a BOOL(EAN) column (SQL) type, only a BOOLEAN PL/SQL type).
 //
-// For the other way around, use an sql.Scanner that converts from string to bool.
+// This will be used only with DML statements and when the PlSQLArrays Option is not used.
+//
+// For the other way around, use an sql.Scanner that converts from string to bool. For example:
+//
+//   type Booler bool
+//   var _ sql.Scanner = Booler{}
+//   func (b Booler) Scan(src interface{}) error {
+//     switch src := src.(type) {
+//       case int: *b = x == 1
+//       case string: *b = x == "Y" || x == "T"  // or any string your database model treats as truth value
+//       default: return fmt.Errorf("unknown scanner source %T", src)
+//     }
+//     return nil
+//   }
+//
+// Such a type cannot be included in this package till we can inject the truth strings into the scanner method.
 func BoolToString(trueVal, falseVal string) Option {
 	return func(o *stmtOptions) { o.boolString = boolString{True: trueVal, False: falseVal} }
 }
@@ -1051,7 +1067,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = dataGetNumber
 		}
 	case bool, []bool:
-		if st.dpiStmtInfo.isPLSQL == 1 || st.stmtOptions.boolString.IsZero() {
+		if st.dpiStmtInfo.isPLSQL == 1 || st.stmtOptions.boolString.IsZero() || st.PlSQLArrays() {
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
 			info.set = dataSetBool
 			if info.isOut {
@@ -1895,7 +1911,6 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 		}
 		db := C.dpiData_getBytes(&data[0])
 		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
-		// b must be copied
 		*x = st.stmtOptions.boolString.FromString(string(b))
 
 	case *[]bool:
