@@ -2190,6 +2190,11 @@ func TestTsTZ(t *testing.T) {
 			qry = "SELECT " + f + " FROM DUAL"
 			var ts time.Time
 			if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
+				var oerr *godror.OraErr
+				if errors.As(err, &oerr) && oerr.Code() == 1805 {
+					t.Skip(err)
+					continue
+				}
 				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
 			}
 			t.Logf("%s: %d: %s", Case.TZ, i, ts)
