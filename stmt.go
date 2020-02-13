@@ -159,7 +159,7 @@ func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 
 // ClobAsString returns an option to force fetching CLOB columns as strings.
 //
-// DEPRECATED.
+// Deprecated: CLOBs are returned as string by default - for CLOB, use LobAsReader.
 func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false } }
 
 // LobAsReader is an option to set query columns of CLOB/BLOB to be returned as a Lob.
