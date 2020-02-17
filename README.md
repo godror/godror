@@ -48,9 +48,7 @@ achieved with the standard _database/sql_ library. Even calling stored procedure
 with OUT parameters, or sending/retrieving PL/SQL array types - just give a
 `godror.PlSQLArrays` Option within the parameters of `Exec`!
 
-The array size of the returned PL/SQL arrays can be set with `godror.ArraySize(2000)`
-
-* the default is 1024.
+The array size of the returned PL/SQL arrays can be set with `godror.ArraySize(2000)` (default value is 1024).
 
 Connections are pooled by default (except `AS SYSOPER` or `AS SYSDBA`).
 
@@ -119,7 +117,6 @@ or (since Go 1.12) just Scan into `*sql.Rows`.
 For examples, see Anthony Tuininga's
 [presentation about Go](https://static.rainfocus.com/oracle/oow18/sess/1525791357522001Q5tc/PF/DEV5047%20-%20The%20Go%20Language_1540587475596001afdk.pdf)
 (page 39)!
-
 
 ## Caveats
 
