@@ -67,12 +67,16 @@ elements in a separate slice:
 
 Instead of
 
-    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 1, "a")
-    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 2, "b")
+```go
+db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 1, "a")
+db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 2, "b")
+```
 
 do
 
-    db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", []int{1, 2}, []string{"a", "b"})
+```go
+db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", []int{1, 2}, []string{"a", "b"})
+```
 
 ## Logging
 
@@ -80,17 +84,21 @@ godror uses `github.com/go-kit/kit/log`'s concept of a `Log` function.
 Either set `godror.Log` to a logging function globally,
 or (better) set the logger in the Context of ExecContext or QueryContext:
 
-    db.QueryContext(godror.ContextWithLog(ctx, logger.Log), qry)
+```go
+db.QueryContext(godror.ContextWithLog(ctx, logger.Log), qry)
+```
 
 ## Tracing
 
 To set ClientIdentifier, ClientInfo, Module, Action and DbOp on the session,
 to be seen in the Database by the Admin, set godror.TraceTag on the Context:
 
-    db.QueryContext(godror.ContextWithTraceTag(godror.TraceTag{
-    	Module: "processing",
-    	Action: "first",
-    }), qry)
+```go
+db.QueryContext(godror.ContextWithTraceTag(godror.TraceTag{
+    Module: "processing",
+    Action: "first",
+}), qry)
+```
 
 ## Extras
 
@@ -120,7 +128,9 @@ For examples, see Anthony Tuininga's
 `sql.NullString` is not supported: Oracle DB does not differentiate between
 an empty string ("") and a NULL, so an
 
-    sql.NullString{String:"", Valid:true} == sql.NullString{String:"", Valid:false}
+```go
+sql.NullString{String:"", Valid:true} == sql.NullString{String:"", Valid:false}
+```
 
 and this would be more confusing than not supporting `sql.NullString` at all.
 
@@ -153,20 +163,25 @@ As I couldn't make TIMESTAMP arrays work, all `time.Time` is bind as `DATE`, so 
 are lost.
 A workaround is converting to string:
 
-    time.Now().Format("2-Jan-06 3:04:05.000000 PM")
+```go
+time.Now().Format("2-Jan-06 3:04:05.000000 PM")
+```
 
 See #121.
-
 
 # Install
 
 Just
 
-    go get github.com/godror/godror
+```bash
+go get github.com/godror/godror
+```
 
 Or if you prefer `dep`
 
-    dep ensure -add github.com/godror/godror
+```bash
+dep ensure -add github.com/godror/godror
+```
 
 and you're ready to go!
 
@@ -177,20 +192,24 @@ Note that Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
 Just as with other Go projects, you don't want to change the import paths, but you can hack on the library
 in place, just set up different remotes:
 
-    cd $GOPATH.src/github.com/godror/godror
-    git remote add upstream https://github.com/godror/godror.git
-    git fetch upstream
-    git checkout -b master upstream/master
+```bash
+cd $GOPATH/src/github.com/godror/godror
+git remote add upstream https://github.com/godror/godror.git
+git fetch upstream
+git checkout -b master upstream/master
 
-    git checkout -f master
-    git pull upstream master
-    git remote add fork git@github.com:mygithubacc/godror
-    git checkout -b newfeature upstream/master
+git checkout -f master
+git pull upstream master
+git remote add fork git@github.com:mygithubacc/godror
+git checkout -b newfeature upstream/master
+```
 
 Change, experiment as you wish, then
 
-    git commit -m 'my great changes' *.go
-    git push fork newfeature
+```bash
+git commit -m 'my great changes' *.go
+git push fork newfeature
+```
 
 and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godror`, `newfeature` branch.
 
@@ -198,18 +217,18 @@ and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godr
 
 Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
 
-```
+```bash
 #!/bin/sh
 set -e
 
 output="$(gofmt -l "$@")"
 
 if [ -n "$output" ]; then
-	echo >&2 "Go files must be formatted with gofmt. Please run:"
-	for f in $output; do
-		echo >&2 "  gofmt -w $PWD/$f"
-	done
-	exit 1
+    echo >&2 "Go files must be formatted with gofmt. Please run:"
+    for f in $output; do
+        echo >&2 "  gofmt -w $PWD/$f"
+    done
+    exit 1
 fi
 
 golangci-lint run
