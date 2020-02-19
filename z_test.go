@@ -2190,6 +2190,11 @@ func TestTsTZ(t *testing.T) {
 			qry = "SELECT " + f + " FROM DUAL"
 			var ts time.Time
 			if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
+				var oerr *godror.OraErr
+				if errors.As(err, &oerr) && oerr.Code() == 1805 {
+					t.Skip(err)
+					continue
+				}
 				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
 			}
 			t.Logf("%s: %d: %s", Case.TZ, i, ts)
@@ -2786,8 +2791,15 @@ func TestBool(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry, booler(true)); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
+	b2s := godror.BoolToString("t", "f")
+	if _, err := testDb.ExecContext(ctx, qry, true, b2s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testDb.ExecContext(ctx, qry, false, b2s); err != nil {
+		t.Fatal(err)
+	}
 
-	qry = "SELECT F_bool FROM " + tbl + " ORDER BY 1"
+	qry = "SELECT F_bool, F_bool FROM " + tbl + " ORDER BY 1"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
@@ -2796,14 +2808,17 @@ func TestBool(t *testing.T) {
 	var got []bool
 	for rows.Next() {
 		var b booler
-		if err = rows.Scan(&b); err != nil {
+		var s string
+		if err = rows.Scan(&b, &s); err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("%q: %v", s, b)
 		got = append(got, bool(b))
 	}
 	t.Log("got:", got)
-	if !(len(got) == 2 && got[0] == true && got[1] == true) {
-		t.Errorf("wanted [true, true, got %v", got)
+	want := []bool{true, true, false, true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("wanted %v got %v", want, got)
 	}
 }
 
@@ -2814,7 +2829,7 @@ func (b *booler) Scan(src interface{}) error {
 	case int:
 		*b = x == 1
 	case string:
-		*b = x == "Y"
+		*b = x == "Y" || x == "t"
 	default:
 		return fmt.Errorf("unknown scanner source %T", src)
 	}

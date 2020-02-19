@@ -309,7 +309,13 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	) == C.DPI_FAILURE {
 		return nil, maybeBadConn(errors.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
-	return &statement{conn: c, dpiStmt: dpiStmt, query: query}, nil
+	st := statement{conn: c, dpiStmt: dpiStmt, query: query}
+	if C.dpiStmt_getInfo(dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
+		err := maybeBadConn(errors.Errorf("getStmtInfo: %w", c.getError()), c)
+		C.dpiStmt_release(dpiStmt)
+		return nil, err
+	}
+	return &st, nil
 }
 func (c *conn) Commit() error {
 	return c.endTran(true)

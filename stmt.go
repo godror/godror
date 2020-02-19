@@ -38,6 +38,7 @@ import (
 )
 
 type stmtOptions struct {
+	boolString          boolString
 	fetchRowCount       int
 	arraySize           int
 	callTimeout         time.Duration
@@ -47,6 +48,30 @@ type stmtOptions struct {
 	magicTypeConversion bool
 	numberAsString      bool
 }
+
+type boolString struct {
+	True, False string
+}
+
+func (bs boolString) IsZero() bool { return bs.True == "" && bs.False == "" }
+func (bs boolString) MaxLen() int {
+	n := len(bs.True)
+	if m := len(bs.False); m > n {
+		return m
+	}
+	return n
+}
+func (bs boolString) ToString(b bool) string {
+	if b {
+		return bs.True
+	}
+	return bs.False
+}
+func (bs boolString) FromString(s string) bool {
+	return s == bs.True && bs.True != "" || bs.True == "" && s != bs.False
+}
+
+func (o stmtOptions) BoolString() boolString { return o.boolString }
 
 func (o stmtOptions) ExecMode() C.dpiExecMode {
 	if o.execMode == 0 {
@@ -80,6 +105,30 @@ func (o stmtOptions) NumberAsString() bool      { return o.numberAsString }
 // Option holds statement options.
 type Option func(*stmtOptions)
 
+// BoolToString is an option that governs convertsion from bool to string in the database.
+// This is for converting from bool to string, from outside of the database
+// (which does not have a BOOL(EAN) column (SQL) type, only a BOOLEAN PL/SQL type).
+//
+// This will be used only with DML statements and when the PlSQLArrays Option is not used.
+//
+// For the other way around, use an sql.Scanner that converts from string to bool. For example:
+//
+//   type Booler bool
+//   var _ sql.Scanner = Booler{}
+//   func (b Booler) Scan(src interface{}) error {
+//     switch src := src.(type) {
+//       case int: *b = x == 1
+//       case string: *b = x == "Y" || x == "T"  // or any string your database model treats as truth value
+//       default: return fmt.Errorf("unknown scanner source %T", src)
+//     }
+//     return nil
+//   }
+//
+// Such a type cannot be included in this package till we can inject the truth strings into the scanner method.
+func BoolToString(trueVal, falseVal string) Option {
+	return func(o *stmtOptions) { o.boolString = boolString{True: trueVal, False: falseVal} }
+}
+
 // PlSQLArrays is to signal that the slices given in arguments of Exec to
 // be left as is - the default is to treat them as arguments for ExecMany.
 var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
@@ -110,7 +159,7 @@ func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 
 // ClobAsString returns an option to force fetching CLOB columns as strings.
 //
-// DEPRECATED.
+// Deprecated: CLOBs are returned as string by default - for CLOB, use LobAsReader.
 func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false } }
 
 // LobAsReader is an option to set query columns of CLOB/BLOB to be returned as a Lob.
@@ -172,7 +221,7 @@ type statement struct {
 	arrLen int
 	*conn
 	dpiStmt     *C.dpiStmt
-	isReturning bool
+	dpiStmtInfo C.dpiStmtInfo
 }
 type dataGetter func(v interface{}, data []C.dpiData) error
 
@@ -205,6 +254,7 @@ func (st *statement) close(keepDpiStmt bool) error {
 	st.columns = nil
 	st.dpiStmt = nil
 	st.conn = nil
+	st.dpiStmtInfo = C.dpiStmtInfo{}
 
 	for _, v := range vars[:cap(vars)] {
 		if v != nil {
@@ -283,7 +333,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
 		return driver.ResultNoRows, nil
 	}
-	st.isReturning = false
 
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
@@ -335,11 +384,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "st.Execute", "error", err)
 			}
 			if err == nil {
-				var info C.dpiStmtInfo
-				if C.dpiStmt_getInfo(st.dpiStmt, &info) == C.DPI_FAILURE {
-					err = errors.Errorf("getInfo: %w", st.getError())
-				}
-				st.isReturning = info.isReturning != 0
 				break
 			}
 			var cdr interface{ Code() int }
@@ -397,7 +441,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if get == nil {
 			continue
 		}
-		if st.isReturning {
+		if st.dpiStmtInfo.isReturning == 1 {
 			var n C.uint32_t
 			data := &st.data[i][0]
 			if C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) == C.DPI_FAILURE {
@@ -467,7 +511,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	st.Lock()
 	defer st.Unlock()
-	st.isReturning = false
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 
@@ -1024,10 +1067,19 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = dataGetNumber
 		}
 	case bool, []bool:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-		info.set = dataSetBool
-		if info.isOut {
-			*get = dataGetBool
+		if st.dpiStmtInfo.isPLSQL == 1 || st.stmtOptions.boolString.IsZero() || st.PlSQLArrays() {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
+			info.set = dataSetBool
+			if info.isOut {
+				*get = dataGetBool
+			}
+		} else {
+			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+			info.bufSize = st.stmtOptions.boolString.MaxLen()
+			info.set = st.dataSetBoolBytes
+			if info.isOut {
+				*get = st.dataGetBoolBytes
+			}
 		}
 
 	case []byte, [][]byte:
@@ -1846,6 +1898,78 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 
 	default:
 		return errors.Errorf("awaited [][]byte/[]string/[]Number, got %T (%#v)", vv, vv)
+	}
+	return nil
+}
+
+func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
+	switch x := v.(type) {
+	case *bool:
+		if len(data) == 0 || data[0].isNull == 1 {
+			*x = false
+			return nil
+		}
+		db := C.dpiData_getBytes(&data[0])
+		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+		*x = st.stmtOptions.boolString.FromString(string(b))
+
+	case *[]bool:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, false)
+				continue
+			}
+			db := C.dpiData_getBytes(&data[i])
+			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+			*x = append(*x, st.stmtOptions.boolString.FromString(string(b)))
+		}
+
+	case *interface{}:
+		switch y := (*x).(type) {
+		case bool:
+			err := st.dataGetBoolBytes(&y, data[:1])
+			*x = y
+			return err
+		case []bool:
+			err := st.dataGetBoolBytes(&y, data)
+			*x = y
+			return err
+
+		default:
+			return errors.Errorf("awaited bool, got %T (%#v)", x, x)
+		}
+
+	default:
+		return errors.Errorf("awaited bool, got %T (%#v)", v, v)
+	}
+	return nil
+}
+func (st *statement) dataSetBoolBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if vv == nil {
+		return dataSetNull(dv, data, nil)
+	}
+	var p *C.char
+	switch slice := vv.(type) {
+	case bool:
+		i, x := 0, slice
+		data[i].isNull = 0
+		s := []byte(st.stmtOptions.boolString.ToString(x))
+		p = (*C.char)(unsafe.Pointer(&s[0]))
+		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(s)))
+	case []bool:
+		for i, x := range slice {
+			data[i].isNull = 0
+			s := []byte(st.stmtOptions.boolString.ToString(x))
+			p = (*C.char)(unsafe.Pointer(&s[0]))
+			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(s)))
+		}
+
+	default:
+		return errors.Errorf("awaited bool/[]bool, got %T (%#v)", vv, vv)
 	}
 	return nil
 }
