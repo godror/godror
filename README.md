@@ -14,7 +14,7 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 At least Go 1.11 is required!
 
 Although an Oracle client is NOT required for compiling, it is at run time.
-One can download it from https://www.oracle.com/database/technologies/instant-client/downloads.html
+One can download it from <https://www.oracle.com/database/technologies/instant-client/downloads.html>
 
 ## Connect
 
@@ -23,7 +23,7 @@ as connString, or an URL like "oracle://user:passw@service_name".
 
 You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does redact the password
-(for security, to avoid logging it - see https://github.com/go-goracle/goracle/issues/79).
+(for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
 So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
@@ -32,8 +32,8 @@ More advanced configurations can be set with a connection string such as:
 A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
 described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
 
-For other possible connection strings, see https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings
-and https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE .
+For other possible connection strings, see <https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings>
+and <https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE> .
 
 TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
