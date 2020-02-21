@@ -106,9 +106,11 @@ See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 [NewSubscription](https://godoc.org/github.com/godror/godror#Subscription).
 
 ### Calling stored procedures
+
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
 ### Using cursors returned by stored procedures
+
 Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
 then either use the `driver.Rows` interface,
 or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
@@ -142,6 +144,7 @@ and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string
 For `PLS_INTEGER` and `BINARY_INTEGER` (PL/SQL data types) you can use `int32`.
 
 ### CLOB, BLOB
+
 From 2.9.0, LOBs are returned as string/[]byte by default (before it needed the `ClobAsString()` option).
 Now it's reversed, and the default is string, to get a Lob reader, give the `LobAsReader()` option.
 
@@ -156,6 +159,7 @@ So `Prepare` the statement for the retrieval, then `Exec`, and only `Close` the 
 For example, see [z_lob_test.go](./z_lob_test.go), `TestLOBAppend`.
 
 ### TIMESTAMP
+
 As I couldn't make TIMESTAMP arrays work, all `time.Time` is bind as `DATE`, so fractional seconds
 are lost.
 A workaround is converting to string:
