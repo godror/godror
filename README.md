@@ -29,7 +29,7 @@ So use `ConnectionParams.StringWithPassword()`.
 More advanced configurations can be set with a connection string such as:
 `user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
 
-A configuration like this is how you would add functionality such as load balancing across mutliple servers. The portion
+A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
 described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
 
 For other possible connection strings, see https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings
