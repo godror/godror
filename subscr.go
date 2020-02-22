@@ -171,7 +171,9 @@ type SubscriptionParams struct {
 //
 // This code is EXPERIMENTAL yet!
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
-	p := SubscriptionParams{name}
+	p := SubscriptionParams{
+		Name: name,
+	}
 	return c.NewSubscriptionWithParams(p, cb)
 }
 
