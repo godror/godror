@@ -479,7 +479,7 @@ type Conn interface {
 	ClientVersion() (VersionInfo, error)
 	ServerVersion() (VersionInfo, error)
 	GetObjectType(name string) (ObjectType, error)
-	NewSubscriptionWithParams(SubscriptionParams, func(Event)) (*Subscription, error)
+	NewSubscriptionWithParams(SubscriptionParams) (*Subscription, error)
 	NewSubscription(string, func(Event)) (*Subscription, error)
 	Startup(StartupMode) error
 	Shutdown(ShutdownMode) error
