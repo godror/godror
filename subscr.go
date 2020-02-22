@@ -163,6 +163,9 @@ type SubscriptionParams struct {
 	// This feature is only available when Oracle Client 19.4
 	// and Oracle Database 19.4 or higher are being used.
 	ClientInitiated bool
+
+	// Function that will be called when a notification is sent to the subscription
+	Callback func(Event)
 }
 
 // NewSubscription creates a new Subscription in the DB.
@@ -171,10 +174,10 @@ type SubscriptionParams struct {
 //
 // This code is EXPERIMENTAL yet!
 func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
-	p := SubscriptionParams{
+	return c.NewSubscriptionWithParams(SubscriptionParams{
 		Name: name,
-	}
-	return c.NewSubscriptionWithParams(p, cb)
+		Callback: cb,
+	})
 }
 
 // NewSubscriptionWithParams creates a new DB Subscription with the given SubscriptionParams.
@@ -182,11 +185,11 @@ func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, erro
 // Make sure your user has CHANGE NOTIFICATION privilege!
 //
 // This code is EXPERIMENTAL yet!
-func (c *conn) NewSubscriptionWithParams(p SubscriptionParams, cb func(Event)) (*Subscription, error) {
+func (c *conn) NewSubscriptionWithParams(p SubscriptionParams) (*Subscription, error) {
 	if !c.connParams.EnableEvents {
 		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
 	}
-	subscr := Subscription{conn: c, callback: cb}
+	subscr := Subscription{conn: c, callback: p.Callback}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
 	//defer func() { C.free(unsafe.Pointer(params)) }()
 	C.dpiContext_initSubscrCreateParams(c.drv.dpiContext, params)
