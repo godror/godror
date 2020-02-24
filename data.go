@@ -86,7 +86,7 @@ func (d *Data) GetBytes() []byte {
 
 // SetBytes set the data as []byte.
 func (d *Data) SetBytes(b []byte) {
-	if b == nil {
+	if len(b) == 0 { // yes, empty slice is NULL, too!
 		d.dpiData.isNull = 1
 		return
 	}
