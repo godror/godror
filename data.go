@@ -241,7 +241,7 @@ func (d *Data) GetTime() time.Time {
 // SetTime sets Time to data.
 func (d *Data) SetTime(t time.Time) {
 	d.dpiData.isNull = C.int(b2i(t.IsZero()))
-	if d.dpiData.isNull == 0 {
+	if d.dpiData.isNull == 1 {
 		return
 	}
 	_, z := t.Zone()
