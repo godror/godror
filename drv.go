@@ -573,6 +573,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}).String()
 }
 
+// Comb the several contradicting settings of the ConnectionParams.
 func (P *ConnectionParams) Comb() {
 	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
 	if P.IsPrelim || P.StandaloneConnection {
@@ -766,8 +767,9 @@ func (P ConnectionParams) authMode() C.dpiAuthMode {
 
 // OraErr is an error holding the ORA-01234 code and the message.
 type OraErr struct {
-	message string
-	code    int
+	message, funName, action, sqlState string
+	code, offset                       int
+	recoverable                        bool
 }
 
 // AsOraErr returns the underlying *OraErr and whether it succeeded.
@@ -793,8 +795,13 @@ func (oe *OraErr) Error() string {
 }
 func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
 	oe := OraErr{
-		code:    int(errInfo.code),
-		message: strings.TrimSpace(C.GoString(errInfo.message)),
+		code:        int(errInfo.code),
+		message:     strings.TrimSpace(C.GoStringN(errInfo.message, C.int(errInfo.messageLength))),
+		offset:      int(errInfo.offset),
+		funName:     strings.TrimSpace(C.GoString(errInfo.fnName)),
+		action:      strings.TrimSpace(C.GoString(errInfo.action)),
+		sqlState:    strings.TrimSpace(C.GoString(errInfo.sqlState)),
+		recoverable: errInfo.isRecoverable != 0,
 	}
 	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
 		len(oe.message) > 9 && oe.message[9] == ':' {
@@ -805,6 +812,21 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
 	oe.message = strings.TrimPrefix(oe.message, fmt.Sprintf("ORA-%05d: ", oe.Code()))
 	return &oe
 }
+
+// Offset returns the parse error offset (in bytes) when executing a statement or the row offset when performing bulk operations or fetching batch error information. If neither of these cases are true, the value is 0.
+func (oe *OraErr) Offset() int { return oe.offset }
+
+// FunName returns the public ODPI-C function name which was called in which the error took place. This is a null-terminated ASCII string.
+func (oe *OraErr) FunName() string { return oe.funName }
+
+// Action returns the internal action that was being performed when the error took place. This is a null-terminated ASCII string.
+func (oe *OraErr) Action() string { return oe.action }
+
+// SQLState returns the SQLSTATE code associated with the error. This is a 5 character null-terminated string.
+func (oe *OraErr) SQLState() string { return oe.sqlState }
+
+// Recoverable indicates if the error is recoverable. This is always false unless both client and server are at release 12.1 or higher.
+func (oe *OraErr) Recoverable() bool { return oe.recoverable }
 
 // newErrorInfo is just for testing: testing cannot use Cgo...
 func newErrorInfo(code int, message string) C.dpiErrorInfo {
