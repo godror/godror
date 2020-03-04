@@ -1,4 +1,4 @@
-// Copyright 2017 Tamás Gulácsi
+// Copyright 2017, 2020 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -86,7 +86,7 @@ func (d *Data) GetBytes() []byte {
 
 // SetBytes set the data as []byte.
 func (d *Data) SetBytes(b []byte) {
-	if b == nil {
+	if len(b) == 0 { // yes, empty slice is NULL, too!
 		d.dpiData.isNull = 1
 		return
 	}
@@ -241,7 +241,7 @@ func (d *Data) GetTime() time.Time {
 // SetTime sets Time to data.
 func (d *Data) SetTime(t time.Time) {
 	d.dpiData.isNull = C.int(b2i(t.IsZero()))
-	if d.dpiData.isNull == 0 {
+	if d.dpiData.isNull == 1 {
 		return
 	}
 	_, z := t.Zone()

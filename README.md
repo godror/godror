@@ -14,7 +14,7 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 At least Go 1.11 is required!
 
 Although an Oracle client is NOT required for compiling, it is at run time.
-One can download it from https://www.oracle.com/database/technologies/instant-client/downloads.html
+One can download it from <https://www.oracle.com/database/technologies/instant-client/downloads.html>
 
 ## Connect
 
@@ -23,17 +23,17 @@ as connString, or an URL like "oracle://user:passw@service_name".
 
 You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does redact the password
-(for security, to avoid logging it - see https://github.com/go-goracle/goracle/issues/79).
+(for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
 So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
 `user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
 
-A configuration like this is how you would add functionality such as load balancing across mutliple servers. The portion
+A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
 described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
 
-For other possible connection strings, see https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings
-and https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE .
+For other possible connection strings, see <https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings>
+and <https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE> .
 
 TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
@@ -106,9 +106,11 @@ See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 [NewSubscription](https://godoc.org/github.com/godror/godror#Subscription).
 
 ### Calling stored procedures
+
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
 ### Using cursors returned by stored procedures
+
 Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
 then either use the `driver.Rows` interface,
 or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
@@ -142,6 +144,7 @@ and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string
 For `PLS_INTEGER` and `BINARY_INTEGER` (PL/SQL data types) you can use `int32`.
 
 ### CLOB, BLOB
+
 From 2.9.0, LOBs are returned as string/[]byte by default (before it needed the `ClobAsString()` option).
 Now it's reversed, and the default is string, to get a Lob reader, give the `LobAsReader()` option.
 
@@ -156,6 +159,7 @@ So `Prepare` the statement for the retrieval, then `Exec`, and only `Close` the 
 For example, see [z_lob_test.go](./z_lob_test.go), `TestLOBAppend`.
 
 ### TIMESTAMP
+
 As I couldn't make TIMESTAMP arrays work, all `time.Time` is bind as `DATE`, so fractional seconds
 are lost.
 A workaround is converting to string:

@@ -1,4 +1,4 @@
-// Copyright 2018 Kurt K, Tamás Gulácsi.
+// Copyright 2018, 2020 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
