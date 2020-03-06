@@ -24,6 +24,63 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
+// SubscriptionOption is for setting various parameters of the Subscription.
+type SubscriptionOption func(*subscriptionParams)
+
+// SubscrHostPort is a SubscriptionOption that sets tha IPAddress and Port to the specified values.
+//
+// The address is on which the subscription listens to receive notifications,
+// for a server-initiated connection.
+//
+// The address can be an IPv4 address in dotted decimal format such as 192.1.2.34
+// or an IPv6 address in hexadecimal format such as 2001:0db8:0000:0000:0217:f2ff:fe4b:4ced.
+//
+// By default (address is the empty string), an IP address will be selected by the Oracle client.
+//
+// The port number on which to receive notifications, for a server-initiated connection.
+//
+// The default value of 0 means that a port number will be selected by the Oracle client.
+func SubscrHostPort(address string, port uint32) SubscriptionOption {
+	return func(p *subscriptionParams) {
+		p.IPAddress, p.Port = address, port
+	}
+}
+
+// SubscrClientInitiated sets whether the subscription is client-initated.
+func SubscrClientInitiated(b bool) SubscriptionOption {
+	return func(p *subscriptionParams) {
+		p.ClientInitiated = b
+	}
+}
+
+// subscrParams are parameters for a new Subscription.
+type subscriptionParams struct {
+	// Name of the subscription
+	Name string
+
+	// IPAddress on which the subscription listens to receive notifications,
+	// for a server-initiated connection.
+	//
+	// The IP address can be an IPv4 address in dotted decimal format such as 192.1.2.34
+	// or an IPv6 address in hexadecimal format such as 2001:0db8:0000:0000:0217:f2ff:fe4b:4ced.
+	//
+	// By default, an IP address will be selected by the Oracle client.
+	IPAddress string
+
+	// Port number on which to receive notifications, for a server-initiated connection.
+	// The default value of 0 means that a port number will be selected by the Oracle client.
+	Port uint32
+
+	// ClientInitiated specifies whether a client or a server initiated connection should be created.
+	//
+	// This feature is only available when Oracle Client 19.4
+	// and Oracle Database 19.4 or higher are being used.
+	ClientInitiated bool
+
+	// Callback function that will be called when a notification is sent to the subscription
+	Callback func(Event)
+}
+
 // Cannot pass *Subscription to C, so pass an uint64 that points to this map entry
 var (
 	subscriptionsMu sync.Mutex
@@ -139,55 +196,21 @@ type Subscription struct {
 
 func (s *Subscription) getError() error { return s.conn.getError() }
 
-// SubscriptionParams are parameters for a new Subscription.
-type SubscriptionParams struct {
-
-	// The name of the subscription
-	Name string
-
-	// IP address on which the subscription listens to receive notifications,
-	// for a server-initiated connection.
-	//
-	// The IP address can be an IPv4 address in dotted decimal format such as 192.1.2.34
-	// or an IPv6 address in hexadecimal format such as 2001:0db8:0000:0000:0217:f2ff:fe4b:4ced.
-	//
-	// By default, an IP address will be selected by the Oracle client.
-	IPAddress	string
-
-	// Port number on which to receive notifications, for a server-initiated connection.
-	// The default value of 0 means that a port number will be selected by the Oracle client.
-	Port uint32
-
-	// Specifies whether a client or a server initiated connection should be created.
-	//
-	// This feature is only available when Oracle Client 19.4
-	// and Oracle Database 19.4 or higher are being used.
-	ClientInitiated bool
-
-	// Function that will be called when a notification is sent to the subscription
-	Callback func(Event)
-}
-
 // NewSubscription creates a new Subscription in the DB.
 //
 // Make sure your user has CHANGE NOTIFICATION privilege!
 //
 // This code is EXPERIMENTAL yet!
-func (c *conn) NewSubscription(name string, cb func(Event)) (*Subscription, error) {
-	return c.NewSubscriptionWithParams(SubscriptionParams{
-		Name: name,
-		Callback: cb,
-	})
-}
-
-// NewSubscriptionWithParams creates a new DB Subscription with the given SubscriptionParams.
-//
-// Make sure your user has CHANGE NOTIFICATION privilege!
-//
-// This code is EXPERIMENTAL yet!
-func (c *conn) NewSubscriptionWithParams(p SubscriptionParams) (*Subscription, error) {
+func (c *conn) NewSubscription(name string, cb func(Event), options ...SubscriptionOption) (*Subscription, error) {
 	if !c.connParams.EnableEvents {
 		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
+	}
+	p := subscriptionParams{
+		Name:     name,
+		Callback: cb,
+	}
+	for _, o := range options {
+		o(&p)
 	}
 	subscr := Subscription{conn: c, callback: p.Callback}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
