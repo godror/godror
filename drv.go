@@ -806,7 +806,7 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
 	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
 		len(oe.message) > 9 && oe.message[9] == ':' {
 		if i, _ := strconv.Atoi(oe.message[4:9]); i > 0 {
-			oe.code = i
+			oe.code, oe.message = i, strings.TrimSpace(oe.message[10:])
 		}
 	}
 	oe.message = strings.TrimPrefix(oe.message, fmt.Sprintf("ORA-%05d: ", oe.Code()))
@@ -830,7 +830,7 @@ func (oe *OraErr) Recoverable() bool { return oe.recoverable }
 
 // newErrorInfo is just for testing: testing cannot use Cgo...
 func newErrorInfo(code int, message string) C.dpiErrorInfo {
-	return C.dpiErrorInfo{code: C.int32_t(code), message: C.CString(message)}
+	return C.dpiErrorInfo{code: C.int32_t(code), message: C.CString(message), messageLength: C.uint(len(message))}
 }
 
 // against deadcode

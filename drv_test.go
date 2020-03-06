@@ -12,7 +12,7 @@ import (
 
 func TestFromErrorInfo(t *testing.T) {
 	errInfo := newErrorInfo(0, "ORA-24315: érvénytelen attribútumtípus\n")
-	t.Log("errInfo", errInfo)
+	t.Logf("errInfo: %#v", errInfo)
 	oe := fromErrorInfo(errInfo)
 	t.Log("OraErr", oe)
 	if oe.Code() != 24315 {
