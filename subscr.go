@@ -55,9 +55,6 @@ func SubscrClientInitiated(b bool) SubscriptionOption {
 
 // subscrParams are parameters for a new Subscription.
 type subscriptionParams struct {
-	// Name of the subscription
-	Name string
-
 	// IPAddress on which the subscription listens to receive notifications,
 	// for a server-initiated connection.
 	//
@@ -76,9 +73,6 @@ type subscriptionParams struct {
 	// This feature is only available when Oracle Client 19.4
 	// and Oracle Database 19.4 or higher are being used.
 	ClientInitiated bool
-
-	// Callback function that will be called when a notification is sent to the subscription
-	Callback func(Event)
 }
 
 // Cannot pass *Subscription to C, so pass an uint64 that points to this map entry
@@ -205,14 +199,11 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 	if !c.connParams.EnableEvents {
 		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
 	}
-	p := subscriptionParams{
-		Name:     name,
-		Callback: cb,
-	}
+	var p subscriptionParams
 	for _, o := range options {
 		o(&p)
 	}
-	subscr := Subscription{conn: c, callback: p.Callback}
+	subscr := Subscription{conn: c, callback: cb}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
 	//defer func() { C.free(unsafe.Pointer(params)) }()
 	C.dpiContext_initSubscrCreateParams(c.drv.dpiContext, params)
@@ -220,9 +211,9 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 	params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
 	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.operations = C.DPI_OPCODE_ALL_OPS
-	if p.Name != "" {
-		params.name = C.CString(p.Name)
-		params.nameLength = C.uint32_t(len(p.Name))
+	if name != "" {
+		params.name = C.CString(name)
+		params.nameLength = C.uint32_t(len(name))
 	}
 	if p.IPAddress != "" {
 		params.ipAddress = C.CString(p.IPAddress)
