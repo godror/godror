@@ -28,3 +28,7 @@ jobs:
 
     - name: Build
       run: go build -v .
+
+    - name: Test
+      run: go test
+      continue-on-error: true  # libclntsh.so is needed
