@@ -1,5 +1,4 @@
-[![Travis](https://travis-ci.org/godror/godror.svg?branch=v2)](https://travis-ci.org/godror/godror)
-[![CircleCI](https://circleci.com/gh/godror/godror.svg?style=svg)](https://circleci.com/gh/godror/godror)
+![Go](https://github.com/godror/godror/workflows/Go/badge.svg)
 [![GoDoc](https://godoc.org/github.com/godror/godror?status.svg)](http://godoc.org/github.com/godror/godror)
 [![Go Report Card](https://goreportcard.com/badge/github.com/godror/godror)](https://goreportcard.com/report/github.com/godror/godror)
 [![codecov](https://codecov.io/gh/godror/godror/branch/master/graph/badge.svg)](https://codecov.io/gh/godror/godror)
