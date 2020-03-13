@@ -949,13 +949,14 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
+	P := c.ConnectionParams
 	if key := ctx.Value(userpwCtxKey); key != nil {
-		userpw := key.([3]string)
-		c.ConnectionParams.Username = userpw[0]
-		c.ConnectionParams.Password = userpw[1]
-		c.ConnClass = userpw[2]
+		if userpw, ok := key.([3]string); ok {
+			P.Username = userpw[0]
+			P.Password = userpw[1]
+		}
 	}
-	conn, err := c.drv.openConn(c.ConnectionParams)
+	conn, err := c.drv.openConn(P)
 	if err != nil || c.onInit == nil || !conn.newSession {
 		return conn, err
 	}
