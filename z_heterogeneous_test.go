@@ -85,3 +85,30 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	}
 
 }
+
+func TestContextWithUserPassw(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cs, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.HeterogeneousPool = true
+	username, password := cs.Username, cs.Password
+	cs.Username, cs.Password = "", ""
+	testHeterogeneousConStr := cs.StringWithPassword()
+	t.Log(testHeterogeneousConStr)
+
+	var testHeterogeneousDB *sql.DB
+	if testHeterogeneousDB, err = sql.Open("godror", testHeterogeneousConStr); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
+	}
+	defer testHeterogeneousDB.Close()
+
+	ctx = godror.ContextWithUserPassw(ctx, username, password, "")
+	if err := testHeterogeneousDB.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(ctx)
+}

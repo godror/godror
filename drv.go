@@ -1137,7 +1137,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 //
 // The returned connection is only used by one goroutine at a
 // time.
-func (c connector) Connect(context.Context) (driver.Conn, error) {
+func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
     if c.PoolParams != nil {
         pool, err := c.drv.openPool(c.PoolParams)
         if err != nil {
@@ -1149,7 +1149,14 @@ func (c connector) Connect(context.Context) (driver.Conn, error) {
         }
         return &connection, nil
     }
-	conn, err := c.drv.openConn(c.ConnectionParams)
+	P := c.ConnectionParams
+	if key := ctx.Value(userpwCtxKey); key != nil {
+		if userpw, ok := key.([3]string); ok {
+			P.Username = userpw[0]
+			P.Password = userpw[1]
+		}
+	}
+	conn, err := c.drv.openConn(P)
 	if err != nil || c.onInit == nil || !conn.newSession {
 		return conn, err
 	}
