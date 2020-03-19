@@ -144,10 +144,15 @@ func (d *drv) openPool(P *PoolParams) (*connPool, error) {
             P.UserName, P.Password, P.DSN, P.MinSessions, P.MaxSessions,
             P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
             P.Heterogeneous, P.EnableEvents)
-    fmt.Printf("Pool key: |%s|\n", poolKey)
+    if Log != nil {
+        Log("pool key", poolKey)
+    }
 
     // if pool already exists, return it immediately
-    if pool, ok := d.pools[poolKey]; ok {
+    d.mu.Lock()
+    pool, ok := d.pools[poolKey]
+    d.mu.Unlock()
+    if ok {
         return pool, nil
     }
 
