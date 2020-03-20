@@ -20,7 +20,7 @@ jobs:
       id: go
 
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@master
 
     - name: Get dependencies
       run: |
@@ -29,33 +29,18 @@ jobs:
     - name: Build
       run: go build -v .
 
-  shadow:
-    name: Shadow
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
     - name: check
       uses: grandcolline/golang-github-actions@v1.1.0
       with:
         run: shadow
         token: ${{ secrets.GITHUB_TOKEN }}
 
-  staticcheck:
-    name: StaticCheck
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
     - name: check
       uses: grandcolline/golang-github-actions@v1.1.0
       with:
         run: staticcheck
         token: ${{ secrets.GITHUB_TOKEN }}
 
-  sec:
-    name: Sec
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
     - name: check
       uses: grandcolline/golang-github-actions@v1.1.0
       with:
@@ -63,7 +48,6 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         flags: "-exclude=G104"
 
-  test:
     - name: Test
       run: go test
       continue-on-error: true  # libclntsh.so is needed
