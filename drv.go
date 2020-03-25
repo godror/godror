@@ -244,72 +244,6 @@ func (d *drv) openPool(P *PoolParams) (*connPool, error) {
 }
 
 
-func (c *conn) acquireFromPool(pool *connPool, P *ConnParams) error {
-
-    // populate connection creation parameters
-    var connCreateParams C.dpiConnCreateParams
-    if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
-        return errors.Errorf("initConnCreateParams: %w", "", c.getError())
-    }
-    if len(P.ShardingKey) > 0 {
-        var tempData C.dpiData
-        mem := C.malloc(C.sizeof_dpiShardingKeyColumn * C.size_t(len(P.ShardingKey)))
-        defer C.free(mem)
-
-        columns := (*[1 << 30]C.dpiShardingKeyColumn)(mem)
-        for i, value := range P.ShardingKey {
-            switch value.(type) {
-            case int:
-                columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
-                columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-                C.dpiData_setInt64(&tempData, C.int64_t(value.(int)))
-            case string:
-                columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
-                columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-                strVal := value.(string)
-                cs := C.CString(strVal)
-                defer C.free(unsafe.Pointer(cs))
-                C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(strVal)))
-            default:
-                return errors.New("Unsupported data type for sharding")
-            }
-            columns[i].value = tempData.value
-        }
-        connCreateParams.shardingKeyColumns = &columns[0]
-        connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
-    }
-
-    // acquire connection from the pool
-    dc := C.malloc(C.sizeof_void)
-    if Log != nil {
-        Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
-    }
-    if C.dpiPool_acquireConnection(pool.dpiPool,
-            C._GoStringPtr(P.UserName), C.uint32_t(C._GoStringLen(P.UserName)),
-            C._GoStringPtr(P.Password), C.uint32_t(C._GoStringLen(P.Password)),
-            &connCreateParams,
-            (**C.dpiConn)(unsafe.Pointer(&dc))) == C.DPI_FAILURE {
-        C.free(unsafe.Pointer(dc))
-        return errors.Errorf("acquirePoolConnection: %w", c.getError())
-    }
-
-    c.dpiConn = (*C.dpiConn)(dc)
-    c.currentUser = P.UserName
-    c.newSession = connCreateParams.outNewSession == 1
-    c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
-    c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
-    err := c.init([]string{})
-    if err == nil {
-        c.mu.Lock()
-        pool.serverVersion = c.Server
-        pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
-        c.mu.Unlock()
-    }
-
-    return err
-}
-
-
 func (d *drv) init() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -550,6 +484,73 @@ func (dp *connPool) acquireConn(c *conn, P ConnectionParams) error {
 
 	return err
 }
+
+
+func (pool *connPool) acquireConn2(c *conn, P *ConnParams) error {
+
+    // populate connection creation parameters
+    var connCreateParams C.dpiConnCreateParams
+    if C.dpiContext_initConnCreateParams(c.drv.dpiContext, &connCreateParams) == C.DPI_FAILURE {
+        return errors.Errorf("initConnCreateParams: %w", "", c.getError())
+    }
+    if len(P.ShardingKey) > 0 {
+        var tempData C.dpiData
+        mem := C.malloc(C.sizeof_dpiShardingKeyColumn * C.size_t(len(P.ShardingKey)))
+        defer C.free(mem)
+
+        columns := (*[1 << 30]C.dpiShardingKeyColumn)(mem)
+        for i, value := range P.ShardingKey {
+            switch value.(type) {
+            case int:
+                columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
+                columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+                C.dpiData_setInt64(&tempData, C.int64_t(value.(int)))
+            case string:
+                columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
+                columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+                strVal := value.(string)
+                cs := C.CString(strVal)
+                defer C.free(unsafe.Pointer(cs))
+                C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(strVal)))
+            default:
+                return errors.New("Unsupported data type for sharding")
+            }
+            columns[i].value = tempData.value
+        }
+        connCreateParams.shardingKeyColumns = &columns[0]
+        connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
+    }
+
+    // acquire connection from the pool
+    dc := C.malloc(C.sizeof_void)
+    if Log != nil {
+        Log("C", "dpiPool_acquirePoolConnection", "conn", connCreateParams)
+    }
+    if C.dpiPool_acquireConnection(pool.dpiPool,
+            C._GoStringPtr(P.UserName), C.uint32_t(C._GoStringLen(P.UserName)),
+            C._GoStringPtr(P.Password), C.uint32_t(C._GoStringLen(P.Password)),
+            &connCreateParams,
+            (**C.dpiConn)(unsafe.Pointer(&dc))) == C.DPI_FAILURE {
+        C.free(unsafe.Pointer(dc))
+        return errors.Errorf("acquirePoolConnection: %w", c.getError())
+    }
+
+    c.dpiConn = (*C.dpiConn)(dc)
+    c.currentUser = P.UserName
+    c.newSession = connCreateParams.outNewSession == 1
+    c.Client, c.Server = c.drv.clientVersion, pool.serverVersion
+    c.timeZone, c.tzOffSecs = pool.timeZone, pool.tzOffSecs
+    err := c.init([]string{})
+    if err == nil {
+        c.mu.Lock()
+        pool.serverVersion = c.Server
+        pool.timeZone, pool.tzOffSecs = c.timeZone, c.tzOffSecs
+        c.mu.Unlock()
+    }
+
+    return err
+}
+
 
 func (c *conn) acquireConn(user, pass, connClass string) error {
 	P := c.connParams
@@ -1149,7 +1150,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
             return nil, err
         }
         connection := conn{drv: c.drv, timeZone: time.Local}
-        if err := connection.acquireFromPool(pool, c.ConnParams); err != nil {
+        if err := pool.acquireConn2(&connection, c.ConnParams); err != nil {
             return nil, err
         }
         return &connection, nil
