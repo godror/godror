@@ -612,7 +612,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 				connString = connString[:len(connString)-10]
 			}
 		}
-		if i = strings.IndexByte(connString, '@'); i >= 0 {
+		if i = strings.LastIndexByte(connString, '@'); i >= 0 {
 			P.Password, P.SID = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
