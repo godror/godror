@@ -187,7 +187,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 
 	P.Comb()
-	c := &conn{drv: d, connParams: P, timeZone: time.Local, Client: d.clientVersion}
+	c := &conn{drv: d, connParams: P, timeZone: P.Timezone, Client: d.clientVersion}
 	connString := P.String()
 
 	if Log != nil {
@@ -301,7 +301,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, errors.Errorf("params=%s extAuth=%v: %w", P.String(), extAuth, d.getError())
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
-	pool := &connPool{dpiPool: dp}
+	pool := &connPool{dpiPool: dp, timeZone: P.Timezone}
 	d.mu.Lock()
 	d.pools[connString] = pool
 	d.mu.Unlock()
@@ -674,6 +674,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
 		}
+	} else {
+		P.Timezone = time.Local
 	}
 
 	for _, task := range []struct {
