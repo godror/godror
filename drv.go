@@ -294,7 +294,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 	}
 
 	P.Comb()
-	c := &conn{drv: d, connParams: P, timeZone: time.Local, Client: d.clientVersion}
+	c := &conn{drv: d, connParams: P, timeZone: P.Timezone, Client: d.clientVersion}
 	connString := P.String()
 
 	if Log != nil {
@@ -408,7 +408,7 @@ func (d *drv) openConn(P ConnectionParams) (*conn, error) {
 		return nil, errors.Errorf("params=%s extAuth=%v: %w", P.String(), extAuth, d.getError())
 	}
 	C.dpiPool_setStmtCacheSize(dp, 40)
-	pool := &connPool{dpiPool: dp}
+	pool := &connPool{dpiPool: dp, timeZone: P.Timezone}
 	d.mu.Lock()
 	d.pools[connString] = pool
 	d.mu.Unlock()
@@ -713,8 +713,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			q.Add("newPassword", "SECRET-"+base64.URLEncoding.EncodeToString(hsh.Sum(nil)))
 		}
 	}
-	s = ""
-	if P.Timezone != nil {
+	s = "local"
+	if P.Timezone != nil && P.Timezone != time.Local {
 		s = P.Timezone.String()
 	}
 	q.Add("timezone", s)
@@ -755,6 +755,9 @@ func (P *ConnectionParams) Comb() {
 		P.ConnClass = ""
 		P.HeterogeneousPool = false
 	}
+	if P.Timezone == nil {
+		P.Timezone = time.Local
+	}
 }
 
 // ParseConnString parses the given connection string into a struct.
@@ -767,6 +770,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		MaxLifeTime:    DefaultMaxLifeTime,
 		WaitTimeout:    DefaultWaitTimeout,
 		SessionTimeout: DefaultSessionTimeout,
+		Timezone:       time.Local,
 	}
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
@@ -786,7 +790,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 				connString = connString[:len(connString)-10]
 			}
 		}
-		if i = strings.IndexByte(connString, '@'); i >= 0 {
+		if i = strings.LastIndexByte(connString, '@'); i >= 0 {
 			P.Password, P.SID = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
@@ -837,8 +841,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		*task.Dest = q.Get(task.Key) == "1"
 	}
 	if tz := q.Get("timezone"); tz != "" {
-		if tz == "local" {
-			P.Timezone = time.Local
+		if strings.EqualFold(tz, "local") {
+			// P.Timezone = time.Local // already set
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
 				return P, errors.Errorf("%s: %w", tz, err)

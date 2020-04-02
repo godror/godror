@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.13.3]
+### Added
+- Dummy .go files to allow vendoring with "go mod vendor".
+
 ## [0.13.0]
 ### Changed
 - NewSubscription got ...SubscriptionOption optional arguments.
