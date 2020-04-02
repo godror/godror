@@ -667,7 +667,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		*task.Dest = q.Get(task.Key) == "1"
 	}
 	if tz := q.Get("timezone"); tz != "" {
-		if tz == "local" {
+		if strings.EqualFold(tz, "local") {
 			// P.Timezone = time.Local // already set
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {

@@ -27,6 +27,7 @@ func TestParseConnString(t *testing.T) {
 		MaxLifeTime:    DefaultMaxLifeTime,
 		SessionTimeout: DefaultSessionTimeout,
 		WaitTimeout:    DefaultWaitTimeout,
+		Timezone:       time.Local,
 	}
 	wantDefault := ConnectionParams{
 		Username:       "user",
@@ -38,7 +39,9 @@ func TestParseConnString(t *testing.T) {
 		PoolIncrement:  DefaultPoolIncrement,
 		MaxLifeTime:    DefaultMaxLifeTime,
 		SessionTimeout: DefaultSessionTimeout,
-		WaitTimeout:    DefaultWaitTimeout}
+		WaitTimeout:    DefaultWaitTimeout,
+		Timezone:       time.Local,
+	}
 
 	wantXO := wantDefault
 	wantXO.SID = "localhost/sid"
@@ -62,7 +65,7 @@ func TestParseConnString(t *testing.T) {
 		"simple": {In: "user/pass@sid", Want: wantDefault},
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
-				ConnClass: "POOLED", IsSysOper: true,
+				ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
 				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second}},
 
@@ -76,8 +79,8 @@ func TestParseConnString(t *testing.T) {
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
 			Want: ConnectionParams{
-				SID:         "[::1]:12345/dbname",
-				ConnClass:   "GODROR",
+				SID:       "[::1]:12345/dbname",
+				ConnClass: "GODROR", Timezone: time.Local,
 				MinSessions: 1, MaxSessions: 1000, PoolIncrement: 1,
 				WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
 			},
@@ -85,7 +88,7 @@ func TestParseConnString(t *testing.T) {
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
-				ConnClass: "POOLED", IsSysOper: true,
+				ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
 				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
 				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
 				OnInit: []string{"a", "b"},
@@ -125,12 +128,31 @@ func TestMaybeBadConn(t *testing.T) {
 }
 
 func TestCalculateTZ(t *testing.T) {
+	const bdpstName = "Europe/Budapest"
+	bdpstZone, bdpstOff := "+01:00", int(3600)
+	bdpstLoc, err := time.LoadLocation(bdpstName)
+	if err != nil {
+		t.Log(err)
+	} else {
+		nowUTC := time.Now().UTC()
+		const format = "20060102T150405"
+		nowBdpst, err := time.ParseInLocation(format, nowUTC.Format(format), bdpstLoc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bdpstOff = int(nowUTC.Sub(nowBdpst) / time.Second)
+		secs := bdpstOff % 3600
+		if secs < 0 {
+			secs = -secs
+		}
+		bdpstZone = fmt.Sprintf("%+02d:%02d", bdpstOff/3600, secs)
+	}
 	for _, tC := range []struct {
 		dbTZ, timezone string
 		off            int
 		err            error
 	}{
-		{dbTZ: "Europe/Budapest", timezone: "+01:00", off: 3600},
+		{dbTZ: bdpstName, timezone: bdpstZone, off: bdpstOff},
 		{dbTZ: "+01:00", off: +3600},
 		{off: 1800, err: io.EOF},
 		{timezone: "+00:30", off: 1800},
