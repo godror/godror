@@ -539,8 +539,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			q.Add("newPassword", "SECRET-"+base64.URLEncoding.EncodeToString(hsh.Sum(nil)))
 		}
 	}
-	s = ""
-	if P.Timezone != nil {
+	s = "local"
+	if P.Timezone != nil && P.Timezone != time.Local {
 		s = P.Timezone.String()
 	}
 	q.Add("timezone", s)
@@ -581,6 +581,9 @@ func (P *ConnectionParams) Comb() {
 		P.ConnClass = ""
 		P.HeterogeneousPool = false
 	}
+	if P.Timezone == nil {
+		P.Timezone = time.Local
+	}
 }
 
 // ParseConnString parses the given connection string into a struct.
@@ -593,6 +596,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		MaxLifeTime:    DefaultMaxLifeTime,
 		WaitTimeout:    DefaultWaitTimeout,
 		SessionTimeout: DefaultSessionTimeout,
+		Timezone:       time.Local,
 	}
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
@@ -664,7 +668,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	if tz := q.Get("timezone"); tz != "" {
 		if tz == "local" {
-			P.Timezone = time.Local
+			// P.Timezone = time.Local // already set
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
 				return P, errors.Errorf("%s: %w", tz, err)
@@ -674,8 +678,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
 		}
-	} else {
-		P.Timezone = time.Local
 	}
 
 	for _, task := range []struct {
