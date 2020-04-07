@@ -136,7 +136,7 @@ Just use plain old `string` !
 
 ### NUMBER
 
-`NUMBER`s are transferred as `godror.Number` (which is a `string`) to Go under the hood.
+`NUMBER`s are transferred as `string` to Go under the hood.
 This ensures that we don't lose any precision (Oracle's NUMBER has 38 decimal digits),
 and `sql.Scan` will hide this and `Scan` into your `int64`, `float64` or `string`, as you wish.
 

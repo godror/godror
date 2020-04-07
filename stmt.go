@@ -38,15 +38,13 @@ import (
 )
 
 type stmtOptions struct {
-	boolString          boolString
-	fetchRowCount       int
-	arraySize           int
-	callTimeout         time.Duration
-	execMode            C.dpiExecMode
-	plSQLArrays         bool
-	lobAsReader         bool
-	magicTypeConversion bool
-	numberAsString      bool
+	boolString    boolString
+	fetchRowCount int
+	arraySize     int
+	callTimeout   time.Duration
+	execMode      C.dpiExecMode
+	plSQLArrays   bool
+	lobAsReader   bool
 }
 
 type boolString struct {
@@ -98,9 +96,6 @@ func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
 func (o stmtOptions) ClobAsString() bool { return !o.lobAsReader }
 func (o stmtOptions) LobAsReader() bool  { return o.lobAsReader }
-
-func (o stmtOptions) MagicTypeConversion() bool { return o.magicTypeConversion }
-func (o stmtOptions) NumberAsString() bool      { return o.numberAsString }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -182,16 +177,6 @@ func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false
 // if your database is remote with high latency you can have a significant
 // performance penalty!
 func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true } }
-
-// MagicTypeConversion returns an option to force converting named scalar types (e.g. "type underlying int64") to their scalar underlying type.
-func MagicTypeConversion() Option {
-	return func(o *stmtOptions) { o.magicTypeConversion = true }
-}
-
-// NumberAsString returns an option to return numbers as string, not Number.
-func NumberAsString() Option {
-	return func(o *stmtOptions) { o.numberAsString = true }
-}
 
 // CallTimeout sets the round-trip timeout (OCI_ATTR_CALL_TIMEOUT).
 //
@@ -897,78 +882,14 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	switch value.(type) {
 	case *driver.Rows:
 	default:
-		var magic bool
 		rv := reflect.ValueOf(value)
 		kind := rv.Kind()
-		if kind != reflect.Ptr {
-			if magic = st.MagicTypeConversion(); magic {
-				if isValuer {
-					var err error
-					if value, err = vlr.Value(); err != nil {
-						return value, errors.Errorf("arg.Value(): %w", err)
-					}
-					return st.bindVarTypeSwitch(info, get, value)
-				}
-			}
-		} else {
+		if kind == reflect.Ptr {
 			if nilPtr = rv.IsNil(); nilPtr {
 				info.set = dataSetNull
 				value = reflect.Zero(rv.Type().Elem()).Interface()
 			} else {
 				value = rv.Elem().Interface()
-			}
-		}
-		if magic {
-			switch kind {
-			case reflect.Bool,
-				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-				reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-				reflect.Float32, reflect.Float64,
-				reflect.String:
-			default:
-				magic = false
-			}
-		}
-		if magic {
-			switch rv.Type().Name() {
-			case "bool",
-				"int", "int8", "int16", "int32", "int64",
-				"uint", "uint8", "uint16", "uint32", "uint64",
-				"float32", "float64",
-				"string":
-				// nothing to do
-				magic = false
-			default:
-			}
-		}
-		if magic {
-			switch kind {
-			case reflect.Bool:
-				value = rv.Bool()
-			case reflect.Int:
-				value = int(rv.Int())
-			case reflect.Int8:
-				value = int8(rv.Int())
-			case reflect.Int16:
-				value = int16(rv.Int())
-			case reflect.Int32:
-				value = int32(rv.Int())
-			case reflect.Int64:
-				value = rv.Int()
-			case reflect.Uint:
-				value = uint(rv.Uint())
-			case reflect.Uint16:
-				value = uint16(rv.Uint())
-			case reflect.Uint32:
-				value = uint32(rv.Uint())
-			case reflect.Uint64:
-				value = rv.Uint()
-			case reflect.Float32:
-				value = float32(rv.Float())
-			case reflect.Float64:
-				value = rv.Float()
-			case reflect.String:
-				value = rv.String()
 			}
 		}
 	}
