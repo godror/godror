@@ -44,7 +44,8 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	currentTT      TraceTag
-	connParams     ConnectionParams
+    poolParams     *PoolParams
+    connParams     *ConnParams
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
@@ -87,9 +88,6 @@ func (c *conn) ClientVersion() (VersionInfo, error) { return c.drv.ClientVersion
 // database/sql.Ping may return way after the Context.Deadline!
 func (c *conn) Ping(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := c.ensureContextUser(ctx); err != nil {
 		return err
 	}
 	c.mu.RLock()
@@ -280,9 +278,6 @@ type tranParams struct {
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := c.ensureContextUser(ctx); err != nil {
 		return nil, err
 	}
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
@@ -724,33 +719,28 @@ type TraceTag struct {
 	Action string
 }
 
-const userpwCtxKey = ctxKey("userPw")
+const paramsCtxKey = ctxKey("params")
+
+//-----------------------------------------------------------------------------
+// ContextWithParams()
+//   Returns a context with the specified parameters. These parameters are used
+// to modify the session acquired from the pool. If a standalone connection is
+// being used this will have no effect.
+//-----------------------------------------------------------------------------
+func ContextWithParams(ctx context.Context, params ConnParams) context.Context {
+    return context.WithValue(ctx, paramsCtxKey, params)
+}
+
 
 // ContextWithUserPassw returns a context with the specified user and password,
 // to be used with heterogeneous pools.
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
-	return context.WithValue(ctx, userpwCtxKey, [3]string{user, password, connClass})
-}
-
-func (c *conn) ensureContextUser(ctx context.Context) error {
-	if !(c.connParams.HeterogeneousPool || c.connParams.StandaloneConnection) {
-		return nil
-	}
-	up, ok := ctx.Value(userpwCtxKey).([3]string)
-	if !ok || up[0] == c.currentUser {
-		return nil
-	}
-
-	if c.dpiConn != nil {
-		if err := c.close(false); err != nil {
-			if Log != nil {
-				Log("msg", "close connection", "error", err)
-			}
-			return driver.ErrBadConn
-		}
-	}
-
-	return c.acquireConn(up[0], up[1], up[2])
+    params := ConnParams{
+        UserName: user,
+        Password: password,
+        ConnClass: connClass,
+    }
+    return ContextWithParams(ctx, params)
 }
 
 // StartupMode for the database.
