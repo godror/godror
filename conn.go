@@ -180,7 +180,7 @@ func (c *conn) close(doNotReuse bool) error {
 			C.dpiConn_breakExecution(dpiConn)
 		}
 	}()
-	C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+	C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
 	close(done)
 	return nil
 }

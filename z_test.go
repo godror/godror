@@ -1927,6 +1927,7 @@ func printObj(t *testing.T, name string, obj *godror.Object) {
 }
 
 var _ = driver.Valuer((*Custom)(nil))
+var _ = sql.Scanner((*Custom)(nil))
 
 type Custom struct {
 	Num int64
@@ -1934,6 +1935,21 @@ type Custom struct {
 
 func (t *Custom) Value() (driver.Value, error) {
 	return t.Num, nil
+}
+
+func (t *Custom) Scan(v interface{}) error {
+	var err error
+	switch v := v.(type) {
+	case int64:
+		t.Num = v
+	case string:
+		t.Num, err = strconv.ParseInt(v, 10, 64)
+	case float64:
+		t.Num = int64(v)
+	default:
+		err = errors.Errorf("unknown type %T", v)
+	}
+	return err
 }
 
 func TestSelectCustomType(t *testing.T) {
@@ -1971,7 +1987,7 @@ func TestSelectCustomType(t *testing.T) {
 	rows, err := conn.QueryContext(ctx,
 		"SELECT nm, typ, id, created FROM "+tbl+" WHERE ROWNUM < COALESCE(:alpha, :beta, 2) ORDER BY id",
 		sql.Named("alpha", nums),
-		godror.MagicTypeConversion(), sql.Named("beta", numbers),
+		sql.Named("beta", int64(numbers)),
 	)
 	if err != nil {
 		t.Fatalf("%+v", err)
@@ -2267,7 +2283,7 @@ func TestNumberBool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
-	rows, err := testDb.QueryContext(ctx, qry, godror.NumberAsString())
+	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
