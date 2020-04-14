@@ -425,10 +425,10 @@ func (d *drv) getPool(P *PoolParams) (*connPool, error) {
     }
 
     // determine key to use for pool
-    poolKey := fmt.Sprintf("%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t",
-            P.UserName, P.Password, P.DSN, P.MinSessions, P.MaxSessions,
+    poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
+            P.UserName, P.DSN, P.MinSessions, P.MaxSessions,
             P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-            P.Heterogeneous, P.EnableEvents)
+            P.Heterogeneous, P.EnableEvents, P.ExternalAuth)
     if Log != nil {
         Log("pool key:", poolKey)
     }
