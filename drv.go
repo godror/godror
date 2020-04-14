@@ -598,6 +598,9 @@ func (P ConnectionParams) StringWithPassword() string {
 
 func (P ConnectionParams) string(class, withPassword bool) string {
 	host, path := P.ConnParams.DSN, ""
+	if host == "" {
+		host = P.PoolParams.DSN
+	}
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host, path = host[:i], host[i:]
 	}
@@ -622,8 +625,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		}
 	}
 	s = "local"
-	if P.ConnParams.Timezone != nil && P.ConnParams.Timezone != time.Local {
-		s = P.ConnParams.Timezone.String()
+	tz := P.ConnParams.Timezone
+	if tz == nil {
+		tz = P.PoolParams.Timezone
+	}
+	if tz != nil && tz != time.Local {
+		s = tz.String()
 	}
 	q.Add("timezone", s)
 	B := func(b bool) string {
@@ -677,6 +684,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
+			Timezone:  time.Local,
 		},
 		PoolParams: PoolParams{
 			MinSessions:      DefaultPoolMinSessions,
@@ -726,7 +734,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	if usr := u.User; usr != nil {
 		username = usr.Username()
-		P.ConnParams.Password, _ = usr.Password()
+		password, _ = usr.Password()
 	}
 	dsn = u.Hostname()
 	// IPv6 literal address brackets are removed by u.Hostname,
@@ -785,6 +793,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
 		{&P.SessionIncrement, "poolIncrement"},
+		{&P.SessionIncrement, "sessionIncrement"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {

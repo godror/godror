@@ -30,8 +30,8 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.HeterogeneousPool = true
-	username := cs.Username
+	cs.Heterogeneous = true
+	username := cs.ConnParams.UserName
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testHeterogeneousConStr)
 
@@ -94,11 +94,11 @@ func TestContextWithUserPassw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.HeterogeneousPool = true
-	username, password := cs.Username, cs.Password
-	cs.Username, cs.Password = "", ""
+	cs.Heterogeneous = true
+	username, password := cs.ConnParams.UserName, cs.ConnParams.Password
+	cs.ConnParams.UserName, cs.ConnParams.Password = "", ""
 	testHeterogeneousConStr := cs.StringWithPassword()
-	t.Log(testHeterogeneousConStr)
+	t.Log(testConStr, " -> ", testHeterogeneousConStr)
 
 	var testHeterogeneousDB *sql.DB
 	if testHeterogeneousDB, err = sql.Open("godror", testHeterogeneousConStr); err != nil {

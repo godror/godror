@@ -21,33 +21,50 @@ import (
 func TestParseConnString(t *testing.T) {
 	t.Parallel()
 	wantAt := ConnectionParams{
-		Username:       "cc",
-		Password:       "c@c*1",
-		SID:            "192.168.1.1/cc",
-		MaxLifeTime:    DefaultMaxLifeTime,
-		SessionTimeout: DefaultSessionTimeout,
-		WaitTimeout:    DefaultWaitTimeout,
-		Timezone:       time.Local,
+		ConnParams: ConnParams{
+			UserName: "cc",
+			Password: "c@c*1",
+			DSN:      "192.168.1.1/cc",
+			Timezone: time.Local,
+		},
+		PoolParams: PoolParams{
+			UserName:       "cc",
+			Password:       "c@c*1",
+			DSN:            "192.168.1.1/cc",
+			MaxLifeTime:    DefaultMaxLifeTime,
+			SessionTimeout: DefaultSessionTimeout,
+			WaitTimeout:    DefaultWaitTimeout,
+			Timezone:       time.Local,
+		},
 	}
 	wantDefault := ConnectionParams{
-		Username:       "user",
-		Password:       "pass",
-		SID:            "sid",
-		ConnClass:      DefaultConnectionClass,
-		MinSessions:    DefaultPoolMinSessions,
-		MaxSessions:    DefaultPoolMaxSessions,
-		PoolIncrement:  DefaultPoolIncrement,
-		MaxLifeTime:    DefaultMaxLifeTime,
-		SessionTimeout: DefaultSessionTimeout,
-		WaitTimeout:    DefaultWaitTimeout,
-		Timezone:       time.Local,
+		ConnParams: ConnParams{
+			UserName:  "user",
+			Password:  "pass",
+			DSN:       "sid",
+			ConnClass: DefaultConnectionClass,
+			Timezone:  time.Local,
+		},
+		PoolParams: PoolParams{
+			UserName:         "user",
+			Password:         "pass",
+			DSN:              "sid",
+			MinSessions:      DefaultPoolMinSessions,
+			MaxSessions:      DefaultPoolMaxSessions,
+			SessionIncrement: DefaultPoolIncrement,
+			MaxLifeTime:      DefaultMaxLifeTime,
+			SessionTimeout:   DefaultSessionTimeout,
+			WaitTimeout:      DefaultWaitTimeout,
+			Timezone:         time.Local,
+		},
 	}
 
 	wantXO := wantDefault
-	wantXO.SID = "localhost/sid"
+	wantXO.ConnParams.DSN = "localhost/sid"
+	wantXO.PoolParams.DSN = wantXO.ConnParams.DSN
 
 	wantHeterogeneous := wantXO
-	wantHeterogeneous.HeterogeneousPool = true
+	wantHeterogeneous.Heterogeneous = true
 
 	setP := func(s, p string) string {
 		if i := strings.Index(s, ":SECRET-"); i >= 0 {
@@ -64,14 +81,24 @@ func TestParseConnString(t *testing.T) {
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
-			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
-				ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
-				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
-				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second}},
+			Want: ConnectionParams{
+				ConnParams: ConnParams{
+					UserName: "user", Password: "pass", DSN: "sid",
+					ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
+				},
+				PoolParams: PoolParams{
+					UserName: "user", Password: "pass", DSN: "sid",
+					Timezone:    time.Local,
+					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
+					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+				},
+			},
+		},
 
 		"@": {
-			In:   setP(wantAt.String(), wantAt.Password),
-			Want: wantAt},
+			In:   setP(wantAt.String(), wantAt.ConnParams.Password),
+			Want: wantAt,
+		},
 
 		"xo":            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
 		"heterogeneous": {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
@@ -79,20 +106,34 @@ func TestParseConnString(t *testing.T) {
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
 			Want: ConnectionParams{
-				SID:       "[::1]:12345/dbname",
-				ConnClass: "GODROR", Timezone: time.Local,
-				MinSessions: 1, MaxSessions: 1000, PoolIncrement: 1,
-				WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
+				ConnParams: ConnParams{
+					DSN:       "[::1]:12345/dbname",
+					ConnClass: "GODROR", Timezone: time.Local,
+				},
+				PoolParams: PoolParams{
+					DSN:         "[::1]:12345/dbname",
+					Timezone:    time.Local,
+					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
+					WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
+				},
 			},
 		},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
-			Want: ConnectionParams{Username: "user", Password: "pass", SID: "sid",
-				ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
-				MinSessions: 3, MaxSessions: 9, PoolIncrement: 3,
-				WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
-				OnInit: []string{"a", "b"},
-			}},
+			Want: ConnectionParams{
+				ConnParams: ConnParams{
+					UserName: "user", Password: "pass", DSN: "sid",
+					ConnClass: "POOLED", IsSysOper: true, Timezone: time.Local,
+					OnInit: []string{"a", "b"},
+				},
+				PoolParams: PoolParams{
+					UserName: "user", Password: "pass", DSN: "sid",
+					Timezone:    time.Local,
+					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
+					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+				},
+			},
+		},
 	} {
 		t.Log(tCase.In)
 		P, err := ParseConnString(tCase.In)
@@ -104,7 +145,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P))
 			continue
 		}
-		s := setP(P.String(), P.Password)
+		s := setP(P.String(), P.ConnParams.Password)
 		Q, err := ParseConnString(s)
 		if err != nil {
 			t.Errorf("%s: parseConnString %v", tName, err)
@@ -114,7 +155,7 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
 			continue
 		}
-		if got := setP(Q.String(), Q.Password); s != got {
+		if got := setP(Q.String(), Q.ConnParams.Password); s != got {
 			t.Errorf("%s: paramString got %q, wanted %q", tName, got, s)
 		}
 	}
