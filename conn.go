@@ -44,8 +44,8 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	currentTT      TraceTag
-    poolParams     *PoolParams
-    connParams     *ConnParams
+	poolParams     *PoolParams
+	connParams     *ConnParams
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
@@ -728,19 +728,18 @@ const paramsCtxKey = ctxKey("params")
 // being used this will have no effect.
 //-----------------------------------------------------------------------------
 func ContextWithParams(ctx context.Context, params ConnParams) context.Context {
-    return context.WithValue(ctx, paramsCtxKey, params)
+	return context.WithValue(ctx, paramsCtxKey, params)
 }
-
 
 // ContextWithUserPassw returns a context with the specified user and password,
 // to be used with heterogeneous pools.
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
-    params := ConnParams{
-        UserName: user,
-        Password: password,
-        ConnClass: connClass,
-    }
-    return ContextWithParams(ctx, params)
+	params := ConnParams{
+		UserName:  user,
+		Password:  password,
+		ConnClass: connClass,
+	}
+	return ContextWithParams(ctx, params)
 }
 
 // StartupMode for the database.
