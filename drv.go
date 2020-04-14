@@ -95,8 +95,10 @@ const (
 	DefaultPoolMinSessions = 1
 	// DefaultPoolMaxSessions specifies the default value for maxSessions for pool creation.
 	DefaultPoolMaxSessions = 1000
-	// DefaultPoolIncrement specifies the default value for increment for pool creation.
-	DefaultPoolIncrement = 1
+	// DefaultSessionIncrement specifies the default value for increment for pool creation.
+	DefaultSessionIncrement = 1
+	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
+	DefaultPoolIncrement = DefaultSessionIncrement
 	// DefaultConnectionClass is the default connectionClass
 	DefaultConnectionClass = "GODROR"
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
@@ -568,17 +570,11 @@ func (d *drv) createPool(P PoolParams) (*connPool, error) {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	OnInit                             []string
-	Username, Password, SID, ConnClass string
+	ConnParams
+	PoolParams
 	// NewPassword is used iff StandaloneConnection is true!
-	NewPassword                              string
-	MinSessions, MaxSessions, PoolIncrement  int
-	WaitTimeout, MaxLifeTime, SessionTimeout time.Duration
-	Timezone                                 *time.Location
-	IsSysDBA, IsSysOper, IsSysASM, IsPrelim  bool
-	HeterogeneousPool                        bool
-	StandaloneConnection                     bool
-	EnableEvents                             bool
+	NewPassword          string
+	StandaloneConnection bool
 }
 
 // String returns the string representation of ConnectionParams.
@@ -600,7 +596,7 @@ func (P ConnectionParams) StringWithPassword() string {
 }
 
 func (P ConnectionParams) string(class, withPassword bool) string {
-	host, path := P.SID, ""
+	host, path := P.ConnParams.DSN, ""
 	if i := strings.IndexByte(host, '/'); i >= 0 {
 		host, path = host[:i], host[i:]
 	}
@@ -611,12 +607,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	q.Add("connectionClass", s)
 
-	password := P.Password
+	password := P.ConnParams.Password
 	if withPassword {
 		q.Add("newPassword", P.NewPassword)
 	} else {
 		hsh := fnv.New64()
-		io.WriteString(hsh, P.Password)
+		io.WriteString(hsh, P.ConnParams.Password)
 		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
 		if P.NewPassword != "" {
 			hsh.Reset()
@@ -625,8 +621,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		}
 	}
 	s = "local"
-	if P.Timezone != nil && P.Timezone != time.Local {
-		s = P.Timezone.String()
+	if P.ConnParams.Timezone != nil && P.ConnParams.Timezone != time.Local {
+		s = P.ConnParams.Timezone.String()
 	}
 	q.Add("timezone", s)
 	B := func(b bool) string {
@@ -637,21 +633,21 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
-	q.Add("poolIncrement", strconv.Itoa(P.PoolIncrement))
+	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	q.Add("sysdba", B(P.IsSysDBA))
 	q.Add("sysoper", B(P.IsSysOper))
 	q.Add("sysasm", B(P.IsSysASM))
 	q.Add("standaloneConnection", B(P.StandaloneConnection))
-	q.Add("enableEvents", B(P.EnableEvents))
-	q.Add("heterogeneousPool", B(P.HeterogeneousPool))
+	q.Add("enableEvents", B(P.ConnParams.EnableEvents))
+	q.Add("heterogeneousPool", B(P.Heterogeneous))
 	q.Add("prelim", B(P.IsPrelim))
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
-	q["onInit"] = P.OnInit
+	q["onInit"] = P.ConnParams.OnInit
 	return (&url.URL{
 		Scheme:   "oracle",
-		User:     url.UserPassword(P.Username, password),
+		User:     url.UserPassword(P.ConnParams.UserName, password),
 		Host:     host,
 		Path:     path,
 		RawQuery: q.Encode(),
@@ -664,31 +660,40 @@ func (P *ConnectionParams) Comb() {
 	if P.IsPrelim || P.StandaloneConnection {
 		// Prelim: the shared memory may not exist when Oracle is shut down.
 		P.ConnClass = ""
-		P.HeterogeneousPool = false
+		P.Heterogeneous = false
 	}
-	if P.Timezone == nil {
-		P.Timezone = time.Local
+	if P.ConnParams.Timezone == nil {
+		if P.PoolParams.Timezone != nil {
+			P.ConnParams.Timezone = P.PoolParams.Timezone
+		} else {
+			P.ConnParams.Timezone = time.Local
+		}
 	}
 }
 
 // ParseConnString parses the given connection string into a struct.
 func ParseConnString(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
-		MinSessions:    DefaultPoolMinSessions,
-		MaxSessions:    DefaultPoolMaxSessions,
-		PoolIncrement:  DefaultPoolIncrement,
-		ConnClass:      DefaultConnectionClass,
-		MaxLifeTime:    DefaultMaxLifeTime,
-		WaitTimeout:    DefaultWaitTimeout,
-		SessionTimeout: DefaultSessionTimeout,
-		Timezone:       time.Local,
+		ConnParams: ConnParams{
+			ConnClass: DefaultConnectionClass,
+		},
+		PoolParams: PoolParams{
+			MinSessions:      DefaultPoolMinSessions,
+			MaxSessions:      DefaultPoolMaxSessions,
+			SessionIncrement: DefaultPoolIncrement,
+			MaxLifeTime:      DefaultMaxLifeTime,
+			WaitTimeout:      DefaultWaitTimeout,
+			SessionTimeout:   DefaultSessionTimeout,
+			Timezone:         time.Local,
+		},
 	}
+	var username, password, dsn string
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
 		if i < 0 {
 			return P, errors.New("no '/' in connection string")
 		}
-		P.Username, connString = connString[:i], connString[i+1:]
+		username, connString = connString[:i], connString[i+1:]
 
 		uSid := strings.ToUpper(connString)
 		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
@@ -702,14 +707,16 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			}
 		}
 		if i = strings.LastIndexByte(connString, '@'); i >= 0 {
-			P.Password, P.SID = connString[:i], connString[i+1:]
+			password, dsn = connString[:i], connString[i+1:]
 		} else {
-			P.Password = connString
+			password = connString
 		}
-		if strings.HasSuffix(P.SID, ":POOLED") {
-			P.ConnClass, P.SID = "POOLED", P.SID[:len(P.SID)-7]
+		if strings.HasSuffix(dsn, ":POOLED") {
+			P.ConnClass, dsn = "POOLED", dsn[:len(dsn)-7]
 		}
 		//fmt.Printf("connString=%q params=%s\n", connString, P)
+		P.ConnParams.UserName, P.ConnParams.Password, P.ConnParams.DSN = username, password, dsn
+		P.PoolParams.UserName, P.PoolParams.Password, P.PoolParams.DSN = username, password, dsn
 		return P, nil
 	}
 	u, err := url.Parse(connString)
@@ -717,21 +724,24 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		return P, errors.Errorf("%s: %w", connString, err)
 	}
 	if usr := u.User; usr != nil {
-		P.Username = usr.Username()
-		P.Password, _ = usr.Password()
+		username = usr.Username()
+		P.ConnParams.Password, _ = usr.Password()
 	}
-	P.SID = u.Hostname()
+	dsn = u.Hostname()
 	// IPv6 literal address brackets are removed by u.Hostname,
 	// so we have to put them back
-	if strings.HasPrefix(u.Host, "[") && !strings.Contains(P.SID[1:], "]") {
-		P.SID = "[" + P.SID + "]"
+	if strings.HasPrefix(u.Host, "[") && !strings.Contains(dsn[1:], "]") {
+		dsn = "[" + dsn + "]"
 	}
 	if u.Port() != "" {
-		P.SID += ":" + u.Port()
+		dsn += ":" + u.Port()
 	}
 	if u.Path != "" && u.Path != "/" {
-		P.SID += u.Path
+		dsn += u.Path
 	}
+	P.ConnParams.UserName, P.ConnParams.Password, P.ConnParams.DSN = username, password, dsn
+	P.PoolParams.UserName, P.PoolParams.Password, P.PoolParams.DSN = username, password, dsn
+
 	q := u.Query()
 	if vv, ok := q["connectionClass"]; ok {
 		P.ConnClass = vv[0]
@@ -746,23 +756,25 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		{&P.IsPrelim, "prelim"},
 
 		{&P.StandaloneConnection, "standaloneConnection"},
-		{&P.EnableEvents, "enableEvents"},
-		{&P.HeterogeneousPool, "heterogeneousPool"},
+		{&P.ConnParams.EnableEvents, "enableEvents"},
+		{&P.Heterogeneous, "heterogeneousPool"},
 	} {
 		*task.Dest = q.Get(task.Key) == "1"
 	}
+	P.PoolParams.EnableEvents = P.ConnParams.EnableEvents
 	if tz := q.Get("timezone"); tz != "" {
 		if strings.EqualFold(tz, "local") {
 			// P.Timezone = time.Local // already set
 		} else if strings.Contains(tz, "/") {
-			if P.Timezone, err = time.LoadLocation(tz); err != nil {
+			if P.ConnParams.Timezone, err = time.LoadLocation(tz); err != nil {
 				return P, errors.Errorf("%s: %w", tz, err)
 			}
 		} else if off, err := parseTZ(tz); err == nil {
-			P.Timezone = time.FixedZone(tz, off)
+			P.ConnParams.Timezone = time.FixedZone(tz, off)
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
 		}
+		P.PoolParams.Timezone = P.ConnParams.Timezone
 	}
 
 	for _, task := range []struct {
@@ -771,7 +783,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}{
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
-		{&P.PoolIncrement, "poolIncrement"},
+		{&P.SessionIncrement, "poolIncrement"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -816,11 +828,11 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.MinSessions = P.MaxSessions
 	}
 	if P.MinSessions == P.MaxSessions {
-		P.PoolIncrement = 0
-	} else if P.PoolIncrement < 1 {
-		P.PoolIncrement = 1
+		P.SessionIncrement = 0
+	} else if P.SessionIncrement < 1 {
+		P.SessionIncrement = 1
 	}
-	P.OnInit = q["onInit"]
+	P.ConnParams.OnInit = q["onInit"]
 
 	P.Comb()
 	if P.StandaloneConnection {
@@ -832,7 +844,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 
 // SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
 func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
-	P.OnInit = append(P.OnInit, fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1)))
+	P.ConnParams.OnInit = append(P.ConnParams.OnInit, fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1)))
 }
 
 func (P ConnectionParams) authMode() C.dpiAuthMode {
@@ -1056,44 +1068,16 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 	}
 
 	// create connector and assign parameters
-	c := connector{drv: d}
-	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim ||
-		P.StandaloneConnection {
-		c.ConnParams = ConnParams{
-			UserName:     P.Username,
-			Password:     P.Password,
-			DSN:          P.SID,
-			EnableEvents: P.EnableEvents,
-			IsSysDBA:     P.IsSysDBA,
-			IsSysOper:    P.IsSysOper,
-			IsSysASM:     P.IsSysASM,
-			IsPrelim:     P.IsPrelim,
-		}
-	} else {
-		c.PoolParams = PoolParams{
-			UserName:         P.Username,
-			Password:         P.Password,
-			DSN:              P.SID,
-			EnableEvents:     P.EnableEvents,
-			MinSessions:      P.MinSessions,
-			MaxSessions:      P.MaxSessions,
-			SessionIncrement: P.PoolIncrement,
-			WaitTimeout:      P.WaitTimeout,
-			MaxLifeTime:      P.MaxLifeTime,
-			SessionTimeout:   P.SessionTimeout,
-			Heterogeneous:    P.HeterogeneousPool,
-			Timezone:         P.Timezone,
-		}
+	c := connector{drv: d, ConnParams: P.ConnParams}
+	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
+		c.PoolParams = P.PoolParams
 
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
-		if P.Username == "" && P.Password == "" && !P.HeterogeneousPool {
+		if P.PoolParams.UserName == "" && P.PoolParams.Password == "" && !P.Heterogeneous {
 			c.PoolParams.ExternalAuth = true
 		}
-		c.ConnParams = ConnParams{}
 	}
-	c.ConnParams.OnInit = P.OnInit
-	c.ConnParams.Timezone = P.Timezone
 	return c, nil
 }
 
