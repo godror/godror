@@ -181,6 +181,7 @@ func (d *drv) ClientVersion() (VersionInfo, error) {
 	return d.clientVersion, nil
 }
 
+// UTF-8 is a shortcut name for AL32UTF8 in ODPI-C (and not the same as the botched UTF8).
 var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 
 //-----------------------------------------------------------------------------
