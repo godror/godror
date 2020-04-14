@@ -132,7 +132,7 @@ type drv struct {
 
 type connPool struct {
 	dpiPool       *C.dpiPool
-	params        *PoolParams
+	params        PoolParams
 	timeZone      *time.Location
 	tzOffSecs     int
 	serverVersion VersionInfo
@@ -219,7 +219,7 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 // provided, the connection is acquired from the pool; otherwise, a standalone
 // connection is created.
 //-----------------------------------------------------------------------------
-func (d *drv) createConn(pool *connPool, P *ConnParams) (*conn, error) {
+func (d *drv) createConn(pool *connPool, P ConnParams) (*conn, error) {
 
 	// initialize driver, if necessary
 	if err := d.init(); err != nil {
@@ -361,7 +361,7 @@ func (d *drv) createConn(pool *connPool, P *ConnParams) (*conn, error) {
 	}
 
 	// create connection and initialize it, if needed
-	var poolParams *PoolParams
+	var poolParams PoolParams
 	currentUser := P.UserName
 	if pool != nil {
 		poolParams = pool.params
@@ -386,18 +386,18 @@ func (d *drv) createConn(pool *connPool, P *ConnParams) (*conn, error) {
 // to acquire a connection from the pool specified by the pool parameters or
 // are used to create a standalone connection.
 //-----------------------------------------------------------------------------
-func (d *drv) createConnFromParams(PP *PoolParams, CP *ConnParams) (*conn, error) {
+func (d *drv) createConnFromParams(PP PoolParams, CP ConnParams) (*conn, error) {
 
 	var err error
 	var pool *connPool
-	if PP != nil {
+	if !PP.IsZero() {
 		pool, err = d.getPool(PP)
 		if err != nil {
 			return nil, err
 		}
 	}
 	conn, err := d.createConn(pool, CP)
-	if err != nil || PP == nil || PP.OnInit == nil || !conn.newSession {
+	if err != nil || PP.IsZero() || PP.OnInit == nil || !conn.newSession {
 		return conn, err
 	}
 	if err = PP.OnInit(conn); err != nil {
@@ -413,7 +413,7 @@ func (d *drv) createConnFromParams(PP *PoolParams, CP *ConnParams) (*conn, error
 // stored in a map keyed by a string representation of the pool parameters. If
 // no pool exists, a pool is created and stored in the map.
 //-----------------------------------------------------------------------------
-func (d *drv) getPool(P *PoolParams) (*connPool, error) {
+func (d *drv) getPool(P PoolParams) (*connPool, error) {
 
 	// initialize driver, if necessary
 	if err := d.init(); err != nil {
@@ -453,7 +453,7 @@ func (d *drv) getPool(P *PoolParams) (*connPool, error) {
 // holding the mutex in order to ensure that multiple goroutines do not attempt
 // to create the pool at the same time.
 //-----------------------------------------------------------------------------
-func (d *drv) createPool(P *PoolParams) (*connPool, error) {
+func (d *drv) createPool(P PoolParams) (*connPool, error) {
 
 	// set up common creation parameters
 	var commonCreateParams C.dpiCommonCreateParams
@@ -1011,8 +1011,8 @@ var _ = driver.Connector((*connector)(nil))
 
 type connector struct {
 	drv *drv
-	*PoolParams
-	*ConnParams
+	PoolParams
+	ConnParams
 }
 
 type PoolParams struct {
@@ -1024,6 +1024,14 @@ type PoolParams struct {
 	Timezone                                   *time.Location
 }
 
+func (pp PoolParams) IsZero() bool {
+	return pp.UserName == "" && pp.Password == "" && pp.DSN == "" &&
+		pp.MinSessions == 0 && pp.MaxSessions == 0 && pp.SessionIncrement == 0 &&
+		pp.WaitTimeout == 0 && pp.MaxLifeTime == 0 && pp.SessionTimeout == 0 &&
+		!pp.Heterogeneous && !pp.ExternalAuth && !pp.EnableEvents &&
+		pp.OnInit == nil && pp.Timezone == nil
+}
+
 type ConnParams struct {
 	UserName, Password, NewPassword, ConnClass, DSN       string
 	EnableEvents, IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
@@ -1032,7 +1040,7 @@ type ConnParams struct {
 	Timezone                                              *time.Location
 }
 
-func NewConnector2(poolParams *PoolParams, connParams *ConnParams) driver.Connector {
+func NewConnector2(poolParams PoolParams, connParams ConnParams) driver.Connector {
 	return connector{PoolParams: poolParams, ConnParams: connParams,
 		drv: defaultDrv}
 }
@@ -1051,7 +1059,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 	c := connector{drv: d}
 	if P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim ||
 		P.StandaloneConnection {
-		c.ConnParams = &ConnParams{
+		c.ConnParams = ConnParams{
 			UserName:     P.Username,
 			Password:     P.Password,
 			DSN:          P.SID,
@@ -1062,7 +1070,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 			IsPrelim:     P.IsPrelim,
 		}
 	} else {
-		c.PoolParams = &PoolParams{
+		c.PoolParams = PoolParams{
 			UserName:         P.Username,
 			Password:         P.Password,
 			DSN:              P.SID,
@@ -1082,7 +1090,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 		if P.Username == "" && P.Password == "" && !P.HeterogeneousPool {
 			c.PoolParams.ExternalAuth = true
 		}
-		c.ConnParams = &ConnParams{}
+		c.ConnParams = ConnParams{}
 	}
 	c.ConnParams.OnInit = P.OnInit
 	c.ConnParams.Timezone = P.Timezone
@@ -1105,7 +1113,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		params, ok := ctxValue.(ConnParams)
 		if ok {
-			return c.drv.createConnFromParams(c.PoolParams, &params)
+			return c.drv.createConnFromParams(c.PoolParams, params)
 		}
 	}
 

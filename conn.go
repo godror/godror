@@ -44,8 +44,8 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	currentTT      TraceTag
-	poolParams     *PoolParams
-	connParams     *ConnParams
+	poolParams     PoolParams
+	connParams     ConnParams
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
