@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.15.0]
+### Changed
+- Innards of ConnectionParams has been split to ConnParams and PoolParams,
+- NewConnector needs ConnParams and PoolParams instead of the connection URL.
+
+### Added
+- Support connection sharding (thanks to Anthony Tuininga)
+
 ## [0.14.0]
 ### Changed
 - Make NumberAsString() the default.
