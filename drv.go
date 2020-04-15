@@ -1062,7 +1062,9 @@ type ConnParams struct {
 	Timezone                                              *time.Location
 }
 
-func NewConnector2(poolParams PoolParams, connParams ConnParams) driver.Connector {
+// NewConnector returns a driver.Connector to be used with sql.OpenDB,
+// (for the default Driver registered with godror)
+func NewConnector(poolParams PoolParams, connParams ConnParams) driver.Connector {
 	return connector{PoolParams: poolParams, ConnParams: connParams,
 		drv: defaultDrv}
 }
@@ -1118,29 +1120,6 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 // mainly to maintain compatibility with the Driver method
 // on sql.DB.
 func (c connector) Driver() driver.Driver { return c.drv }
-
-// NewConnector returns a driver.Connector to be used with sql.OpenDB,
-// which calls the given onInit if the connection is new.
-//
-// For an onInit example, see NewSessionIniter.
-func (d *drv) NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
-	cxr, err := d.OpenConnector(name)
-	if err != nil {
-		return nil, err
-	}
-	cx := cxr.(connector)
-	cx.PoolParams.OnInit = onInit
-	return cx, err
-}
-
-// NewConnector returns a driver.Connector to be used with sql.OpenDB,
-// (for the default Driver registered with godror)
-// which calls the given onInit if the connection is new.
-//
-// For an onInit example, see NewSessionIniter.
-func NewConnector(name string, onInit func(driver.Conn) error) (driver.Connector, error) {
-	return defaultDrv.NewConnector(name, onInit)
-}
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
 // which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
