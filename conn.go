@@ -721,18 +721,22 @@ type TraceTag struct {
 
 const paramsCtxKey = ctxKey("params")
 
-//-----------------------------------------------------------------------------
-// ContextWithParams()
-//   Returns a context with the specified parameters. These parameters are used
-// to modify the session acquired from the pool. If a standalone connection is
-// being used this will have no effect.
-//-----------------------------------------------------------------------------
+// ContextWithParams returns a context with the specified parameters. These parameters are used
+// to modify the session acquired from the pool.
+//
+// If a standalone connection is being used this will have no effect.
+//
+// Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithParams(ctx context.Context, params ConnParams) context.Context {
 	return context.WithValue(ctx, paramsCtxKey, params)
 }
 
 // ContextWithUserPassw returns a context with the specified user and password,
 // to be used with heterogeneous pools.
+//
+// If a standalone connection is being used this will have no effect.
+//
+// Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	params := ConnParams{
 		UserName:  user,

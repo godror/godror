@@ -184,12 +184,9 @@ func (d *drv) ClientVersion() (VersionInfo, error) {
 // UTF-8 is a shortcut name for AL32UTF8 in ODPI-C (and not the same as the botched UTF8).
 var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 
-//-----------------------------------------------------------------------------
-// initCommonCreateParams()
-//   Initializes ODPI-C common creation parameters used for creating pools and
+// initCommonCreateParams initializes ODPI-C common creation parameters used for creating pools and
 // standalone connections. The C strings for the encoding and driver name are
 // defined at the package level for convenience.
-//-----------------------------------------------------------------------------
 func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool) error {
 
 	// initialize ODPI-C structure for common creation parameters
@@ -216,14 +213,13 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 	return nil
 }
 
-//-----------------------------------------------------------------------------
-// createConn()
-//   Creates an ODPI-C connection with the specified parameters. If a pool is
+// createConn creates an ODPI-C connection with the specified parameters. If a pool is
 // provided, the connection is acquired from the pool; otherwise, a standalone
 // connection is created.
-//-----------------------------------------------------------------------------
 func (d *drv) createConn(pool *connPool, P ConnParams) (*conn, error) {
-
+	if Log != nil {
+		Log("msg", "createConn", "pool", pool, "connParams", P)
+	}
 	// initialize driver, if necessary
 	if err := d.init(); err != nil {
 		return nil, err
@@ -345,6 +341,9 @@ func (d *drv) createConn(pool *connPool, P ConnParams) (*conn, error) {
 	if P.Password != "" {
 		cPassword = C.CString(P.Password)
 	}
+	if pool != nil && P.DSN == "" {
+		P.DSN = pool.params.DSN
+	}
 	if P.DSN != "" {
 		cDSN = C.CString(P.DSN)
 	}
@@ -380,15 +379,14 @@ func (d *drv) createConn(pool *connPool, P ConnParams) (*conn, error) {
 	return &c, nil
 }
 
-//-----------------------------------------------------------------------------
-// createConnFromParams()
-//   Creates a driver connection given pool parameters and connection
+// createConnFromParams creates a driver connection given pool parameters and connection
 // parameters. The pool parameters are used to either create a pool or use an
-// existing cached pool. If the pool parameters are nil, no pool is used and a
+// existing cached pool.
+//
+// If the pool parameters are nil, no pool is used and a
 // standalone connection is created instead. The connection parameters are used
 // to acquire a connection from the pool specified by the pool parameters or
 // are used to create a standalone connection.
-//-----------------------------------------------------------------------------
 func (d *drv) createConnFromParams(PP PoolParams, CP ConnParams) (*conn, error) {
 
 	var err error
@@ -397,6 +395,9 @@ func (d *drv) createConnFromParams(PP PoolParams, CP ConnParams) (*conn, error) 
 		pool, err = d.getPool(PP)
 		if err != nil {
 			return nil, err
+		}
+		if CP.DSN == "" {
+			CP.DSN = PP.DSN
 		}
 	}
 	conn, err := d.createConn(pool, CP)
@@ -410,12 +411,10 @@ func (d *drv) createConnFromParams(PP PoolParams, CP ConnParams) (*conn, error) 
 	return conn, nil
 }
 
-//-----------------------------------------------------------------------------
-// getPool()
-//   Get the pool to use given the set of pool parameters provided. Pools are
-// stored in a map keyed by a string representation of the pool parameters. If
-// no pool exists, a pool is created and stored in the map.
-//-----------------------------------------------------------------------------
+// getPool get the pool to use given the set of pool parameters provided.
+//
+// Pools are stored in a map keyed by a string representation of the pool parameters.
+// If no pool exists, a pool is created and stored in the map.
 func (d *drv) getPool(P PoolParams) (*connPool, error) {
 
 	// initialize driver, if necessary
@@ -423,6 +422,9 @@ func (d *drv) getPool(P PoolParams) (*connPool, error) {
 		return nil, err
 	}
 
+	if P.Heterogeneous {
+		P.UserName, P.Password = "", ""
+	}
 	// determine key to use for pool
 	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
 		P.UserName, P.DSN, P.MinSessions, P.MaxSessions,
@@ -450,12 +452,10 @@ func (d *drv) getPool(P PoolParams) (*connPool, error) {
 	return pool, nil
 }
 
-//-----------------------------------------------------------------------------
-// createPool()
-//   Creates an ODPI-C pool with the specified parameters. This is done while
-// holding the mutex in order to ensure that multiple goroutines do not attempt
-// to create the pool at the same time.
-//-----------------------------------------------------------------------------
+// createPool creates an ODPI-C pool with the specified parameters.
+//
+// This is done while holding the mutex in order to ensure that
+// multiple goroutines do not attempt to create the pool at the same time.
 func (d *drv) createPool(P PoolParams) (*connPool, error) {
 
 	// set up common creation parameters
@@ -670,6 +670,9 @@ func (P *ConnectionParams) Comb() {
 		P.ConnClass = ""
 		P.Heterogeneous = false
 	}
+	if P.Heterogeneous {
+		P.PoolParams.UserName, P.PoolParams.Password = "", ""
+	}
 	if P.ConnParams.Timezone == nil {
 		if P.PoolParams.Timezone != nil {
 			P.ConnParams.Timezone = P.PoolParams.Timezone
@@ -697,6 +700,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		},
 	}
 	var username, password, dsn string
+	origConnString := connString
 	if !strings.HasPrefix(connString, "oracle://") {
 		i := strings.IndexByte(connString, '/')
 		if i < 0 {
@@ -726,6 +730,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		//fmt.Printf("connString=%q params=%s\n", connString, P)
 		P.ConnParams.UserName, P.ConnParams.Password, P.ConnParams.DSN = username, password, dsn
 		P.PoolParams.UserName, P.PoolParams.Password, P.PoolParams.DSN = username, password, dsn
+		if Log != nil {
+			Log("msg", "ParseConnString", "connString", origConnString, "connParams", P.ConnParams, "poolParams", P.PoolParams)
+		}
 		return P, nil
 	}
 	u, err := url.Parse(connString)
@@ -849,6 +856,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.NewPassword = q.Get("newPassword")
 	}
 
+	if Log != nil {
+		Log("msg", "ParseConnString", "connString", origConnString, "connParams", P.ConnParams, "poolParams", P.PoolParams)
+	}
 	return P, nil
 }
 
@@ -1012,6 +1022,8 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
 
 type ctxKey string
 
+func (s ctxKey) String() string { return string(s) }
+
 const logCtxKey = ctxKey("godror.Log")
 
 type logFunc func(...interface{}) error
@@ -1079,6 +1091,9 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 		return nil, err
 	}
 
+	if Log != nil {
+		Log("msg", "OpenConnector", "name", name, "P", P)
+	}
 	// create connector and assign parameters
 	c := connector{drv: d, ConnParams: P.ConnParams}
 	if !(P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim || P.StandaloneConnection) {
@@ -1086,7 +1101,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
-		if P.PoolParams.UserName == "" && P.PoolParams.Password == "" && !P.Heterogeneous {
+		if !P.Heterogeneous && P.PoolParams.UserName == "" && P.PoolParams.Password == "" {
 			c.PoolParams.ExternalAuth = true
 		}
 	}
@@ -1105,14 +1120,25 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
-
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
-		params, ok := ctxValue.(ConnParams)
-		if ok {
+		if params, ok := ctxValue.(ConnParams); ok {
+			// ContextWithUserPassw does not fill ConnParam.DSN
+			if params.DSN == "" {
+				params.DSN = c.PoolParams.DSN
+				if params.DSN == "" {
+					params.DSN = c.ConnParams.DSN
+				}
+			}
+			if Log != nil {
+				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params)
+			}
 			return c.drv.createConnFromParams(c.PoolParams, params)
 		}
 	}
 
+	if Log != nil {
+		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams)
+	}
 	return c.drv.createConnFromParams(c.PoolParams, c.ConnParams)
 }
 

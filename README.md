@@ -38,7 +38,13 @@ TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/inst
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
 
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
-`godror.ContextWithUserPassw`.
+`godror.ContextWithUserPassw` or `godror.ContextWithParams`.
+
+**WARNING** to provide connection params through `context.Context` (with `godror.ContextWithParams`),
+you should set `DB.SetMaxIdleConns(0)`, to force the Go `*sql.DB` connection pool to acquire a
+new connection, using the params in the Context!
+
+Without this, you may get a previously acquired and now idle connection!
 
 ## Rationale
 

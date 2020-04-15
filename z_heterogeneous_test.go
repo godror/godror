@@ -40,7 +40,9 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
+	testHeterogeneousDB.SetMaxIdleConns(0)
 
+	// Check that it works
 	conn, err := testHeterogeneousDB.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
