@@ -65,6 +65,7 @@ func TestParseConnString(t *testing.T) {
 
 	wantHeterogeneous := wantXO
 	wantHeterogeneous.Heterogeneous = true
+	wantHeterogeneous.PoolParams.UserName, wantHeterogeneous.PoolParams.Password = "", ""
 
 	setP := func(s, p string) string {
 		if i := strings.Index(s, ":SECRET-"); i >= 0 {
@@ -73,16 +74,6 @@ func TestParseConnString(t *testing.T) {
 			}
 		}
 		return s
-	}
-
-	cmpOpts := []cmp.Option{
-		cmp.Comparer(func(a *time.Location, b *time.Location) bool {
-			var zero time.Time
-			const tf = "2006-01-02T15:04:05"
-			return a == b ||
-				a.String() == b.String() && a.String() != "" ||
-				zero.In(a).Format(tf) == zero.In(b).Format(tf)
-		}),
 	}
 
 	for tName, tCase := range map[string]struct {
@@ -152,8 +143,7 @@ func TestParseConnString(t *testing.T) {
 			continue
 		}
 		if !reflect.DeepEqual(P, tCase.Want) {
-			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want,
-				cmp.Diff(tCase.Want, P, cmpOpts...))
+			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P))
 			continue
 		}
 		s := setP(P.String(), P.ConnParams.Password)
@@ -163,7 +153,7 @@ func TestParseConnString(t *testing.T) {
 			continue
 		}
 		if !reflect.DeepEqual(P, Q) {
-			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q, cmpOpts...))
+			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q))
 			continue
 		}
 		if got := setP(Q.String(), Q.ConnParams.Password); s != got {
