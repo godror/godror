@@ -1218,7 +1218,7 @@ func (c *conn) dataGetTimeC(t *time.Time, data *C.dpiData) {
 		return
 	}
 	ts := C.dpiData_getTimestamp(data)
-	tz := c.timeZone
+	tz := c.params.Timezone
 	if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
 		tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
 	}
@@ -1272,7 +1272,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		if data[i].isNull == 1 {
 			continue
 		}
-		t = t.In(c.timeZone)
+		t = t.In(c.params.Timezone)
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],

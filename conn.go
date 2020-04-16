@@ -44,15 +44,13 @@ var _ = driver.Pinger((*conn)(nil))
 
 type conn struct {
 	currentTT      TraceTag
-	poolParams     PoolParams
-	connParams     ConnParams
+	params         ConnectionParams
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
 	currentUser    string
 	drv            *drv
 	dpiConn        *C.dpiConn
-	timeZone       *time.Location
 	objTypes       map[string]ObjectType
 	tzOffSecs      int
 	inTransaction  bool
@@ -388,7 +386,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init(onInit []string) error {
+func (c *conn) init(onInit func(conn driver.Conn) error) error {
 	if c.Client.Version == 0 {
 		var err error
 		if c.Client, err = c.drv.ClientVersion(); err != nil {
@@ -396,32 +394,10 @@ func (c *conn) init(onInit []string) error {
 		}
 	}
 
-	if err := c.initVersionTZ(); err != nil || len(onInit) == 0 || !c.newSession {
+	if err := c.initVersionTZ(); err != nil || onInit == nil || !c.newSession {
 		return err
 	}
-	if Log != nil {
-		Log("newSession", c.newSession, "onInit", onInit)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Duration(len(onInit))*time.Second)
-	defer cancel()
-	if Log != nil {
-		Log("doOnInit", len(onInit))
-	}
-	for _, qry := range onInit {
-		if Log != nil {
-			Log("onInit", qry)
-		}
-		st, err := c.PrepareContext(ctx, qry)
-		if err != nil {
-			return errors.Errorf("%s: %w", qry, err)
-		}
-		_, err = st.Exec(nil) //lint:ignore SA1019 - it's hard to use ExecContext here
-		st.Close()
-		if err != nil {
-			return errors.Errorf("%s: %w", qry, err)
-		}
-	}
-	return nil
+	return onInit(c)
 }
 
 func (c *conn) initVersionTZ() error {
@@ -430,7 +406,7 @@ func (c *conn) initVersionTZ() error {
 		var release *C.char
 		var releaseLen C.uint32_t
 		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-			if c.connParams.IsPrelim {
+			if c.params.IsPrelim {
 				return nil
 			}
 			return errors.Errorf("getServerVersion: %w", c.getError())
@@ -441,13 +417,13 @@ func (c *conn) initVersionTZ() error {
 			[]byte{'\n'}, []byte{';', ' '}, -1))
 	}
 
-	if c.timeZone != nil && (c.timeZone != time.Local || c.tzOffSecs != 0) {
+	if c.params.Timezone != nil && (c.params.Timezone != time.Local || c.tzOffSecs != 0) {
 		return nil
 	}
-	c.timeZone = time.Local
-	_, c.tzOffSecs = time.Now().In(c.timeZone).Zone()
+	c.params.Timezone = time.Local
+	_, c.tzOffSecs = time.Now().In(c.params.Timezone).Zone()
 	if Log != nil {
-		Log("tz", c.timeZone, "offSecs", c.tzOffSecs)
+		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
 	// DBTIMEZONE is useless, false, and misdirecting!
@@ -483,7 +459,7 @@ func (c *conn) initVersionTZ() error {
 	if err != nil || tz == nil {
 		return err
 	}
-	c.timeZone, c.tzOffSecs = tz, off
+	c.params.Timezone, c.tzOffSecs = tz, off
 
 	return nil
 }
@@ -727,8 +703,9 @@ const paramsCtxKey = ctxKey("params")
 // If a standalone connection is being used this will have no effect.
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
-func ContextWithParams(ctx context.Context, params ConnParams) context.Context {
-	return context.WithValue(ctx, paramsCtxKey, params)
+func ContextWithParams(ctx context.Context, commonParams CommonParams, connParams ConnParams) context.Context {
+	return context.WithValue(ctx, paramsCtxKey,
+		commonAndConnParams{CommonParams: commonParams, ConnParams: connParams})
 }
 
 // ContextWithUserPassw returns a context with the specified user and password,
@@ -738,12 +715,10 @@ func ContextWithParams(ctx context.Context, params ConnParams) context.Context {
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
-	params := ConnParams{
-		UserName:  user,
-		Password:  password,
-		ConnClass: connClass,
-	}
-	return ContextWithParams(ctx, params)
+	return ContextWithParams(ctx,
+		CommonParams{UserName: user, Password: password},
+		ConnParams{ConnClass: connClass},
+	)
 }
 
 // StartupMode for the database.
@@ -800,5 +775,5 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 
 // Timezone returns the connection's timezone.
 func (c *conn) Timezone() *time.Location {
-	return c.timeZone
+	return c.params.Timezone
 }

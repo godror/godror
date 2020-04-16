@@ -31,7 +31,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.Heterogeneous = true
-	username := cs.ConnParams.UserName
+	username := cs.UserName
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testHeterogeneousConStr)
 
@@ -97,8 +97,8 @@ func TestContextWithUserPassw(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.Heterogeneous = true
-	username, password := cs.ConnParams.UserName, cs.ConnParams.Password
-	cs.ConnParams.UserName, cs.ConnParams.Password = "", ""
+	username, password := cs.UserName, cs.Password
+	cs.UserName, cs.Password = "", ""
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testConStr, " -> ", testHeterogeneousConStr)
 

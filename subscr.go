@@ -196,7 +196,7 @@ func (s *Subscription) getError() error { return s.conn.getError() }
 //
 // This code is EXPERIMENTAL yet!
 func (c *conn) NewSubscription(name string, cb func(Event), options ...SubscriptionOption) (*Subscription, error) {
-	if !c.connParams.EnableEvents {
+	if !c.params.EnableEvents {
 		return nil, errors.New("subscription must be allowed by specifying \"enableEvents=1\" in the connection parameters")
 	}
 	var p subscriptionParams

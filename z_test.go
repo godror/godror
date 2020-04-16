@@ -130,27 +130,25 @@ func init() {
 	}
 
 	P := godror.ConnectionParams{
-		ConnParams: godror.ConnParams{
+		CommonParams: godror.CommonParams{
 			UserName:     os.Getenv("GODROR_TEST_USERNAME"),
 			Password:     os.Getenv("GODROR_TEST_PASSWORD"),
 			DSN:          os.Getenv("GODROR_TEST_DB"),
-			ConnClass:    "POOLED",
 			EnableEvents: true,
 		},
+		ConnParams: godror.ConnParams{
+			ConnClass: "POOLED",
+		},
 		PoolParams: godror.PoolParams{
-			UserName:    os.Getenv("GODROR_TEST_USERNAME"),
-			Password:    os.Getenv("GODROR_TEST_PASSWORD"),
-			DSN:         os.Getenv("GODROR_TEST_DB"),
 			MinSessions: 1, MaxSessions: maxSessions, SessionIncrement: 1,
 			WaitTimeout:    10 * time.Second,
 			MaxLifeTime:    5 * time.Minute,
 			SessionTimeout: 30 * time.Second,
-			EnableEvents:   true,
 		},
 		StandaloneConnection: os.Getenv("GODROR_TEST_STANDALONE") == "1",
 	}
-	if strings.HasSuffix(strings.ToUpper(P.ConnParams.UserName), " AS SYSDBA") {
-		P.IsSysDBA, P.ConnParams.UserName = true, P.ConnParams.UserName[:len(P.ConnParams.UserName)-10]
+	if strings.HasSuffix(strings.ToUpper(P.UserName), " AS SYSDBA") {
+		P.IsSysDBA, P.UserName = true, P.UserName[:len(P.UserName)-10]
 	}
 	testConStr = P.StringWithPassword()
 	var err error
@@ -2473,8 +2471,8 @@ func TestNewPassword(t *testing.T) {
 	qry := "CREATE USER " + user + " IDENTIFIED BY " + oldPassword + " PASSWORD EXPIRE"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "ORA-01031:") {
-			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.ConnParams.UserName + ";\n" +
-				"GRANT CREATE SESSION TO " + P.ConnParams.UserName + " WITH ADMIN OPTION;\n")
+			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.UserName + ";\n" +
+				"GRANT CREATE SESSION TO " + P.UserName + " WITH ADMIN OPTION;\n")
 			t.Skip(err)
 		}
 		t.Fatal(err)
@@ -2484,12 +2482,12 @@ func TestNewPassword(t *testing.T) {
 	qry = "GRANT CREATE SESSION TO " + user
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "ORA-01031:") {
-			t.Log("Please issue this:\nGRANT CREATE SESSION TO " + P.ConnParams.UserName + " WITH ADMIN OPTION;\n")
+			t.Log("Please issue this:\nGRANT CREATE SESSION TO " + P.UserName + " WITH ADMIN OPTION;\n")
 		}
 		t.Fatal(err)
 	}
 
-	P.ConnParams.UserName, P.ConnParams.Password = user, oldPassword
+	P.UserName, P.Password = user, oldPassword
 	P.StandaloneConnection = true
 	P.NewPassword = newPassword
 	{
@@ -2500,7 +2498,7 @@ func TestNewPassword(t *testing.T) {
 		db.Close()
 	}
 
-	P.ConnParams.Password, P.NewPassword = P.NewPassword, ""
+	P.Password, P.NewPassword = P.NewPassword, ""
 	{
 		db, err := sql.Open("godror", P.StringWithPassword())
 		if err != nil {
