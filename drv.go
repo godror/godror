@@ -334,11 +334,15 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	}
 
 	// setup credentials
-	if P.UserName != "" {
-		cUserName = C.CString(P.UserName)
+	username, password := P.UserName, P.Password
+	if pool != nil && !pool.params.Heterogeneous {
+		username, password = "", ""
 	}
-	if P.Password != "" {
-		cPassword = C.CString(P.Password)
+	if username != "" {
+		cUserName = C.CString(username)
+	}
+	if password != "" {
+		cPassword = C.CString(password)
 	}
 	if P.DSN != "" {
 		cDSN = C.CString(P.DSN)
@@ -348,14 +352,14 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	var dc *C.dpiConn
 	if C.dpiConn_create(
 		d.dpiContext,
-		cUserName, C.uint32_t(len(P.UserName)),
-		cPassword, C.uint32_t(len(P.Password)),
+		cUserName, C.uint32_t(len(username)),
+		cPassword, C.uint32_t(len(password)),
 		cDSN, C.uint32_t(len(P.DSN)),
 		commonCreateParamsPtr,
 		&connCreateParams, &dc,
 	) == C.DPI_FAILURE {
 		return nil, errors.Errorf("username=%q dsn=%q params=%+v: %w",
-			P.UserName, P.DSN, connCreateParams, d.getError())
+			username, P.DSN, connCreateParams, d.getError())
 	}
 
 	// create connection and initialize it, if needed
@@ -1100,7 +1104,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 
 	if Log != nil {
-		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams)
+		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams, "common", c.CommonParams)
 	}
 	return c.drv.createConnFromParams(c.ConnectionParams)
 }

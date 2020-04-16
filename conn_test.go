@@ -9,12 +9,12 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	//"github.com/google/go-cmp/cmp/cmpopts"
 	errors "golang.org/x/xerrors"
 )
 
@@ -61,6 +61,10 @@ func TestParseConnString(t *testing.T) {
 	//wantHeterogeneous.PoolParams.UserName, wantHeterogeneous.PoolParams.Password = "", ""
 
 	cmpOpts := []cmp.Option{
+		//cmpopts.IgnoreUnexported(ConnectionParams{}),
+		cmp.Comparer(func(a, b ConnectionParams) bool {
+			return a.String() == b.String()
+		}),
 		cmp.Comparer(func(a, b *time.Location) bool {
 			if a == b {
 				return true
@@ -149,8 +153,8 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: %v", tName, err)
 			continue
 		}
-		if !reflect.DeepEqual(P, tCase.Want) {
-			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, cmp.Diff(tCase.Want, P, cmpOpts...))
+		if diff := cmp.Diff(tCase.Want, P, cmpOpts...); diff != "" {
+			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, diff)
 			continue
 		}
 		s := setP(P.String(), P.Password)
@@ -159,8 +163,8 @@ func TestParseConnString(t *testing.T) {
 			t.Errorf("%s: parseConnString %v", tName, err)
 			continue
 		}
-		if !reflect.DeepEqual(P, Q) {
-			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, cmp.Diff(P, Q, cmpOpts...))
+		if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" {
+			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, diff)
 			continue
 		}
 		if got := setP(Q.String(), Q.Password); s != got {
