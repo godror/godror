@@ -1094,6 +1094,9 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		if params, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.DSN
+			if params.DSN == "" {
+				params.DSN = c.DSN
+			}
 			if Log != nil {
 				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params, "common", params.CommonParams)
 			}
