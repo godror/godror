@@ -511,6 +511,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 
 	st.Lock()
 	defer st.Unlock()
+	if st.conn == nil {
+		return nil, driver.ErrBadConn
+	}
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 
