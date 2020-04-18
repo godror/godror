@@ -314,6 +314,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.Lock()
 	defer st.Unlock()
+	if st.conn == nil {
+		return nil, driver.ErrBadConn
+	}
+
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
 		return driver.ResultNoRows, nil
