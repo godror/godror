@@ -316,6 +316,17 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	Log := ctxGetLog(ctx)
 
+	st.Lock()
+	defer st.Unlock()
+	if st.conn == nil {
+		return nil, driver.ErrBadConn
+	}
+
+	if st.dpiStmt == nil && st.query == getConnection {
+		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
+		return driver.ResultNoRows, nil
+	}
+
 	closeIfBadConn := func(err error) error {
 		if err != nil && err == driver.ErrBadConn {
 			if Log != nil {
@@ -325,13 +336,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			st.conn.close(true)
 		}
 		return err
-	}
-
-	st.Lock()
-	defer st.Unlock()
-	if st.dpiStmt == nil && st.query == getConnection {
-		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
-		return driver.ResultNoRows, nil
 	}
 
 	st.conn.mu.RLock()
@@ -498,17 +502,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 	Log := ctxGetLog(ctx)
 
-	closeIfBadConn := func(err error) error {
-		if err != nil && err == driver.ErrBadConn {
-			if Log != nil {
-				Log("error", err)
-			}
-			st.close(false)
-			st.conn.close(true)
-		}
-		return err
-	}
-
 	st.Lock()
 	defer st.Unlock()
 	if st.conn == nil {
@@ -529,6 +522,17 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			Log("msg", "QueryContext", "args", args)
 		}
 		return args[0].Value.(driver.Rows), nil
+	}
+
+	closeIfBadConn := func(err error) error {
+		if err != nil && err == driver.ErrBadConn {
+			if Log != nil {
+				Log("error", err)
+			}
+			st.close(false)
+			st.conn.close(true)
+		}
+		return err
 	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
