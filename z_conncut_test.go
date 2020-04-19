@@ -110,7 +110,7 @@ func TestConnCut(t *testing.T) {
 	err = db.PingContext(shortCtx)
 	shortCancel()
 	if err != nil {
-		t.Fatal(err)
+		t.Skip(err)
 	}
 
 	// Now the real test
