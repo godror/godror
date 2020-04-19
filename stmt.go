@@ -616,7 +616,10 @@ func (st *statement) NumInput() int {
 	var cnt C.uint32_t
 	//defer func() { fmt.Printf("%p.NumInput=%d (%q)\n", st, cnt, st.query) }()
 	if C.dpiStmt_getBindCount(st.dpiStmt, &cnt) == C.DPI_FAILURE {
-		return -1
+		if st.conn == nil {
+			panic(driver.ErrBadConn)
+		}
+		panic(st.conn.getError())
 	}
 	if cnt < 2 { // 1 can't decrease...
 		return int(cnt)
@@ -624,7 +627,10 @@ func (st *statement) NumInput() int {
 	names := make([]*C.char, int(cnt))
 	lengths := make([]C.uint32_t, int(cnt))
 	if C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) == C.DPI_FAILURE {
-		return -1
+		if st.conn == nil {
+			panic(driver.ErrBadConn)
+		}
+		panic(st.conn.getError())
 	}
 	//fmt.Printf("%p.NumInput=%d\n", st, cnt)
 
