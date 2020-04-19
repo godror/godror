@@ -57,7 +57,7 @@ func init() {
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
 		if time.Local, err = time.LoadLocation(tzName); err != nil {
-			panic(errors.Errorf("unknoqn GODROR_TIMEZONE=%q: %w", tzName, err))
+			panic(errors.Errorf("unknown GODROR_TIMEZONE=%q: %w", tzName, err))
 		}
 	}
 
