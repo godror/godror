@@ -18,9 +18,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
-	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
@@ -80,14 +77,7 @@ func TestConnCut(t *testing.T) {
 	t.Log("upstream:", upstream.String())
 
 	// Second, create proxy for it
-	var px tcpProxy
-	if false {
-		px, err = newTCPProxy(ctx, upstream)
-	} else if false {
-		px, err = newNCProxy(upstream.String())
-	} else {
-		px, err = newSocatProxy(upstream.String())
-	}
+	px, err := newTCPProxy(ctx, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,109 +138,13 @@ func TestConnCut(t *testing.T) {
 
 }
 
-type tcpProxy interface {
-	ListenAddr() string
-	Serve(context.Context) error
-}
-
-type ncTCPProxy struct {
-	lsnr           *net.TCPListener
-	addr           string
-	upstream       string
-	cmdDown, cmdUp *exec.Cmd
-}
-
-func newNCProxy(upstream string) (*ncTCPProxy, error) {
-	lsnr, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
-	if err != nil {
-		return nil, err
-	}
-	defer lsnr.Close()
-
-	addr := lsnr.Addr().String()
-	_, downPort, _ := net.SplitHostPort(addr)
-	upHost, upPort, err := net.SplitHostPort(upstream)
-	if err != nil {
-		return nil, err
-	}
-	pw, pr, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	cmdDown := exec.Command("nc", "-l", "-k", "-v", "-v", "-w", "-1", "-l", "-p", downPort, "127.0.0.1")
-	cmdDown.Stderr = os.Stderr
-	cmdDown.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: 9, Setpgid: true}
-	cmdDown.Stdin, cmdDown.Stdout = pw, pr
-
-	cmdUp := exec.Command("nc", "-v", "-v", "-w", "-1", "-k", upHost, upPort)
-	cmdUp.Stdout, cmdUp.Stderr = os.Stdout, os.Stderr
-	cmdUp.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: 9, Setpgid: true}
-	cmdUp.Stdin, cmdUp.Stdout = pr, pw
-	if err = cmdUp.Start(); err != nil {
-		pw.Close()
-		return nil, err
-	}
-
-	return &ncTCPProxy{upstream: upstream, addr: addr, cmdUp: cmdUp, cmdDown: cmdDown, lsnr: lsnr}, nil
-}
-func (px ncTCPProxy) ListenAddr() string { return px.addr }
-func (px *ncTCPProxy) Serve(ctx context.Context) error {
-	go func() {
-		<-ctx.Done()
-		p, _ := os.FindProcess(-px.cmdUp.Process.Pid)
-		p.Kill()
-		px.cmdUp.Process.Kill()
-	}()
-	px.lsnr.Close()
-	return px.cmdDown.Run()
-}
-
-type socatTCPProxy struct {
-	addr     string
-	port     int
-	upstream string
-	cmd      *exec.Cmd
-}
-
-func newSocatProxy(upstream string) (*socatTCPProxy, error) {
-	lsnr, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
-	if err != nil {
-		return nil, err
-	}
-	addr := lsnr.Addr().String()
-	_, p, _ := net.SplitHostPort(addr)
-	port, err := strconv.ParseInt(p, 10, 32)
-	if err != nil {
-		return nil, err
-	}
-	cmd := exec.Command(
-		"socat", "-d", "-d", "-T10",
-		"TCP-LISTEN:"+strconv.Itoa(int(port))+",bind=localhost,fork,range=127.0.0.1/32,shut-none,linger2=3",
-		"TCP:"+upstream,
-	)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: 9, Setpgid: true}
-	lsnr.Close()
-	return &socatTCPProxy{upstream: upstream, addr: addr, port: int(port), cmd: cmd}, cmd.Start()
-}
-func (px socatTCPProxy) ListenAddr() string { return px.addr }
-func (px *socatTCPProxy) Serve(ctx context.Context) error {
-	go func() {
-		<-ctx.Done()
-		p, _ := os.FindProcess(-px.cmd.Process.Pid)
-		p.Kill()
-		px.cmd.Process.Kill()
-	}()
-	return px.cmd.Run()
-}
-
-type goTCPProxy struct {
+type tcpProxy struct {
 	upstream net.TCPAddr
 	lsnr     *net.TCPListener
 }
 
-func (px goTCPProxy) ListenAddr() string { return px.lsnr.Addr().String() }
-func newTCPProxy(ctx context.Context, upstream net.TCPAddr) (*goTCPProxy, error) {
+func (px tcpProxy) ListenAddr() string { return px.lsnr.Addr().String() }
+func newTCPProxy(ctx context.Context, upstream net.TCPAddr) (*tcpProxy, error) {
 	var d net.Dialer
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	conn, err := d.DialContext(ctx, "tcp", upstream.String())
@@ -259,17 +153,24 @@ func newTCPProxy(ctx context.Context, upstream net.TCPAddr) (*goTCPProxy, error)
 		return nil, err
 	}
 	conn.Close()
-	px := goTCPProxy{upstream: upstream}
+	px := tcpProxy{upstream: upstream}
 	px.lsnr, err = net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}) // random port on localhost
 	return &px, err
 }
 
-func (px *goTCPProxy) Serve(ctx context.Context) error {
-	go func() {
-		<-ctx.Done()
-		px.lsnr.Close()
-	}()
+func (px *tcpProxy) Serve(ctx context.Context) error {
+	// Do not close the listener correctly
+	if false {
+		go func() {
+			<-ctx.Done()
+			px.lsnr.Close()
+		}()
+	}
 	for {
+		if err := ctx.Err(); err != nil {
+			px.lsnr.Close()
+			return err
+		}
 		down, err := px.lsnr.AcceptTCP()
 		if err != nil {
 			log.Println(err)
@@ -282,7 +183,7 @@ func (px *goTCPProxy) Serve(ctx context.Context) error {
 		go px.handleConn(ctx, down)
 	}
 }
-func (px *goTCPProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
+func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 	defer down.Close()
 	up, err := net.DialTCP("tcp", nil, &px.upstream)
 	if err != nil {
@@ -290,14 +191,46 @@ func (px *goTCPProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 		return err
 	}
 	defer up.Close()
-	pipe := func(dst, src *net.TCPConn) error {
-		defer dst.Close()
-		_, err := io.Copy(dst, src)
-		log.Printf("Copy from %s to %s: %v", src.RemoteAddr(), dst.RemoteAddr(), err)
-		return err
+	pipe := func(ctx context.Context, dst, src *net.TCPConn) error {
+		buf := make([]byte, 512)
+		var consecEOF int
+		//remote := src.RemoteAddr()
+		for {
+			if err := ctx.Err(); err != nil {
+				dst.Close()
+				return err
+			}
+			n, err := src.Read(buf)
+			//log.Printf("Read %d bytes from %s", n, remote)
+			if n != 0 {
+				if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+					return writeErr
+				}
+			}
+			if err == nil {
+				consecEOF = 0
+			} else if err == io.EOF {
+				consecEOF++
+				if consecEOF > 3 {
+					return err
+				}
+				time.Sleep(time.Second)
+				continue
+			} else {
+				consecEOF = 0
+				log.Printf("Copy from %s to %s: %v", src.RemoteAddr(), dst.RemoteAddr(), err)
+				return err
+			}
+		}
 	}
-	go pipe(up, down)
-	return pipe(down, up)
+	slowCtx, slowCancel := context.WithCancel(context.Background())
+	defer slowCancel()
+	go func() {
+		pipe(ctx, down, up)
+		time.Sleep(2 * time.Second)
+		slowCancel()
+	}()
+	return pipe(slowCtx, up, down)
 }
 
 // /proc/self/net/tcp 3. col is rem_addr:port
