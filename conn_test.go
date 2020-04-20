@@ -22,7 +22,7 @@ func TestParseConnString(t *testing.T) {
 	t.Parallel()
 	wantAt := ConnectionParams{
 		CommonParams: CommonParams{
-			UserName: "cc",
+			Username: "cc",
 			Password: "c@c*1",
 			DSN:      "192.168.1.1/cc",
 			Timezone: time.Local,
@@ -35,7 +35,7 @@ func TestParseConnString(t *testing.T) {
 	}
 	wantDefault := ConnectionParams{
 		CommonParams: CommonParams{
-			UserName: "user",
+			Username: "user",
 			Password: "pass",
 			DSN:      "sid",
 			Timezone: time.Local,
@@ -58,7 +58,7 @@ func TestParseConnString(t *testing.T) {
 
 	wantHeterogeneous := wantXO
 	wantHeterogeneous.Heterogeneous = true
-	//wantHeterogeneous.PoolParams.UserName, wantHeterogeneous.PoolParams.Password = "", ""
+	//wantHeterogeneous.PoolParams.Username, wantHeterogeneous.PoolParams.Password = "", ""
 
 	cmpOpts := []cmp.Option{
 		//cmpopts.IgnoreUnexported(ConnectionParams{}),
@@ -92,7 +92,7 @@ func TestParseConnString(t *testing.T) {
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					UserName: "user", Password: "pass", DSN: "sid",
+					Username: "user", Password: "pass", DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
@@ -133,7 +133,7 @@ func TestParseConnString(t *testing.T) {
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					UserName: "user", Password: "pass", DSN: "sid",
+					Username: "user", Password: "pass", DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{

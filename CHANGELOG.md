@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Innards of ConnectionParams has been split to ConnParams and PoolParams,
 - NewConnector needs ConnParams and PoolParams instead of the connection URL.
+- ConnectionParams.SID has been renamed to DSN.
 
 ### Added
 - Support connection sharding (thanks to Anthony Tuininga)

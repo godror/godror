@@ -716,7 +716,7 @@ func ContextWithParams(ctx context.Context, commonParams CommonParams, connParam
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return ContextWithParams(ctx,
-		CommonParams{UserName: user, Password: password},
+		CommonParams{Username: user, Password: password},
 		ConnParams{ConnClass: connClass},
 	)
 }

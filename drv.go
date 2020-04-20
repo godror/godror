@@ -238,10 +238,10 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	}
 
 	// manage strings
-	var cUserName, cPassword, cNewPassword, cDSN, cConnClass *C.char
+	var cUsername, cPassword, cNewPassword, cDSN, cConnClass *C.char
 	defer func() {
-		if cUserName != nil {
-			C.free(unsafe.Pointer(cUserName))
+		if cUsername != nil {
+			C.free(unsafe.Pointer(cUsername))
 		}
 		if cPassword != nil {
 			C.free(unsafe.Pointer(cPassword))
@@ -280,7 +280,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 
 	// assign external authentication flag (only relevant for standalone
 	// connections)
-	if pool == nil && P.UserName == "" && P.Password == "" {
+	if pool == nil && P.Username == "" && P.Password == "" {
 		connCreateParams.externalAuth = 1
 	}
 
@@ -334,12 +334,12 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	}
 
 	// setup credentials
-	username, password := P.UserName, P.Password
+	username, password := P.Username, P.Password
 	if pool != nil && !pool.params.Heterogeneous {
 		username, password = "", ""
 	}
 	if username != "" {
-		cUserName = C.CString(username)
+		cUsername = C.CString(username)
 	}
 	if password != "" {
 		cPassword = C.CString(password)
@@ -352,7 +352,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	var dc *C.dpiConn
 	if C.dpiConn_create(
 		d.dpiContext,
-		cUserName, C.uint32_t(len(username)),
+		cUsername, C.uint32_t(len(username)),
 		cPassword, C.uint32_t(len(password)),
 		cDSN, C.uint32_t(len(P.DSN)),
 		commonCreateParamsPtr,
@@ -370,8 +370,8 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	}
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
-		if c.params.UserName == "" {
-			c.params.UserName = pool.params.UserName
+		if c.params.Username == "" {
+			c.params.Username = pool.params.Username
 		}
 	}
 	c.init(P.OnInit)
@@ -418,11 +418,11 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	if P.Heterogeneous {
-		P.UserName, P.Password = "", ""
+		P.Username, P.Password = "", ""
 	}
 	// determine key to use for pool
 	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
-		P.UserName, P.DSN, P.MinSessions, P.MaxSessions,
+		P.Username, P.DSN, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth)
 	if Log != nil {
@@ -521,10 +521,10 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	// setup credentials
-	var cUserName, cPassword, cDSN *C.char
-	if P.UserName != "" {
-		cUserName = C.CString(P.UserName)
-		defer C.free(unsafe.Pointer(cUserName))
+	var cUsername, cPassword, cDSN *C.char
+	if P.Username != "" {
+		cUsername = C.CString(P.Username)
+		defer C.free(unsafe.Pointer(cUsername))
 	}
 	if P.Password != "" {
 		cPassword = C.CString(P.Password)
@@ -538,13 +538,13 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	// create pool
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.UserName, "DSN", P.DSN,
+		Log("C", "dpiPool_create", "username", P.Username, "DSN", P.DSN,
 			"common", commonCreateParams, "pool",
 			fmt.Sprintf("%#v", poolCreateParams))
 	}
 	if C.dpiPool_create(
 		d.dpiContext,
-		cUserName, C.uint32_t(len(P.UserName)),
+		cUsername, C.uint32_t(len(P.Username)),
 		cPassword, C.uint32_t(len(P.Password)),
 		cDSN, C.uint32_t(len(P.DSN)),
 		&commonCreateParams,
@@ -588,7 +588,7 @@ func (P ConnectionParams) IsStandalone() bool {
 }
 
 type CommonParams struct {
-	UserName, Password, DSN string
+	Username, Password, DSN string
 	EnableEvents            bool
 	OnInit                  func(driver.Conn) error
 	Timezone                *time.Location
@@ -678,7 +678,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q["onInit"] = P.onInitStmts
 	return (&url.URL{
 		Scheme:   "oracle",
-		User:     url.UserPassword(P.UserName, password),
+		User:     url.UserPassword(P.Username, password),
 		Host:     host,
 		Path:     path,
 		RawQuery: q.Encode(),
@@ -709,7 +709,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		if i < 0 {
 			return P, errors.New("no '/' in connection string")
 		}
-		P.UserName, connString = connString[:i], connString[i+1:]
+		P.Username, connString = connString[:i], connString[i+1:]
 
 		uSid := strings.ToUpper(connString)
 		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
@@ -733,7 +733,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		//fmt.Printf("connString=%q params=%s\n", connString, P)
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
-		if P.UserName == "" && P.Password == "" && !P.Heterogeneous {
+		if P.Username == "" && P.Password == "" && !P.Heterogeneous {
 			P.PoolParams.ExternalAuth = true
 		}
 		if Log != nil {
@@ -747,7 +747,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		return P, errors.Errorf("%s: %w", connString, err)
 	}
 	if usr := u.User; usr != nil {
-		P.UserName = usr.Username()
+		P.Username = usr.Username()
 		P.Password, _ = usr.Password()
 	}
 	P.DSN = u.Hostname()
@@ -867,7 +867,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	} else {
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
-		if P.UserName == "" && P.Password == "" && !P.Heterogeneous {
+		if P.Username == "" && P.Password == "" && !P.Heterogeneous {
 			P.ExternalAuth = true
 		}
 	}

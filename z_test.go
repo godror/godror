@@ -131,7 +131,7 @@ func init() {
 
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
-			UserName:     os.Getenv("GODROR_TEST_USERNAME"),
+			Username:     os.Getenv("GODROR_TEST_USERNAME"),
 			Password:     os.Getenv("GODROR_TEST_PASSWORD"),
 			DSN:          os.Getenv("GODROR_TEST_DB"),
 			EnableEvents: true,
@@ -147,8 +147,8 @@ func init() {
 		},
 		StandaloneConnection: os.Getenv("GODROR_TEST_STANDALONE") == "1",
 	}
-	if strings.HasSuffix(strings.ToUpper(P.UserName), " AS SYSDBA") {
-		P.IsSysDBA, P.UserName = true, P.UserName[:len(P.UserName)-10]
+	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
+		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
 	var err error
@@ -2471,8 +2471,8 @@ func TestNewPassword(t *testing.T) {
 	qry := "CREATE USER " + user + " IDENTIFIED BY " + oldPassword + " PASSWORD EXPIRE"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "ORA-01031:") {
-			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.UserName + ";\n" +
-				"GRANT CREATE SESSION TO " + P.UserName + " WITH ADMIN OPTION;\n")
+			t.Log("Please issue this:\nGRANT CREATE USER, DROP USER TO " + P.Username + ";\n" +
+				"GRANT CREATE SESSION TO " + P.Username + " WITH ADMIN OPTION;\n")
 			t.Skip(err)
 		}
 		t.Fatal(err)
@@ -2482,12 +2482,12 @@ func TestNewPassword(t *testing.T) {
 	qry = "GRANT CREATE SESSION TO " + user
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "ORA-01031:") {
-			t.Log("Please issue this:\nGRANT CREATE SESSION TO " + P.UserName + " WITH ADMIN OPTION;\n")
+			t.Log("Please issue this:\nGRANT CREATE SESSION TO " + P.Username + " WITH ADMIN OPTION;\n")
 		}
 		t.Fatal(err)
 	}
 
-	P.UserName, P.Password = user, oldPassword
+	P.Username, P.Password = user, oldPassword
 	P.StandaloneConnection = true
 	P.NewPassword = newPassword
 	{
