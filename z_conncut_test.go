@@ -98,7 +98,17 @@ func TestConnCut(t *testing.T) {
 	t.Log("pinging", P.String())
 	time.Sleep(100 * time.Millisecond)
 	shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			pxCancel()
+		case <-done:
+			return
+		}
+	}()
 	err = db.PingContext(shortCtx)
+	close(done)
 	shortCancel()
 	if err != nil {
 		t.Skip(err)
@@ -171,18 +181,11 @@ func newTCPProxy(ctx context.Context, upstream net.TCPAddr, t *testing.T) (*tcpP
 }
 
 func (px *tcpProxy) Serve(ctx context.Context) error {
-	// Do not close the listener correctly
-	if false {
-		go func() {
-			<-ctx.Done()
-			px.lsnr.Close()
-		}()
-	}
+	go func() {
+		<-ctx.Done()
+		px.lsnr.Close()
+	}()
 	for {
-		if err := ctx.Err(); err != nil {
-			px.lsnr.Close()
-			return err
-		}
 		down, err := px.lsnr.AcceptTCP()
 		if err != nil {
 			if px.T != nil {
@@ -207,6 +210,11 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 		return err
 	}
 	defer up.Close()
+	go func() {
+		<-ctx.Done()
+		up.Close()
+		down.Close()
+	}()
 	pipe := func(ctx context.Context, dst, src *net.TCPConn) error {
 		buf := make([]byte, 512)
 		var consecEOF int
