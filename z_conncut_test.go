@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"testing"
@@ -77,7 +76,7 @@ func TestConnCut(t *testing.T) {
 	t.Log("upstream:", upstream.String())
 
 	// Second, create proxy for it
-	px, err := newTCPProxy(ctx, upstream)
+	px, err := newTCPProxy(ctx, upstream, t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +93,8 @@ func TestConnCut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(0)
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(2)
 	t.Log("pinging", P.String())
 	time.Sleep(100 * time.Millisecond)
 	shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
@@ -112,6 +111,19 @@ func TestConnCut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
+
+	// force both connections to be in use
+	rows1, err := stmt.QueryContext(ctx, 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows2, err := stmt.QueryContext(ctx, 99)
+	if err != nil {
+		rows1.Close()
+		t.Fatal(err)
+	}
+	rows2.Close()
+	rows1.Close()
 
 	for i := 0; i < 10; i++ {
 		shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
@@ -130,7 +142,6 @@ func TestConnCut(t *testing.T) {
 		if i == 3 {
 			t.Log("canceling proxy")
 			go func() {
-				time.Sleep(50 * time.Millisecond)
 				pxCancel()
 			}()
 		}
@@ -141,10 +152,11 @@ func TestConnCut(t *testing.T) {
 type tcpProxy struct {
 	upstream net.TCPAddr
 	lsnr     *net.TCPListener
+	*testing.T
 }
 
 func (px tcpProxy) ListenAddr() string { return px.lsnr.Addr().String() }
-func newTCPProxy(ctx context.Context, upstream net.TCPAddr) (*tcpProxy, error) {
+func newTCPProxy(ctx context.Context, upstream net.TCPAddr, t *testing.T) (*tcpProxy, error) {
 	var d net.Dialer
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	conn, err := d.DialContext(ctx, "tcp", upstream.String())
@@ -153,7 +165,7 @@ func newTCPProxy(ctx context.Context, upstream net.TCPAddr) (*tcpProxy, error) {
 		return nil, err
 	}
 	conn.Close()
-	px := tcpProxy{upstream: upstream}
+	px := tcpProxy{upstream: upstream, T: t}
 	px.lsnr, err = net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}) // random port on localhost
 	return &px, err
 }
@@ -173,7 +185,9 @@ func (px *tcpProxy) Serve(ctx context.Context) error {
 		}
 		down, err := px.lsnr.AcceptTCP()
 		if err != nil {
-			log.Println(err)
+			if px.T != nil {
+				px.Log(err)
+			}
 			var tErr interface{ Temporary() bool }
 			if errors.As(err, &tErr) && !tErr.Temporary() {
 				return err
@@ -187,7 +201,9 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 	defer down.Close()
 	up, err := net.DialTCP("tcp", nil, &px.upstream)
 	if err != nil {
-		log.Println(err)
+		if px.T != nil {
+			px.Log(err)
+		}
 		return err
 	}
 	defer up.Close()
@@ -201,7 +217,6 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 				return err
 			}
 			n, err := src.Read(buf)
-			//log.Printf("Read %d bytes from %s", n, remote)
 			if n != 0 {
 				if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
 					return writeErr
@@ -218,7 +233,9 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 				continue
 			} else {
 				consecEOF = 0
-				log.Printf("Copy from %s to %s: %v", src.RemoteAddr(), dst.RemoteAddr(), err)
+				if px.T != nil {
+					px.Logf("Copy from %s to %s: %v", src.RemoteAddr(), dst.RemoteAddr(), err)
+				}
 				return err
 			}
 		}
