@@ -133,11 +133,11 @@ type drv struct {
 }
 
 type connPool struct {
-	dpiPool       *C.dpiPool
-	params        commonAndPoolParams
-	timeZone      *time.Location
-	tzOffSecs     int
-	serverVersion VersionInfo
+	dpiPool  *C.dpiPool
+	params   commonAndPoolParams
+	timeZone *time.Location
+	//tzOffSecs     int
+	//serverVersion VersionInfo
 }
 
 func (d *drv) init() error {
@@ -307,18 +307,17 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		defer C.free(mem)
 		columns := (*[1 << 30]C.dpiShardingKeyColumn)(mem)
 		for i, value := range P.ShardingKey {
-			switch value.(type) {
+			switch value := value.(type) {
 			case int:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-				C.dpiData_setInt64(&tempData, C.int64_t(value.(int)))
+				C.dpiData_setInt64(&tempData, C.int64_t(value))
 			case string:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-				strVal := value.(string)
-				cs := C.CString(strVal)
+				cs := C.CString(value)
 				defer C.free(unsafe.Pointer(cs))
-				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(strVal)))
+				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
 				return nil, errors.New("Unsupported data type for sharding")
 			}
@@ -551,8 +550,8 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Errorf("params=%s extAuth=%v: %w", P,
-			poolCreateParams.externalAuth, d.getError())
+		return nil, errors.Errorf("params=%v extAuth=%v: %w",
+			P, poolCreateParams.externalAuth, d.getError())
 	}
 
 	// set statement cache

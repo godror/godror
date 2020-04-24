@@ -48,13 +48,13 @@ type conn struct {
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
-	currentUser    string
-	drv            *drv
-	dpiConn        *C.dpiConn
-	objTypes       map[string]ObjectType
-	tzOffSecs      int
-	inTransaction  bool
-	newSession     bool
+	//currentUser    string
+	drv           *drv
+	dpiConn       *C.dpiConn
+	objTypes      map[string]ObjectType
+	tzOffSecs     int
+	inTransaction bool
+	newSession    bool
 }
 
 func (c *conn) getError() error {
