@@ -64,6 +64,11 @@ jobs:
         flags: "-exclude=G104"
 
   test:
-    - name: Test
-      run: go test
-      continue-on-error: true  # libclntsh.so is needed
+    name: Test
+    # libclntsh.so is needed
+    continue-on-error: true 
+    runs-on: ubuntu-latest
+    steps:
+      - name: test
+        with:
+          run: go test
