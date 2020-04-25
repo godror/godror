@@ -23,11 +23,14 @@ jobs:
       uses: actions/checkout@master
 
     - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
+      run: go get -v -t -d ./...
 
     - name: Build
       run: go build -v .
+    
+    - name: Test
+      continue-on-error: true
+      run: go test
 
   shadow:
     name: Shadow
@@ -62,14 +65,3 @@ jobs:
         run: sec
         token: ${{ secrets.GITHUB_TOKEN }}
         flags: "-exclude=G104"
-
-  test:
-    name: Test
-    # libclntsh.so is needed
-    continue-on-error: true 
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
-    - name: test
-      with:
-        run: go test
