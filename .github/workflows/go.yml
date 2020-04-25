@@ -27,21 +27,10 @@ jobs:
 
     - name: Build
       run: go build -v .
-    
+
     - name: Test
       continue-on-error: true
       run: go test
-
-  shadow:
-    name: Shadow
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
-    - name: check
-      uses: grandcolline/golang-github-actions@v1.1.0
-      with:
-        run: shadow
-        token: ${{ secrets.GITHUB_TOKEN }}
 
   staticcheck:
     name: StaticCheck
