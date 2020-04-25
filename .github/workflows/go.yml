@@ -69,6 +69,7 @@ jobs:
     continue-on-error: true 
     runs-on: ubuntu-latest
     steps:
-      - name: test
-        with:
-          run: go test
+    - uses: actions/checkout@master
+    - name: test
+      with:
+        run: go test
