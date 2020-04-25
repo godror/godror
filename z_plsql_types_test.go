@@ -574,7 +574,7 @@ func TestSelectObjectTable(t *testing.T) {
 			if err = obj.GetItem(&objData, i); err != nil {
 				t.Fatal(err)
 			}
-			if err := objData.GetObject().GetAttribute(&attrData, "MSG"); err != nil {
+			if err = objData.GetObject().GetAttribute(&attrData, "MSG"); err != nil {
 				t.Fatal(err)
 			}
 			msg := string(attrData.GetBytes())
@@ -609,7 +609,7 @@ BEGIN
   p_not := NOT p_in;
   p_num := CASE WHEN p_in THEN 1 ELSE 0 END;
 END;`
-	if _, err := conn.ExecContext(ctx, crQry); err != nil {
+	if _, err = conn.ExecContext(ctx, crQry); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", crQry, err))
 	}
 	defer cleanup()
@@ -619,7 +619,7 @@ END;`
 	for _, in := range []bool{true, false} {
 		var out bool
 		var num int
-		if _, err := conn.ExecContext(ctx, qry, in, sql.Out{Dest: &out}, sql.Out{Dest: &num}); err != nil {
+		if _, err = conn.ExecContext(ctx, qry, in, sql.Out{Dest: &out}, sql.Out{Dest: &num}); err != nil {
 			if srv, err := godror.ServerVersion(ctx, conn); err != nil {
 				t.Log(err)
 			} else if srv.Version < 18 {
@@ -891,7 +891,7 @@ END;
 	}
 
 	const qry = `BEGIN test_cwo_getSum(:v1,:v2,:v3,:v4,:v5,:v6,:v7,:v8,:v9); END;`
-	if _, err := tx.ExecContext(ctx, qry,
+	if _, err = tx.ExecContext(ctx, qry,
 		sql.Named("v1", sql.Out{Dest: &p_operation_id, In: true}),
 		sql.Named("v2", &a_languagecode_i),
 		sql.Named("v3", &a_username_i),

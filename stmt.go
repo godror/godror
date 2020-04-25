@@ -295,8 +295,8 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 // ExecContext must honor the context timeout and return when it is canceled.
 //
 // Cancelation/timeout is honored, execution is broken, but you may have to disable out-of-bound execution - see https://github.com/oracle/odpi/issues/116 for details.
-func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) (res driver.Result, err error) {
-	if err = ctx.Err(); err != nil {
+func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	Log := ctxGetLog(ctx)
@@ -327,7 +327,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 
 	// bind variables
-	if err = st.bindVars(args, Log); err != nil {
+	if err := st.bindVars(args, Log); err != nil {
 		return nil, closeIfBadConn(err)
 	}
 
@@ -397,14 +397,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}()
 
 	select {
-	case err = <-done:
+	case err := <-done:
 		if err != nil {
 			return nil, closeIfBadConn(err)
 		}
 	case <-ctx.Done():
 		// select again to avoid race condition if both are done
 		select {
-		case err = <-done:
+		case err := <-done:
 			if err != nil {
 				return nil, closeIfBadConn(err)
 			}
@@ -434,7 +434,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			var n C.uint32_t
 			data := &st.data[i][0]
 			if C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) == C.DPI_FAILURE {
-				err = st.getError()
+				err := st.getError()
 				return nil, errors.Errorf("%d.getReturnedData: %w", i, closeIfBadConn(err))
 			}
 			if n == 0 {
@@ -445,7 +445,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {
-			if err = get(dest, st.data[i]); err != nil {
+			if err := get(dest, st.data[i]); err != nil {
 				if Log != nil {
 					Log("get", i, "error", err)
 				}
@@ -455,14 +455,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		var n C.uint32_t = 1
 		if C.dpiVar_getNumElementsInArray(st.vars[i], &n) == C.DPI_FAILURE {
-			err = st.getError()
+			err := st.getError()
 			if Log != nil {
 				Log("msg", "getNumElementsInArray", "i", i, "error", err)
 			}
 			return nil, errors.Errorf("%d.getNumElementsInArray: %w", i, closeIfBadConn(err))
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
-		if err = get(dest, st.data[i][:n]); err != nil {
+		if err := get(dest, st.data[i][:n]); err != nil {
 			if Log != nil {
 				Log("msg", "get", "i", i, "n", n, "error", err)
 			}

@@ -57,7 +57,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		fmt.Sprintf("GRANT CREATE SESSION TO %s", proxyUser),
 		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", proxyUser, username),
 	} {
-		if _, err := conn.ExecContext(ctx, qry); err != nil {
+		if _, err = conn.ExecContext(ctx, qry); err != nil {
 			if strings.Contains(err.Error(), "ORA-01031:") {
 				t.Log("Please issue this:\nGRANT CREATE USER, DROP USER, ALTER USER TO " + username + ";\n" +
 					"GRANT CREATE SESSION TO " + username + " WITH ADMIN OPTION;\n")

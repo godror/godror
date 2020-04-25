@@ -51,7 +51,7 @@ func TestQRCN(t *testing.T) {
 		t.Fatalf("%+v", err)
 	}
 	defer s.Close()
-	if err := s.Register("SELECT COUNT(0) FROM test_subscr"); err != nil {
+	if err = s.Register("SELECT COUNT(0) FROM test_subscr"); err != nil {
 		t.Fatalf("%+v", err)
 	}
 	qry := "SELECT regid, table_name FROM USER_CHANGE_NOTIFICATION_REGS"

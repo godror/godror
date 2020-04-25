@@ -74,8 +74,8 @@ func init() {
 		}
 		//defer os.RemoveAll(tempDir)
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
-			sfh, err := os.Open(filepath.Join(wd, nm))
-			if err != nil {
+			var sfh *os.File
+			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
 				panic(err)
 			}
 			dfh, err := os.Create(filepath.Join(tempDir, nm))
@@ -872,7 +872,7 @@ func TestExecuteMany(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
+	if _, err = tx.ExecContext(ctx, "ALTER SESSION SET time_zone = local"); err != nil {
 		t.Fatal(err)
 	}
 	// This is instead of now: a nice moment in time right before the summer time shift
@@ -1155,8 +1155,8 @@ func TestOpenClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			t.Error("CLOSE:", err)
+		if cErr := db.Close(); cErr != nil {
+			t.Error("CLOSE:", cErr)
 		}
 	}()
 	db.SetMaxIdleConns(1)
@@ -1869,7 +1869,7 @@ func TestSDO(t *testing.T) {
 			}
 			testDb.ExecContext(ctx, drop)
 			t.Log(drop)
-			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			if _, err = testDb.ExecContext(ctx, qry); err != nil {
 				err = errors.Errorf("%s: %w", qry, err)
 				t.Log(err)
 				if !strings.Contains(err.Error(), "ORA-01031:") {
@@ -2322,7 +2322,7 @@ func TestCancel(t *testing.T) {
 	Cnt := func() int {
 		var cnt int
 		const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
-		if err := db.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
+		if err = db.QueryRow(qryCount, pid).Scan(&cnt); err != nil {
 			if strings.Contains(err.Error(), "ORA-00942:") {
 				t.Skip(err.Error())
 			} else {
@@ -2347,7 +2347,7 @@ func TestCancel(t *testing.T) {
 		grp.Go(func() error {
 			//t.Log(qry)
 			//defer t.Log("END " + qry)
-			if _, err := db.ExecContext(subCtx, qry); err != nil && !errors.Is(err, context.Canceled) {
+			if _, err = db.ExecContext(subCtx, qry); err != nil && !errors.Is(err, context.Canceled) {
 				return errors.Errorf("%s: %w", qry, err)
 			}
 			return nil
@@ -2614,9 +2614,9 @@ func TestSelectTypes(t *testing.T) {
 		t.Fatalf("%s: %+v", createQry, err)
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		testDb.ExecContext(ctx, "DROP TABLE test_types")
+		shortCtx, shortCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shortCancel()
+		testDb.ExecContext(shortCtx, "DROP TABLE test_types")
 	}()
 
 	const insertQry = `INSERT INTO test_types
