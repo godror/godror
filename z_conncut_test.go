@@ -149,6 +149,17 @@ func TestConnCut(t *testing.T) {
 		}
 		t.Log(s)
 
+		shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
+		err := db.PingContext(shortCtx)
+		shortCancel()
+		if err != nil {
+			if i <= 3 {
+				t.Error(err)
+			} else {
+				t.Log(err)
+			}
+		}
+
 		if i == 3 {
 			t.Log("canceling proxy")
 			go func() {
