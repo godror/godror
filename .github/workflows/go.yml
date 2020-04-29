@@ -32,6 +32,10 @@ jobs:
       continue-on-error: true
       run: go test
 
+    - name: Test
+      continue-on-error: true
+      run: go test
+
   staticcheck:
     name: StaticCheck
     runs-on: ubuntu-latest

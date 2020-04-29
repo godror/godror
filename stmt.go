@@ -187,10 +187,10 @@ func CallTimeout(d time.Duration) Option {
 
 const minChunkSize = 1 << 16
 
-var _ = driver.Stmt((*statement)(nil))
-var _ = driver.StmtQueryContext((*statement)(nil))
-var _ = driver.StmtExecContext((*statement)(nil))
-var _ = driver.NamedValueChecker((*statement)(nil))
+var _ driver.Stmt = (*statement)(nil)
+var _ driver.StmtQueryContext = (*statement)(nil)
+var _ driver.StmtExecContext = (*statement)(nil)
+var _ driver.NamedValueChecker = (*statement)(nil)
 
 type statement struct {
 	stmtOptions
@@ -221,9 +221,9 @@ func (st *statement) Close() error {
 	st.Lock()
 	defer st.Unlock()
 
-	return st.close(false)
+	return st.closeNotLocking()
 }
-func (st *statement) close(keepDpiStmt bool) error {
+func (st *statement) closeNotLocking() error {
 	if st == nil {
 		return nil
 	}
@@ -247,13 +247,11 @@ func (st *statement) close(keepDpiStmt bool) error {
 		}
 	}
 
-	if !keepDpiStmt {
-		var si C.dpiStmtInfo
-		if dpiStmt != nil &&
-			C.dpiStmt_getInfo(dpiStmt, &si) != C.DPI_FAILURE && // this is just to check the validity of dpiStmt, to avoid SIGSEGV
-			C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
-			return nil
-		}
+	if dpiStmt == nil {
+		return nil
+	}
+	if C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
+		return nil
 	}
 	if c == nil {
 		return driver.ErrBadConn
@@ -316,14 +314,12 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	defer st.conn.mu.RUnlock()
 
 	closeIfBadConn := func(err error) error {
-		if err != nil && err == driver.ErrBadConn {
-			if Log != nil {
-				Log("error", err)
-			}
-			st.close(false)
-			st.conn.close(true)
+		if err == nil {
+			return nil
 		}
-		return err
+		c := st.conn
+		st.closeNotLocking()
+		return maybeBadConn(err, c)
 	}
 
 	// bind variables
@@ -336,7 +332,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-	st.setCallTimeout(ctx)
+	// setCallTimeout measures only the round-trips,
+	// may close the underlying statement,
+	// and may leave the connection in an unusable state.
+	// So don't use it.
+	//
+	// See the ODPI-C documentation.
+	//st.setCallTimeout(ctx)
 
 	done := make(chan error, 1)
 	// execute
@@ -389,11 +391,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			break
 		}
-		if err == nil {
-			done <- nil
-			return
+		if err != nil {
+			err = errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err)
 		}
-		done <- maybeBadConn(errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err), nil)
+		done <- maybeBadConn(err, nil)
 	}()
 
 	select {
@@ -409,17 +410,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
+			err := ctx.Err()
 			if Log != nil {
-				Log("msg", "BREAK statement")
+				Log("msg", "BREAK statement", "error", err)
 			}
 			_ = st.Break()
-			// For some reasons this SIGSEGVs if not not keepDpiStmt (try to close it),
-			st.close(true)
-			// so we hope that the following conn.Close closes the dpiStmt, too.
-			if err := st.conn.Close(); err != nil {
-				return nil, err
-			}
-			return nil, ctx.Err()
+			st.closeNotLocking()
+			return nil, err
 		}
 	}
 
@@ -510,14 +507,12 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 
 	closeIfBadConn := func(err error) error {
-		if err != nil && err == driver.ErrBadConn {
-			if Log != nil {
-				Log("error", err)
-			}
-			st.close(false)
-			st.conn.close(true)
+		if err == nil {
+			return nil
 		}
-		return err
+		c := st.conn
+		st.closeNotLocking()
+		return maybeBadConn(err, c)
 	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
@@ -543,7 +538,13 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				done <- err
 				return
 			}
-			st.setCallTimeout(ctx)
+			// setCallTimeout measures only the round-trips,
+			// may close the underlying statement,
+			// and may leave the connection in an unusable state.
+			// So don't use it.
+			//
+			// See the ODPI-C documentation.
+			//st.setCallTimeout(ctx)
 			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) != C.DPI_FAILURE {
 				break
 			}
@@ -554,11 +555,10 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				}
 			}
 		}
-		if err == nil {
-			done <- nil
-			return
+		if err != nil {
+			err = errors.Errorf("dpiStmt_execute: %w", err)
 		}
-		done <- maybeBadConn(errors.Errorf("dpiStmt_execute: %w", err), nil)
+		done <- maybeBadConn(err, nil)
 	}()
 
 	select {
@@ -573,17 +573,13 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				return nil, closeIfBadConn(err)
 			}
 		case <-ctx.Done():
+			err := ctx.Err()
 			if Log != nil {
-				Log("msg", "BREAK query")
+				Log("msg", "BREAK query", "error", err)
 			}
 			_ = st.Break()
-			// For some reasons this SIGSEGVs if not not keepDpiStmt (try to close it),
-			st.close(true)
-			// so we hope that the following conn.Close closes the dpiStmt, too.
-			if err := st.conn.Close(); err != nil {
-				return nil, err
-			}
-			return nil, ctx.Err()
+			st.closeNotLocking()
+			return nil, err
 		}
 	}
 	rows, err := st.openRows(int(colCount))
@@ -638,6 +634,13 @@ func (st *statement) NumInput() int {
 	return int(cnt)
 }
 
+/*
+// setCallTimeout measures only the round-trips,
+// may close the underlying statement,
+// and may leave the connection in an unusable state.
+// So don't use it.
+//
+// See the ODPI-C documentation.
 func (st *statement) setCallTimeout(ctx context.Context) {
 	if st.callTimeout != 0 {
 		var cancel context.CancelFunc
@@ -646,6 +649,7 @@ func (st *statement) setCallTimeout(ctx context.Context) {
 	}
 	st.conn.setCallTimeout(ctx)
 }
+*/
 
 type argInfo struct {
 	objType     *C.dpiObjectType

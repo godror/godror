@@ -31,16 +31,17 @@ const wrapResultset = "--WRAP_RESULTSET--"
 
 // The maximum capacity is limited to (2^32 / sizeof(dpiData))-1 to remain compatible
 // with 32-bit platforms. The size of a `C.dpiData` is 32 Byte on a 64-bit system, `C.dpiSubscrMessageTable` is 40 bytes.
-// So this is 2^25.
-// See https://github.com/go-godror/godror/issues/73#issuecomment-401281714
 const maxArraySize = (1<<30)/C.sizeof_dpiSubscrMessageTable - 1
 
-var _ = driver.Conn((*conn)(nil))
-var _ = driver.ConnBeginTx((*conn)(nil))
-var _ = driver.ConnPrepareContext((*conn)(nil))
-var _ = driver.Pinger((*conn)(nil))
+var _ driver.Conn = (*conn)(nil)
+var _ driver.ConnBeginTx = (*conn)(nil)
+var _ driver.ConnPrepareContext = (*conn)(nil)
+var _ driver.Pinger = (*conn)(nil)
 
-//var _ = driver.ExecerContext((*conn)(nil))
+//
+//var _ driver.ExecerContext = (*conn)(nil)
+//var _ driver.QueryerContext = (*conn)(nil)
+//var _ driver.NamedValueChecker = (*conn)(nil)
 
 type conn struct {
 	currentTT      TraceTag
@@ -48,13 +49,13 @@ type conn struct {
 	Client, Server VersionInfo
 	tranParams     tranParams
 	mu             sync.RWMutex
-	//currentUser    string
-	drv           *drv
-	dpiConn       *C.dpiConn
-	objTypes      map[string]ObjectType
-	tzOffSecs     int
-	inTransaction bool
-	newSession    bool
+	poolKey        string
+	drv            *drv
+	dpiConn        *C.dpiConn
+	tzOffSecs      int
+	inTransaction  bool
+	newSession     bool
+	released       bool
 }
 
 func (c *conn) getError() error {
@@ -111,7 +112,7 @@ func (c *conn) Ping(ctx context.Context) error {
 			return err
 		default:
 			_ = c.Break()
-			c.close(true)
+			c.closeNotLocking()
 			return driver.ErrBadConn
 		}
 	}
@@ -120,6 +121,13 @@ func (c *conn) Ping(ctx context.Context) error {
 // Prepare returns a prepared statement, bound to this connection.
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)
+}
+
+// CheckNamedValue is called before passing arguments to the driver
+// and is called in place of any ColumnConverter. CheckNamedValue must do type
+// validation and conversion as appropriate for the driver.
+func (c *conn) CheckNamedValueX(nv *driver.NamedValue) error {
+	return driver.ErrSkip
 }
 
 // Close invalidates and potentially stops any current
@@ -136,48 +144,25 @@ func (c *conn) Close() error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.close(true)
+	return c.closeNotLocking()
 }
 
-func (c *conn) close(doNotReuse bool) error {
+func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
 	c.setTraceTag(TraceTag{})
-	dpiConn, objTypes := c.dpiConn, c.objTypes
-	c.dpiConn, c.objTypes = nil, nil
+	dpiConn := c.dpiConn
+	c.dpiConn = nil
 	if dpiConn == nil {
 		return nil
 	}
+
+	// dpiConn_release decrements dpiConn's reference counting,
+	// and closes it when it reaches zero.
+	//
+	// To track reference counting, use DPI_DEBUG_LEVEL=2
 	defer C.dpiConn_release(dpiConn)
-
-	seen := make(map[string]struct{}, len(objTypes))
-	for _, o := range objTypes {
-		nm := o.FullName()
-		if _, seen := seen[nm]; seen {
-			continue
-		}
-		seen[nm] = struct{}{}
-		o.close(doNotReuse)
-	}
-	if !doNotReuse {
-		return nil
-	}
-
-	// Just to be sure, break anything in progress.
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			if Log != nil {
-				Log("msg", "TIMEOUT releasing connection")
-			}
-			C.dpiConn_breakExecution(dpiConn)
-		}
-	}()
-	C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
-	close(done)
 	return nil
 }
 
@@ -275,6 +260,9 @@ type tranParams struct {
 // context is for the preparation of the statement,
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	return c.prepareContext(ctx, query)
+}
+func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -283,6 +271,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		c.setTraceTag(tt)
 		c.mu.Unlock()
 	}
+	// TODO: get rid of this hack
 	if query == getConnection {
 		if Log != nil {
 			Log("msg", "PrepareContext", "shortcut", query)
@@ -387,6 +376,10 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 }
 
 func (c *conn) init(onInit func(conn driver.Conn) error) error {
+	c.released = false
+	if Log != nil {
+		Log("msg", "init connection", "conn", c, "onInit", onInit)
+	}
 	if c.Client.Version == 0 {
 		var err error
 		if c.Client, err = c.drv.ClientVersion(); err != nil {
@@ -544,6 +537,12 @@ func parseTZ(s string) (int, error) {
 	return tz, nil
 }
 
+// setCallTimeout measures only the round-trips,
+// may close the underlying statement,
+// and may leave the connection in an unusable state.
+// So don't use it.
+//
+// See the ODPI-C documentation.
 func (c *conn) setCallTimeout(ctx context.Context) {
 	if c.Client.Version < 18 {
 		return
@@ -553,13 +552,15 @@ func (c *conn) setCallTimeout(ctx context.Context) {
 		ms = C.uint32_t(time.Until(dl) / time.Millisecond)
 	}
 	// force it to be 0 (disabled)
+	if Log != nil {
+		Log("msg", "setCallTimeout", "ms", ms)
+	}
 	C.dpiConn_setCallTimeout(c.dpiConn, ms)
 }
 
-// maybeBadConn checks whether the error is because of a bad connection, and returns driver.ErrBadConn,
+// maybeBadConn checks whether the error is because of a bad connection,
+// CLOSES the connection and returns driver.ErrBadConn,
 // as database/sql requires.
-//
-// Also in this case, iff c != nil, closes it.
 func maybeBadConn(err error, c *conn) error {
 	if err == nil {
 		return nil
@@ -570,7 +571,7 @@ func maybeBadConn(err error, c *conn) error {
 			if Log != nil {
 				Log("msg", "maybeBadConn close", "conn", c)
 			}
-			c.close(true)
+			c.closeNotLocking()
 		}
 	}
 	if errors.Is(err, driver.ErrBadConn) {
@@ -776,4 +777,92 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 // Timezone returns the connection's timezone.
 func (c *conn) Timezone() *time.Location {
 	return c.params.Timezone
+}
+
+var _ = driver.SessionResetter((*conn)(nil))
+
+// ResetSession is called prior to executing a query on the connection
+// if the connection has been used before. If the driver returns driver.ErrBadConn
+// the connection is discarded.
+//
+// This implementation does nothing if the connection is not pooled,
+// but reacquires a new session if it is pooled.
+//
+// This ensures that the session is not stale.
+func (c *conn) ResetSession(ctx context.Context) error {
+	if c == nil {
+		return driver.ErrBadConn
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.poolKey == "" {
+		// not pooled connection
+		if c.dpiConn == nil {
+			return driver.ErrBadConn
+		}
+		return nil
+	}
+
+	c.drv.mu.Lock()
+	pool := c.drv.pools[c.poolKey]
+	c.drv.mu.Unlock()
+	if pool == nil {
+		if c.dpiConn == nil {
+			return driver.ErrBadConn
+		}
+		return nil
+	}
+	P := commonAndConnParams{CommonParams: c.params.CommonParams, ConnParams: c.params.ConnParams}
+	var paramsFromCtx bool
+	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
+		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
+			// ContextWithUserPassw does not fill ConnParam.DSN
+			if P.DSN == "" {
+				P.DSN = c.params.DSN
+			}
+			if Log != nil {
+				Log("msg", "paramsFromContext", "params", P)
+			}
+		}
+	}
+	if Log != nil {
+		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
+	}
+	// Close and then reacquire a fresh dpiConn
+	if c.dpiConn != nil && !c.released {
+		// Just release
+		c.closeNotLocking()
+	}
+	var err error
+	var newSession bool
+	if c.dpiConn, newSession, err = c.drv.acquireConn(pool, P); err != nil {
+		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
+	}
+
+	if paramsFromCtx || newSession {
+		c.init(P.OnInit)
+	}
+	return nil
+}
+
+// Validator may be implemented by Conn to allow drivers to
+// signal if a connection is valid or if it should be discarded.
+//
+// If implemented, drivers may return the underlying error from queries,
+// even if the connection should be discarded by the connection pool.
+//
+// This implementation returns the underlying session to the OCI session pool,
+// iff this is a pooled connection. ResetSession will reacquire it.
+func (c *conn) IsValid() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dpiConn == nil {
+		return false
+	}
+	c.closeNotLocking()
+	c.released = true
+	return true
 }

@@ -37,40 +37,57 @@ func TestConnCut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := sql.Open("godror", testConStr)
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.StandaloneConnection = true
+	db, err := sql.Open("godror", P.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("ConnCut"), 10*time.Second)
 	defer cancel()
-	shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
-	const qry = "SELECT SYS_CONTEXT('userenv', 'service_name') FROM DUAL"
-	var serviceName string
-	err = db.QueryRowContext(shortCtx, qry).Scan(&serviceName)
-	shortCancel()
-	if err != nil {
-		t.Fatal(err)
-	}
-	rem2 := make(map[string]net.TCPAddr)
-	err = getRemotes(rem2)
-	db.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log("service:", serviceName)
+	const qry = "SELECT SYS_CONTEXT('userenv', 'service_name') FROM all_objects"
 	var upstream net.TCPAddr
-	for k := range rem2 {
-		if _, ok := rem1[k]; ok {
+	rem2 := make(map[string]net.TCPAddr)
+	var serviceName string
+	for i := 0; i < 10; i++ {
+		for k := range rem2 {
 			delete(rem2, k)
-			continue
 		}
-		upstream = rem2[k]
+		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
+		rows, err := db.QueryContext(shortCtx, qry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		rows.Next()
+		err = rows.Scan(&serviceName)
+		shortCancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = getRemotes(rem2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("service:", serviceName)
+		for k := range rem2 {
+			if _, ok := rem1[k]; ok {
+				delete(rem2, k)
+				continue
+			}
+			upstream = rem2[k]
+		}
+		if len(rem2) == 1 {
+			break
+		}
 	}
+	db.Close()
 	if len(rem2) != 1 {
-		t.Fatalf("cannot find remote address of %q: when connecting to it, %v connections has been created",
+		t.Skipf("cannot find remote address of %q: when connecting to it, %v connections has been created",
 			testConStr, rem2)
 	}
 	t.Log("upstream:", upstream.String())
@@ -83,10 +100,6 @@ func TestConnCut(t *testing.T) {
 	pxCtx, pxCancel := context.WithCancel(ctx)
 	defer pxCancel()
 	go func() { px.Serve(pxCtx) }()
-	P, err := godror.ParseConnString(testConStr)
-	if err != nil {
-		t.Fatal(err)
-	}
 	P.DSN = px.ListenAddr() + "/" + serviceName
 	db, err = sql.Open("godror", P.StringWithPassword())
 	if err != nil {
@@ -97,7 +110,7 @@ func TestConnCut(t *testing.T) {
 	db.SetMaxIdleConns(2)
 	t.Log("pinging", P.String())
 	time.Sleep(100 * time.Millisecond)
-	shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
+	shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 	done := make(chan struct{})
 	go func() {
 		select {

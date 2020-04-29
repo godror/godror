@@ -20,7 +20,7 @@ import (
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("HeterogeneousPoolIntegration"), 30*time.Second)
 	defer cancel()
 
 	const proxyPassword = "myPassword666myPassword"
@@ -65,7 +65,9 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 			t.Skip(errors.Errorf("%s: %w", qry, err))
 		}
 	}
-	defer func() { testHeterogeneousDB.ExecContext(context.Background(), "DROP USER "+proxyUser) }()
+	defer func() {
+		testHeterogeneousDB.ExecContext(testContext("HeterogeneousPoolIntegration-drop"), "DROP USER "+proxyUser)
+	}()
 
 	for tName, tCase := range map[string]struct {
 		In   context.Context
@@ -89,7 +91,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 }
 
 func TestContextWithUserPassw(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("ContextWithUserPassw"), 30*time.Second)
 	defer cancel()
 
 	cs, err := godror.ParseConnString(testConStr)

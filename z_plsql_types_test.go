@@ -124,19 +124,12 @@ func (t *MyTable) Scan(src interface{}) error {
 	return nil
 }
 
-func (r MyTable) WriteObject() error {
+func (r MyTable) WriteObject(ctx context.Context) error {
 	if len(r.Items) == 0 {
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	conn, err := godror.DriverConn(ctx, testDb)
-	if err != nil {
-		return err
-	}
-
-	data, err := conn.NewData(r.Items[0], len(r.Items), 0)
+	data, err := r.NewData(r.Items[0], len(r.Items), 0)
 	if err != nil {
 		return err
 	}
@@ -261,7 +254,7 @@ func dropPackages(ctx context.Context) {
 func TestPLSQLTypes(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("PLSQLTypes"), 30*time.Second)
 	defer cancel()
 
 	serverVersion, err := godror.ServerVersion(ctx, testDb)
@@ -320,7 +313,7 @@ func TestPLSQLTypes(t *testing.T) {
 			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
 			if err != nil {
 				var cdr coder
-				if errors.As(err, &cdr); cdr.Code() == 21779 {
+				if errors.As(err, &cdr) && cdr.Code() == 21779 {
 					t.Skip(err)
 				}
 				t.Fatal(err)
@@ -513,7 +506,7 @@ func TestPLSQLTypes(t *testing.T) {
 
 func TestSelectObjectTable(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("SelectObjectTable"), 30*time.Second)
 	defer cancel()
 	const objTypeName, objTableName, pkgName = "test_selectObject", "test_selectObjTab", "test_selectObjPkg"
 	cleanup := func() {
@@ -590,7 +583,7 @@ func TestSelectObjectTable(t *testing.T) {
 
 func TestFuncBool(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("FuncBool"), 3*time.Second)
 	defer cancel()
 	const pkgName = "test_bool"
 	cleanup := func() { testDb.Exec("DROP PROCEDURE " + pkgName) }
@@ -646,9 +639,14 @@ END;`
 }
 
 func TestPlSqlObjectDirect(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("PlSqlObjectDirect"), 10*time.Second)
 	defer cancel()
-	testCon, err := godror.DriverConn(ctx, testDb)
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	testCon, err := godror.DriverConn(ctx, conn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -763,7 +761,7 @@ func prepExec(ctx context.Context, testCon driver.ConnPrepareContext, qry string
 
 func TestPlSqlObject(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("PlSqlObject"), 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -781,14 +779,8 @@ END;`
 	}
 	defer testDb.Exec("DROP PACKAGE " + pkg)
 
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-
 	defer tl.enableLogging(t)()
-	ot, err := godror.GetObjectType(ctx, tx, pkg+strings.ToUpper(".int_tab_typ"))
+	ot, err := godror.GetObjectType(ctx, conn, pkg+strings.ToUpper(".int_tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
 			t.Fatal(fmt.Sprintf("%+v", err))
@@ -839,7 +831,7 @@ BEGIN
 END;
 `
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("CallWithObject"), time.Minute)
 	defer cancel()
 
 	cleanup()
@@ -863,35 +855,35 @@ END;
 	var a_statuscode_list_i string
 	var a_type_list_o driver.Rows
 
-	tx, err := testDb.BeginTx(ctx, nil)
+	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer conn.Close()
 
-	typ, err := godror.GetObjectType(ctx, tx, "test_cwo_tbl_t")
+	typ, err := godror.GetObjectType(ctx, conn, "test_cwo_tbl_t")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a_mcalist_i, err = typ.NewObject(); err != nil {
 		t.Fatal(err)
 	}
-	if typ, err = godror.GetObjectType(ctx, tx, "test_cwo_rec_t"); err != nil {
-		t.Fatal(err)
+	if typ, err = godror.GetObjectType(ctx, conn, "test_cwo_rec_t"); err != nil {
+		t.Fatal("GetObjectType(test_cwo_rec_t):", err)
 	}
 	elt, err := typ.NewObject()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("NewObject(%s): %+v", typ, err)
 	}
 	if err = elt.Set("NUMBERPART1", "np1"); err != nil {
-		t.Fatal(err)
+		t.Fatal("set NUMBERPART1:", err)
 	}
 	if err = a_mcalist_i.Collection().Append(elt); err != nil {
-		t.Fatal(err)
+		t.Fatal("append to collection:", err)
 	}
 
 	const qry = `BEGIN test_cwo_getSum(:v1,:v2,:v3,:v4,:v5,:v6,:v7,:v8,:v9); END;`
-	if _, err = tx.ExecContext(ctx, qry,
+	if _, err := conn.ExecContext(ctx, qry,
 		sql.Named("v1", sql.Out{Dest: &p_operation_id, In: true}),
 		sql.Named("v2", &a_languagecode_i),
 		sql.Named("v3", &a_username_i),
@@ -905,7 +897,7 @@ END;
 		t.Fatal(err)
 	}
 
-	rows, err := godror.WrapRows(ctx, tx, a_type_list_o)
+	rows, err := godror.WrapRows(ctx, conn, a_type_list_o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -934,7 +926,7 @@ func BenchmarkObjArray(b *testing.B) {
 		b.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testContext("BenchmarObjArray"))
 	defer cancel()
 
 	b.Run("object", func(b *testing.B) {

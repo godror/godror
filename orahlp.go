@@ -241,38 +241,35 @@ type Querier interface {
 //
 // This can help using unknown-at-compile-time, a.k.a.
 // dynamic queries.
-func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, error) {
-	c, err := getConn(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	defer c.close(false)
-
-	stmt, err := c.PrepareContext(ctx, qry)
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
-	st := stmt.(*statement)
-	describeOnly(&st.stmtOptions)
-	dR, err := st.QueryContext(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer dR.Close()
-	r := dR.(*rows)
-	cols := make([]QueryColumn, len(r.columns))
-	for i, col := range r.columns {
-		cols[i] = QueryColumn{
-			Name:      col.Name,
-			Type:      int(col.OracleType),
-			Length:    int(col.Size),
-			Precision: int(col.Precision),
-			Scale:     int(col.Scale),
-			Nullable:  col.Nullable,
+func DescribeQuery(ctx context.Context, db Execer, qry string) (cols []QueryColumn, err error) {
+	err = Raw(ctx, db, func(c Conn) error {
+		stmt, err := c.PrepareContext(ctx, qry)
+		if err != nil {
+			return err
 		}
-	}
-	return cols, nil
+		defer stmt.Close()
+		st := stmt.(*statement)
+		describeOnly(&st.stmtOptions)
+		dR, err := st.QueryContext(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer dR.Close()
+		r := dR.(*rows)
+		cols = make([]QueryColumn, len(r.columns))
+		for i, col := range r.columns {
+			cols[i] = QueryColumn{
+				Name:      col.Name,
+				Type:      int(col.OracleType),
+				Length:    int(col.Size),
+				Precision: int(col.Precision),
+				Scale:     int(col.Scale),
+				Nullable:  col.Nullable,
+			}
+		}
+		return nil
+	})
+	return cols, err
 }
 
 // CompileError represents a compile-time error as in user_errors view.
@@ -435,6 +432,9 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 			_ = bw.Flush()
 			return errors.Errorf("%s: %w", qry, err)
 		}
+		if numLines == 0 {
+			continue
+		}
 		for i := 0; i < int(numLines); i++ {
 			_, _ = bw.WriteString(lines[i])
 			if err = bw.WriteByte('\n'); err != nil {
@@ -449,21 +449,21 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 }
 
 // ClientVersion returns the VersionInfo from the DB.
-func ClientVersion(ctx context.Context, ex Execer) (VersionInfo, error) {
-	c, err := getConn(ctx, ex)
-	if err != nil {
-		return VersionInfo{}, err
-	}
-	return c.drv.ClientVersion()
+func ClientVersion(ctx context.Context, ex Execer) (vi VersionInfo, err error) {
+	err = Raw(ctx, ex, func(c Conn) error {
+		vi, err = c.ClientVersion()
+		return err
+	})
+	return vi, err
 }
 
 // ServerVersion returns the VersionInfo of the client.
-func ServerVersion(ctx context.Context, ex Execer) (VersionInfo, error) {
-	c, err := getConn(ctx, ex)
-	if err != nil {
-		return VersionInfo{}, err
-	}
-	return c.Server, nil
+func ServerVersion(ctx context.Context, ex Execer) (vi VersionInfo, err error) {
+	err = Raw(ctx, ex, func(c Conn) error {
+		vi, err = c.ServerVersion()
+		return err
+	})
+	return vi, err
 }
 
 // Conn is the interface for a connection, to be returned by DriverConn.
@@ -487,32 +487,50 @@ type Conn interface {
 	Timezone() *time.Location
 }
 
-// DriverConn returns the *godror.conn of the database/sql.Conn
+// WrapRows transforms a driver.Rows into an *sql.Rows.
+func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
+	return q.QueryContext(ctx, wrapResultset, rset)
+}
+
+// Raw executes f on the given *sql.DB or *sql.Conn.
+func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
+	sf := func(driverConn interface{}) error { return f(driverConn.(Conn)) }
+	if rawer, ok := ex.(interface {
+		Raw(func(interface{}) error) error
+	}); ok {
+		return rawer.Raw(sf)
+	}
+	conn, err := ex.(interface {
+		Conn(context.Context) (*sql.Conn, error)
+	}).Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return conn.Raw(sf)
+}
+
+func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
+	err = Raw(ctx, ex, func(c Conn) error { loc = c.Timezone(); return nil })
+	return loc, err
+}
+
+// DriverConn will acquire a separate connection to the same DB as what ex is connected to.
 func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }
 
 var getConnMu sync.Mutex
 
+// getConn will acquire a separate connection to the same DB as what ex is connected to.
 func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	getConnMu.Lock()
 	defer getConnMu.Unlock()
 	var c interface{}
 	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
 		return nil, errors.Errorf("getConnection: %w", err)
+	} else if c == nil {
+		return nil, errors.New("nil connection")
 	}
 	return c.(*conn), nil
-}
-
-// WrapRows transforms a driver.Rows into an *sql.Rows.
-func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, error) {
-	return q.QueryContext(ctx, wrapResultset, rset)
-}
-
-func Timezone(ctx context.Context, ex Execer) (*time.Location, error) {
-	c, err := getConn(ctx, ex)
-	if err != nil {
-		return nil, err
-	}
-	return c.Timezone(), nil
 }

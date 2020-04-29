@@ -18,7 +18,7 @@ import (
 
 func TestLOBAppend(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("LOBAppend"), 30*time.Second)
 	defer cancel()
 
 	// To have a valid LOB locator, we have to keep the Stmt around.
@@ -78,7 +78,7 @@ END;`
 func TestStatWithLobs(t *testing.T) {
 	t.Parallel()
 	//defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("StatWithLobs"), 30*time.Second)
 	defer cancel()
 
 	ms, err := newMetricSet(ctx, testDb)

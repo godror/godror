@@ -154,6 +154,9 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
+	if Log != nil {
+		Log("msg", "Object.Close", "object", obj)
+	}
 	if C.dpiObject_release(obj) == C.DPI_FAILURE {
 		return errors.Errorf("error on close object: %w", O.getError())
 	}
@@ -353,8 +356,7 @@ type ObjectType struct {
 	Schema, Name string
 	Attributes   map[string]ObjectAttribute
 
-	conn          *conn
-	dpiObjectType *C.dpiObjectType
+	*objectTypeConn
 
 	DBSize, ClientSizeInBytes, CharSize int
 	CollectionOf                        *ObjectType
@@ -364,8 +366,18 @@ type ObjectType struct {
 	Scale                               int8
 	FsPrecision                         uint8
 }
+type objectTypeConn struct {
+	mu            sync.RWMutex
+	conn          *conn
+	dpiObjectType *C.dpiObjectType
+}
 
 func (t ObjectType) getError() error { return t.conn.getError() }
+
+// NewData returns Data for input parameters on Object/ObjectCollection.
+func (t ObjectType) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
+	return t.conn.NewData(baseType, sliceLen, bufSize)
+}
 
 func (t ObjectType) String() string {
 	if t.Schema == "" {
@@ -392,8 +404,8 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-	if o, ok := c.objTypes[name]; ok {
-		return o, nil
+	if Log != nil {
+		Log("msg", "GetObjectType", "name", name)
 	}
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
@@ -402,12 +414,8 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 		C.free(unsafe.Pointer(objType))
 		return ObjectType{}, errors.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, c.getError())
 	}
-	t := ObjectType{conn: c, dpiObjectType: objType}
+	t := ObjectType{objectTypeConn: &objectTypeConn{conn: c, dpiObjectType: objType}}
 	err := t.init()
-	if err == nil {
-		c.objTypes[name] = t
-		c.objTypes[t.FullName()] = t
-	}
 	return t, err
 }
 
@@ -415,8 +423,14 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t ObjectType) NewObject() (*Object, error) {
+	if Log != nil {
+		Log("msg", "NewObject", "name", t.Name)
+	}
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
-	if C.dpiObjectType_createObject(t.dpiObjectType, &obj) == C.DPI_FAILURE {
+	t.mu.RLock()
+	fail := C.dpiObjectType_createObject(t.dpiObjectType, &obj) == C.DPI_FAILURE
+	t.mu.RUnlock()
+	if fail {
 		C.free(unsafe.Pointer(obj))
 		return nil, t.getError()
 	}
@@ -439,34 +453,43 @@ func (t ObjectType) NewCollection() (ObjectCollection, error) {
 }
 
 // Close releases a reference to the object type.
-func (t *ObjectType) close(doNotReuse bool) error {
+func (t *ObjectType) Close() error {
 	if t == nil {
 		return nil
 	}
+	t.mu.Lock()
 	attributes, d := t.Attributes, t.dpiObjectType
 	t.Attributes, t.dpiObjectType = nil, nil
+	t.mu.Unlock()
 
+	if d == nil {
+		return nil
+	}
+	var released bool
+	defer func() {
+		if !released {
+			C.dpiObjectType_release(d)
+		}
+	}()
 	if t.CollectionOf != nil {
-		err := t.CollectionOf.close(false)
-		if err != nil {
+		if err := t.CollectionOf.Close(); err != nil {
 			return err
 		}
 	}
 
 	for _, attr := range attributes {
-		err := attr.Close()
-		if err != nil {
+		if err := attr.Close(); err != nil {
 			return err
 		}
 	}
 
-	if d == nil || !doNotReuse {
-		return nil
+	if Log != nil {
+		Log("msg", "ObjectType.Close", "name", t.Name)
 	}
-
 	if C.dpiObjectType_release(d) == C.DPI_FAILURE {
 		return errors.Errorf("error on close object type: %w", t.getError())
 	}
+	released = true
 
 	return nil
 }
@@ -479,7 +502,7 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		return nil, c.getError()
 	}
 	o := &Object{
-		ObjectType: ObjectType{dpiObjectType: objectType, conn: c},
+		ObjectType: ObjectType{objectTypeConn: &objectTypeConn{dpiObjectType: objectType, conn: c}},
 		dpiObject:  object,
 	}
 	return o, o.init()
@@ -492,23 +515,23 @@ func (t *ObjectType) init() error {
 	if t.Name != "" && t.Attributes != nil {
 		return nil
 	}
-	if t.dpiObjectType == nil {
+	t.mu.RLock()
+	d := t.dpiObjectType
+	t.mu.RUnlock()
+	if d == nil {
 		return nil
 	}
 	var info C.dpiObjectTypeInfo
-	if C.dpiObjectType_getInfo(t.dpiObjectType, &info) == C.DPI_FAILURE {
+	if C.dpiObjectType_getInfo(d, &info) == C.DPI_FAILURE {
 		return errors.Errorf("%v.getInfo: %w", t, t.getError())
 	}
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
 	t.CollectionOf = nil
-	if t.conn.objTypes == nil {
-		t.conn.objTypes = make(map[string]ObjectType)
-	}
 
 	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
-		t.CollectionOf = &ObjectType{conn: t.conn}
+		t.CollectionOf = &ObjectType{objectTypeConn: &objectTypeConn{conn: t.conn}}
 		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo); err != nil {
 			return err
 		}
@@ -517,17 +540,13 @@ func (t *ObjectType) init() error {
 			t.CollectionOf.Name = t.Name
 		}
 	}
-	if ot, ok := t.conn.objTypes[t.FullName()]; ok {
-		t.Attributes = ot.Attributes
-		return nil
-	}
 	if numAttributes == 0 {
 		t.Attributes = map[string]ObjectAttribute{}
 		return nil
 	}
 	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
 	attrs := make([]*C.dpiObjectAttr, numAttributes)
-	if C.dpiObjectType_getAttributes(t.dpiObjectType,
+	if C.dpiObjectType_getAttributes(d,
 		C.uint16_t(len(attrs)),
 		(**C.dpiObjectAttr)(unsafe.Pointer(&attrs[0])),
 	) == C.DPI_FAILURE {
@@ -577,7 +596,7 @@ func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, 
 	if typ.oracleTypeNum == 0 {
 		panic("typ is nil")
 	}
-	t := ObjectType{conn: conn}
+	t := ObjectType{objectTypeConn: &objectTypeConn{conn: conn}}
 	err := t.fromDataTypeInfo(typ)
 	return t, err
 }
@@ -597,16 +616,13 @@ func (A ObjectAttribute) Close() error {
 	if attr == nil {
 		return nil
 	}
+	if Log != nil {
+		Log("msg", "ObjectAttribute.Close", "name", A.Name)
+	}
 	if C.dpiObjectAttr_release(attr) == C.DPI_FAILURE {
 		return A.getError()
 	}
-	if A.ObjectType.dpiObjectType != nil {
-		err := A.ObjectType.close(false)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return A.ObjectType.Close()
 }
 
 // GetObjectType returns the ObjectType for the name.

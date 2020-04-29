@@ -17,7 +17,7 @@ import (
 )
 
 func TestQueue(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -46,14 +46,14 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 	if _, err = conn.ExecContext(ctx, qry); err != nil {
-		if strings.Contains(err.Error(), "PLS-00201: 'SYS.DBMS_AQADM'") {
+		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
 		t.Log(errors.Errorf("%s: %w", qry, err))
 	}
 	defer func() {
 		conn.ExecContext(
-			context.Background(),
+			testContext("Queue-drop"),
 			`DECLARE
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
 			q CONSTANT VARCHAR2(61) := USER||'.'||:2;
@@ -102,7 +102,7 @@ func TestQueue(t *testing.T) {
 	}
 }
 func TestQueueObject(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("QueueObject"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -124,11 +124,22 @@ func TestQueueObject(t *testing.T) {
 
 	var plus strings.Builder
 	for _, qry := range []string{
+		"BEGIN SYS.DBMS_AQADM.stop_queue('" + user + "." + qName + "'); END;",
+		"BEGIN SYS.DBMS_AQADM.drop_queue('" + user + "." + qName + "'); END;",
+		"BEGIN SYS.DBMS_AQADM.drop_queue_table('" + user + "." + qTblName + "'); END;",
+		"DROP TABLE " + user + "." + qTblName,
+		"DROP TYPE " + user + "." + qTypName + " FORCE",
+		"DROP TYPE " + user + "." + arrTypName + " FORCE",
 		"CREATE OR REPLACE TYPE " + user + "." + arrTypName + " IS TABLE OF VARCHAR2(1000)",
 		"CREATE OR REPLACE TYPE " + user + "." + qTypName + " IS OBJECT (f_vc20 VARCHAR2(20), f_num NUMBER, f_dt DATE/*, f_arr " + arrTypName + "*/)",
 	} {
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Log(errors.Errorf("%s: %w", qry, err))
+			if strings.HasPrefix(qry, "CREATE ") || !strings.Contains(err.Error(), "not exist") {
+				t.Log(errors.Errorf("%s: %w", qry, err))
+			}
+			if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
+				t.Skip(err)
+			}
 			continue
 		}
 		plus.WriteString(qry)
@@ -161,7 +172,7 @@ func TestQueueObject(t *testing.T) {
 	}
 	defer func() {
 		conn.ExecContext(
-			context.Background(),
+			testContext("QueueObject-drop"),
 			`DECLARE
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
 			q CONSTANT VARCHAR2(61) := USER||'.'||:2;
