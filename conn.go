@@ -537,27 +537,6 @@ func parseTZ(s string) (int, error) {
 	return tz, nil
 }
 
-// setCallTimeout measures only the round-trips,
-// may close the underlying statement,
-// and may leave the connection in an unusable state.
-// So don't use it.
-//
-// See the ODPI-C documentation.
-func (c *conn) setCallTimeout(ctx context.Context) {
-	if c.Client.Version < 18 {
-		return
-	}
-	var ms C.uint32_t
-	if dl, ok := ctx.Deadline(); ok {
-		ms = C.uint32_t(time.Until(dl) / time.Millisecond)
-	}
-	// force it to be 0 (disabled)
-	if Log != nil {
-		Log("msg", "setCallTimeout", "ms", ms)
-	}
-	C.dpiConn_setCallTimeout(c.dpiConn, ms)
-}
-
 // maybeBadConn checks whether the error is because of a bad connection,
 // CLOSES the connection and returns driver.ErrBadConn,
 // as database/sql requires.

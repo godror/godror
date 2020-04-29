@@ -257,26 +257,40 @@ func TestPLSQLTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PLSQLTypes"), 30*time.Second)
 	defer cancel()
 
-	serverVersion, err := godror.ServerVersion(ctx, testDb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clientVersion, err := godror.ClientVersion(ctx, testDb)
-	if err != nil {
-		t.Fatal(err)
+	errOld := errors.New("client or server < 12")
+	if err := godror.Raw(ctx, testDb, func(conn godror.Conn) error {
+		serverVersion, err := godror.ServerVersion(ctx, testDb)
+		if err != nil {
+			return err
+		}
+		clientVersion, err := godror.ClientVersion(ctx, testDb)
+		if err != nil {
+			return err
+		}
+
+		if serverVersion.Version < 12 || clientVersion.Version < 12 {
+			return errOld
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, errOld) {
+			t.Skip(err)
+		} else {
+			t.Fatal(err)
+		}
 	}
 
-	if serverVersion.Version < 12 || clientVersion.Version < 12 {
-		t.Skip("client or server < 12")
-	}
-
-	err = createPackages(ctx)
-	if err != nil {
+	if err := createPackages(ctx); err != nil {
 		t.Fatal(err)
 	}
 	defer dropPackages(ctx)
 
-	conn, err := godror.DriverConn(ctx, testDb)
+	cx, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cx.Close()
+	conn, err := godror.DriverConn(ctx, cx)
 	if err != nil {
 		t.Fatal(err)
 	}
