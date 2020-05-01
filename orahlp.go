@@ -492,24 +492,6 @@ func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, erro
 	return q.QueryContext(ctx, wrapResultset, rset)
 }
 
-// Raw executes f on the given *sql.DB or *sql.Conn.
-func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
-	sf := func(driverConn interface{}) error { return f(driverConn.(Conn)) }
-	if rawer, ok := ex.(interface {
-		Raw(func(interface{}) error) error
-	}); ok {
-		return rawer.Raw(sf)
-	}
-	conn, err := ex.(interface {
-		Conn(context.Context) (*sql.Conn, error)
-	}).Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	return conn.Raw(sf)
-}
-
 func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
 	err = Raw(ctx, ex, func(c Conn) error { loc = c.Timezone(); return nil })
 	return loc, err
