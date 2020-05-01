@@ -222,6 +222,13 @@ type Message struct {
 	State                   MessageState
 }
 
+// Deadline return the message's intended deadline: enqueue time + delay + expiration.
+func (M Message) Deadline() time.Time {
+	if M.Enqueued.IsZero() {
+		return M.Enqueued
+	}
+	return M.Enqueued.Add(time.Duration(M.Delay+M.Expiration) * time.Second)
+}
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	var firstErr error
 	OK := func(ok C.int, name string) {
@@ -291,7 +298,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	}
 
 	M.Delay = 0
-	if OK(C.dpiMsgProps_getDelay(props, &cint), "getDelay") {
+	if OK(C.dpiMsgProps_getDelay(props, &cint), "getDelay") && cint > 0 {
 		M.Delay = int32(cint)
 	}
 
@@ -324,7 +331,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	}
 
 	M.Expiration = 0
-	if OK(C.dpiMsgProps_getExpiration(props, &cint), "getExpiration") {
+	if OK(C.dpiMsgProps_getExpiration(props, &cint), "getExpiration") && cint > 0 {
 		M.Expiration = int32(cint)
 	}
 
