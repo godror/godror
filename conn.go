@@ -467,6 +467,7 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	off := localOff
 	var ok bool
 	var err error
+	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		tz, err = time.LoadLocation(dbTZ)
 		if ok = err == nil; ok {
@@ -478,6 +479,7 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 			Log("LoadLocation", dbTZ, "error", err)
 		}
 	}
+	// If not, use the numbers.
 	if !ok {
 		if timezone != "" {
 			if off, err = parseTZ(timezone); err != nil {
@@ -489,6 +491,9 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
+	//
+	// So if the given offset is the same as with the Local time zone,
+	// then keep the local.
 	if off != localOff && tz == nil {
 		tz = time.FixedZone(timezone, off)
 	}
