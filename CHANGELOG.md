@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Innards of ConnectionParams has been split to ConnParams and PoolParams,
 - NewConnector needs ConnParams and PoolParams instead of the connection URL.
 - ConnectionParams.SID has been renamed to DSN.
+- Simplified pool usage and coding, just depend on the underlying ODPI-C library's reference counting.
 
 ### Added
 - Support connection sharding (thanks to Anthony Tuininga)
+- Implement SessionResetter and Validator, releasing session back to the Oracle session pool ASAP,
+  acquiring a fresh connection in ResetSession, helping failover.
 
 ## [0.14.0]
 ### Changed
