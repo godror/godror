@@ -49,7 +49,6 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.ExecContext(ctx, `ALTER SESSION SET "_ORACLE_SCRIPT"=true`)
 	conn.ExecContext(ctx, fmt.Sprintf("DROP USER %s", proxyUser))
 
 	for _, qry := range []string{
