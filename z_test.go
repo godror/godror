@@ -2629,12 +2629,12 @@ func TestSelectTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("SelectTypes"), time.Minute)
 	defer cancel()
 	const createQry = `CREATE TABLE TEST_TYPES (
-			A BFILE,
+			A_LOB BFILE,
 			B BINARY_DOUBLE,
 			C BINARY_FLOAT,
-			D BLOB,
+			D_LOB BLOB,
 			E CHAR(10),
-			F CLOB,
+			F_LOB CLOB,
 			G DATE,
 			GN DATE,
 			H NUMBER(18 , 2),
@@ -2645,7 +2645,7 @@ func TestSelectTypes(t *testing.T) {
 			M INTERVAL YEAR TO MONTH,
 			--N LONG,
 			P NCHAR(100),
-			Q NCLOB,
+			Q_LOB NCLOB,
 			R NUMBER(18 , 2),
 			S NUMBER(18 , 2),
 			T NVARCHAR2(100),
@@ -2690,6 +2690,13 @@ func TestSelectTypes(t *testing.T) {
 	const insertQry2 = `INSERT INTO test_types (z) VALUES (cast(TO_TIMESTAMP_TZ('2018-02-15T14:00:00 01:00','yyyy-mm-dd"T"hh24:mi:ss TZH:TZM') as date))`
 	if _, err := testDb.ExecContext(ctx, insertQry2); err != nil {
 		t.Fatalf("%s: %+v", insertQry2, err)
+	}
+	var n int32
+	if err := testDb.QueryRowContext(ctx, "SELECT COUNT(0) FROM test_types").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("%d rows in the table, wanted 2", n)
 	}
 	const qry = "SELECT * FROM test_types"
 
@@ -2765,7 +2772,23 @@ func TestSelectTypes(t *testing.T) {
 	}
 
 	dumpRows := func() {
-		const qry = "SELECT DUMP(Z) FROM test_types"
+		dests := make([]string, 0, len(colsName))
+		params := make([]interface{}, 0, cap(dests))
+		var dumpQry strings.Builder
+		dumpQry.WriteString("SELECT ")
+		for _, col := range colsName {
+			if strings.HasSuffix(col, "_LOB") {
+				continue
+			}
+			if len(dests) != 0 {
+				dumpQry.WriteString(", ")
+			}
+			fmt.Fprintf(&dumpQry, "'%[1]s='||DUMP(%[1]s, 1017,1,10) AS %[1]s", col)
+			dests = append(dests, "")
+			params = append(params, &dests[len(dests)-1])
+		}
+		dumpQry.WriteString(" FROM test_types")
+		qry := dumpQry.String()
 		rows, err := testDb.QueryContext(ctx, qry)
 		if err != nil {
 			t.Errorf("%s: %+v", qry, err)
@@ -2774,24 +2797,25 @@ func TestSelectTypes(t *testing.T) {
 		defer rows.Close()
 		var i int
 		for rows.Next() {
-			var s string
-			if err = rows.Scan(&s); err != nil {
+			if err = rows.Scan(params...); err != nil {
 				t.Fatal(err)
 			}
 			i++
-			t.Logf("%d. %q", i, s)
+			t.Logf("%d. %q", i, dests)
 		}
 	}
 
 	//record destination
 	record := make([]interface{}, totalColumns)
 
+	var rowCount int
 	for rows.Next() {
 		// Scan the result into the record pointers...
 		if err := rows.Scan(recordPointers...); err != nil {
 			dumpRows()
 			t.Fatal(err)
 		}
+		rowCount++
 
 		//Parse each field of recordPointers for get a custom field depending the type
 		for idxCol := range recordPointers {
@@ -2799,6 +2823,10 @@ func TestSelectTypes(t *testing.T) {
 		}
 
 		t.Log(record)
+	}
+	dumpRows()
+	if rowCount != 2 {
+		t.Errorf("read %d rows, wanted 2", rowCount)
 	}
 }
 
