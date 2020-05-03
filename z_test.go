@@ -2681,7 +2681,7 @@ func TestSelectTypes(t *testing.T) {
           123456789012345678901234567890, INTERVAL '8' HOUR,
 		  7.18, 8.19, HEXTORAW('deadbeef'),
 		  0.01, -3, SYSTIMESTAMP, SYSTIMESTAMP,
-		  FROM_TZ(TO_TIMESTAMP('2018-02-15 14:00:00', 'YYYY-MM-DD HH24:MI:SS'), '00:00'),
+		  TIMESTAMP '2018-02-15 14:00:00.00 CET',
           'varchar2(100)')`
 
 	if _, err := testDb.ExecContext(ctx, insertQry); err != nil {
@@ -2698,10 +2698,29 @@ func TestSelectTypes(t *testing.T) {
 	if n != 2 {
 		t.Errorf("%d rows in the table, wanted 2", n)
 	}
+
+	var dbTZ string
+	if err := testDb.QueryRowContext(ctx, "SELECT dbtimezone FROM DUAL").Scan(&dbTZ); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := testDb.QueryContext(ctx, "SELECT filename, version FROM v$timezone_file")
+	if err != nil {
+		t.Log(err)
+	} else {
+		for rows.Next() {
+			var fn, ver string
+			if err = rows.Scan(&fn, &ver); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("v$timezone file=%q version=%q", fn, ver)
+		}
+		rows.Close()
+	}
+
 	const qry = "SELECT * FROM test_types"
 
 	//get rows
-	rows, err := testDb.QueryContext(ctx, qry)
+	rows, err = testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
@@ -2803,11 +2822,13 @@ func TestSelectTypes(t *testing.T) {
 			i++
 			t.Logf("%d. %q", i, dests)
 		}
+		if err = rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	//record destination
 	record := make([]interface{}, totalColumns)
-
 	var rowCount int
 	for rows.Next() {
 		// Scan the result into the record pointers...
@@ -2823,6 +2844,13 @@ func TestSelectTypes(t *testing.T) {
 		}
 
 		t.Log(record)
+	}
+	if err = rows.Err(); err != nil {
+		var cErr interface{ Code() int }
+		if errors.As(err, &cErr) && cErr.Code() == 1805 {
+			t.Skip(err)
+		}
+		t.Fatal(err)
 	}
 	dumpRows()
 	if rowCount != 2 {

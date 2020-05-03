@@ -283,6 +283,9 @@ func (r *rows) Next(dest []driver.Value) error {
 				r.err = io.EOF
 				return r.err
 			}
+			if Log != nil {
+				Log("msg", "fetch", "error", err)
+			}
 			return errors.Errorf("Next: %w", err)
 		}
 		if Log != nil {
