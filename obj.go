@@ -399,8 +399,6 @@ func (t ObjectType) FullName() string {
 // The name is uppercased! Because here Oracle seems to be case-sensitive.
 // To leave it as is, enclose it in "-s!
 func (c *conn) GetObjectType(name string) (ObjectType, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
@@ -410,6 +408,8 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(objType))
 		return ObjectType{}, errors.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, c.getError())

@@ -332,64 +332,37 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-	// setCallTimeout measures only the round-trips,
-	// may close the underlying statement,
-	// and may leave the connection in an unusable state.
-	// So don't use it.
-	//
-	// See the ODPI-C documentation.
-	//st.setCallTimeout(ctx)
 
 	done := make(chan error, 1)
 	// execute
 	go func() {
 		defer close(done)
+		many := !st.PlSQLArrays() && st.arrLen > 0
 		var err error
-	Loop:
 		for i := 0; i < 3; i++ {
-			if err = ctx.Err(); err != nil {
-				done <- err
-				return
+			if Log != nil {
+				Log("C", "dpiStmt_execute", "many", many, "mode", mode, "len", st.arrLen)
 			}
-			if !st.PlSQLArrays() && st.arrLen > 0 {
-				if Log != nil {
-					Log("C", "dpiStmt_executeMany", "mode", mode, "len", st.arrLen)
-				}
-				if C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) == C.DPI_FAILURE {
-					if err = ctx.Err(); err == nil {
-						err = st.getError()
-					}
-				}
+			var ok bool
+			if many {
+				ok = C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) != C.DPI_FAILURE
 			} else {
-				var colCount C.uint32_t
-				if Log != nil {
-					Log("C", "dpiStmt_execute", "mode", mode, "colCount", colCount)
+				ok = C.dpiStmt_execute(st.dpiStmt, mode, nil) != C.DPI_FAILURE
+			}
+			err = nil
+			if !ok {
+				if err = ctx.Err(); err != nil {
+					done <- err
+					return
 				}
-				if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) == C.DPI_FAILURE {
-					if err = ctx.Err(); err == nil {
-						err = st.getError()
-					}
-				}
+				err = st.getError()
 			}
 			if Log != nil {
 				Log("msg", "st.Execute", "error", err)
 			}
-			if err == nil {
+			if err == nil || !isInvalidErr(err) {
 				break
 			}
-			var cdr interface{ Code() int }
-			if !errors.As(err, &cdr) {
-				break
-			}
-			switch code := cdr.Code(); code {
-			// ORA-04068: "existing state of packages has been discarded"
-			case 4061, 4065, 4068:
-				if Log != nil {
-					Log("msg", "retry", "ora", code)
-				}
-				continue Loop
-			}
-			break
 		}
 		if err != nil {
 			err = errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err)
@@ -534,25 +507,16 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 		var err error
 		defer close(done)
 		for i := 0; i < 3; i++ {
+			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) != C.DPI_FAILURE {
+				err = nil
+				break
+			}
 			if err = ctx.Err(); err != nil {
 				done <- err
 				return
 			}
-			// setCallTimeout measures only the round-trips,
-			// may close the underlying statement,
-			// and may leave the connection in an unusable state.
-			// So don't use it.
-			//
-			// See the ODPI-C documentation.
-			//st.setCallTimeout(ctx)
-			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) != C.DPI_FAILURE {
+			if err = st.getError(); !isInvalidErr(err) {
 				break
-			}
-			if err = ctx.Err(); err == nil {
-				err = st.getError()
-				if c, ok := err.(interface{ Code() int }); ok && c.Code() != 4068 {
-					break
-				}
 			}
 		}
 		if err != nil {
@@ -2295,6 +2259,16 @@ func (sb stringBuilderPool) Get() *strings.Builder {
 func (sb *stringBuilderPool) Put(b *strings.Builder) {
 	b.Reset()
 	sb.p.Put(b)
+}
+
+func isInvalidErr(err error) bool {
+	var cdr interface{ Code() int }
+	if !errors.As(err, &cdr) {
+		return false
+	}
+	code := cdr.Code()
+	// ORA-04068: "existing state of packages has been discarded"
+	return code == 4061 || code == 4065 || code == 4068
 }
 
 /*
