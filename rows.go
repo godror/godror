@@ -43,7 +43,6 @@ type rows struct {
 	nextRs         *C.dpiStmt
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
-	finished       bool
 }
 
 // Columns returns the names of the columns. The number of
@@ -262,11 +261,6 @@ func (r *rows) Next(dest []driver.Value) error {
 	if r.err != nil {
 		return r.err
 	}
-	if r.finished {
-		_ = r.Close()
-		r.err = io.EOF
-		return r.err
-	}
 	if len(dest) != len(r.columns) {
 		return errors.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
@@ -278,20 +272,21 @@ func (r *rows) Next(dest []driver.Value) error {
 		r.statement.Unlock()
 		if failed {
 			err := r.getError()
-			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
-				_ = r.Close()
-				r.err = io.EOF
-				return r.err
-			}
 			if Log != nil {
 				Log("msg", "fetch", "error", err)
 			}
-			return errors.Errorf("Next: %w", err)
+			_ = r.Close()
+			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
+				r.err = io.EOF
+			} else {
+				r.err = errors.Errorf("Next: %w", err)
+			}
+			return r.err
 		}
 		if Log != nil {
 			Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
-		if r.finished = r.fetched == 0; r.finished {
+		if r.fetched == 0 {
 			_ = r.Close()
 			r.err = io.EOF
 			return r.err
@@ -590,14 +585,14 @@ func (r *rows) HasNextResultSet() bool {
 	return r.nextRs != nil
 }
 func (r *rows) NextResultSet() error {
-	if r.nextRs == nil {
-		r.getImplicitResult()
+	if !r.HasNextResultSet() {
 		if r.nextRsErr != nil {
 			return r.nextRsErr
 		}
 		if r.nextRs == nil {
 			return errors.Errorf("getImplicitResult: %w", io.EOF)
 		}
+		return r.nextRsErr
 	}
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
