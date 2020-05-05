@@ -589,10 +589,7 @@ func (r *rows) NextResultSet() error {
 		if r.nextRsErr != nil {
 			return r.nextRsErr
 		}
-		if r.nextRs == nil {
-			return errors.Errorf("getImplicitResult: %w", io.EOF)
-		}
-		return r.nextRsErr
+		return errors.Errorf("getImplicitResult: %w", io.EOF)
 	}
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
