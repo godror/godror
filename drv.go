@@ -293,7 +293,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// assign connection class
 	if P.ConnClass != "" {
-		cConnClass := C.CString(P.ConnClass)
+		cConnClass = C.CString(P.ConnClass)
 		connCreateParams.connectionClass = cConnClass
 		connCreateParams.connectionClassLength = C.uint32_t(len(P.ConnClass))
 	}
