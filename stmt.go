@@ -1876,13 +1876,13 @@ func (st *statement) dataSetBoolBytes(dv *C.dpiVar, data []C.dpiData, vv interfa
 	return nil
 }
 
-func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
+func (st *statement) dataGetStmt(v interface{}, data []C.dpiData) error {
 	if row, ok := v.(*driver.Rows); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*row = nil
 			return nil
 		}
-		return c.dataGetStmtC(row, &data[0])
+		return st.dataGetStmtC(row, &data[0])
 	}
 	rows := v.(*[]driver.Rows)
 	if cap(*rows) >= len(data) {
@@ -1892,29 +1892,31 @@ func (c *conn) dataGetStmt(v interface{}, data []C.dpiData) error {
 	}
 	var firstErr error
 	for i := range data {
-		if err := c.dataGetStmtC(&((*rows)[i]), &data[i]); err != nil && firstErr == nil {
+		if err := st.dataGetStmtC(&((*rows)[i]), &data[i]); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	return firstErr
 }
 
-func (c *conn) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
+func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 	if data.isNull == 1 {
 		*row = nil
 		return nil
 	}
-	st := &statement{conn: c, dpiStmt: C.dpiData_getStmt(data)}
+	st2 := &statement{conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
+		stmtOptions: st.stmtOptions, // inherit parent statement's options
+	}
 
 	var n C.uint32_t
-	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
+	if C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) == C.DPI_FAILURE {
 		*row = &rows{
-			err: errors.Errorf("getNumQueryColumns: %w: %w", c.getError(), io.EOF),
+			err: errors.Errorf("getNumQueryColumns: %w: %w", st.getError(), io.EOF),
 		}
 		return nil
 	}
 	var err error
-	*row, err = st.openRows(int(n))
+	*row, err = st2.openRows(int(n))
 	return err
 }
 

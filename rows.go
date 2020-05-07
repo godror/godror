@@ -250,6 +250,8 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 	}
 }
 
+const debugRowsNext = false
+
 // Next is called to populate the next row of data into
 // the provided slice. The provided slice will be the same
 // size as the Columns() are wide.
@@ -266,9 +268,17 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	if r.fetched == 0 {
 		var moreRows C.int
+		var start time.Time
 		maxRows := C.uint32_t(r.statement.FetchRowCount())
 		r.statement.Lock()
+		if debugRowsNext {
+			fmt.Printf("fetching max=%d\n", maxRows)
+			start = time.Now()
+		}
 		failed := C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE
+		if debugRowsNext {
+			fmt.Printf("failed=%t bri=%d fetched=%d more=%d data=%d cols=%d dur=%s\n", failed, r.bufferRowIndex, r.fetched, moreRows, len(r.data), len(r.columns), time.Since(start))
+		}
 		r.statement.Unlock()
 		if failed {
 			err := r.getError()
@@ -355,11 +365,11 @@ func (r *rows) Next(dest []driver.Value) error {
 				b := C.dpiData_getBytes(d)
 				s := C.GoStringN(b.ptr, C.int(b.length))
 				dest[i] = s
-				if Log != nil {
+				if false && Log != nil {
 					Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 				}
 			}
-			if Log != nil {
+			if false && Log != nil {
 				Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 			}
 
@@ -504,6 +514,9 @@ func (r *rows) Next(dest []driver.Value) error {
 	r.bufferRowIndex++
 	r.fetched--
 
+	if debugRowsNext && r.fetched < 2 {
+		fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
+	}
 	if Log != nil {
 		Log("msg", "scanned", "row", r.bufferRowIndex, "dest", dest)
 	}
