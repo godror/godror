@@ -173,7 +173,7 @@ A workaround is converting to string:
 time.Now().Format("2-Jan-06 3:04:05.000000 PM")
 ```
 
-See #121.
+See [#121 under the old project](https://github.com/go-goracle/goracle/issues/121).
 
 # Install
 
