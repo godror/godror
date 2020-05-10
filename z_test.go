@@ -3000,3 +3000,17 @@ func TestResetSession(t *testing.T) {
 		conn.Close()
 	}
 }
+
+func TestSelectNullTime(t *testing.T) {
+	t.Parallel()
+	const qry = "SELECT SYSDATE, SYSDATE+NULL, SYSDATE+NULL FROM DUAL"
+	var t0, t1 time.Time
+	var nt sql.NullTime
+	ctx, cancel := context.WithTimeout(testContext("SelectNullTime"), time.Second)
+	err := testDb.QueryRowContext(ctx, qry).Scan(&t0, &t1, &nt)
+	cancel()
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+	t.Logf("t0=%s t1=%s nt=%v", t0, t1, nt)
+}

@@ -316,17 +316,10 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	var ts C.dpiTimestamp
 	M.Enqueued = time.Time{}
 	if OK(C.dpiMsgProps_getEnqTime(props, &ts), "getEnqTime") {
-		tz := c.params.Timezone
-		if ts.tzHourOffset != 0 || ts.tzMinuteOffset != 0 {
-			tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
-		}
-		if tz == nil {
-			tz = time.Local
-		}
 		M.Enqueued = time.Date(
 			int(ts.year), time.Month(ts.month), int(ts.day),
 			int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-			tz,
+			timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, c.params.Timezone),
 		)
 	}
 

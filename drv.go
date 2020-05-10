@@ -1020,9 +1020,12 @@ func (V VersionInfo) String() string {
 var timezones = make(map[[2]C.int8_t]*time.Location)
 var timezonesMu sync.RWMutex
 
-func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
+func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.Location {
 	if hourOffset == 0 && minuteOffset == 0 {
-		return time.UTC
+		if local == nil {
+			return time.UTC
+		}
+		return local
 	}
 	key := [2]C.int8_t{hourOffset, minuteOffset}
 	timezonesMu.RLock()
@@ -1031,10 +1034,15 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t) *time.Location {
 	if tz == nil {
 		timezonesMu.Lock()
 		if tz = timezones[key]; tz == nil {
-			tz = time.FixedZone(
-				fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset),
-				int(hourOffset)*3600+int(minuteOffset)*60,
-			)
+			off := int(hourOffset)*3600 + int(minuteOffset)*60
+			if local != nil {
+				if _, localOff := time.Now().In(local).Zone(); off == localOff {
+					tz = local
+				}
+			}
+			if tz == nil {
+				tz = time.FixedZone(fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset), off)
+			}
 			timezones[key] = tz
 		}
 		timezonesMu.Unlock()

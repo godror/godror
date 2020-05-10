@@ -236,15 +236,10 @@ func (d *Data) GetTimeIn(serverTZ *time.Location) time.Time {
 		return time.Time{}
 	}
 	ts := C.dpiData_getTimestamp(&d.dpiData)
-	tz := serverTZ
-	// Time zone data is only relevant if the data is TIMESTAMP WITH TIME ZONE
-	if !(ts.tzHourOffset == 0 && ts.tzMinuteOffset == 0) {
-		tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset)
-	}
 	return time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		tz,
+		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, serverTZ),
 	)
 }
 
