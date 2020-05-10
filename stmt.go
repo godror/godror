@@ -38,13 +38,14 @@ import (
 )
 
 type stmtOptions struct {
-	boolString    boolString
-	fetchRowCount int
-	arraySize     int
-	callTimeout   time.Duration
-	execMode      C.dpiExecMode
-	plSQLArrays   bool
-	lobAsReader   bool
+	boolString         boolString
+	fetchRowCount      int
+	arraySize          int
+	callTimeout        time.Duration
+	execMode           C.dpiExecMode
+	plSQLArrays        bool
+	lobAsReader        bool
+	nullDateAsZeroTime bool
 }
 
 type boolString struct {
@@ -96,6 +97,12 @@ func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
 func (o stmtOptions) ClobAsString() bool { return !o.lobAsReader }
 func (o stmtOptions) LobAsReader() bool  { return o.lobAsReader }
+func (o stmtOptions) NullDate() interface{} {
+	if o.nullDateAsZeroTime {
+		return time.Time{}
+	}
+	return nullTime
+}
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -184,6 +191,10 @@ func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true }
 func CallTimeout(d time.Duration) Option {
 	return func(o *stmtOptions) { o.callTimeout = d }
 }
+
+// NullDateAsZeroTime is an option to return NULL DATE columns as time.Time{} instead of nil.
+// If you must Scan into time.Time (cannot use sql.NullTime), this may help.
+func NullDateAsZeroTime() Option { return func(o *stmtOptions) { o.nullDateAsZeroTime = true } }
 
 const minChunkSize = 1 << 16
 
@@ -388,6 +399,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "BREAK statement", "error", err)
 			}
 			_ = st.Break()
+			// Break releases the statement
+			st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}
@@ -542,6 +555,8 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				Log("msg", "BREAK query", "error", err)
 			}
 			_ = st.Break()
+			// Break releases the statement
+			st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}

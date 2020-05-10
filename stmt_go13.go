@@ -10,3 +10,5 @@ package godror
 import "database/sql"
 
 type NullTime = sql.NullTime
+
+var nullTime interface{} = nil

@@ -48,3 +48,5 @@ func (n NullTime) Value() (driver.Value, error) {
 	}
 	return n.Time, nil
 }
+
+var nullTime interface{} = time.Time{}

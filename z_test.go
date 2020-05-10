@@ -3007,7 +3007,7 @@ func TestSelectNullTime(t *testing.T) {
 	var t0, t1 time.Time
 	var nt sql.NullTime
 	ctx, cancel := context.WithTimeout(testContext("SelectNullTime"), time.Second)
-	err := testDb.QueryRowContext(ctx, qry).Scan(&t0, &t1, &nt)
+	err := testDb.QueryRowContext(ctx, qry, godror.NullDateAsZeroTime()).Scan(&t0, &t1, &nt)
 	cancel()
 	if err != nil {
 		t.Fatalf("%+v", err)
