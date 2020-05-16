@@ -582,12 +582,13 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 // PoolStats contains Oracle session pool statistics
 type PoolStats struct {
-	Busy, Open                        uint32
+	Busy, Open, Max                   uint32
 	MaxLifetime, Timeout, WaitTimeout time.Duration
 }
 
 func (s PoolStats) String() string {
-	return fmt.Sprintf("busy=%d open=%d maxLifetime=%s timeout=%s waitTimeout=%s", s.Busy, s.Open, s.MaxLifetime, s.Timeout, s.WaitTimeout)
+	return fmt.Sprintf("busy=%d open=%d max=%d maxLifetime=%s timeout=%s waitTimeout=%s",
+		s.Busy, s.Open, s.Max, s.MaxLifetime, s.Timeout, s.WaitTimeout)
 }
 
 // Stats returns PoolStats of the pool.
@@ -595,6 +596,8 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 	if p == nil || p.dpiPool == nil {
 		return stats, nil
 	}
+
+	stats.Max = uint32(p.params.PoolParams.MaxSessions)
 
 	var u C.uint32_t
 	if C.dpiPool_getBusyCount(p.dpiPool, &u) == C.DPI_SUCCESS {

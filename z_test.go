@@ -1172,7 +1172,7 @@ func TestOpenClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.MinSessions, cs.MaxSessions = 1, 5
+	cs.MinSessions, cs.MaxSessions = 1, 6
 	t.Log(cs.String())
 	db, err := sql.Open("godror", cs.StringWithPassword())
 	if err != nil {
@@ -1200,7 +1200,7 @@ func TestOpenClose(t *testing.T) {
 
 	sessCount := func() (n int, stats godror.PoolStats, err error) {
 		var sErr error
-		sErr = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
+		sErr = godror.Raw(ctx, db, func(cx godror.Conn) error {
 			var gErr error
 			stats, gErr = cx.GetPoolStats()
 			return gErr
@@ -1218,11 +1218,16 @@ func TestOpenClose(t *testing.T) {
 		t.Logf("sessCount=%d, stats=%s at start!", n, ps)
 	}
 	var tt godror.TraceTag
-	for i := 0; i < 10; i++ {
+	for i := 0; i < cs.MaxSessions*2; i++ {
 		t.Logf("%d. PREPARE", i+1)
 		stmt, err := db.PrepareContext(ctx, "SELECT 1 FROM DUAL")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if n, ps, err = sessCount(); err != nil {
+			t.Error(err)
+		} else {
+			t.Logf("sessCount=%d stats=%s", n, ps)
 		}
 		tt.Module = fmt.Sprintf("%s%d", module, 2*i)
 		ctx = godror.ContextWithTraceTag(ctx, tt)
