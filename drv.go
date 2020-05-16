@@ -384,8 +384,14 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		commonCreateParamsPtr,
 		&connCreateParams, &dc,
 	) == C.DPI_FAILURE {
+		err := d.getError()
+		if pool != nil {
+			stats, _ := d.getPoolStats(pool)
+			return nil, false, errors.Errorf("username=%q dsn=%q stats=%s params=%+v: %w",
+				username, P.DSN, stats, connCreateParams, err)
+		}
 		return nil, false, errors.Errorf("username=%q dsn=%q params=%+v: %w",
-			username, P.DSN, connCreateParams, d.getError())
+			username, P.DSN, connCreateParams, err)
 	}
 	return dc, connCreateParams.outNewSession == 1, nil
 }
@@ -572,6 +578,42 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	C.dpiPool_setStmtCacheSize(dp, 40)
 
 	return &connPool{dpiPool: dp, params: P, timeZone: P.Timezone}, nil
+}
+
+// PoolStats contains Oracle session pool statistics
+type PoolStats struct {
+	Busy, Open                        uint32
+	MaxLifetime, Timeout, WaitTimeout time.Duration
+}
+
+func (s PoolStats) String() string {
+	return fmt.Sprintf("busy=%d open=%d maxLifetime=%s timeout=%s waitTimeout=%s", s.Busy, s.Open, s.MaxLifetime, s.Timeout, s.WaitTimeout)
+}
+
+// Stats returns PoolStats of the pool.
+func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
+	if p == nil || p.dpiPool == nil {
+		return stats, nil
+	}
+
+	var u C.uint32_t
+	if C.dpiPool_getBusyCount(p.dpiPool, &u) == C.DPI_SUCCESS {
+		stats.Busy = uint32(u)
+	}
+	if C.dpiPool_getOpenCount(p.dpiPool, &u) == C.DPI_SUCCESS {
+		stats.Open = uint32(u)
+	}
+	if C.dpiPool_getMaxLifetimeSession(p.dpiPool, &u) == C.DPI_SUCCESS {
+		stats.MaxLifetime = time.Duration(u) * time.Second
+	}
+	if C.dpiPool_getTimeout(p.dpiPool, &u) == C.DPI_SUCCESS {
+		stats.Timeout = time.Duration(u) * time.Second
+	}
+	if C.dpiPool_getWaitTimeout(p.dpiPool, &u) == C.DPI_SUCCESS {
+		stats.WaitTimeout = time.Duration(u) * time.Second
+		return stats, nil
+	}
+	return stats, d.getError()
 }
 
 // ConnectionParams holds the params for a connection (pool).

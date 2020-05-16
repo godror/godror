@@ -510,11 +510,11 @@ func parseTZ(s string) (int, error) {
 	var tz int
 	var ok bool
 	if i := strings.IndexByte(s, ':'); i >= 0 {
-		if i64, err := strconv.ParseInt(s[i+1:], 10, 6); err != nil {
+		i64, err := strconv.ParseInt(s[i+1:], 10, 6)
+		if err != nil {
 			return tz, errors.Errorf("%s: %w", s, err)
-		} else {
-			tz = int(i64 * 60)
 		}
+		tz = int(i64 * 60)
 		s = s[:i]
 		ok = true
 	}
@@ -531,14 +531,14 @@ func parseTZ(s string) (int, error) {
 			return tz, nil
 		}
 	}
-	if i64, err := strconv.ParseInt(s, 10, 5); err != nil {
+	i64, err := strconv.ParseInt(s, 10, 5)
+	if err != nil {
 		return tz, errors.Errorf("%s: %w", s, err)
-	} else {
-		if i64 < 0 {
-			tz = -tz
-		}
-		tz += int(i64 * 3600)
 	}
+	if i64 < 0 {
+		tz = -tz
+	}
+	tz += int(i64 * 3600)
 	return tz, nil
 }
 
@@ -655,6 +655,25 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 	}
 	c.currentTT = tt
 	return nil
+}
+func (c *conn) GetPoolStats() (stats PoolStats, err error) {
+	if c == nil {
+		return stats, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.poolKey == "" {
+		// not pooled connection
+		return stats, nil
+	}
+
+	c.drv.mu.Lock()
+	pool := c.drv.pools[c.poolKey]
+	c.drv.mu.Unlock()
+	if pool == nil {
+		return stats, nil
+	}
+	return c.drv.getPoolStats(pool)
 }
 
 const traceTagCtxKey = ctxKey("tracetag")

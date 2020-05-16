@@ -1168,7 +1168,6 @@ func copySlice(orig interface{}) interface{} {
 }
 
 func TestOpenClose(t *testing.T) {
-	t.Parallel()
 	cs, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -1184,8 +1183,8 @@ func TestOpenClose(t *testing.T) {
 			t.Error("CLOSE:", cErr)
 		}
 	}()
-	db.SetMaxIdleConns(1)
-	db.SetMaxOpenConns(3)
+	db.SetMaxIdleConns(cs.MinSessions)
+	db.SetMaxOpenConns(cs.MaxSessions)
 	ctx, cancel := context.WithCancel(testContext("OpenClose"))
 	defer cancel()
 	const module = "godror.v2.test-OpenClose "
@@ -1199,20 +1198,32 @@ func TestOpenClose(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	sessCount := func() (int, error) {
-		var n int
-		qErr := stmt.QueryRowContext(ctx).Scan(&n)
-		return n, qErr
+	sessCount := func() (n int, stats godror.PoolStats, err error) {
+		var sErr error
+		sErr = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
+			var gErr error
+			stats, gErr = cx.GetPoolStats()
+			return gErr
+		})
+		if qErr := stmt.QueryRowContext(ctx).Scan(&n); qErr != nil && sErr == nil {
+			sErr = qErr
+		}
+		return n, stats, sErr
 	}
-	n, err := sessCount()
+	n, ps, err := sessCount()
 	if err != nil {
 		t.Skip(err)
 	}
 	if n > 0 {
-		t.Logf("sessCount=%d at start!", n)
+		t.Logf("sessCount=%d, stats=%s at start!", n, ps)
 	}
 	var tt godror.TraceTag
 	for i := 0; i < 10; i++ {
+		t.Logf("%d. PREPARE", i+1)
+		stmt, err := db.PrepareContext(ctx, "SELECT 1 FROM DUAL")
+		if err != nil {
+			t.Fatal(err)
+		}
 		tt.Module = fmt.Sprintf("%s%d", module, 2*i)
 		ctx = godror.ContextWithTraceTag(ctx, tt)
 		tx1, err1 := db.BeginTx(ctx, nil)
@@ -1229,20 +1240,21 @@ func TestOpenClose(t *testing.T) {
 			}
 			t.Fatal(err2)
 		}
-		if n, err = sessCount(); err != nil {
+		if n, ps, err = sessCount(); err != nil {
 			t.Log(err)
 		} else if n == 0 {
-			t.Error("sessCount=0, want at least 2")
+			t.Errorf("sessCount=0, stats=%s want at least 2", ps)
 		} else {
-			t.Log(n)
+			t.Logf("sessCount=%d stats=%s", n, ps)
 		}
 		tx1.Rollback()
 		tx2.Rollback()
+		stmt.Close()
 	}
-	if n, err = sessCount(); err != nil {
+	if n, ps, err = sessCount(); err != nil {
 		t.Log(err)
 	} else if n > 4 {
-		t.Error("sessCount:", n)
+		t.Errorf("sessCount=%d stats=%s", n, ps)
 	}
 }
 

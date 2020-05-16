@@ -485,6 +485,7 @@ type Conn interface {
 	NewData(baseType interface{}, SliceLen, BufSize int) ([]*Data, error)
 
 	Timezone() *time.Location
+	GetPoolStats() (PoolStats, error)
 }
 
 // WrapRows transforms a driver.Rows into an *sql.Rows.
@@ -492,6 +493,7 @@ func WrapRows(ctx context.Context, q Querier, rset driver.Rows) (*sql.Rows, erro
 	return q.QueryContext(ctx, wrapResultset, rset)
 }
 
+// Timezone returns the timezone of the connection (database).
 func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
 	err = Raw(ctx, ex, func(c Conn) error { loc = c.Timezone(); return nil })
 	return loc, err
