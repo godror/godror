@@ -1759,13 +1759,16 @@ func TestReturning(t *testing.T) {
 func TestMaxOpenCursors(t *testing.T) {
 	var openCursors sql.NullInt64
 	const qry1 = "SELECT p.value FROM v$parameter p WHERE p.name = 'open_cursors'"
-	if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
+	ctx, cancel := context.WithTimeout(testContext("MaxOpenCursors"), time.Minute)
+	defer cancel()
+	if err := testDb.QueryRowContext(ctx, qry1).Scan(&openCursors); err != nil {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
 			var cErr interface{ Code() int }
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
-				t.Skip(err)
+				t.Log(err)
+			} else {
+				t.Error(errors.Errorf("%s: %w", qry1, err))
 			}
-			t.Error(errors.Errorf("%s: %w", qry1, err))
 		} else {
 			t.Log(errors.Errorf("%s: %w", qry1, err))
 		}
@@ -1780,7 +1783,7 @@ func TestMaxOpenCursors(t *testing.T) {
 	for i := 0; i < n; i++ {
 		var cnt int64
 		const qry2 = "DECLARE cnt PLS_INTEGER; BEGIN SELECT COUNT(0) INTO cnt FROM DUAL; :1 := cnt; END;"
-		if _, err := testDb.Exec(qry2, sql.Out{Dest: &cnt}); err != nil {
+		if _, err := testDb.ExecContext(ctx, qry2, sql.Out{Dest: &cnt}); err != nil {
 			t.Fatal(errors.Errorf("%d. %s: %w", i, qry2, err))
 		}
 	}

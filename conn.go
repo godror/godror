@@ -829,12 +829,17 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		}
 	}
 	if Log != nil {
-		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
+		stats, _ := c.drv.getPoolStats(pool)
+		Log("msg", "ResetSession re-acquire session", "pool", pool.key, "stats", stats)
 	}
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil && !c.released {
 		// Just release
 		c.closeNotLocking()
+	}
+	if Log != nil {
+		stats, _ := c.drv.getPoolStats(pool)
+		Log("msg", "stats after close", "stats", stats)
 	}
 	var err error
 	var newSession bool

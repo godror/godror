@@ -400,7 +400,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			_ = st.Break()
 			// Break releases the statement
-			st.dpiStmt = nil
+			//st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}
@@ -556,7 +556,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 			}
 			_ = st.Break()
 			// Break releases the statement
-			st.dpiStmt = nil
+			//st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}

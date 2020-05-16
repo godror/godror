@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - Add NullDateAsZeroTime option.
+- Add GetPoolStats to Conn to get the pool statistics.
 
 ## [0.15.0]
 ### Changed
