@@ -875,6 +875,10 @@ func (c *conn) IsValid() bool {
 	if c.dpiConn == nil {
 		return c.released
 	}
+	if c.poolKey == "" {
+		// not pooled connection
+		return c.dpiConn != nil
+	}
 	// FIXME(tgulacsi): Prepared statements hold the previous session,
 	// so sometimes sessions are not released, resulting in
 	//
