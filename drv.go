@@ -834,14 +834,18 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 
 		{&P.EnableEvents, "enableEvents"},
 		{&P.Heterogeneous, "heterogeneousPool"},
+		{&P.StandaloneConnection, "standaloneConnection"},
 	} {
-		*task.Dest = q.Get(task.Key) == "1"
-	}
-	// Issue #57: make standalone connections the default
-	if DefaultStandaloneConnection && !P.Heterogeneous {
-		P.StandaloneConnection = !(q.Get("standaloneConnection") == "0")
-	} else {
-		P.StandaloneConnection = q.Get("standaloneConnection") == "1"
+		s := q.Get(task.Key)
+		if s == "" {
+			continue
+		}
+		if *task.Dest, err = strconv.ParseBool(s); err != nil {
+			return P, errors.Errorf("%s=%q: %w", task.Key, s, err)
+		}
+		if task.Key == "heterogeneousPool" {
+			P.StandaloneConnection = !P.Heterogeneous
+		}
 	}
 
 	if tz := q.Get("timezone"); tz != "" {

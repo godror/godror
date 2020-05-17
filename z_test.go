@@ -55,7 +55,7 @@ func init() {
 
 	logger := &log.SwapLogger{}
 	godror.Log = logger.Log
-	if os.Getenv("VERBOSE") == "1" {
+	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
 		logger.Swap(tl)
 	}
@@ -155,8 +155,8 @@ func init() {
 		k = "GODROR_TEST_" + k
 		fmt.Printf("export %s=%s\n", k, os.Getenv(k))
 	}
-	if s := os.Getenv("GODROR_TEST_STANDALONE"); s != "" {
-		P.StandaloneConnection = s == "1"
+	if b, err := strconv.ParseBool(os.Getenv("GODROR_TEST_STANDALONE")); err == nil {
+		P.StandaloneConnection = b
 	} else {
 		fmt.Printf("# GODROR_TEST_STANDALONE is not set, using default %t\n", godror.DefaultStandaloneConnection)
 	}
