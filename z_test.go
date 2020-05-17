@@ -128,7 +128,6 @@ func init() {
 					continue
 				}
 				k, v := string(line[:i]), string(line[i+1:])
-				fmt.Printf("export GODROR_TEST_%s=%s\n", k, v)
 				os.Setenv("GODROR_TEST_"+k, v)
 			}
 		}
@@ -150,7 +149,16 @@ func init() {
 			MaxLifeTime:    5 * time.Minute,
 			SessionTimeout: 30 * time.Second,
 		},
-		StandaloneConnection: os.Getenv("GODROR_TEST_STANDALONE") == "1",
+		StandaloneConnection: godror.DefaultStandaloneConnection,
+	}
+	for _, k := range []string{"USERNAME", "PASSWORD", "DB", "STANDALONE"} {
+		k = "GODROR_TEST_" + k
+		fmt.Printf("export %s=%s\n", k, os.Getenv(k))
+	}
+	if s := os.Getenv("GODROR_TEST_STANDALONE"); s != "" {
+		P.StandaloneConnection = s == "1"
+	} else {
+		fmt.Printf("GODROR_TEST_STANDALONE is not set, using default %t\n", godror.DefaultStandaloneConnection)
 	}
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
@@ -161,6 +169,7 @@ func init() {
 		panic(errors.Errorf("%s: %+v", testConStr, err))
 	}
 
+	fmt.Println(P.String())
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
 	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
