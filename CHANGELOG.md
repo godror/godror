@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Add NullDateAsZeroTime option.
 - Add GetPoolStats to Conn to get the pool statistics.
 
+### Changed
+- Make standaloneConnection the default - pools have problems.
+
 ## [0.15.0]
 ### Changed
 - Innards of ConnectionParams has been split to ConnParams and PoolParams,

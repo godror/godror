@@ -12,6 +12,7 @@ package godror
 import "C"
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"reflect"
 	"strings"
@@ -410,6 +411,9 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.dpiConn == nil {
+		return ObjectType{}, driver.ErrBadConn
+	}
 	if C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(objType))
 		return ObjectType{}, errors.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, c.getError())

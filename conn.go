@@ -162,7 +162,7 @@ func (c *conn) closeNotLocking() error {
 	// and closes it when it reaches zero.
 	//
 	// To track reference counting, use DPI_DEBUG_LEVEL=2
-	defer C.dpiConn_release(dpiConn)
+	C.dpiConn_release(dpiConn)
 	return nil
 }
 
@@ -495,7 +495,11 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	// So if the given offset is the same as with the Local time zone,
 	// then keep the local.
 	if off != localOff && tz == nil {
-		tz = time.FixedZone(timezone, off)
+		if off == 0 {
+			tz = time.UTC
+		} else {
+			tz = time.FixedZone(timezone, off)
+		}
 	}
 	return tz, off, nil
 }
@@ -576,8 +580,7 @@ func maybeBadConn(err error, c *conn) error {
 			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 			// ORA-12545: Connect failed because target host or object does not exist
 			// ORA-24315: illegal attribute type
-			// ORA-28547: connection to server failed, probable Oracle Net admin error
-		case 12170, 12528, 12545, 24315, 28547:
+		case 12170, 12528, 12545, 24315:
 
 			//cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
 		case 22, // invalid session ID; access denied
@@ -606,6 +609,7 @@ func maybeBadConn(err error, c *conn) error {
 			12583, // TNS:no reader
 			27146, // post/wait initialization failed
 			28511, // lost RPC connection
+			28547, // connection to server failed, probable Oracle Net admin error
 			56600: // an illegal OCI function call was issued
 			cl()
 			return driver.ErrBadConn
@@ -805,6 +809,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		}
 		return nil
 	}
+	// FIXME(tgulacsi): Prepared statements hold the previous session,
+	// so sometimes sessions are not released, resulting in
+	//
+	//     ORA-24459: OCISessionGet()
+	//
+	// See https://github.com/godror/godror/issues/57 for example.
 
 	c.drv.mu.Lock()
 	pool := c.drv.pools[c.poolKey]
@@ -829,17 +839,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		}
 	}
 	if Log != nil {
-		stats, _ := c.drv.getPoolStats(pool)
-		Log("msg", "ResetSession re-acquire session", "pool", pool.key, "stats", stats)
+		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
 	// Close and then reacquire a fresh dpiConn
-	if c.dpiConn != nil && !c.released {
+	if c.dpiConn != nil {
 		// Just release
 		c.closeNotLocking()
-	}
-	if Log != nil {
-		stats, _ := c.drv.getPoolStats(pool)
-		Log("msg", "stats after close", "stats", stats)
 	}
 	var err error
 	var newSession bool
@@ -868,8 +873,14 @@ func (c *conn) IsValid() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.dpiConn == nil {
-		return false
+		return c.released
 	}
+	// FIXME(tgulacsi): Prepared statements hold the previous session,
+	// so sometimes sessions are not released, resulting in
+	//
+	//     ORA-24459: OCISessionGet()
+	//
+	// See https://github.com/godror/godror/issues/57 for example.
 	c.closeNotLocking()
 	c.released = true
 	return true

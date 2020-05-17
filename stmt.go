@@ -399,8 +399,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				Log("msg", "BREAK statement", "error", err)
 			}
 			_ = st.Break()
-			// Break releases the statement
-			//st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}
@@ -555,8 +553,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				Log("msg", "BREAK query", "error", err)
 			}
 			_ = st.Break()
-			// Break releases the statement
-			//st.dpiStmt = nil
 			st.closeNotLocking()
 			return nil, err
 		}

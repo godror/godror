@@ -1258,7 +1258,7 @@ func TestOpenClose(t *testing.T) {
 	}
 	if n, ps, err = sessCount(); err != nil {
 		t.Log(err)
-	} else if n > 4 {
+	} else if n > 7 {
 		t.Errorf("sessCount=%d stats=%s", n, ps)
 	}
 }
@@ -1525,6 +1525,9 @@ func TestRanaOraIssue244(t *testing.T) {
 		})
 	}
 	if err := grp.Wait(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, driver.ErrBadConn) {
+			return
+		}
 		errS := errors.Unwrap(err).Error()
 		switch errS {
 		case "sql: statement is closed",

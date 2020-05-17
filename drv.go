@@ -18,7 +18,7 @@
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
 //     connectionClass=POOLED& \
-//     standaloneConnection=0& \
+//     standaloneConnection=1& \
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
 //     prelim=0& \
@@ -110,6 +110,8 @@ const (
 	DefaultWaitTimeout = 30 * time.Second
 	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
 	DefaultMaxLifeTime = 1 * time.Hour
+	//DefaultStandaloneConnection holds the default for standaloneConnection.
+	DefaultStandaloneConnection = true
 )
 
 // Log function. By default, it's nil, and thus logs nothing.
@@ -746,6 +748,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 // ParseConnString parses the given connection string into a struct.
 func ParseConnString(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
+		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
 			Timezone: time.Local,
 		},
@@ -788,12 +791,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		if strings.HasSuffix(P.DSN, ":POOLED") {
 			P.ConnClass, P.DSN = "POOLED", P.DSN[:len(P.DSN)-7]
 		}
-		//fmt.Printf("connString=%q params=%s\n", connString, P)
-		// only enable external authentication if we are dealing with a
-		// homogeneous pool and no user name/password has been specified
-		if P.Username == "" && P.Password == "" && !P.Heterogeneous {
-			P.PoolParams.ExternalAuth = true
-		}
+		P.comb()
 		if Log != nil {
 			Log("msg", "ParseConnString", "connString", origConnString, "commonParams", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
 		}
@@ -834,12 +832,18 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		{&P.IsSysASM, "sysasm"},
 		{&P.IsPrelim, "prelim"},
 
-		{&P.StandaloneConnection, "standaloneConnection"},
 		{&P.EnableEvents, "enableEvents"},
 		{&P.Heterogeneous, "heterogeneousPool"},
 	} {
 		*task.Dest = q.Get(task.Key) == "1"
 	}
+	// Issue #57: make standalone connections the default
+	if DefaultStandaloneConnection && !P.Heterogeneous {
+		P.StandaloneConnection = !(q.Get("standaloneConnection") == "0")
+	} else {
+		P.StandaloneConnection = q.Get("standaloneConnection") == "1"
+	}
+
 	if tz := q.Get("timezone"); tz != "" {
 		if strings.EqualFold(tz, "local") {
 			// P.Timezone = time.Local // already set
@@ -913,27 +917,30 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
 		P.OnInit = mkExecMany(P.onInitStmts)
 	}
+	P.NewPassword = q.Get("newPassword")
 
+	P.comb()
+
+	if Log != nil {
+		Log("msg", "ParseConnString", "connString", origConnString, "common", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
+	}
+	return P, nil
+}
+func (P *ConnectionParams) comb() {
 	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
 	if P.IsPrelim || P.StandaloneConnection {
 		// Prelim: the shared memory may not exist when Oracle is shut down.
 		P.ConnClass = ""
 		P.Heterogeneous = false
 	}
-	if P.IsStandalone() {
-		P.NewPassword = q.Get("newPassword")
-	} else {
+	if !P.IsStandalone() {
+		P.NewPassword = ""
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
 		if P.Username == "" && P.Password == "" && !P.Heterogeneous {
 			P.ExternalAuth = true
 		}
 	}
-
-	if Log != nil {
-		Log("msg", "ParseConnString", "connString", origConnString, "common", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
-	}
-	return P, nil
 }
 
 // SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.

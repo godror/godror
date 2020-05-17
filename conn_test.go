@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	//"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	errors "golang.org/x/xerrors"
 )
 
@@ -34,6 +34,7 @@ func TestParseConnString(t *testing.T) {
 		},
 	}
 	wantDefault := ConnectionParams{
+		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
 			Username: "user",
 			Password: "pass",
@@ -52,19 +53,25 @@ func TestParseConnString(t *testing.T) {
 			WaitTimeout:      DefaultWaitTimeout,
 		},
 	}
+	wantDefault.ConnClass = DefaultConnectionClass
+	if wantDefault.StandaloneConnection {
+		wantDefault.ConnClass = ""
+	}
 
 	wantXO := wantDefault
 	wantXO.DSN = "localhost/sid"
 
 	wantHeterogeneous := wantXO
 	wantHeterogeneous.Heterogeneous = true
+	wantHeterogeneous.StandaloneConnection = false
+	wantHeterogeneous.ConnClass = DefaultConnectionClass
 	//wantHeterogeneous.PoolParams.Username, wantHeterogeneous.PoolParams.Password = "", ""
 
 	cmpOpts := []cmp.Option{
-		//cmpopts.IgnoreUnexported(ConnectionParams{}),
-		cmp.Comparer(func(a, b ConnectionParams) bool {
-			return a.String() == b.String()
-		}),
+		cmpopts.IgnoreUnexported(ConnectionParams{}),
+		//cmp.Comparer(func(a, b ConnectionParams) bool {
+		//return a.String() == b.String()
+		//}),
 		cmp.Comparer(func(a, b *time.Location) bool {
 			if a == b {
 				return true
@@ -89,7 +96,7 @@ func TestParseConnString(t *testing.T) {
 		Want ConnectionParams
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: "pass", DSN: "sid",
@@ -116,12 +123,13 @@ func TestParseConnString(t *testing.T) {
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
 			Want: ConnectionParams{
+				StandaloneConnection: DefaultStandaloneConnection,
 				CommonParams: CommonParams{
 					DSN:      "[::1]:12345/dbname",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
-					ConnClass: "GODROR",
+					//ConnClass: "GODROR",
 				},
 				PoolParams: PoolParams{
 					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
@@ -130,7 +138,7 @@ func TestParseConnString(t *testing.T) {
 			},
 		},
 
-		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
+		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=POOLED&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: "pass", DSN: "sid",
@@ -147,29 +155,32 @@ func TestParseConnString(t *testing.T) {
 			},
 		},
 	} {
-		t.Log(tCase.In)
-		P, err := ParseConnString(tCase.In)
-		if err != nil {
-			t.Errorf("%s: %v", tName, err)
-			continue
-		}
-		if diff := cmp.Diff(tCase.Want, P, cmpOpts...); diff != "" {
-			t.Errorf("%s: parse of %q got %#v, wanted %#v\n%s", tName, tCase.In, P, tCase.Want, diff)
-			continue
-		}
-		s := setP(P.String(), P.Password)
-		Q, err := ParseConnString(s)
-		if err != nil {
-			t.Errorf("%s: parseConnString %v", tName, err)
-			continue
-		}
-		if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" {
-			t.Errorf("%s: params got %+v, wanted %+v\n%s", tName, P, Q, diff)
-			continue
-		}
-		if got := setP(Q.String(), Q.Password); s != got {
-			t.Errorf("%s: paramString got %q, wanted %q", tName, got, s)
-		}
+		tCase := tCase
+		t.Run(tName, func(t *testing.T) {
+			t.Log(tCase.In)
+			P, err := ParseConnString(tCase.In)
+			if err != nil {
+				t.Errorf("%v", err)
+				return
+			}
+			if diff := cmp.Diff(tCase.Want, P, cmpOpts...); diff != "" && tCase.Want.String() != P.String() {
+				t.Errorf("parse of %q\ngot\n\t%#v,\nwanted\n\t%#v\n%s", tCase.In, P, tCase.Want, diff)
+				return
+			}
+			s := setP(P.String(), P.Password)
+			Q, err := ParseConnString(s)
+			if err != nil {
+				t.Errorf("parseConnString %v", err)
+				return
+			}
+			if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" && P.String() != Q.String() {
+				t.Errorf("params got %+v, wanted %+v\n%s", P, Q, diff)
+				return
+			}
+			if got := setP(Q.String(), Q.Password); s != got {
+				t.Errorf("paramString got %q, wanted %q", got, s)
+			}
+		})
 	}
 }
 
