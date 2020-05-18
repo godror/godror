@@ -144,10 +144,10 @@ func init() {
 			ConnClass: "POOLED",
 		},
 		PoolParams: godror.PoolParams{
-			MinSessions: 1, MaxSessions: maxSessions, SessionIncrement: 1,
-			WaitTimeout:    10 * time.Second,
+			MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
+			WaitTimeout:    5 * time.Minute,
 			MaxLifeTime:    5 * time.Minute,
-			SessionTimeout: 30 * time.Second,
+			SessionTimeout: 5 * time.Minute,
 		},
 		StandaloneConnection: godror.DefaultStandaloneConnection,
 	}
@@ -187,9 +187,21 @@ func init() {
 		panic(err)
 	}
 
-	testDb.SetMaxIdleConns(maxSessions / 2)
-	testDb.SetMaxOpenConns(maxSessions)
-	testDb.SetConnMaxLifetime(10 * time.Minute)
+	if P.StandaloneConnection {
+		testDb.SetMaxIdleConns(maxSessions / 2)
+		testDb.SetMaxOpenConns(maxSessions)
+		testDb.SetConnMaxLifetime(10 * time.Minute)
+	} else {
+		// Disable Go db connection pooling
+		testDb.SetMaxIdleConns(0)
+		testDb.SetMaxOpenConns(0)
+		testDb.SetConnMaxLifetime(0)
+		go func() {
+			for range time.NewTicker(time.Minute).C {
+				fmt.Println("testDb:", testDb.Stats())
+			}
+		}()
+	}
 }
 func testContext(name string) context.Context {
 	return godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})

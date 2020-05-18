@@ -46,6 +46,9 @@ new connection, using the params in the Context!
 
 Without this, you may get a previously acquired and now idle connection!
 
+**WARNING WARNING** also, you *MUST* disable Go connection pooling if you're using Oracle Session pooling
+(`standaloneConnection=0`), that's why the default is `standaloneConnection=1`.
+
 ## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
