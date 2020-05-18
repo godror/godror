@@ -40,14 +40,23 @@ TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/inst
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
 `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
 
+### Warnings
+#### ContextWithParams
 **WARNING** to provide connection params through `context.Context` (with `godror.ContextWithParams`),
 you should set `DB.SetMaxIdleConns(0)`, to force the Go `*sql.DB` connection pool to acquire a
 new connection, using the params in the Context!
 
 Without this, you may get a previously acquired and now idle connection!
 
+#### Oracle Session Pooling
 **WARNING WARNING** also, you *MUST* disable Go connection pooling if you're using Oracle Session pooling
 (`standaloneConnection=0`), that's why the default is `standaloneConnection=1`.
+
+Either use `standaloneConnection=1` connection parameter, or disable Go connection pooling with
+
+    db.SetMaxIdleConns(0)
+	db.SetMaxOpenConns(0)
+	db.SetConnMaxLifetime(0)
 
 ## Rationale
 
