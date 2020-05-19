@@ -94,28 +94,46 @@ type MyTable struct {
 }
 
 func (t *MyTable) Scan(src interface{}) error {
-
+	fmt.Printf("Scan(%T(%#v))\n", src, src)
 	switch obj := src.(type) {
 	case *godror.Object:
 		collection := obj.Collection()
-		t.Items = make([]*MyRecord, 0)
-		for i, err := collection.First(); err == nil; i, err = collection.Next(i) {
-			var data godror.Data
-			err = collection.GetItem(&data, i)
-			if err != nil {
-				return err
-			}
-
-			o := data.GetObject()
-			defer o.Close()
-
-			var item MyRecord
-			err = item.Scan(o)
-			if err != nil {
-				return err
-			}
-			t.Items = append(t.Items, &item)
+		length, err := collection.Len()
+		fmt.Printf("Collection: %d: %#v: %+v\n", length, collection, err)
+		if err != nil {
+			return err
 		}
+		if length != 0 {
+			t.Items = make([]*MyRecord, length)
+			i, err := collection.First()
+			for {
+				fmt.Printf("Scan[%d]: %+v\n", i, err)
+				if err != nil {
+					break
+				}
+				var data godror.Data
+				err = collection.GetItem(&data, i)
+				if err != nil {
+					return err
+				}
+
+				o := data.GetObject()
+				defer o.Close()
+
+				var item MyRecord
+				err = item.Scan(o)
+				if err != nil {
+					return err
+				}
+				t.Items = append(t.Items, &item)
+
+				i, err = collection.Next(i)
+			}
+		}
+		if err == godror.ErrNotExist {
+			return nil
+		}
+		return err
 
 	default:
 		return fmt.Errorf("Cannot scan from type %T", src)
@@ -259,11 +277,11 @@ func TestPLSQLTypes(t *testing.T) {
 
 	errOld := errors.New("client or server < 12")
 	if err := godror.Raw(ctx, testDb, func(conn godror.Conn) error {
-		serverVersion, err := godror.ServerVersion(ctx, testDb)
+		serverVersion, err := conn.ServerVersion()
 		if err != nil {
 			return err
 		}
-		clientVersion, err := godror.ClientVersion(ctx, testDb)
+		clientVersion, err := conn.ClientVersion()
 		if err != nil {
 			return err
 		}
@@ -324,7 +342,7 @@ func TestPLSQLTypes(t *testing.T) {
 				sql.Named("txt", tCase.txt),
 				sql.Named("rec", sql.Out{Dest: &rec}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
+			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 21779 {
@@ -368,10 +386,10 @@ func TestPLSQLTypes(t *testing.T) {
 			params := []interface{}{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
+			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
 			if err != nil {
 				var cdr coder
-				if errors.As(err, &cdr); cdr.Code() == 21779 {
+				if errors.As(err, &cdr) && cdr.Code() == 21779 {
 					t.Skip(err)
 				}
 				t.Fatal(err)
@@ -395,7 +413,7 @@ func TestPLSQLTypes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		items := []*MyRecord{&MyRecord{ID: 1, Txt: "test - 2"}, &MyRecord{ID: 2, Txt: "test - 4"}}
+		items := []*MyRecord{{ID: 1, Txt: "test - 2"}, {ID: 2, Txt: "test - 4"}}
 
 		for tName, tCase := range map[string]struct {
 			in   int64
@@ -416,10 +434,10 @@ func TestPLSQLTypes(t *testing.T) {
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
+			_, err = cx.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
 			if err != nil {
 				var cdr coder
-				if errors.As(err, &cdr); cdr.Code() == 30757 {
+				if errors.As(err, &cdr) && cdr.Code() == 30757 {
 					t.Skip(err)
 				}
 				t.Fatal(err)
@@ -489,10 +507,10 @@ func TestPLSQLTypes(t *testing.T) {
 			params := []interface{}{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
-			_, err = testDb.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
+			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
 			if err != nil {
 				var cdr coder
-				if errors.As(err, &cdr); cdr.Code() == 30757 {
+				if errors.As(err, &cdr) && cdr.Code() == 30757 {
 					t.Skip(err)
 				}
 				t.Fatal(err)

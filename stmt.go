@@ -2098,13 +2098,22 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			ObjectType: out.ObjectType,
 			dpiData:    data[0],
 		}
+		if Log != nil {
+			Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+		}
 		*out = *d.GetObject()
 	case ObjectScanner:
 		d := Data{
 			ObjectType: out.ObjectRef().ObjectType,
 			dpiData:    data[0],
 		}
-		return out.Scan(d.GetObject())
+		if Log != nil {
+			Log("msg", "dataGetObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", d.GetObject())
+		}
+		obj := d.GetObject()
+		err := out.Scan(obj)
+		obj.Close()
+		return err
 	default:
 
 		return fmt.Errorf("dataGetObject not implemented for type %T (maybe you need to implement the Scan method)", v)
