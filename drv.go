@@ -392,7 +392,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			return nil, false, errors.Errorf("username=%q dsn=%q stats=%s params=%+v: %w",
 				username, P.DSN, stats, connCreateParams, err)
 		}
-		return nil, false, errors.Errorf("username=%q dsn=%q params=%+v: %w",
+		return nil, false, errors.Errorf("username=%q dsn=%q standalone params=%+v: %w",
 			username, P.DSN, connCreateParams, err)
 	}
 	return dc, connCreateParams.outNewSession == 1, nil
