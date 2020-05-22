@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-logfmt/logfmt"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
@@ -53,11 +52,10 @@ func init() {
 	hsh.Write([]byte(runtime.Version()))
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
 
-	logger := &log.SwapLogger{}
-	godror.Log = logger.Log
+	godror.Log = func(...interface{}) error { return nil }
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
-		logger.Swap(tl)
+		godror.Log = tl.Log
 	}
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
