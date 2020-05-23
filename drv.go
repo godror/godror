@@ -1195,6 +1195,8 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 func (c connector) Driver() driver.Driver { return c.drv }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
+//
+// Deprecated. Use ParseConnString + ConnectionParams.SetSessionParamOnInit and NewConnector.
 // which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
 func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 	ss := make([]string, 0, len(m))
