@@ -1136,6 +1136,8 @@ type connector struct {
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // (for the default Driver registered with godror)
+//
+// ConnectionParams must be complete, so start with what ParseConnString returns!
 func NewConnector(params ConnectionParams) driver.Connector {
 	return connector{drv: defaultDrv, ConnectionParams: params}
 }
