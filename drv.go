@@ -615,7 +615,7 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 		stats.Timeout = time.Duration(u) * time.Second
 	}
 	if C.dpiPool_getWaitTimeout(p.dpiPool, &u) == C.DPI_SUCCESS {
-		stats.WaitTimeout = time.Duration(u) * time.Second
+		stats.WaitTimeout = time.Duration(u) * time.Millisecond
 		return stats, nil
 	}
 	return stats, d.getError()
