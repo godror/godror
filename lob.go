@@ -88,9 +88,10 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr.sizePlusOne == 0 {
 		// never read size before
 		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
+			err := errors.Errorf("getSize: %w", dlr.getError())
 			C.dpiLob_close(dlr.dpiLob)
 			dlr.dpiLob = nil
-			return 0, errors.Errorf("getSize: %w", dlr.getError())
+			return 0, err
 		}
 		dlr.sizePlusOne++
 	}

@@ -3056,3 +3056,57 @@ func TestSelectNullTime(t *testing.T) {
 	}
 	t.Logf("t0=%s t1=%s nt=%v", t0, t1, nt)
 }
+
+func TestOpenCloseLob(t *testing.T) {
+	const poolSize = 2
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.WaitTimeout = 5 * time.Second
+	P.MinSessions, P.SessionIncrement, P.MaxSessions = 0, 1, poolSize
+	t.Log(P.String())
+	db, err := sql.Open("godror", P.StringWithPassword())
+	if err != nil {
+		t.Fatalf("%s: %+v", P, err)
+	}
+	defer db.Close()
+	if P.StandaloneConnection {
+		db.SetMaxIdleConns(poolSize)
+	} else {
+		db.SetMaxOpenConns(0)
+		db.SetMaxIdleConns(0)
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("OpenCloseLob"), time.Minute)
+	defer cancel()
+
+	const qry = "DECLARE v_lob BLOB; BEGIN DBMS_LOB.CREATETEMPORARY(v_lob, TRUE); DBMS_LOB.WRITEAPPEND(v_lob, 4, HEXTORAW('DEADBEEF')); :1 := v_lob; END;"
+	for i := 0; i < 10*poolSize; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
+			defer shortCancel()
+			tx, err := db.BeginTx(shortCtx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			stmt, err := tx.PrepareContext(shortCtx, qry)
+			if err != nil {
+				t.Fatalf("%s: %v", qry, err)
+			}
+			defer stmt.Close()
+			var lob godror.Lob
+			if _, err = stmt.ExecContext(shortCtx, sql.Out{Dest: &lob}); err != nil {
+				t.Error(err)
+				return
+			}
+			b, err := ioutil.ReadAll(lob)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			t.Logf("0x%x", b)
+		})
+	}
+}
