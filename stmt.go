@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -346,19 +347,24 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	done := make(chan error, 1)
 	// execute
+	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- maybeBadConn(r.(error), nil)
+			}
+		}()
 		defer close(done)
-		many := !st.PlSQLArrays() && st.arrLen > 0
 		var err error
 		for i := 0; i < 3; i++ {
 			if Log != nil {
-				Log("C", "dpiStmt_execute", "many", many, "mode", mode, "len", st.arrLen)
+				Log("C", "dpiStmt_execute", "many", many, "mode", mode, "len", arrLen)
 			}
 			var ok bool
 			if many {
-				ok = C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) != C.DPI_FAILURE
+				ok = C.dpiStmt_executeMany(dpiStmt, mode, C.uint32_t(arrLen)) != C.DPI_FAILURE
 			} else {
-				ok = C.dpiStmt_execute(st.dpiStmt, mode, nil) != C.DPI_FAILURE
+				ok = C.dpiStmt_execute(dpiStmt, mode, nil) != C.DPI_FAILURE
 			}
 			err = nil
 			if !ok {
@@ -366,7 +372,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 					done <- err
 					return
 				}
-				err = st.getError()
+				err = c.getError()
 			}
 			if Log != nil {
 				Log("msg", "st.Execute", "error", err)
@@ -376,7 +382,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 		}
 		if err != nil {
-			err = errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, st.arrLen, err)
+			err = errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err)
 		}
 		done <- maybeBadConn(err, nil)
 	}()
@@ -514,11 +520,17 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	// execute
 	var colCount C.uint32_t
 	done := make(chan error, 1)
+	c, dpiStmt := st.conn, st.dpiStmt
 	go func() {
-		var err error
+		defer func() {
+			if r := recover(); r != nil {
+				done <- maybeBadConn(r.(error), nil)
+			}
+		}()
 		defer close(done)
+		var err error
 		for i := 0; i < 3; i++ {
-			if C.dpiStmt_execute(st.dpiStmt, mode, &colCount) != C.DPI_FAILURE {
+			if C.dpiStmt_execute(dpiStmt, mode, &colCount) != C.DPI_FAILURE {
 				err = nil
 				break
 			}
@@ -526,7 +538,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 				done <- err
 				return
 			}
-			if err = st.getError(); !isInvalidErr(err) {
+			if err = c.getError(); !isInvalidErr(err) {
 				break
 			}
 		}
@@ -1914,6 +1926,14 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 	st2 := &statement{conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(st2, func(st *statement) {
+		if st != nil && st.dpiStmt != nil {
+			fmt.Printf("ERROR: statement %p of dataGetStmtC is not closed!\n%s\n", st, stack)
+			st.closeNotLocking()
+		}
+	})
 
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) == C.DPI_FAILURE {
@@ -2244,6 +2264,14 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		return &r, errors.Errorf("dpiStmt_addRef: %w", st.getError())
 	}
 	st.columns = r.columns
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(&r, func(r *rows) {
+		if r != nil && r.statement != nil {
+			fmt.Printf("ERROR: rows %p of openRows is not closed!\n%s\n", r, stack)
+			r.Close()
+		}
+	})
 	return &r, nil
 }
 

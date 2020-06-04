@@ -928,6 +928,7 @@ END;
 	); err != nil {
 		t.Fatal(err)
 	}
+	defer a_type_list_o.Close()
 
 	rows, err := godror.WrapRows(ctx, conn, a_type_list_o)
 	if err != nil {

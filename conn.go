@@ -16,7 +16,9 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -297,6 +299,14 @@ func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, e
 		C.dpiStmt_release(dpiStmt)
 		return nil, err
 	}
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(&st, func(st *statement) {
+		if st != nil && st.dpiStmt != nil {
+			fmt.Printf("ERROR: statement %p of prepareContext is not closed!\n%s\n", st, stack)
+			st.closeNotLocking()
+		}
+	})
 	return &st, nil
 }
 func (c *conn) Commit() error {

@@ -59,6 +59,7 @@ import (
 	"hash/fnv"
 	"io"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -247,6 +248,14 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	c.init(P.OnInit)
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(&c, func(c *conn) {
+		if c != nil && c.dpiConn != nil {
+			fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
+			c.closeNotLocking()
+		}
+	})
 	return &c, nil
 }
 

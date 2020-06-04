@@ -16,6 +16,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -479,8 +480,17 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			var colCount C.uint32_t
 			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
+				C.dpiStmt_release(st.dpiStmt)
 				return errors.Errorf("getNumQueryColumns: %w", r.getError())
 			}
+			var a [4096]byte
+			stack := a[:runtime.Stack(a[:], false)]
+			runtime.SetFinalizer(st, func(st *statement) {
+				if st != nil && st.dpiStmt != nil {
+					fmt.Printf("ERROR: statement %p of Next is not Closed!\n%s\n", st, stack)
+					st.closeNotLocking()
+				}
+			})
 			st.Lock()
 			r2, err := st.openRows(int(colCount))
 			st.Unlock()
@@ -610,11 +620,23 @@ func (r *rows) NextResultSet() error {
 
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
+		C.dpiStmt_release(st.dpiStmt)
 		return errors.Errorf("getNumQueryColumns: %w: %w", r.getError(), io.EOF)
 	}
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(st, func(st *statement) {
+		if st != nil && st.dpiStmt != nil {
+			fmt.Printf("ERROR: statement %p of NextResultSet is not Closed!\n%s\n", st, stack)
+			st.closeNotLocking()
+		}
+	})
 	// keep the originam statement for the succeeding NextResultSet calls.
+	st.Lock()
 	nr, err := st.openRows(int(n))
+	st.Unlock()
 	if err != nil {
+		C.dpiStmt_release(st.dpiStmt)
 		return err
 	}
 	nr.origSt = r.origSt

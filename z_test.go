@@ -143,9 +143,9 @@ func init() {
 		},
 		PoolParams: godror.PoolParams{
 			MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
-			WaitTimeout:    5 * time.Minute,
+			WaitTimeout:    5 * time.Second,
 			MaxLifeTime:    5 * time.Minute,
-			SessionTimeout: 5 * time.Minute,
+			SessionTimeout: 1 * time.Minute,
 		},
 		StandaloneConnection: godror.DefaultStandaloneConnection,
 	}
@@ -189,6 +189,11 @@ func init() {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
+		go func() {
+			for range time.NewTicker(time.Minute).C {
+				fmt.Printf("testDb: %+v\n", testDb.Stats())
+			}
+		}()
 	} else {
 		// Disable Go db connection pooling
 		testDb.SetMaxIdleConns(0)
@@ -196,7 +201,13 @@ func init() {
 		testDb.SetConnMaxLifetime(0)
 		go func() {
 			for range time.NewTicker(time.Minute).C {
-				fmt.Println("testDb:", testDb.Stats())
+				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
+				godror.Raw(ctx, testDb, func(c godror.Conn) error {
+					poolStats, err := c.GetPoolStats()
+					fmt.Printf("testDb: %s %v\n", poolStats, err)
+					return err
+				})
+				cancel()
 			}
 		}()
 	}
@@ -848,6 +859,7 @@ func TestSelectRefCursor(t *testing.T) {
 				if err == io.EOF {
 					break
 				}
+				sub.Close()
 				t.Error(err)
 				break
 			}
@@ -883,6 +895,7 @@ func TestSelectRefCursorWrap(t *testing.T) {
 			var oName, oType, oID string
 			var created time.Time
 			if err := sub.Scan(&oName, &oType, &oID, &created); err != nil {
+				sub.Close()
 				t.Error(err)
 				break
 			}
@@ -1736,6 +1749,7 @@ func TestColumnSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	rts, err := r.ColumnTypes()
 	if err != nil {
 		t.Fatal(err)

@@ -419,6 +419,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	if err != nil {
 		return errors.Errorf("%s: %w", qry, err)
 	}
+	defer stmt.Close()
 
 	lines := make([]string, maxNumLines)
 	var numLines int64
