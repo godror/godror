@@ -138,8 +138,6 @@ func (t *MyTable) Scan(src interface{}) error {
 	default:
 		return fmt.Errorf("Cannot scan from type %T", src)
 	}
-
-	return nil
 }
 
 func (r MyTable) WriteObject(ctx context.Context) error {

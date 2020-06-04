@@ -351,14 +351,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				done <- maybeBadConn(r.(error), nil)
+				done <- r.(error)
 			}
 		}()
 		defer close(done)
 		var err error
 		for i := 0; i < 3; i++ {
 			if Log != nil {
-				Log("C", "dpiStmt_execute", "many", many, "mode", mode, "len", arrLen)
+				Log("C", "dpiStmt_execute", "st", fmt.Sprintf("%p", dpiStmt), "many", many, "mode", mode, "len", arrLen)
 			}
 			var ok bool
 			if many {
@@ -384,7 +384,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if err != nil {
 			err = errors.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err)
 		}
-		done <- maybeBadConn(err, nil)
+		done <- err
 	}()
 
 	select {
@@ -524,7 +524,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				done <- maybeBadConn(r.(error), nil)
+				done <- r.(error)
 			}
 		}()
 		defer close(done)
@@ -545,7 +545,7 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 		if err != nil {
 			err = errors.Errorf("dpiStmt_execute: %w", err)
 		}
-		done <- maybeBadConn(err, nil)
+		done <- err
 	}()
 
 	select {
@@ -650,7 +650,7 @@ type argInfo struct {
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	if Log != nil {
-		Log("enter", "bindVars", "args", args)
+		Log("enter", "bindVars", st, fmt.Sprintf("%p", st), "args", args)
 	}
 	for i, v := range st.vars[:cap(st.vars)] {
 		if v != nil {
@@ -745,7 +745,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		}
 
 		if Log != nil {
-			Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%T %#v", st.dests[i], st.dests[i]))
+			Log("msg", "bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%[1]p %[1]T %#[1]v", st.dests[i]))
 		}
 	}
 
@@ -1926,25 +1926,26 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 	st2 := &statement{conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
-	runtime.SetFinalizer(st2, func(st *statement) {
-		if st != nil && st.dpiStmt != nil {
-			fmt.Printf("ERROR: statement %p of dataGetStmtC is not closed!\n%s\n", st, stack)
-			st.closeNotLocking()
-		}
-	})
 
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) == C.DPI_FAILURE {
-		*row = &rows{
-			err: errors.Errorf("getNumQueryColumns: %w: %w", st.getError(), io.EOF),
+		err := errors.Errorf("dataGetStmtC.getNumQueryColumns: %w: %w", st.getError(), io.EOF)
+		*row = &rows{err: err}
+		if Log != nil {
+			Log("msg", "dataGetStmtC", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
 		}
 		return nil
 	}
 	var err error
-	*row, err = st2.openRows(int(n))
-	return err
+	if *row, err = st2.openRows(int(n)); err != nil {
+		if Log != nil {
+			Log("msg", "dataGetStmtC.openRows", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
+		}
+		st2.Close()
+		return err
+	}
+	stmtSetFinalizer(st2, "dataGetStmtC")
+	return nil
 }
 
 func (c *conn) dataGetLOB(v interface{}, data []C.dpiData) error {
@@ -2264,14 +2265,6 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		return &r, errors.Errorf("dpiStmt_addRef: %w", st.getError())
 	}
 	st.columns = r.columns
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
-	runtime.SetFinalizer(&r, func(r *rows) {
-		if r != nil && r.statement != nil {
-			fmt.Printf("ERROR: rows %p of openRows is not closed!\n%s\n", r, stack)
-			r.Close()
-		}
-	})
 	return &r, nil
 }
 
@@ -2334,3 +2327,14 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return c.Ping(ctx)
 }
 */
+
+func stmtSetFinalizer(st *statement, tag string) {
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(st, func(st *statement) {
+		if st != nil && st.dpiStmt != nil {
+			fmt.Printf("ERROR: statement %p of %s is not closed!\n%s\n", st, tag, stack)
+			st.closeNotLocking()
+		}
+	})
+}

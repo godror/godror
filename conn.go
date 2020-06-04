@@ -16,9 +16,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
 	"io"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -287,26 +285,18 @@ func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	var dpiStmt *C.dpiStmt
+	st := statement{conn: c, query: query}
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
-		(**C.dpiStmt)(unsafe.Pointer(&dpiStmt)),
+		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
 	) == C.DPI_FAILURE {
 		return nil, maybeBadConn(errors.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
-	st := statement{conn: c, dpiStmt: dpiStmt, query: query}
-	if C.dpiStmt_getInfo(dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
+	if C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
 		err := maybeBadConn(errors.Errorf("getStmtInfo: %w", c.getError()), c)
-		C.dpiStmt_release(dpiStmt)
+		st.Close()
 		return nil, err
 	}
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
-	runtime.SetFinalizer(&st, func(st *statement) {
-		if st != nil && st.dpiStmt != nil {
-			fmt.Printf("ERROR: statement %p of prepareContext is not closed!\n%s\n", st, stack)
-			st.closeNotLocking()
-		}
-	})
+	stmtSetFinalizer(&st, "prepareContext")
 	return &st, nil
 }
 func (c *conn) Commit() error {

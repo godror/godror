@@ -2163,6 +2163,7 @@ func TestImplicitResults(t *testing.T) {
 		}
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
+	defer rows.Close()
 	r := rows.(driver.RowsNextResultSet)
 	for r.HasNextResultSet() {
 		if err := r.NextResultSet(); err != nil {
