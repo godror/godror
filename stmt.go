@@ -240,18 +240,11 @@ func (st *statement) closeNotLocking() error {
 		return nil
 	}
 
-	rc := st.dpiStmt.refCount
-	if rc > 0 {
-		C.dpiStmt_release(st.dpiStmt)
-	}
-	if rc > 1 {
-		return nil
-	}
-	c, vars := st.conn, st.vars
+	c, dpiStmt, vars := st.conn, st.dpiStmt, st.vars
+	st.vars = nil
 	st.isSlice = nil
 	st.query = ""
 	st.data = nil
-	st.vars = nil
 	st.varInfos = nil
 	st.gets = nil
 	st.dests = nil
@@ -260,12 +253,15 @@ func (st *statement) closeNotLocking() error {
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 
+	if Log != nil {
+		Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
+	}
 	for _, v := range vars[:cap(vars)] {
 		if v != nil {
 			C.dpiVar_release(v)
 		}
 	}
-
+	C.dpiStmt_release(dpiStmt)
 	if c == nil {
 		return driver.ErrBadConn
 	}

@@ -43,6 +43,7 @@ type rows struct {
 	nextRs         *C.dpiStmt
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
+	fromData       bool
 }
 
 // Columns returns the names of the columns. The number of
@@ -64,6 +65,8 @@ func (r *rows) Close() error {
 	}
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs = nil, nil, nil, nil, nil
+	fromData := r.fromData
+	r.fromData = false
 	for _, v := range vars[:cap(vars)] {
 		if v != nil {
 			C.dpiVar_release(v)
@@ -79,7 +82,11 @@ func (r *rows) Close() error {
 		return nil
 	}
 
-	return st.Close()
+	if fromData || st.dpiStmt.refCount < 2 {
+		return st.Close()
+	}
+	C.dpiStmt_release(st.dpiStmt)
+	return nil
 }
 
 // ColumnTypeLength return the length of the column type if the column is a variable length type.
@@ -493,6 +500,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				st.Close()
 				return err
 			}
+			r2.fromData = true
 			stmtSetFinalizer(st, "Next")
 			dest[i] = r2
 

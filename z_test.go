@@ -846,14 +846,14 @@ func TestSelectRefCursor(t *testing.T) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var intf driver.Rows
-		if err := rows.Scan(&intf); err != nil {
-			t.Error(err)
-			continue
+		var sub driver.Rows
+		if err := rows.Scan(&sub); err != nil {
+			sub.Close()
+			t.Fatal(err)
 		}
-		t.Logf("%[1]T %[1]p", intf)
-		sub := intf.(driver.RowsColumnTypeScanType)
-		cols := sub.Columns()
+		defer sub.Close()
+		t.Logf("%[1]T %[1]p", sub)
+		cols := sub.(driver.RowsColumnTypeScanType).Columns()
 		t.Log("Columns", cols)
 		dests := make([]driver.Value, len(cols))
 		for {
@@ -1519,7 +1519,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	grp, grpCtx := errgroup.WithContext(ctx)
 	for i := 0; i < max; i++ {
 		index := rand.Intn(len(fas))
-		i := i
+		i, qry := i, qry
 		grp.Go(func() error {
 			tx, err := testDb.BeginTx(grpCtx, &sql.TxOptions{ReadOnly: true})
 			if err != nil {
@@ -1533,37 +1533,43 @@ func TestRanaOraIssue244(t *testing.T) {
 			}
 			defer stmt.Close()
 
-			for {
+			for j := 0; j < 3; j++ {
+				select {
+				case <-grpCtx.Done():
+					return grpCtx.Err()
+				default:
+				}
 				index = (index + 1) % len(fas)
 				rows, err := stmt.QueryContext(grpCtx, bf, sc, fas[index])
 				if err != nil {
-					return errors.Errorf("%d.tx=%p stmt=%p %q: %w", i, tx, stmt, qry, err)
+					return errors.Errorf("%d.tx=%p stmt=%p %d. %q: %w", i, tx, stmt, j, qry, err)
 				}
 
 				for rows.Next() {
-					if err = grpCtx.Err(); err != nil {
-						rows.Close()
-						return err
-					}
 					var acc, mt string
 					if err = rows.Scan(&acc, &mt); err != nil {
-						rows.Close()
-						return err
+						err = errors.Errorf("Scan: %w", err)
+						break
 					}
 
 					if acc != fas[index] {
-						rows.Close()
-						return errors.Errorf("got acc %q, wanted %q", acc, fas[index])
+						err = errors.Errorf("got acc %q, wanted %q", acc, fas[index])
+						break
 					}
 					if mt != "0" {
-						rows.Close()
-						return errors.Errorf("got mt %q, wanted 0", mt)
+						err = errors.Errorf("got mt %q, wanted 0", mt)
+						break
 					}
 				}
-				if err = rows.Err(); err != nil {
+				rows.Close()
+				if err == nil {
+					err = rows.Err()
+				}
+				if err != nil {
 					return err
 				}
 			}
+			return nil
 		})
 	}
 	if err := grp.Wait(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
