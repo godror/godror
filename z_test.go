@@ -190,8 +190,9 @@ func init() {
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range time.NewTicker(time.Minute).C {
+			for range time.NewTicker(10 * time.Second).C {
 				fmt.Printf("testDb: %+v\n", testDb.Stats())
+				runtime.GC()
 			}
 		}()
 	} else {
@@ -200,7 +201,7 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range time.NewTicker(time.Minute).C {
+			for range time.NewTicker(10 * time.Second).C {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
@@ -208,6 +209,7 @@ func init() {
 					return err
 				})
 				cancel()
+				runtime.GC()
 			}
 		}()
 	}
@@ -886,8 +888,10 @@ func TestSelectRefCursorWrap(t *testing.T) {
 			continue
 		}
 		t.Logf("%T", intf)
-		sub, err := godror.WrapRows(ctx, testDb, intf.(driver.Rows))
+		dr := intf.(driver.Rows)
+		sub, err := godror.WrapRows(ctx, testDb, dr)
 		if err != nil {
+			dr.Close()
 			t.Fatal(err)
 		}
 		t.Log("Sub", sub)
@@ -895,14 +899,18 @@ func TestSelectRefCursorWrap(t *testing.T) {
 			var oName, oType, oID string
 			var created time.Time
 			if err := sub.Scan(&oName, &oType, &oID, &created); err != nil {
+				dr.Close()
 				sub.Close()
 				t.Error(err)
 				break
 			}
 			t.Log(oName, oType, oID, created)
 		}
+		dr.Close()
 		sub.Close()
 	}
+	// Test the Finalizers
+	runtime.GC()
 }
 
 func TestExecuteMany(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -942,6 +943,8 @@ END;
 		i++
 		t.Logf("%d. %d", i, n)
 	}
+	// Test the Finalizers.
+	runtime.GC()
 }
 
 func BenchmarkObjArray(b *testing.B) {
