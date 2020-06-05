@@ -236,11 +236,18 @@ func (st *statement) Close() error {
 	return st.closeNotLocking()
 }
 func (st *statement) closeNotLocking() error {
-	if st == nil {
+	if st == nil || st.dpiStmt == nil {
 		return nil
 	}
 
-	c, dpiStmt, vars := st.conn, st.dpiStmt, st.vars
+	rc := st.dpiStmt.refCount
+	if rc > 0 {
+		C.dpiStmt_release(st.dpiStmt)
+	}
+	if rc > 1 {
+		return nil
+	}
+	c, vars := st.conn, st.vars
 	st.isSlice = nil
 	st.query = ""
 	st.data = nil
@@ -259,17 +266,8 @@ func (st *statement) closeNotLocking() error {
 		}
 	}
 
-	if dpiStmt == nil {
-		return nil
-	}
-	if C.dpiStmt_release(dpiStmt) != C.DPI_FAILURE {
-		return nil
-	}
 	if c == nil {
 		return driver.ErrBadConn
-	}
-	if err := c.getError(); err != nil {
-		return errors.Errorf("statement/dpiStmt_release: %w", err)
 	}
 	return nil
 }

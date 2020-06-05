@@ -928,6 +928,7 @@ END;
 		t.Fatal(err)
 	}
 	defer a_type_list_o.Close()
+	t.Logf("%[1]p %#[1]v", a_type_list_o)
 
 	rows, err := godror.WrapRows(ctx, conn, a_type_list_o)
 	if err != nil {

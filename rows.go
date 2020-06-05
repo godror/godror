@@ -79,16 +79,7 @@ func (r *rows) Close() error {
 		return nil
 	}
 
-	st.Lock()
-	defer st.Unlock()
-	if st.dpiStmt == nil {
-		return nil
-	}
-	var err error
-	if C.dpiStmt_release(st.dpiStmt) == C.DPI_FAILURE {
-		err = errors.Errorf("rows/dpiStmt_release: %w", r.getError())
-	}
-	return err
+	return st.Close()
 }
 
 // ColumnTypeLength return the length of the column type if the column is a variable length type.

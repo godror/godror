@@ -846,12 +846,12 @@ func TestSelectRefCursor(t *testing.T) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var intf interface{}
+		var intf driver.Rows
 		if err := rows.Scan(&intf); err != nil {
 			t.Error(err)
 			continue
 		}
-		t.Logf("%T", intf)
+		t.Logf("%[1]T %[1]p", intf)
 		sub := intf.(driver.RowsColumnTypeScanType)
 		cols := sub.Columns()
 		t.Log("Columns", cols)
@@ -870,6 +870,8 @@ func TestSelectRefCursor(t *testing.T) {
 		}
 		sub.Close()
 	}
+	// Test the Finalizers
+	runtime.GC()
 }
 
 func TestSelectRefCursorWrap(t *testing.T) {
@@ -882,12 +884,12 @@ func TestSelectRefCursorWrap(t *testing.T) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var intf interface{}
+		var intf driver.Rows
 		if err := rows.Scan(&intf); err != nil {
 			t.Error(err)
 			continue
 		}
-		t.Logf("%T", intf)
+		t.Logf("%[1]T %[1]p", intf)
 		dr := intf.(driver.Rows)
 		sub, err := godror.WrapRows(ctx, testDb, dr)
 		if err != nil {
