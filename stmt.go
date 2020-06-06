@@ -1930,8 +1930,8 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 		}
 		return nil
 	}
-	var err error
-	if *row, err = st2.openRows(int(n)); err != nil {
+	r2, err := st2.openRows(int(n))
+	if err != nil {
 		if Log != nil {
 			Log("msg", "dataGetStmtC.openRows", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
 		}
@@ -1939,6 +1939,8 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 		return err
 	}
 	stmtSetFinalizer(st2, "dataGetStmtC")
+	r2.fromData = true
+	*row = r2
 	return nil
 }
 
