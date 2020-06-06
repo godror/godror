@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.16.1]
+### Changed
+- Add Finalizer for conn, statement and rows, prints ugly stack trace on forgotten Close()s.
+
 ## [0.16.0]
 ### Added
 - Add NullDateAsZeroTime option.
