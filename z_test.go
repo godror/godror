@@ -915,6 +915,46 @@ func TestSelectRefCursorWrap(t *testing.T) {
 	runtime.GC()
 }
 
+func TestExecRefCursor(t *testing.T) {
+	t.Parallel()
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(testContext("ExecRefCursor"), 30*time.Second)
+	defer cancel()
+	funName := "test_rc" + tblSuffix
+	funQry := "CREATE OR REPLACE FUNCTION " + funName + ` RETURN SYS_REFCURSOR IS
+  v_cur SYS_REFCURSOR;
+BEGIN
+  OPEN v_cur FOR SELECT object_name FROM all_objects WHERE ROWNUM < 10;
+  RETURN(v_cur);
+END;`
+	if _, err := testDb.ExecContext(ctx, funQry); err != nil {
+		t.Fatalf("%s: %v", funQry, err)
+	}
+	defer testDb.ExecContext(ctx, `DROP FUNCTION `+funName)
+	qry := "BEGIN :1 := " + funName + "; END;"
+	var dr driver.Rows
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &dr}); err != nil {
+		t.Fatalf("%s: %v", qry, err)
+	}
+	defer dr.Close()
+	sub, err := godror.WrapRows(ctx, testDb, dr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+	t.Log("Sub", sub)
+	for sub.Next() {
+		var s string
+		if err := sub.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(s)
+	}
+	runtime.GC()
+	time.Sleep(time.Second)
+	runtime.GC()
+}
+
 func TestExecuteMany(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
