@@ -185,14 +185,19 @@ func init() {
 		panic(err)
 	}
 
+	go func() {
+		for range time.NewTicker(time.Second).C {
+			runtime.GC()
+		}
+	}()
+
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range time.NewTicker(10 * time.Second).C {
+			for range time.NewTicker(1 * time.Minute).C {
 				fmt.Printf("testDb: %+v\n", testDb.Stats())
-				runtime.GC()
 			}
 		}()
 	} else {
@@ -201,7 +206,7 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range time.NewTicker(10 * time.Second).C {
+			for range time.NewTicker(1 * time.Minute).C {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
@@ -209,7 +214,6 @@ func init() {
 					return err
 				})
 				cancel()
-				runtime.GC()
 			}
 		}()
 	}
