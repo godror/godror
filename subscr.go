@@ -205,19 +205,29 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 	}
 	subscr := Subscription{conn: c, callback: cb}
 	params := (*C.dpiSubscrCreateParams)(C.malloc(C.sizeof_dpiSubscrCreateParams))
-	//defer func() { C.free(unsafe.Pointer(params)) }()
+	defer func() { C.free(unsafe.Pointer(params)) }()
 	C.dpiContext_initSubscrCreateParams(c.drv.dpiContext, params)
 	params.subscrNamespace = C.DPI_SUBSCR_NAMESPACE_DBCHANGE
 	params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
 	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.operations = C.DPI_OPCODE_ALL_OPS
-	if name != "" {
-		params.name = C.CString(name)
-		params.nameLength = C.uint32_t(len(name))
-	}
-	if p.IPAddress != "" {
-		params.ipAddress = C.CString(p.IPAddress)
-		params.ipAddressLength = C.uint32_t(len(p.IPAddress))
+	if name != "" || p.IPAddress != "" {
+		if name != "" {
+			params.name = C.CString(name)
+			params.nameLength = C.uint32_t(len(name))
+		}
+		if p.IPAddress != "" {
+			params.ipAddress = C.CString(p.IPAddress)
+			params.ipAddressLength = C.uint32_t(len(p.IPAddress))
+		}
+		defer func() {
+			if params.name != nil {
+				C.free(unsafe.Pointer(params.name))
+			}
+			if params.ipAddress != nil {
+				C.free(unsafe.Pointer(params.ipAddress))
+			}
+		}()
 	}
 	if p.Port != 0 {
 		params.portNumber = C.uint32_t(p.Port)
@@ -243,7 +253,6 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 		params,
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
 	) == C.DPI_FAILURE {
-		C.free(unsafe.Pointer(params))
 		C.free(unsafe.Pointer(dpiSubscr))
 		err := errors.Errorf("newSubscription: %w", c.getError())
 		if strings.Contains(errors.Unwrap(err).Error(), "DPI-1065:") {

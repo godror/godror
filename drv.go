@@ -344,6 +344,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			C.size_t(len(P.ShardingKey)))
 		defer C.free(mem)
 		columns := (*[1 << 30]C.dpiShardingKeyColumn)(mem)
+		tbd := make([]func(), 0, len(P.ShardingKey))
 		for i, value := range P.ShardingKey {
 			switch value := value.(type) {
 			case int:
@@ -354,12 +355,13 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 				cs := C.CString(value)
-				defer C.free(unsafe.Pointer(cs))
+				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			case []byte:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_RAW
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 				cs := (*C.char)(unsafe.Pointer(&value[0]))
+				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
 				return nil, false, errors.New("Unsupported data type for sharding")
@@ -368,6 +370,14 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		}
 		connCreateParams.shardingKeyColumns = &columns[0]
 		connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
+		if len(tbd) != 0 {
+			runtime.SetFinalizer(connCreateParams.shardingKeyColumns,
+				func(_ interface{}) {
+					for _, f := range tbd {
+						f()
+					}
+				})
+		}
 	}
 
 	// if a pool was provided, assign the pool

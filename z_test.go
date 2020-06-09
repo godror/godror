@@ -139,7 +139,8 @@ func init() {
 			EnableEvents: true,
 		},
 		ConnParams: godror.ConnParams{
-			ConnClass: "POOLED",
+			ConnClass:   "POOLED",
+			ShardingKey: []interface{}{"gold"},
 		},
 		PoolParams: godror.PoolParams{
 			MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
