@@ -356,6 +356,11 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 				cs := C.CString(value)
 				defer C.free(unsafe.Pointer(cs))
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
+			case []byte:
+				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_RAW
+				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+				cs := (*C.char)(unsafe.Pointer(&value[0]))
+				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
 				return nil, false, errors.New("Unsupported data type for sharding")
 			}
