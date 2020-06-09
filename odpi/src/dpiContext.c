@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -17,24 +17,23 @@
 
 #include "dpiImpl.h"
 
-// maintain major and minor versions compiled into the library
-static const unsigned int dpiMajorVersion = DPI_MAJOR_VERSION;
-static const unsigned int dpiMinorVersion = DPI_MINOR_VERSION;
+// forward declarations of internal functions only used in this file
+static void dpiContext__free(dpiContext *context);
 
 
 //-----------------------------------------------------------------------------
 // dpiContext__create() [INTERNAL]
-//   Create a new context for interaction with the library. The major versions
-// must match and the minor version of the caller must be less than or equal to
-// the minor version compiled into the library.
+//   Helper function for dpiContext__create().
 //-----------------------------------------------------------------------------
 static int dpiContext__create(const char *fnName, unsigned int majorVersion,
-        unsigned int minorVersion, dpiContext **context, dpiError *error)
+        unsigned int minorVersion, dpiContextCreateParams *params,
+        dpiContext **context, dpiError *error)
 {
+    dpiVersionInfo *versionInfo;
     dpiContext *tempContext;
 
-    // get error structure first (populates global environment if needed)
-    if (dpiGlobal__initError(fnName, error) < 0)
+    // ensure global infrastructure is initialized
+    if (dpiGlobal__ensureInitialized(fnName, params, &versionInfo, error) < 0)
         return DPI_FAILURE;
 
     // validate context handle
@@ -43,20 +42,60 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
                 DPI_ERR_NULL_POINTER_PARAMETER, "context");
 
     // verify that the supplied version is supported by the library
-    if (dpiMajorVersion != majorVersion || minorVersion > dpiMinorVersion)
+    if (majorVersion != DPI_MAJOR_VERSION || minorVersion > DPI_MINOR_VERSION)
         return dpiError__set(error, "check version",
                 DPI_ERR_VERSION_NOT_SUPPORTED, majorVersion, majorVersion,
-                minorVersion, dpiMajorVersion, dpiMinorVersion);
+                minorVersion, DPI_MAJOR_VERSION, DPI_MINOR_VERSION);
 
     // allocate context and initialize it
     if (dpiGen__allocate(DPI_HTYPE_CONTEXT, NULL, (void**) &tempContext,
             error) < 0)
         return DPI_FAILURE;
     tempContext->dpiMinorVersion = (uint8_t) minorVersion;
-    dpiOci__clientVersion(tempContext);
+    tempContext->versionInfo = versionInfo;
+
+    // store default encoding, if applicable
+    if (params->defaultEncoding) {
+        if (dpiUtils__allocateMemory(1, strlen(params->defaultEncoding) + 1, 0,
+                "allocate default encoding",
+                (void**) &tempContext->defaultEncoding, error) < 0) {
+            dpiContext__free(tempContext);
+            return DPI_FAILURE;
+        }
+        strcpy(tempContext->defaultEncoding, params->defaultEncoding);
+    }
+
+    // store default driver name, if applicable
+    if (params->defaultDriverName) {
+        if (dpiUtils__allocateMemory(1, strlen(params->defaultDriverName) + 1,
+                0, "allocate default driver name",
+                (void**) &tempContext->defaultDriverName, error) < 0) {
+            dpiContext__free(tempContext);
+            return DPI_FAILURE;
+        }
+        strcpy(tempContext->defaultDriverName, params->defaultDriverName);
+    }
 
     *context = tempContext;
     return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiContext__free() [INTERNAL]
+//   Free the memory and any resources associated with the context.
+//-----------------------------------------------------------------------------
+static void dpiContext__free(dpiContext *context)
+{
+    if (context->defaultDriverName) {
+        dpiUtils__freeMemory((void*) context->defaultDriverName);
+        context->defaultDriverName = NULL;
+    }
+    if (context->defaultEncoding) {
+        dpiUtils__freeMemory((void*) context->defaultEncoding);
+        context->defaultEncoding = NULL;
+    }
+    dpiUtils__freeMemory(context);
 }
 
 
@@ -65,9 +104,25 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
 //   Initialize the common connection/pool creation parameters to default
 // values.
 //-----------------------------------------------------------------------------
-void dpiContext__initCommonCreateParams(dpiCommonCreateParams *params)
+void dpiContext__initCommonCreateParams(const dpiContext *context,
+        dpiCommonCreateParams *params)
 {
     memset(params, 0, sizeof(dpiCommonCreateParams));
+    if (context->defaultEncoding) {
+        params->encoding = context->defaultEncoding;
+        params->nencoding = context->defaultEncoding;
+    } else {
+        params->encoding = DPI_CHARSET_NAME_UTF8;
+        params->nencoding = DPI_CHARSET_NAME_UTF8;
+    }
+    if (context->defaultDriverName) {
+        params->driverName = context->defaultDriverName;
+        params->driverNameLength =
+                (uint32_t) strlen(context->defaultDriverName);
+    } else {
+        params->driverName = DPI_DEFAULT_DRIVER_NAME;
+        params->driverNameLength = (uint32_t) strlen(params->driverName);
+    }
 }
 
 
@@ -123,23 +178,40 @@ void dpiContext__initSubscrCreateParams(dpiSubscrCreateParams *params)
 
 
 //-----------------------------------------------------------------------------
-// dpiContext_create() [PUBLIC]
+// dpiContext_createWithParams() [PUBLIC]
 //   Create a new context for interaction with the library. The major versions
 // must match and the minor version of the caller must be less than or equal to
-// the minor version compiled into the library.
+// the minor version compiled into the library. The supplied parameters can be
+// used to modify how the Oracle client library is loaded.
 //-----------------------------------------------------------------------------
-int dpiContext_create(unsigned int majorVersion, unsigned int minorVersion,
+int dpiContext_createWithParams(unsigned int majorVersion,
+        unsigned int minorVersion, dpiContextCreateParams *params,
         dpiContext **context, dpiErrorInfo *errorInfo)
 {
+    dpiContextCreateParams localParams;
+    dpiErrorInfo localErrorInfo;
     dpiError error;
     int status;
 
+    // make a copy of the parameters so that the addition of defaults doesn't
+    // modify the original parameters that were passed; then add defaults, if
+    // needed
+    if (params) {
+        memcpy(&localParams, params, sizeof(localParams));
+    } else {
+        memset(&localParams, 0, sizeof(localParams));
+    }
+    if (!localParams.loadErrorUrl)
+        localParams.loadErrorUrl = DPI_DEFAULT_LOAD_ERROR_URL;
+
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn start %s\n", __func__);
-    status = dpiContext__create(__func__, majorVersion, minorVersion, context,
-            &error);
-    if (status < 0)
-        dpiError__getInfo(&error, errorInfo);
+    status = dpiContext__create(__func__, majorVersion, minorVersion,
+            &localParams, context, &error);
+    if (status < 0) {
+        dpiError__getInfo(&error, &localErrorInfo);
+        memcpy(errorInfo, &localErrorInfo, sizeof(dpiErrorInfo__v33));
+    }
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn end %s -> %d\n", __func__, status);
     return status;
@@ -165,7 +237,7 @@ int dpiContext_destroy(dpiContext *context)
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         (void) sprintf(message, "fn end %s(%p) -> %d", __func__, context,
                 DPI_SUCCESS);
-    dpiUtils__freeMemory(context);
+    dpiContext__free(context);
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("%s\n", message);
     return DPI_SUCCESS;
@@ -196,11 +268,19 @@ int dpiContext_getClientVersion(const dpiContext *context,
 //-----------------------------------------------------------------------------
 void dpiContext_getError(const dpiContext *context, dpiErrorInfo *info)
 {
+    dpiErrorInfo localErrorInfo;
     dpiError error;
+    int status;
 
     dpiGlobal__initError(NULL, &error);
-    dpiGen__checkHandle(context, DPI_HTYPE_CONTEXT, "check handle", &error);
-    dpiError__getInfo(&error, info);
+    status = dpiGen__checkHandle(context, DPI_HTYPE_CONTEXT, "check handle",
+            &error);
+    if (status < 0 || context->dpiMinorVersion < 4) {
+        dpiError__getInfo(&error, &localErrorInfo);
+        memcpy(info, &localErrorInfo, sizeof(dpiErrorInfo__v33));
+    } else {
+        dpiError__getInfo(&error, info);
+    }
 }
 
 
@@ -218,7 +298,7 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initCommonCreateParams(params);
+    dpiContext__initCommonCreateParams(context, params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -230,7 +310,6 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
 int dpiContext_initConnCreateParams(const dpiContext *context,
         dpiConnCreateParams *params)
 {
-    dpiConnCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
@@ -238,13 +317,7 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
 
-    // size changed in version 3.1; can be dropped once version 4 released
-    if (context->dpiMinorVersion > 0)
-        dpiContext__initConnCreateParams(params);
-    else {
-        dpiContext__initConnCreateParams(&localParams);
-        memcpy(params, &localParams, sizeof(dpiConnCreateParams__v30));
-    }
+    dpiContext__initConnCreateParams(params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -256,7 +329,6 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params)
 {
-    dpiPoolCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
@@ -264,18 +336,7 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
 
-    // size changed in versions 3.1 and 3.3
-    // changes can be dropped once version 4 released
-    if (context->dpiMinorVersion > 2) {
-        dpiContext__initPoolCreateParams(params);
-    } else {
-        dpiContext__initPoolCreateParams(&localParams);
-        if (context->dpiMinorVersion > 0) {
-            memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v32));
-        } else {
-            memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v30));
-        }
-    }
+    dpiContext__initPoolCreateParams(params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -293,6 +354,7 @@ int dpiContext_initSodaOperOptions(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, options)
+
     dpiContext__initSodaOperOptions(options);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
@@ -305,7 +367,6 @@ int dpiContext_initSodaOperOptions(const dpiContext *context,
 int dpiContext_initSubscrCreateParams(const dpiContext *context,
         dpiSubscrCreateParams *params)
 {
-    dpiSubscrCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
@@ -313,17 +374,6 @@ int dpiContext_initSubscrCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
 
-    // size changed in versions 3.2 and 3.3
-    // changes can be dropped once version 4 released
-    if (context->dpiMinorVersion > 2) {
-        dpiContext__initSubscrCreateParams(params);
-    } else {
-        dpiContext__initSubscrCreateParams(&localParams);
-        if (context->dpiMinorVersion > 1) {
-            memcpy(params, &localParams, sizeof(dpiSubscrCreateParams__v32));
-        } else {
-            memcpy(params, &localParams, sizeof(dpiSubscrCreateParams__v30));
-        }
-    }
+    dpiContext__initSubscrCreateParams(params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }

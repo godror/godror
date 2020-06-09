@@ -323,7 +323,8 @@ static int dpiObject__fromOracleValue(dpiObject *obj, dpiError *error,
                         obj->env, error, *value->asTimestamp, 0);
             if (nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE)
                 return dpiDataBuffer__fromOracleTimestampAsDouble(&data->value,
-                        obj->env, error, *value->asTimestamp);
+                        valueOracleTypeNum, obj->env, error,
+                        *value->asTimestamp);
             break;
         case DPI_ORACLE_TYPE_TIMESTAMP_TZ:
         case DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
@@ -332,7 +333,8 @@ static int dpiObject__fromOracleValue(dpiObject *obj, dpiError *error,
                         obj->env, error, *value->asTimestamp, 1);
             if (nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE)
                 return dpiDataBuffer__fromOracleTimestampAsDouble(&data->value,
-                        obj->env, error, *value->asTimestamp);
+                        valueOracleTypeNum, obj->env, error,
+                        *value->asTimestamp);
             break;
         case DPI_ORACLE_TYPE_OBJECT:
             if (typeInfo->objectType &&
@@ -492,8 +494,7 @@ static int dpiObject__toOracleValue(dpiObject *obj, dpiError *error,
             buffer->asTimestamp = NULL;
             if (nativeTypeNum == DPI_NATIVE_TYPE_TIMESTAMP ||
                     nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE) {
-                if (valueOracleTypeNum == DPI_ORACLE_TYPE_TIMESTAMP_LTZ ||
-                        nativeTypeNum == DPI_NATIVE_TYPE_DOUBLE) {
+                if (valueOracleTypeNum == DPI_ORACLE_TYPE_TIMESTAMP_LTZ) {
                     handleType = DPI_OCI_DTYPE_TIMESTAMP_LTZ;
                 } else if (valueOracleTypeNum == DPI_ORACLE_TYPE_TIMESTAMP) {
                     handleType = DPI_OCI_DTYPE_TIMESTAMP;
@@ -510,7 +511,8 @@ static int dpiObject__toOracleValue(dpiObject *obj, dpiError *error,
                             obj->env, error, buffer->asTimestamp,
                             (valueOracleTypeNum != DPI_ORACLE_TYPE_TIMESTAMP));
                 return dpiDataBuffer__toOracleTimestampFromDouble(&data->value,
-                        obj->env, error, buffer->asTimestamp);
+                        valueOracleTypeNum, obj->env, error,
+                        buffer->asTimestamp);
             }
             break;
         case DPI_ORACLE_TYPE_OBJECT:

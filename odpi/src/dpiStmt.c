@@ -555,6 +555,7 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         uint32_t mode, int reExecute, dpiError *error)
 {
     uint32_t prefetchSize, i, j;
+    uint16_t tempOffset;
     dpiData *data;
     dpiVar *var;
 
@@ -600,9 +601,9 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
     // drop statement from cache for all errors (except those which are due to
     // invalid data which may be fixed in subsequent execution)
     if (dpiOci__stmtExecute(stmt, numIters, mode, error) < 0) {
-        dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT,
-                &error->buffer->offset, 0, DPI_OCI_ATTR_PARSE_ERROR_OFFSET,
-                "set parse offset", error);
+        dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &tempOffset, 0,
+                DPI_OCI_ATTR_PARSE_ERROR_OFFSET, "set parse offset", error);
+        error->buffer->offset = tempOffset;
         switch (error->buffer->code) {
             case 1007:
                 if (reExecute)
@@ -779,7 +780,7 @@ static int dpiStmt__getBatchErrors(dpiStmt *stmt, dpiError *error)
             break;
         }
         localError.buffer->fnName = error->buffer->fnName;
-        localError.buffer->offset = (uint16_t) rowOffset;
+        localError.buffer->offset = (uint32_t) rowOffset;
 
     }
 
@@ -1588,6 +1589,7 @@ int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info)
 int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid)
 {
     uint64_t rowCount;
+    uint32_t tempSize;
     dpiError error;
 
     if (dpiStmt__check(stmt, __func__, &error) < 0)
@@ -1608,10 +1610,11 @@ int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid)
             if (dpiRowid__allocate(stmt->conn, &stmt->lastRowid, &error) < 0)
                 return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
             if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT,
-                    stmt->lastRowid->handle, 0, DPI_OCI_ATTR_ROWID,
+                    stmt->lastRowid->handle, &tempSize, DPI_OCI_ATTR_ROWID,
                     "get last rowid", &error) < 0)
                 return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-            *rowid = stmt->lastRowid;
+            if (tempSize)
+                *rowid = stmt->lastRowid;
         }
     }
 

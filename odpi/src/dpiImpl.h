@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -18,6 +18,12 @@
 
 #ifndef DPI_IMPL
 #define DPI_IMPL
+
+// for gcc, ensure that GNU extensions are enabled so that dladdr() and
+// dlinfo() are available on platforms like Linux
+#if defined(__GNUC__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 
 // Visual Studio 2005 introduced deprecation warnings for "insecure" and POSIX
 // functions; silence these warnings
@@ -41,6 +47,7 @@
 #define isnan                   _isnan
 #endif
 #else
+#include <errno.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <dlfcn.h>
@@ -98,6 +105,18 @@ extern unsigned long dpiDebugLevel;
 // define number of rows to prefetch
 #define DPI_PREFETCH_ROWS_DEFAULT                   2
 
+// define default load error URL
+#if defined _WIN32 || defined __CYGWIN__
+    #define DPI_ERR_LOAD_URL_FRAGMENT   "#windows"
+#elif __APPLE__
+    #define DPI_ERR_LOAD_URL_FRAGMENT   "#macos"
+#elif __linux__
+    #define DPI_ERR_LOAD_URL_FRAGMENT   "#linux"
+#else
+    #define DPI_ERR_LOAD_URL_FRAGMENT   ""
+#endif
+#define DPI_DEFAULT_LOAD_ERROR_URL                  "https://oracle.github.io/odpi/doc/installation.html" DPI_ERR_LOAD_URL_FRAGMENT
+
 // define well-known character sets
 #define DPI_CHARSET_ID_ASCII                        1
 #define DPI_CHARSET_ID_UTF8                         873
@@ -124,6 +143,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_HTYPE_TRANS                         10
 #define DPI_OCI_HTYPE_SUBSCRIPTION                  13
 #define DPI_OCI_HTYPE_SPOOL                         27
+#define DPI_OCI_HTYPE_ADMIN                         28
 #define DPI_OCI_HTYPE_SODA_COLLECTION               30
 #define DPI_OCI_HTYPE_SODA_DOCUMENT                 31
 #define DPI_OCI_HTYPE_SODA_COLL_CURSOR              32
@@ -243,6 +263,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_MODULE                         366
 #define DPI_OCI_ATTR_ACTION                         367
 #define DPI_OCI_ATTR_CLIENT_INFO                    368
+#define DPI_OCI_ATTR_ADMIN_PFILE                    389
 #define DPI_OCI_ATTR_SUBSCR_PORTNO                  390
 #define DPI_OCI_ATTR_CHNF_ROWIDS                    402
 #define DPI_OCI_ATTR_CHNF_OPERATIONS                403
@@ -294,6 +315,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_DETECT_JSON_ENC           569
 #define DPI_OCI_ATTR_SODA_MEDIA_TYPE                571
 #define DPI_OCI_ATTR_SODA_CTNT_FORMAT               572
+#define DPI_OCI_ATTR_SODA_FETCH_ARRAY_SIZE          573
 #define DPI_OCI_ATTR_SODA_FILTER                    576
 #define DPI_OCI_ATTR_SODA_SKIP                      577
 #define DPI_OCI_ATTR_SODA_LIMIT                     578
@@ -427,6 +449,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DURATION_SESSION                    10
 #define DPI_OCI_NUMBER_SIZE                         22
 #define DPI_OCI_NO_DATA                             100
+#define DPI_OCI_SRVRELEASE2_CACHED                  0x0001
 #define DPI_OCI_STRLS_CACHE_DELETE                  0x0010
 #define DPI_OCI_THREADED                            0x00000001
 #define DPI_OCI_OBJECT                              0x00000002
@@ -534,6 +557,8 @@ typedef enum {
     DPI_ERR_QUEUE_WRONG_PAYLOAD_TYPE,
     DPI_ERR_ORACLE_CLIENT_UNSUPPORTED,
     DPI_ERR_MISSING_SHARDING_KEY,
+    DPI_ERR_CONTEXT_NOT_CREATED,
+    DPI_ERR_OS,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -586,109 +611,18 @@ typedef enum {
 // old type definitions (to be dropped)
 //-----------------------------------------------------------------------------
 
-// structure used for creating pools (3.0)
+// structure used for transferring error information from ODPI-C
 typedef struct {
-    uint32_t minSessions;
-    uint32_t maxSessions;
-    uint32_t sessionIncrement;
-    int pingInterval;
-    int pingTimeout;
-    int homogeneous;
-    int externalAuth;
-    dpiPoolGetMode getMode;
-    const char *outPoolName;
-    uint32_t outPoolNameLength;
-    uint32_t timeout;
-    uint32_t waitTimeout;
-    uint32_t maxLifetimeSession;
-} dpiPoolCreateParams__v30;
-
-// structure used for creating pools (3.2)
-typedef struct {
-    uint32_t minSessions;
-    uint32_t maxSessions;
-    uint32_t sessionIncrement;
-    int pingInterval;
-    int pingTimeout;
-    int homogeneous;
-    int externalAuth;
-    dpiPoolGetMode getMode;
-    const char *outPoolName;
-    uint32_t outPoolNameLength;
-    uint32_t timeout;
-    uint32_t waitTimeout;
-    uint32_t maxLifetimeSession;
-    const char *plsqlFixupCallback;
-    uint32_t plsqlFixupCallbackLength;
-} dpiPoolCreateParams__v32;
-
-// structure used for creating connections (3.0)
-typedef struct {
-    dpiAuthMode authMode;
-    const char *connectionClass;
-    uint32_t connectionClassLength;
-    dpiPurity purity;
-    const char *newPassword;
-    uint32_t newPasswordLength;
-    dpiAppContext *appContext;
-    uint32_t numAppContext;
-    int externalAuth;
-    void *externalHandle;
-    dpiPool *pool;
-    const char *tag;
-    uint32_t tagLength;
-    int matchAnyTag;
-    const char *outTag;
-    uint32_t outTagLength;
-    int outTagFound;
-    dpiShardingKeyColumn *shardingKeyColumns;
-    uint8_t numShardingKeyColumns;
-    dpiShardingKeyColumn *superShardingKeyColumns;
-    uint8_t numSuperShardingKeyColumns;
-} dpiConnCreateParams__v30;
-
-// structure used for creating subscriptions (3.0 and 3.1)
-typedef struct {
-    dpiSubscrNamespace subscrNamespace;
-    dpiSubscrProtocol protocol;
-    dpiSubscrQOS qos;
-    dpiOpCode operations;
-    uint32_t portNumber;
-    uint32_t timeout;
-    const char *name;
-    uint32_t nameLength;
-    dpiSubscrCallback callback;
-    void *callbackContext;
-    const char *recipientName;
-    uint32_t recipientNameLength;
-    const char *ipAddress;
-    uint32_t ipAddressLength;
-    uint8_t groupingClass;
-    uint32_t groupingValue;
-    uint8_t groupingType;
-} dpiSubscrCreateParams__v30;
-
-// structure used for creating subscriptions (3.2)
-typedef struct {
-    dpiSubscrNamespace subscrNamespace;
-    dpiSubscrProtocol protocol;
-    dpiSubscrQOS qos;
-    dpiOpCode operations;
-    uint32_t portNumber;
-    uint32_t timeout;
-    const char *name;
-    uint32_t nameLength;
-    dpiSubscrCallback callback;
-    void *callbackContext;
-    const char *recipientName;
-    uint32_t recipientNameLength;
-    const char *ipAddress;
-    uint32_t ipAddressLength;
-    uint8_t groupingClass;
-    uint32_t groupingValue;
-    uint8_t groupingType;
-    uint64_t outRegId;
-} dpiSubscrCreateParams__v32;
+    int32_t code;
+    uint16_t offset;
+    const char *message;
+    uint32_t messageLength;
+    const char *encoding;
+    const char *fnName;
+    const char *action;
+    const char *sqlState;
+    int isRecoverable;
+} dpiErrorInfo__v33;
 
 
 //-----------------------------------------------------------------------------
@@ -765,7 +699,7 @@ typedef struct {
 // with the function dpiStmt_getBatchErrors()
 typedef struct {
     int32_t code;                       // Oracle error code or 0
-    uint16_t offset;                    // parse error offset or row offset
+    uint32_t offset;                    // parse error offset or row offset
     dpiErrorNum errorNum;               // OCPI-C error number
     const char *fnName;                 // ODPI-C function name
     const char *action;                 // internal action
@@ -773,6 +707,7 @@ typedef struct {
     char message[DPI_MAX_ERROR_SIZE];   // buffer for storing messages
     uint32_t messageLength;             // length of message in buffer
     int isRecoverable;                  // is recoverable?
+    int isWarning;                      // is a warning?
 } dpiErrorBuffer;
 
 // represents an OCI environment; a pointer to this structure is stored on each
@@ -793,7 +728,9 @@ typedef struct {
     uint16_t ncharsetId;                // NCHAR encoding (Oracle charset ID)
     dpiHandlePool *errorHandles;        // pool of OCI error handles
     dpiVersionInfo *versionInfo;        // OCI client version info
-    void *baseDate;                     // midnight, January 1, 1970
+    void *baseDate;                     // timestamp
+    void *baseDateTZ;                   // timestamp with time zone
+    void *baseDateLTZ;                  // timestamp with local time zone
     int threaded;                       // threaded mode enabled?
     int events;                         // events mode enabled?
     int externalHandle;                 // external handle?
@@ -1027,6 +964,8 @@ struct dpiConn {
 // for differing sizes of public structures
 struct dpiContext {
     dpiType_HEAD
+    char *defaultEncoding;              // default encoding (nencoding) to use
+    char *defaultDriverName;            // default driver name to use
     dpiVersionInfo *versionInfo;        // OCI client version info
     uint8_t dpiMinorVersion;            // ODPI-C minor version of application
 };
@@ -1258,7 +1197,8 @@ struct dpiQueue {
 //-----------------------------------------------------------------------------
 // definition of internal dpiContext methods
 //-----------------------------------------------------------------------------
-void dpiContext__initCommonCreateParams(dpiCommonCreateParams *params);
+void dpiContext__initCommonCreateParams(const dpiContext *context,
+        dpiCommonCreateParams *params);
 void dpiContext__initConnCreateParams(dpiConnCreateParams *params);
 void dpiContext__initPoolCreateParams(dpiPoolCreateParams *params);
 void dpiContext__initSodaOperOptions(dpiSodaOperOptions *options);
@@ -1287,7 +1227,7 @@ int dpiDataBuffer__fromOracleNumberAsUnsignedInteger(dpiDataBuffer *data,
 int dpiDataBuffer__fromOracleTimestamp(dpiDataBuffer *data, dpiEnv *env,
         dpiError *error, void *oracleValue, int withTZ);
 int dpiDataBuffer__fromOracleTimestampAsDouble(dpiDataBuffer *data,
-        dpiEnv *env, dpiError *error, void *oracleValue);
+        uint32_t dataType, dpiEnv *env, dpiError *error, void *oracleValue);
 int dpiDataBuffer__toOracleDate(dpiDataBuffer *data, dpiOciDate *oracleValue);
 int dpiDataBuffer__toOracleDateFromDouble(dpiDataBuffer *data, dpiEnv *env,
         dpiError *error, dpiOciDate *oracleValue);
@@ -1306,7 +1246,7 @@ int dpiDataBuffer__toOracleNumberFromUnsignedInteger(dpiDataBuffer *data,
 int dpiDataBuffer__toOracleTimestamp(dpiDataBuffer *data, dpiEnv *env,
         dpiError *error, void *oracleValue, int withTZ);
 int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
-        dpiEnv *env, dpiError *error, void *oracleValue);
+        uint32_t dataType, dpiEnv *env, dpiError *error, void *oracleValue);
 
 
 //-----------------------------------------------------------------------------
@@ -1315,6 +1255,8 @@ int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
 void dpiEnv__free(dpiEnv *env, dpiError *error);
 int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         const dpiCommonCreateParams *params, void *externalHandle,
+        dpiError *error);
+int dpiEnv__getBaseDate(dpiEnv *env, uint32_t dataType, void **baseDate,
         dpiError *error);
 int dpiEnv__getEncodingInfo(dpiEnv *env, dpiEncodingInfo *info);
 
@@ -1328,6 +1270,7 @@ int dpiError__set(dpiError *error, const char *context, dpiErrorNum errorNum,
         ...);
 int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         const char *action);
+int dpiError__setFromOS(dpiError *error, const char *action);
 
 
 //-----------------------------------------------------------------------------
@@ -1348,6 +1291,9 @@ int dpiGen__startPublicFn(const void *ptr, dpiHandleTypeNum typeNum,
 //-----------------------------------------------------------------------------
 // definition of internal dpiGlobal methods
 //-----------------------------------------------------------------------------
+int dpiGlobal__ensureInitialized(const char *fnName,
+        dpiContextCreateParams *params, dpiVersionInfo **clientVersionInfo,
+        dpiError *error);
 int dpiGlobal__initError(const char *fnName, dpiError *error);
 int dpiGlobal__lookupCharSet(const char *name, uint16_t *charsetId,
         dpiError *error);
@@ -1376,7 +1322,8 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         dpiConnCreateParams *createParams, dpiError *error);
 void dpiConn__free(dpiConn *conn, dpiError *error);
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error);
-int dpiConn__getServerVersion(dpiConn *conn, dpiError *error);
+int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
+        dpiError *error);
 
 
 //-----------------------------------------------------------------------------
@@ -1581,7 +1528,6 @@ int dpiOci__bindByPos2(dpiStmt *stmt, void **bindHandle, uint32_t pos,
 int dpiOci__bindDynamic(dpiVar *var, void *bindHandle, dpiError *error);
 int dpiOci__bindObject(dpiVar *var, void *bindHandle, dpiError *error);
 int dpiOci__break(dpiConn *conn, dpiError *error);
-void dpiOci__clientVersion(dpiContext *context);
 int dpiOci__collAppend(dpiConn *conn, const void *elem, const void *elemInd,
         void *coll, dpiError *error);
 int dpiOci__collAssignElem(dpiConn *conn, int32_t index, const void *elem,
@@ -1613,7 +1559,8 @@ int dpiOci__dateTimeIntervalAdd(void *envHandle, void *handle, void *interval,
 int dpiOci__dateTimeSubtract(void *envHandle, void *handle1, void *handle2,
         void *interval, dpiError *error);
 int dpiOci__dbShutdown(dpiConn *conn, uint32_t mode, dpiError *error);
-int dpiOci__dbStartup(dpiConn *conn, uint32_t mode, dpiError *error);
+int dpiOci__dbStartup(dpiConn *conn, void *adminHandle, uint32_t mode,
+        dpiError *error);
 int dpiOci__defineByPos(dpiStmt *stmt, void **defineHandle, uint32_t pos,
         dpiVar *var, dpiError *error);
 int dpiOci__defineByPos2(dpiStmt *stmt, void **defineHandle, uint32_t pos,
@@ -1642,6 +1589,8 @@ int dpiOci__intervalSetDaySecond(void *envHandle, int32_t day, int32_t hour,
         dpiError *error);
 int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
         void *interval, dpiError *error);
+int dpiOci__loadLib(dpiContextCreateParams *params,
+        dpiVersionInfo **clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);
 int dpiOci__lobCreateTemporary(dpiLob *lob, dpiError *error);
 int dpiOci__lobFileExists(dpiLob *lob, int *exists, dpiError *error);
@@ -1723,7 +1672,7 @@ int dpiOci__serverAttach(dpiConn *conn, const char *connectString,
         uint32_t connectStringLength, dpiError *error);
 int dpiOci__serverDetach(dpiConn *conn, int checkError, dpiError *error);
 int dpiOci__serverRelease(dpiConn *conn, char *buffer, uint32_t bufferSize,
-        uint32_t *version, dpiError *error);
+        uint32_t *version, uint32_t mode, dpiError *error);
 int dpiOci__sessionBegin(dpiConn *conn, uint32_t credentialType,
         uint32_t mode, dpiError *error);
 int dpiOci__sessionEnd(dpiConn *conn, int checkError, dpiError *error);
@@ -1760,6 +1709,7 @@ int dpiOci__sodaCollList(dpiSodaDb *db, const char *startingName,
         dpiError *error);
 int dpiOci__sodaCollOpen(dpiSodaDb *db, const char *name, uint32_t nameLength,
         uint32_t mode, void **handle, dpiError *error);
+int dpiOci__sodaCollTruncate(dpiSodaColl *coll, dpiError *error);
 int dpiOci__sodaDataGuideGet(dpiSodaColl *coll, void **handle, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaDocCount(dpiSodaColl *coll, void *options, uint32_t mode,
@@ -1881,10 +1831,16 @@ int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
 int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
         int minReleaseNum, dpiError *error);
 void dpiUtils__clearMemory(void *ptr, size_t length);
+int dpiUtils__ensureBuffer(size_t desiredSize, const char *action,
+        void **ptr, size_t *currentSize, dpiError *error);
 void dpiUtils__freeMemory(void *ptr);
 int dpiUtils__getAttrStringWithDup(const char *action, const void *ociHandle,
         uint32_t ociHandleType, uint32_t ociAttribute, const char **value,
         uint32_t *valueLength, dpiError *error);
+#ifdef _WIN32
+int dpiUtils__getWindowsError(DWORD errorNum, char **buffer,
+        size_t *bufferLength, dpiError *error);
+#endif
 int dpiUtils__parseNumberString(const char *value, uint32_t valueLength,
         uint16_t charsetId, int *isNegative, int16_t *decimalPointIndex,
         uint8_t *numDigits, uint8_t *digits, dpiError *error);

@@ -121,13 +121,6 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             DPI_OCI_ATTR_SPOOL_AUTH, "set auth info", error) < 0)
         return DPI_FAILURE;
 
-    // create pool
-    if (dpiOci__sessionPoolCreate(pool, connectString, connectStringLength,
-            createParams->minSessions, createParams->maxSessions,
-            createParams->sessionIncrement, userName, userNameLength, password,
-            passwordLength, poolMode, error) < 0)
-        return DPI_FAILURE;
-
     // set the get mode on the pool
     getMode = (uint8_t) createParams->getMode;
     if (dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL, (void*) &getMode, 0,
@@ -170,11 +163,19 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             return DPI_FAILURE;
     }
 
+    // create pool
+    if (dpiOci__sessionPoolCreate(pool, connectString, connectStringLength,
+            createParams->minSessions, createParams->maxSessions,
+            createParams->sessionIncrement, userName, userNameLength, password,
+            passwordLength, poolMode, error) < 0)
+        return DPI_FAILURE;
+
     // set reamining attributes directly
     pool->homogeneous = createParams->homogeneous;
     pool->externalAuth = createParams->externalAuth;
     pool->pingInterval = createParams->pingInterval;
     pool->pingTimeout = createParams->pingTimeout;
+
     return DPI_SUCCESS;
 }
 
@@ -381,16 +382,11 @@ int dpiPool_create(const dpiContext *context, const char *userName,
 
     // use default parameters if none provided
     if (!commonParams) {
-        dpiContext__initCommonCreateParams(&localCommonParams);
+        dpiContext__initCommonCreateParams(context, &localCommonParams);
         commonParams = &localCommonParams;
     }
-
-    // size changed in 3.1; must use local variable until version 4 released
-    if (!createParams || context->dpiMinorVersion < 1) {
+    if (!createParams) {
         dpiContext__initPoolCreateParams(&localCreateParams);
-        if (createParams)
-            memcpy(&localCreateParams, createParams,
-                    sizeof(dpiPoolCreateParams__v30));
         createParams = &localCreateParams;
     }
 

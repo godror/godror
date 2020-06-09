@@ -182,6 +182,9 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     }
 
     // close all open LOBs; the same comments apply as for statements
+    // NOTE: Oracle Client 20 automatically closes all open LOBs which makes
+    // this code redundant; as such, it can be removed once the minimum version
+    // supported by ODPI-C is 20
     if (conn->openLobs && !conn->externalHandle) {
         for (i = 0; i < conn->openLobs->numSlots; i++) {
             lob = (dpiLob*) conn->openLobs->handles[i];
@@ -674,25 +677,52 @@ static int dpiConn__getServerCharset(dpiConn *conn, dpiError *error)
 //   Internal method used for ensuring that the server version has been cached
 // on the connection.
 //-----------------------------------------------------------------------------
-int dpiConn__getServerVersion(dpiConn *conn, dpiError *error)
+int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
+        dpiError *error)
 {
-    uint32_t serverRelease;
-    char buffer[512];
+    char buffer[512], *releaseString;
+    uint32_t serverRelease, mode;
+    uint32_t releaseStringLength;
 
-    // nothing to do if the server version has been determined earlier
-    if (conn->releaseString)
+    // nothing to do if the server version has been cached earlier
+    if (conn->releaseString ||
+            (conn->versionInfo.versionNum > 0 && !wantReleaseString))
         return DPI_SUCCESS;
 
-    // get server version
-    if (dpiOci__serverRelease(conn, buffer, sizeof(buffer), &serverRelease,
-            error) < 0)
+    // the server version is not available in the cache so a call is required
+    // to get it; as of Oracle Client 20.3, a special mode is available that
+    // causes OCI to cache server version information; this mode can be used
+    // exclusively once 20.3 is the minimum version supported by ODPI-C; until
+    // that time, since ODPI-C already caches server version information
+    // itself, this mode is only used when the release string is not requested,
+    // in order to avoid the round-trip in that particular case
+    if ((conn->env->versionInfo->versionNum > 20 ||
+            (conn->env->versionInfo->versionNum == 20 &&
+             conn->env->versionInfo->releaseNum >= 3)) && !wantReleaseString) {
+        mode = DPI_OCI_SRVRELEASE2_CACHED;
+        releaseString = NULL;
+        releaseStringLength = 0;
+    } else {
+        mode = DPI_OCI_DEFAULT;
+        releaseString = buffer;
+        releaseStringLength = sizeof(buffer);
+    }
+    if (dpiOci__serverRelease(conn, releaseString, releaseStringLength,
+            &serverRelease, mode, error) < 0)
         return DPI_FAILURE;
-    conn->releaseStringLength = (uint32_t) strlen(buffer);
-    if (dpiUtils__allocateMemory(1, conn->releaseStringLength, 0,
-            "allocate release string", (void**) &conn->releaseString,
-            error) < 0)
-        return DPI_FAILURE;
-    strncpy( (char*) conn->releaseString, buffer, conn->releaseStringLength);
+
+    // store release string, if applicable
+    if (releaseString) {
+        conn->releaseStringLength = (uint32_t) strlen(releaseString);
+        if (dpiUtils__allocateMemory(1, conn->releaseStringLength, 0,
+                "allocate release string", (void**) &conn->releaseString,
+                error) < 0)
+            return DPI_FAILURE;
+        strncpy( (char*) conn->releaseString, releaseString,
+                conn->releaseStringLength);
+    }
+
+    // process version number
     conn->versionInfo.versionNum = (int)((serverRelease >> 24) & 0xFF);
     if (conn->versionInfo.versionNum >= 18) {
         conn->versionInfo.releaseNum = (int)((serverRelease >> 16) & 0xFF);
@@ -1122,7 +1152,8 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
                         "alloc LTZ timestamp", error) < 0)
                     return DPI_FAILURE;
                 if (dpiDataBuffer__toOracleTimestampFromDouble(&column->value,
-                        conn->env, error, col) < 0) {
+                        DPI_ORACLE_TYPE_TIMESTAMP_LTZ, conn->env, error,
+                        col) < 0) {
                     dpiOci__descriptorFree(col, descType);
                     return DPI_FAILURE;
                 }
@@ -1139,6 +1170,41 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
             error);
     if (descType)
         dpiOci__descriptorFree(col, descType);
+    return status;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn__startupDatabase() [INTERNAL]
+//   Internal method for starting up a database. This is equivalent to
+// "startup nomount" in SQL*Plus.
+//-----------------------------------------------------------------------------
+static int dpiConn__startupDatabase(dpiConn *conn, const char *pfile,
+        uint32_t pfileLength, dpiStartupMode mode, dpiError *error)
+{
+    void *adminHandle = NULL;
+    int status;
+
+    // if a PFILE has been specified, create an admin handle and populate it
+    if (pfileLength > 0) {
+        if (dpiOci__handleAlloc(conn->env->handle, &adminHandle,
+                DPI_OCI_HTYPE_ADMIN, "create admin handle", error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__attrSet(adminHandle, DPI_OCI_HTYPE_ADMIN,
+                (void*) pfile, pfileLength, DPI_OCI_ATTR_ADMIN_PFILE,
+                "associate PFILE", error) < 0) {
+            dpiOci__handleFree(adminHandle, DPI_OCI_HTYPE_ADMIN);
+            return DPI_FAILURE;
+        }
+    }
+
+    // perform actual startup call
+    status = dpiOci__dbStartup(conn, adminHandle, mode, error);
+
+    // destroy admin handle, if needed
+    if (pfileLength > 0)
+        dpiOci__handleFree(adminHandle, DPI_OCI_HTYPE_ADMIN);
+
     return status;
 }
 
@@ -1370,16 +1436,11 @@ int dpiConn_create(const dpiContext *context, const char *userName,
 
     // use default parameters if none provided
     if (!commonParams) {
-        dpiContext__initCommonCreateParams(&localCommonParams);
+        dpiContext__initCommonCreateParams(context, &localCommonParams);
         commonParams = &localCommonParams;
     }
-
-    // size changed in 3.1; must use local variable until version 4 released
-    if (!createParams || context->dpiMinorVersion < 1) {
+    if (!createParams) {
         dpiContext__initConnCreateParams(&localCreateParams);
-        if (createParams)
-            memcpy(&localCreateParams, createParams,
-                    sizeof(dpiConnCreateParams__v30));
         createParams = &localCreateParams;
     }
 
@@ -1695,7 +1756,7 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
     useTypeByFullName = 1;
     if (conn->env->versionInfo->versionNum < 12)
         useTypeByFullName = 0;
-    else if (dpiConn__getServerVersion(conn, &error) < 0)
+    else if (dpiConn__getServerVersion(conn, 0, &error) < 0)
         return DPI_FAILURE;
     else if (conn->versionInfo.versionNum < 12)
         useTypeByFullName = 0;
@@ -1752,7 +1813,7 @@ int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
     DPI_CHECK_PTR_NOT_NULL(conn, versionInfo)
 
     // get server version
-    if (dpiConn__getServerVersion(conn, &error) < 0)
+    if (dpiConn__getServerVersion(conn, (releaseString != NULL), &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (releaseString)
         *releaseString = conn->releaseString;
@@ -2183,9 +2244,29 @@ int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode)
 
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    status = dpiOci__dbStartup(conn, mode, &error);
+    status = dpiConn__startupDatabase(conn, NULL, 0, mode, &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_startupDatabaseWithPfile() [PUBLIC]
+//   Startup the database with a parameter file (PFILE). This is equivalent to
+// "startup nomount pfile=<pfile_location>" in SQL*Plus.
+//-----------------------------------------------------------------------------
+int dpiConn_startupDatabaseWithPfile(dpiConn *conn, const char *pfile,
+        uint32_t pfileLength, dpiStartupMode mode)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, pfile)
+    status = dpiConn__startupDatabase(conn, pfile, pfileLength, mode, &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
 
 //-----------------------------------------------------------------------------
 // dpiConn_subscribe() [PUBLIC]

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -63,7 +63,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1044: value cannot be represented as an Oracle number", // DPI_ERR_NUMBER_NO_REPR
     "DPI-1045: strings converted to numbers can only be up to 172 characters long", // DPI_ERR_NUMBER_STRING_TOO_LONG
     "DPI-1046: parameter %s cannot be a NULL pointer", // DPI_ERR_NULL_POINTER_PARAMETER
-    "DPI-1047: Cannot locate a %s-bit Oracle Client library: \"%s\". See https://oracle.github.io/odpi/doc/installation.html#%s for help", // DPI_ERR_LOAD_LIBRARY
+    "DPI-1047: Cannot locate a %s-bit Oracle Client library: \"%s\". See %s for help", // DPI_ERR_LOAD_LIBRARY
     "DPI-1049: symbol %s not found in OCI library", // DPI_ERR_LOAD_SYMBOL
     "DPI-1050: Oracle Client library is at version %d.%d but version %d.%d or higher is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD
     "DPI-1052: unable to get NLS environment variable", // DPI_ERR_NLS_ENV_VAR_GET,
@@ -87,4 +87,6 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1071: payload type in message properties must match the payload type of the queue", // DPI_ERR_QUEUE_WRONG_PAYLOAD_TYPE
     "DPI-1072: the Oracle Client library version is unsupported", // DPI_ERR_ORACLE_CLIENT_UNSUPPORTED
     "DPI-1073: sharding key is required when specifying a super sharding key", // DPI_ERR_MISSING_SHARDING_KEY
+    "DPI-1074: ODPI-C context not created", // DPI_ERR_CONTEXT_NOT_CREATED
+    "DPI-1075: OS error: %s", // DPI_ERR_OS
 };

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -139,6 +139,20 @@ static int dpiSodaColl__createOperOptions(dpiSodaColl *coll,
         if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
                 (void*) &options->limit, 0, DPI_OCI_ATTR_SODA_LIMIT,
                 "set limit", error) < 0) {
+            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
+            return DPI_FAILURE;
+        }
+    }
+
+    // set fetch array size, if applicable (only available in 19.5+ client)
+    if (options->fetchArraySize > 0) {
+        if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 5,
+                error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) &options->fetchArraySize, 0,
+                DPI_OCI_ATTR_SODA_FETCH_ARRAY_SIZE, "set fetch array size",
+                error) < 0) {
             dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
             return DPI_FAILURE;
         }
@@ -295,7 +309,7 @@ static int dpiSodaColl__insertMany(dpiSodaColl *coll, uint32_t numDocs,
         dpiOci__attrGet(optionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS,
                 (void*) &docCount, 0, DPI_OCI_ATTR_SODA_DOC_COUNT,
                 NULL, error);
-        error->buffer->offset = (uint16_t) docCount;
+        error->buffer->offset = (uint32_t) docCount;
     }
     dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OUTPUT_OPTIONS);
 
@@ -408,6 +422,42 @@ static int dpiSodaColl__replace(dpiSodaColl *coll,
     }
 
     dpiOci__handleFree(optionsHandle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
+    return status;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaColl__save() [INTERNAL]
+//   Internal method for saving a document in the collection.
+//-----------------------------------------------------------------------------
+static int dpiSodaColl__save(dpiSodaColl *coll, dpiSodaDoc *doc,
+        uint32_t flags, dpiSodaDoc **savedDoc, dpiError *error)
+{
+    void *docHandle;
+    uint32_t mode;
+    int status;
+
+    // determine OCI mode to pass
+    mode = DPI_OCI_DEFAULT;
+    if (flags & DPI_SODA_FLAGS_ATOMIC_COMMIT)
+        mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
+
+    // save document in collection
+    // use "AndGet" variant if the saved document is requested
+    docHandle = doc->handle;
+    if (!savedDoc) {
+        status = dpiOci__sodaSave(coll, docHandle, mode, error);
+    } else {
+        *savedDoc = NULL;
+        status = dpiOci__sodaSaveAndGet(coll, &docHandle, mode, error);
+        if (status == 0 && docHandle) {
+            status = dpiSodaDoc__allocate(coll->db, docHandle, savedDoc,
+                    error);
+            if (status < 0)
+                dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
+        }
+    }
+
     return status;
 }
 
@@ -808,5 +858,61 @@ int dpiSodaColl_replaceOne(dpiSodaColl *coll,
     // perform replace
     status = dpiSodaColl__replace(coll, options, doc, flags, replaced,
             replacedDoc, &error);
+    return dpiGen__endPublicFn(coll, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaColl_save() [PUBLIC]
+//   Save the document into the collection. This method is equivalent to
+// dpiSodaColl_insertOne() except that if client-assigned keys are used, and
+// the document with the specified key already exists in the collection, it
+// will be replaced with the input document. Returns a handle to the new
+// document, if desired.
+//-----------------------------------------------------------------------------
+int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
+        dpiSodaDoc **savedDoc)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiSodaColl__check(coll, __func__, &error) < 0)
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+    if (dpiGen__checkHandle(doc, DPI_HTYPE_SODA_DOC, "check document",
+            &error) < 0)
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+
+    // save is only supported with Oracle Client 20+
+    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 20, 1,
+            &error) < 0)
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+
+    // perform save
+    status = dpiSodaColl__save(coll, doc, flags, savedDoc, &error);
+    return dpiGen__endPublicFn(coll, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaColl_truncate() [PUBLIC]
+//   Remove all of the documents in the collection.
+//-----------------------------------------------------------------------------
+int dpiSodaColl_truncate(dpiSodaColl *coll)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiSodaColl__check(coll, __func__, &error) < 0)
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+
+    // truncate is only supported with Oracle Client 20+
+    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 20, 1,
+            &error) < 0)
+        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
+
+    // perform truncate
+    status = dpiOci__sodaCollTruncate(coll, &error);
     return dpiGen__endPublicFn(coll, status, &error);
 }

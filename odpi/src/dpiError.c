@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -28,12 +28,14 @@ int dpiError__getInfo(dpiError *error, dpiErrorInfo *info)
         return DPI_FAILURE;
     info->code = error->buffer->code;
     info->offset = error->buffer->offset;
+    info->offset16 = (uint16_t) error->buffer->offset;
     info->message = error->buffer->message;
     info->messageLength = error->buffer->messageLength;
     info->fnName = error->buffer->fnName;
     info->action = error->buffer->action;
     info->isRecoverable = error->buffer->isRecoverable;
     info->encoding = error->buffer->encoding;
+    info->isWarning = error->buffer->isWarning;
     switch(info->code) {
         case 12154: // TNS:could not resolve the connect identifier specified
             info->sqlState = "42S02";
@@ -105,6 +107,7 @@ int dpiError__set(dpiError *error, const char *action, dpiErrorNum errorNum,
     if (error) {
         error->buffer->code = 0;
         error->buffer->isRecoverable = 0;
+        error->buffer->isWarning = 0;
         error->buffer->offset = 0;
         strcpy(error->buffer->encoding, DPI_CHARSET_NAME_UTF8);
         error->buffer->action = action;
@@ -130,7 +133,9 @@ int dpiError__set(dpiError *error, const char *action, dpiErrorNum errorNum,
 // the contents of that error. Note that trailing newlines and spaces are
 // truncated from the message if they exist. If the connection is not NULL a
 // check is made to see if the connection is no longer viable. The value
-// DPI_FAILURE is returned as a convenience to the caller.
+// DPI_FAILURE is returned as a convenience to the caller, except when the
+// status of the call is DPI_OCI_SUCCESS_WITH_INFO, which is treated as a
+// successful call.
 //-----------------------------------------------------------------------------
 int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         const char *action)
@@ -144,7 +149,8 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         return DPI_FAILURE;
     else if (!error->handle)
         return dpiError__set(error, action, DPI_ERR_ERR_NOT_INITIALIZED);
-    else if (status != DPI_OCI_ERROR && status != DPI_OCI_NO_DATA)
+    else if (status != DPI_OCI_ERROR && status != DPI_OCI_NO_DATA &&
+            status != DPI_OCI_SUCCESS_WITH_INFO)
         return dpiError__set(error, action,
                 DPI_ERR_UNEXPECTED_OCI_RETURN_VALUE, status,
                 error->buffer->fnName);
@@ -159,6 +165,10 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         dpiDebug__print("OCI error %.*s (%s / %s)\n",
                 error->buffer->messageLength, error->buffer->message,
                 error->buffer->fnName, action);
+    if (status == DPI_OCI_SUCCESS_WITH_INFO) {
+        error->buffer->isWarning = 1;
+        return DPI_SUCCESS;
+    }
 
     // determine if error is recoverable (Transaction Guard)
     // if the attribute cannot be read properly, simply leave it as false;
@@ -218,5 +228,46 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         }
     }
 
+    return DPI_FAILURE;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiError__setFromOS() [INTERNAL]
+//   Set the error buffer to a general OS error. Returns DPI_FAILURE as a
+// convenience to the caller.
+//-----------------------------------------------------------------------------
+int dpiError__setFromOS(dpiError *error, const char *action)
+{
+    char *message;
+
+#ifdef _WIN32
+
+    size_t messageLength = 0;
+
+    message = NULL;
+    if (dpiUtils__getWindowsError(GetLastError(), &message, &messageLength,
+            error) < 0)
+        return DPI_FAILURE;
+    dpiError__set(error, action, DPI_ERR_OS, message);
+    dpiUtils__freeMemory(message);
+
+#else
+
+    char buffer[512];
+    int err = errno;
+// https://linux.die.net/man/3/strerror_r
+#if !defined _GNU_SOURCE && (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600)
+    message = strerror_r(err, buffer, sizeof(buffer));
+#else
+    message = (strerror_r(err, buffer, sizeof(buffer)) == 0) ? buffer : NULL;
+#endif
+    if (!message) {
+        (void) sprintf(buffer, "unable to get OS error %d", err);
+        message = buffer;
+    }
+    dpiError__set(error, action, DPI_ERR_OS, message);
+
+#endif
     return DPI_FAILURE;
 }

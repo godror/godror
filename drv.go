@@ -49,6 +49,7 @@ package godror
 
 #include <stdlib.h>
 
+
 #include "dpi.c"
 */
 import "C"
@@ -159,7 +160,8 @@ func (d *drv) init() error {
 	}
 	var errInfo C.dpiErrorInfo
 	var dpiCtx *C.dpiContext
-	if C.dpiContext_create(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
+	if C.dpiContext_createWithParams(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
+		nil, // *C.dpiContextCreateParams
 		(**C.dpiContext)(unsafe.Pointer(&dpiCtx)), &errInfo,
 	) == C.DPI_FAILURE {
 		return fromErrorInfo(errInfo)
@@ -993,7 +995,7 @@ func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
 type OraErr struct {
 	message, funName, action, sqlState string
 	code, offset                       int
-	recoverable                        bool
+	recoverable, warning               bool
 }
 
 // AsOraErr returns the underlying *OraErr and whether it succeeded.
@@ -1026,6 +1028,7 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
 		action:      strings.TrimSpace(C.GoString(errInfo.action)),
 		sqlState:    strings.TrimSpace(C.GoString(errInfo.sqlState)),
 		recoverable: errInfo.isRecoverable != 0,
+		warning:     errInfo.isWarning != 0,
 	}
 	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
 		len(oe.message) > 9 && oe.message[9] == ':' {
@@ -1051,6 +1054,8 @@ func (oe *OraErr) SQLState() string { return oe.sqlState }
 
 // Recoverable indicates if the error is recoverable. This is always false unless both client and server are at release 12.1 or higher.
 func (oe *OraErr) Recoverable() bool { return oe.recoverable }
+
+func (oe *OraErr) IsWarning() bool { return oe.warning }
 
 // newErrorInfo is just for testing: testing cannot use Cgo...
 func newErrorInfo(code int, message string) C.dpiErrorInfo {

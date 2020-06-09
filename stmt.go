@@ -407,6 +407,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if Log != nil {
 		Log("gets", st.gets, "dests", st.dests)
 	}
+	var warning error
+	if st.dpiStmtInfo.isDDL == 1 {
+		warning = st.getError()
+	}
 	for i, get := range st.gets {
 		if get == nil {
 			continue
@@ -454,7 +458,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if C.dpiStmt_getRowCount(st.dpiStmt, &count) == C.DPI_FAILURE {
 		return nil, nil
 	}
-	return driver.RowsAffected(count), nil
+	return driver.RowsAffected(count), warning
 }
 
 // QueryContext executes a query that may return rows, such as a SELECT.

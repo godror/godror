@@ -59,19 +59,19 @@ int dpiDataBuffer__fromOracleDateAsDouble(dpiDataBuffer *data,
 
     // allocate and populate a timestamp with the value of the date
     if (dpiOci__descriptorAlloc(env->handle, &timestamp,
-            DPI_OCI_DTYPE_TIMESTAMP_LTZ, "alloc timestamp", error) < 0)
+            DPI_OCI_DTYPE_TIMESTAMP, "alloc timestamp", error) < 0)
         return DPI_FAILURE;
     if (dpiOci__dateTimeConstruct(env->handle, timestamp, oracleValue->year,
             oracleValue->month, oracleValue->day, oracleValue->hour,
             oracleValue->minute, oracleValue->second, 0, NULL, 0, error) < 0) {
-        dpiOci__descriptorFree(timestamp, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
+        dpiOci__descriptorFree(timestamp, DPI_OCI_DTYPE_TIMESTAMP);
         return DPI_FAILURE;
     }
 
     // now calculate the number of milliseconds since January 1, 1970
-    status = dpiDataBuffer__fromOracleTimestampAsDouble(data, env, error,
-            timestamp);
-    dpiOci__descriptorFree(timestamp, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
+    status = dpiDataBuffer__fromOracleTimestampAsDouble(data,
+            DPI_ORACLE_TYPE_TIMESTAMP, env, error, timestamp);
+    dpiOci__descriptorFree(timestamp, DPI_OCI_DTYPE_TIMESTAMP);
     return status;
 }
 
@@ -284,11 +284,15 @@ int dpiDataBuffer__fromOracleTimestamp(dpiDataBuffer *data, dpiEnv *env,
 // of milliseconds since January 1, 1970).
 //-----------------------------------------------------------------------------
 int dpiDataBuffer__fromOracleTimestampAsDouble(dpiDataBuffer *data,
-        dpiEnv *env, dpiError *error, void *oracleValue)
+        uint32_t dataType, dpiEnv *env, dpiError *error, void *oracleValue)
 {
     int32_t day, hour, minute, second, fsecond;
-    void *interval;
+    void *interval, *baseDate;
     int status;
+
+    // determine the base date to use for the given data type
+    if (dpiEnv__getBaseDate(env, dataType, &baseDate, error) < 0)
+        return DPI_FAILURE;
 
     // allocate interval to use in calculation
     if (dpiOci__descriptorAlloc(env->handle, &interval,
@@ -296,8 +300,8 @@ int dpiDataBuffer__fromOracleTimestampAsDouble(dpiDataBuffer *data,
         return DPI_FAILURE;
 
     // subtract dates to determine interval between date and base date
-    if (dpiOci__dateTimeSubtract(env->handle, oracleValue, env->baseDate,
-            interval, error) < 0) {
+    if (dpiOci__dateTimeSubtract(env->handle, oracleValue, baseDate, interval,
+            error) < 0) {
         dpiOci__descriptorFree(interval, DPI_OCI_DTYPE_INTERVAL_DS);
         return DPI_FAILURE;
     }
@@ -343,32 +347,18 @@ int dpiDataBuffer__toOracleDate(dpiDataBuffer *data, dpiOciDate *oracleValue)
 int dpiDataBuffer__toOracleDateFromDouble(dpiDataBuffer *data, dpiEnv *env,
         dpiError *error, dpiOciDate *oracleValue)
 {
-    void *timestamp, *timestampLTZ;
     uint32_t fsecond;
+    void *timestamp;
 
     // allocate a descriptor to acquire a timestamp
-    if (dpiOci__descriptorAlloc(env->handle, &timestampLTZ,
-            DPI_OCI_DTYPE_TIMESTAMP_LTZ, "alloc timestamp", error) < 0)
-        return DPI_FAILURE;
-    if (dpiDataBuffer__toOracleTimestampFromDouble(data, env, error,
-            timestampLTZ) < 0) {
-        dpiOci__descriptorFree(timestampLTZ, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
-        return DPI_FAILURE;
-    }
-
-    // allocate a plain timestamp and convert to it
     if (dpiOci__descriptorAlloc(env->handle, &timestamp,
-            DPI_OCI_DTYPE_TIMESTAMP, "alloc plain timestamp", error) < 0) {
-        dpiOci__descriptorFree(timestampLTZ, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
+            DPI_OCI_DTYPE_TIMESTAMP, "alloc timestamp", error) < 0)
         return DPI_FAILURE;
-    }
-    if (dpiOci__dateTimeConvert(env->handle, timestampLTZ, timestamp,
-            error) < 0) {
+    if (dpiDataBuffer__toOracleTimestampFromDouble(data,
+            DPI_ORACLE_TYPE_TIMESTAMP, env, error, timestamp) < 0) {
         dpiOci__descriptorFree(timestamp, DPI_OCI_DTYPE_TIMESTAMP);
-        dpiOci__descriptorFree(timestampLTZ, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
         return DPI_FAILURE;
     }
-    dpiOci__descriptorFree(timestampLTZ, DPI_OCI_DTYPE_TIMESTAMP_LTZ);
 
     // populate date structure
     if (dpiOci__dateTimeGetDate(env->handle, timestamp, &oracleValue->year,
@@ -567,12 +557,16 @@ int dpiDataBuffer__toOracleTimestamp(dpiDataBuffer *data, dpiEnv *env,
 // milliseconds since January 1, 1970.
 //-----------------------------------------------------------------------------
 int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
-        dpiEnv *env, dpiError *error, void *oracleValue)
+        uint32_t dataType, dpiEnv *env, dpiError *error, void *oracleValue)
 {
     int32_t day, hour, minute, second, fsecond;
-    void *interval;
+    void *interval, *baseDate;
     int status;
     double ms;
+
+    // determine the base date to use for the given data type
+    if (dpiEnv__getBaseDate(env, dataType, &baseDate, error) < 0)
+        return DPI_FAILURE;
 
     // allocate interval to use in calculation
     if (dpiOci__descriptorAlloc(env->handle, &interval,
@@ -597,7 +591,7 @@ int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
     }
 
     // add the interval to the base date
-    status = dpiOci__dateTimeIntervalAdd(env->handle, env->baseDate, interval,
+    status = dpiOci__dateTimeIntervalAdd(env->handle, baseDate, interval,
             oracleValue, error);
     dpiOci__descriptorFree(interval, DPI_OCI_DTYPE_INTERVAL_DS);
     return status;

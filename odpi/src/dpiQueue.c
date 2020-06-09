@@ -226,7 +226,7 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
             queue->buffer.msgIds, error) < 0) {
         if (error->buffer->code != 25228)
             return DPI_FAILURE;
-        error->buffer->offset = (uint16_t) *numProps;
+        error->buffer->offset = *numProps;
     }
 
     // transfer message properties to destination array
@@ -315,7 +315,7 @@ static int dpiQueue__enq(dpiQueue *queue, uint32_t numProps,
                 queue->enqOptions->handle, &numProps, queue->buffer.handles,
                 payloadTDO, queue->buffer.instances, queue->buffer.indicators,
                 queue->buffer.msgIds, error) < 0) {
-            error->buffer->offset = (uint16_t) numProps;
+            error->buffer->offset = numProps;
             return DPI_FAILURE;
         }
     }

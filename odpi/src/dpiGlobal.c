@@ -52,6 +52,46 @@ static int dpiGlobalInitialized = 0;
 // initialization of ODPI-C
 static dpiMutexType dpiGlobalMutex;
 
+// forward declarations of internal functions only used in this file
+static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
+        dpiVersionInfo **clientVersionInfo, dpiError *error);
+static void dpiGlobal__finalize(void);
+static int dpiGlobal__getErrorBuffer(const char *fnName, dpiError *error);
+
+
+//-----------------------------------------------------------------------------
+// dpiGlobal__ensureInitialized() [INTERNAL]
+//   Ensure that all initializations of the global infrastructure used by
+// ODPI-C have been performed.  This is done by the first thread to execute
+// this function and includes loading the Oracle Call Interface (OCI) library
+// and creating a thread key used for managing error buffers in a thread-safe
+// manner.
+//-----------------------------------------------------------------------------
+int dpiGlobal__ensureInitialized(const char *fnName,
+        dpiContextCreateParams *params, dpiVersionInfo **clientVersionInfo,
+        dpiError *error)
+{
+    // initialize error buffer output to global error buffer structure; this is
+    // the value that is used if an error takes place before the thread local
+    // error structure can be returned
+    error->handle = NULL;
+    error->buffer = &dpiGlobalErrorBuffer;
+    error->buffer->fnName = fnName;
+
+    // perform global initializations, if needed
+    if (!dpiGlobalInitialized) {
+        dpiMutex__acquire(dpiGlobalMutex);
+        if (!dpiGlobalInitialized)
+            dpiGlobal__extendedInitialize(params, clientVersionInfo, error);
+        dpiMutex__release(dpiGlobalMutex);
+        if (!dpiGlobalInitialized)
+            return DPI_FAILURE;
+    }
+
+    return dpiGlobal__getErrorBuffer(fnName, error);
+}
+
+
 //-----------------------------------------------------------------------------
 // dpiGlobal__extendedInitialize() [INTERNAL]
 //   Create the global environment used for managing error buffers in a
@@ -59,9 +99,14 @@ static dpiMutexType dpiGlobalMutex;
 // local storage for the error buffers and for looking up encodings given an
 // IANA or Oracle character set name.
 //-----------------------------------------------------------------------------
-static int dpiGlobal__extendedInitialize(dpiError *error)
+static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
+        dpiVersionInfo **clientVersionInfo, dpiError *error)
 {
     int status;
+
+    // load OCI library
+    if (dpiOci__loadLib(params, clientVersionInfo, error) < 0)
+        return DPI_FAILURE;
 
     // create threaded OCI environment for storing error buffers and for
     // looking up character sets; use character set AL32UTF8 solely to avoid
@@ -128,33 +173,15 @@ static void dpiGlobal__finalize(void)
 
 
 //-----------------------------------------------------------------------------
-// dpiGlobal__initError() [INTERNAL]
-//   Get the thread local error structure for use in all other functions. If
-// an error structure cannot be determined for some reason, the global error
-// buffer structure is returned instead.
+// dpiGlobal__getErrorBuffer() [INTERNAL]
+//   Get the thread local error buffer. This will replace use of the global
+// error buffer which is used until this function has completed successfully.
+// At this point it is assumed that the global infrastructure has been
+// initialialized successfully.
 //-----------------------------------------------------------------------------
-int dpiGlobal__initError(const char *fnName, dpiError *error)
+static int dpiGlobal__getErrorBuffer(const char *fnName, dpiError *error)
 {
     dpiErrorBuffer *tempErrorBuffer;
-
-    // initialize error buffer output to global error buffer structure; this is
-    // the value that is used if an error takes place before the thread local
-    // error structure can be returned
-    error->handle = NULL;
-    error->buffer = &dpiGlobalErrorBuffer;
-    if (fnName)
-        error->buffer->fnName = fnName;
-
-    // initialize global environment, if necessary
-    // this should only ever be done once by the first thread to execute this
-    if (!dpiGlobalInitialized) {
-        dpiMutex__acquire(dpiGlobalMutex);
-        if (!dpiGlobalInitialized)
-            dpiGlobal__extendedInitialize(error);
-        dpiMutex__release(dpiGlobalMutex);
-        if (!dpiGlobalInitialized)
-            return DPI_FAILURE;
-    }
 
     // look up the error buffer specific to this thread
     if (dpiOci__threadKeyGet(dpiGlobalEnvHandle, dpiGlobalErrorHandle,
@@ -162,7 +189,7 @@ int dpiGlobal__initError(const char *fnName, dpiError *error)
         return DPI_FAILURE;
 
     // if NULL, key has never been set for this thread, allocate new error
-    // and set it
+    // buffer and set it
     if (!tempErrorBuffer) {
         if (dpiUtils__allocateMemory(1, sizeof(dpiErrorBuffer), 1,
                 "allocate error buffer", (void**) &tempErrorBuffer, error) < 0)
@@ -185,6 +212,7 @@ int dpiGlobal__initError(const char *fnName, dpiError *error)
         tempErrorBuffer->messageLength = 0;
         tempErrorBuffer->fnName = fnName;
         tempErrorBuffer->action = "start";
+        tempErrorBuffer->isWarning = 0;
         strcpy(tempErrorBuffer->encoding, DPI_CHARSET_NAME_UTF8);
     }
 
@@ -194,11 +222,39 @@ int dpiGlobal__initError(const char *fnName, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
+// dpiGlobal__initError() [INTERNAL]
+//   Get the thread local error structure for use in all other functions. If
+// an error structure cannot be determined for some reason, the global error
+// buffer structure is returned instead.
+//-----------------------------------------------------------------------------
+int dpiGlobal__initError(const char *fnName, dpiError *error)
+{
+    // initialize error buffer output to global error buffer structure; this is
+    // the value that is used if an error takes place before the thread local
+    // error structure can be returned
+    error->handle = NULL;
+    error->buffer = &dpiGlobalErrorBuffer;
+    if (fnName)
+        error->buffer->fnName = fnName;
+
+    // check to see if global environment has been initialized; if not, no call
+    // to dpiContext_createWithParams() was made successfully
+    if (!dpiGlobalInitialized)
+        return dpiError__set(error, "check context creation",
+                DPI_ERR_CONTEXT_NOT_CREATED);
+
+    // acquire error buffer for the thread, if possible
+    return dpiGlobal__getErrorBuffer(fnName, error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiGlobal__initialize() [INTERNAL]
 //   Initialization function that runs at process startup or when the library
 // is first loaded. Some operating systems have limits on what can be run in
 // this function, so most work is done in the dpiGlobal__extendedInitialize()
-// function that runs when the first call to dpiContext_create() is made.
+// function that runs when the first call to dpiContext_createWithParams() is
+// made.
 //-----------------------------------------------------------------------------
 DPI_INITIALIZER(dpiGlobal__initialize)
 {

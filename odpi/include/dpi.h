@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -16,6 +16,11 @@
 
 #ifndef DPI_PUBLIC
 #define DPI_PUBLIC
+
+// Avoid name-mangling when using C++
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // define standard integer types for older versions of Microsoft Visual Studio
 #ifdef _MSC_VER
@@ -35,6 +40,15 @@
 #include <stdint.h>
 #endif
 
+#ifndef _MSC_VER
+#ifndef	_DLFCN_H
+#ifndef __USE_GNU
+#define __USE_GNU 1
+#endif
+#include <dlfcn.h>
+#endif
+#endif
+
 // define __func__ for older versions of Microsoft Visual Studio
 #ifdef _MSC_VER
 #if _MSC_VER < 1900
@@ -42,11 +56,18 @@
 #endif
 #endif
 
+// define macro for exporting functions on Windows
+#if defined(_MSC_VER) && defined(DPI_EXPORTS)
+#define DPI_EXPORT          __declspec(dllexport)
+#else
+#define DPI_EXPORT
+#endif
+
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   3
-#define DPI_MINOR_VERSION   3
+#define DPI_MAJOR_VERSION   4
+#define DPI_MINOR_VERSION   0
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX
+#define DPI_VERSION_SUFFIX  "-dev"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -96,12 +117,13 @@
 // 0x0008: reports on all errors
 // 0x0010: reports on all SQL statements
 // 0x0020: reports on all memory allocations/frees
-#define DPI_DEBUG_LEVEL_FREES                       0x0001
+#define DPI_DEBUG_LEVEL_UNREPORTED_ERRORS           0x0001
 #define DPI_DEBUG_LEVEL_REFS                        0x0002
 #define DPI_DEBUG_LEVEL_FNS                         0x0004
 #define DPI_DEBUG_LEVEL_ERRORS                      0x0008
 #define DPI_DEBUG_LEVEL_SQL                         0x0010
 #define DPI_DEBUG_LEVEL_MEM                         0x0020
+#define DPI_DEBUG_LEVEL_LOAD_LIB                    0x0040
 
 
 //-----------------------------------------------------------------------------
@@ -405,6 +427,7 @@ typedef struct dpiAppContext dpiAppContext;
 typedef struct dpiCommonCreateParams dpiCommonCreateParams;
 typedef struct dpiConnCreateParams dpiConnCreateParams;
 typedef struct dpiContext dpiContext;
+typedef struct dpiContextCreateParams dpiContextCreateParams;
 typedef struct dpiData dpiData;
 typedef struct dpiDataTypeInfo dpiDataTypeInfo;
 typedef struct dpiEncodingInfo dpiEncodingInfo;
@@ -495,6 +518,15 @@ struct dpiConnCreateParams {
     int outNewSession;
 };
 
+// structure used for creating connections
+struct dpiContextCreateParams {
+    const char *defaultDriverName;
+    const char *defaultEncoding;
+    const char *loadErrorUrl;
+    const char *oracleClientLibDir;
+    const char *oracleClientConfigDir;
+};
+
 // structure used for transferring data to/from ODPI-C
 struct dpiData {
     int isNull;
@@ -526,7 +558,7 @@ struct dpiEncodingInfo {
 // structure used for transferring error information from ODPI-C
 struct dpiErrorInfo {
     int32_t code;
-    uint16_t offset;
+    uint16_t offset16;
     const char *message;
     uint32_t messageLength;
     const char *encoding;
@@ -534,6 +566,8 @@ struct dpiErrorInfo {
     const char *action;
     const char *sqlState;
     int isRecoverable;
+    int isWarning;
+    uint32_t offset;
 };
 
 // structure used for transferring object attribute information from ODPI-C
@@ -609,6 +643,7 @@ struct dpiSodaOperOptions {
     uint32_t filterLength;
     uint32_t skip;
     uint32_t limit;
+    uint32_t fetchArraySize;
 };
 
 // structure used for transferring statement information from ODPI-C
@@ -708,38 +743,45 @@ struct dpiVersionInfo {
 // Context Methods (dpiContext)
 //-----------------------------------------------------------------------------
 
-// create a context handle and validate the version information
-int dpiContext_create(unsigned int majorVersion, unsigned int minorVersion,
+// define macro for backwards compatibility
+#define dpiContext_create(majorVersion, minorVersion, context, errorInfo) \
+    dpiContext_createWithParams(majorVersion, minorVersion, NULL, context, \
+            errorInfo)
+
+// create a context handle and validate the version information (with params)
+DPI_EXPORT int dpiContext_createWithParams(unsigned int majorVersion,
+        unsigned int minorVersion, dpiContextCreateParams *params,
         dpiContext **context, dpiErrorInfo *errorInfo);
 
 // destroy context handle
-int dpiContext_destroy(dpiContext *context);
+DPI_EXPORT int dpiContext_destroy(dpiContext *context);
 
 // return the OCI client version in use
-int dpiContext_getClientVersion(const dpiContext *context,
+DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
         dpiVersionInfo *versionInfo);
 
 // get error information
-void dpiContext_getError(const dpiContext *context, dpiErrorInfo *errorInfo);
+DPI_EXPORT void dpiContext_getError(const dpiContext *context,
+        dpiErrorInfo *errorInfo);
 
 // initialize context parameters to default values
-int dpiContext_initCommonCreateParams(const dpiContext *context,
+DPI_EXPORT int dpiContext_initCommonCreateParams(const dpiContext *context,
         dpiCommonCreateParams *params);
 
 // initialize connection create parameters to default values
-int dpiContext_initConnCreateParams(const dpiContext *context,
+DPI_EXPORT int dpiContext_initConnCreateParams(const dpiContext *context,
         dpiConnCreateParams *params);
 
 // initialize pool create parameters to default values
-int dpiContext_initPoolCreateParams(const dpiContext *context,
+DPI_EXPORT int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params);
 
 // initialize SODA operation options to default values
-int dpiContext_initSodaOperOptions(const dpiContext *context,
+DPI_EXPORT int dpiContext_initSodaOperOptions(const dpiContext *context,
         dpiSodaOperOptions *options);
 
 // initialize subscription create parameters to default values
-int dpiContext_initSubscrCreateParams(const dpiContext *context,
+DPI_EXPORT int dpiContext_initSubscrCreateParams(const dpiContext *context,
         dpiSubscrCreateParams *params);
 
 
@@ -748,174 +790,184 @@ int dpiContext_initSubscrCreateParams(const dpiContext *context,
 //-----------------------------------------------------------------------------
 
 // add a reference to a connection
-int dpiConn_addRef(dpiConn *conn);
+DPI_EXPORT int dpiConn_addRef(dpiConn *conn);
 
 // begin a distributed transaction
-int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
+DPI_EXPORT int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
         const char *transactionId, uint32_t transactionIdLength,
         const char *branchId, uint32_t branchIdLength);
 
 // break execution of the statement running on the connection
-int dpiConn_breakExecution(dpiConn *conn);
+DPI_EXPORT int dpiConn_breakExecution(dpiConn *conn);
 
 // change the password for the specified user
-int dpiConn_changePassword(dpiConn *conn, const char *userName,
+DPI_EXPORT int dpiConn_changePassword(dpiConn *conn, const char *userName,
         uint32_t userNameLength, const char *oldPassword,
         uint32_t oldPasswordLength, const char *newPassword,
         uint32_t newPasswordLength);
 
 // close the connection now, not when the reference count reaches zero
-int dpiConn_close(dpiConn *conn, dpiConnCloseMode mode, const char *tag,
-        uint32_t tagLength);
+DPI_EXPORT int dpiConn_close(dpiConn *conn, dpiConnCloseMode mode,
+        const char *tag, uint32_t tagLength);
 
 // commits the current active transaction
-int dpiConn_commit(dpiConn *conn);
+DPI_EXPORT int dpiConn_commit(dpiConn *conn);
 
 // create a connection and return a reference to it
-int dpiConn_create(const dpiContext *context, const char *userName,
+DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
         uint32_t userNameLength, const char *password, uint32_t passwordLength,
         const char *connectString, uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiConn **conn);
 
 // dequeue a message from a queue
-int dpiConn_deqObject(dpiConn *conn, const char *queueName,
+DPI_EXPORT int dpiConn_deqObject(dpiConn *conn, const char *queueName,
         uint32_t queueNameLength, dpiDeqOptions *options, dpiMsgProps *props,
         dpiObject *payload, const char **msgId, uint32_t *msgIdLength);
 
 // enqueue a message to a queue
-int dpiConn_enqObject(dpiConn *conn, const char *queueName,
+DPI_EXPORT int dpiConn_enqObject(dpiConn *conn, const char *queueName,
         uint32_t queueNameLength, dpiEnqOptions *options, dpiMsgProps *props,
         dpiObject *payload, const char **msgId, uint32_t *msgIdLength);
 
 // get call timeout in place for round-trips with this connection
-int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value);
+DPI_EXPORT int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value);
 
 // get current schema associated with the connection
-int dpiConn_getCurrentSchema(dpiConn *conn, const char **value,
+DPI_EXPORT int dpiConn_getCurrentSchema(dpiConn *conn, const char **value,
         uint32_t *valueLength);
 
 // get edition associated with the connection
-int dpiConn_getEdition(dpiConn *conn, const char **value,
+DPI_EXPORT int dpiConn_getEdition(dpiConn *conn, const char **value,
         uint32_t *valueLength);
 
 // return the encoding information used by the connection
-int dpiConn_getEncodingInfo(dpiConn *conn, dpiEncodingInfo *info);
+DPI_EXPORT int dpiConn_getEncodingInfo(dpiConn *conn, dpiEncodingInfo *info);
 
 // get external name associated with the connection
-int dpiConn_getExternalName(dpiConn *conn, const char **value,
+DPI_EXPORT int dpiConn_getExternalName(dpiConn *conn, const char **value,
         uint32_t *valueLength);
 
 // get the OCI service context handle associated with the connection
-int dpiConn_getHandle(dpiConn *conn, void **handle);
+DPI_EXPORT int dpiConn_getHandle(dpiConn *conn, void **handle);
 
 // get internal name associated with the connection
-int dpiConn_getInternalName(dpiConn *conn, const char **value,
+DPI_EXPORT int dpiConn_getInternalName(dpiConn *conn, const char **value,
         uint32_t *valueLength);
 
 // get logical transaction id associated with the connection
-int dpiConn_getLTXID(dpiConn *conn, const char **value, uint32_t *valueLength);
+DPI_EXPORT int dpiConn_getLTXID(dpiConn *conn, const char **value,
+        uint32_t *valueLength);
 
 // create a new object type and return it for subsequent object creation
-int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
-        dpiObjectType **objType);
+DPI_EXPORT int dpiConn_getObjectType(dpiConn *conn, const char *name,
+        uint32_t nameLength, dpiObjectType **objType);
 
 // return information about the server version in use
-int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
-        uint32_t *releaseStringLength, dpiVersionInfo *versionInfo);
+DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
+        const char **releaseString, uint32_t *releaseStringLength,
+        dpiVersionInfo *versionInfo);
 
 // get SODA interface object
-int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db);
+DPI_EXPORT int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db);
 
 // return the statement cache size
-int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize);
+DPI_EXPORT int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize);
 
 // create a new dequeue options object and return it
-int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options);
+DPI_EXPORT int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options);
 
 // create a new enqueue options object and return it
-int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options);
+DPI_EXPORT int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options);
 
 // create a new message properties object and return it
-int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props);
+DPI_EXPORT int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props);
 
 // create a new AQ queue
-int dpiConn_newQueue(dpiConn *conn, const char *name, uint32_t nameLength,
-        dpiObjectType *payloadType, dpiQueue **queue);
+DPI_EXPORT int dpiConn_newQueue(dpiConn *conn, const char *name,
+        uint32_t nameLength, dpiObjectType *payloadType, dpiQueue **queue);
 
 // create a new temporary LOB
-int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob);
+DPI_EXPORT int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType,
+        dpiLob **lob);
 
 // create a new variable and return it for subsequent binding/defining
-int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
+DPI_EXPORT int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
         dpiNativeTypeNum nativeTypeNum, uint32_t maxArraySize, uint32_t size,
         int sizeIsBytes, int isArray, dpiObjectType *objType, dpiVar **var,
         dpiData **data);
 
 // ping the connection to see if it is still alive
-int dpiConn_ping(dpiConn *conn);
+DPI_EXPORT int dpiConn_ping(dpiConn *conn);
 
 // prepare a distributed transaction for commit
-int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded);
+DPI_EXPORT int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded);
 
 // prepare a statement and return it for subsequent execution/fetching
-int dpiConn_prepareStmt(dpiConn *conn, int scrollable, const char *sql,
-        uint32_t sqlLength, const char *tag, uint32_t tagLength,
-        dpiStmt **stmt);
+DPI_EXPORT int dpiConn_prepareStmt(dpiConn *conn, int scrollable,
+        const char *sql, uint32_t sqlLength, const char *tag,
+        uint32_t tagLength, dpiStmt **stmt);
 
 // release a reference to the connection
-int dpiConn_release(dpiConn *conn);
+DPI_EXPORT int dpiConn_release(dpiConn *conn);
 
 // rolls back the current active transaction
-int dpiConn_rollback(dpiConn *conn);
+DPI_EXPORT int dpiConn_rollback(dpiConn *conn);
 
 // set action associated with the connection
-int dpiConn_setAction(dpiConn *conn, const char *value, uint32_t valueLength);
+DPI_EXPORT int dpiConn_setAction(dpiConn *conn, const char *value,
+        uint32_t valueLength);
 
 // set call timeout for subsequent round-trips with this connection
-int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value);
+DPI_EXPORT int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value);
 
 // set client identifier associated with the connection
-int dpiConn_setClientIdentifier(dpiConn *conn, const char *value,
+DPI_EXPORT int dpiConn_setClientIdentifier(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set client info associated with the connection
-int dpiConn_setClientInfo(dpiConn *conn, const char *value,
+DPI_EXPORT int dpiConn_setClientInfo(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set current schema associated with the connection
-int dpiConn_setCurrentSchema(dpiConn *conn, const char *value,
+DPI_EXPORT int dpiConn_setCurrentSchema(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set database operation associated with the connection
-int dpiConn_setDbOp(dpiConn *conn, const char *value, uint32_t valueLength);
+DPI_EXPORT int dpiConn_setDbOp(dpiConn *conn, const char *value,
+        uint32_t valueLength);
 
 // set external name associated with the connection
-int dpiConn_setExternalName(dpiConn *conn, const char *value,
+DPI_EXPORT int dpiConn_setExternalName(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set internal name associated with the connection
-int dpiConn_setInternalName(dpiConn *conn, const char *value,
+DPI_EXPORT int dpiConn_setInternalName(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set module associated with the connection
-int dpiConn_setModule(dpiConn *conn, const char *value, uint32_t valueLength);
+DPI_EXPORT int dpiConn_setModule(dpiConn *conn, const char *value,
+        uint32_t valueLength);
 
 // set the statement cache size
-int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize);
+DPI_EXPORT int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize);
 
 // shutdown the database
-int dpiConn_shutdownDatabase(dpiConn *conn, dpiShutdownMode mode);
+DPI_EXPORT int dpiConn_shutdownDatabase(dpiConn *conn, dpiShutdownMode mode);
 
 // startup the database
-int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode);
+DPI_EXPORT int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode);
+
+// startup the database with a PFILE
+DPI_EXPORT int dpiConn_startupDatabaseWithPfile(dpiConn *conn,
+        const char *pfile, uint32_t pfileLength, dpiStartupMode mode);
 
 // subscribe to events in the database
-int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
+DPI_EXPORT int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
         dpiSubscr **subscr);
 
 // unsubscribe from events in the database
-int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
+DPI_EXPORT int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
 
 
 //-----------------------------------------------------------------------------
@@ -923,85 +975,87 @@ int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
 //-----------------------------------------------------------------------------
 
 // return the boolean portion of the data
-int dpiData_getBool(dpiData *data);
+DPI_EXPORT int dpiData_getBool(dpiData *data);
 
 // return the bytes portion of the data
-dpiBytes *dpiData_getBytes(dpiData *data);
+DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 
 // return the double portion of the data
-double dpiData_getDouble(dpiData *data);
+DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
 // return the float portion of the data
-float dpiData_getFloat(dpiData *data);
+DPI_EXPORT float dpiData_getFloat(dpiData *data);
 
 // return the integer portion of the data
-int64_t dpiData_getInt64(dpiData *data);
+DPI_EXPORT int64_t dpiData_getInt64(dpiData *data);
 
 // return the interval (days/seconds) portion of the data
-dpiIntervalDS *dpiData_getIntervalDS(dpiData *data);
+DPI_EXPORT dpiIntervalDS *dpiData_getIntervalDS(dpiData *data);
 
 // return the interval (years/months) portion of the data
-dpiIntervalYM *dpiData_getIntervalYM(dpiData *data);
+DPI_EXPORT dpiIntervalYM *dpiData_getIntervalYM(dpiData *data);
 
 // return whether data value is null or not
-int dpiData_getIsNull(dpiData *data);
+DPI_EXPORT int dpiData_getIsNull(dpiData *data);
 
 // return the LOB portion of the data
-dpiLob *dpiData_getLOB(dpiData *data);
+DPI_EXPORT dpiLob *dpiData_getLOB(dpiData *data);
 
 // return the object portion of the data
-dpiObject *dpiData_getObject(dpiData *data);
+DPI_EXPORT dpiObject *dpiData_getObject(dpiData *data);
 
 // return the statement portion of the data
-dpiStmt *dpiData_getStmt(dpiData *data);
+DPI_EXPORT dpiStmt *dpiData_getStmt(dpiData *data);
 
 // return the timestamp portion of the data
-dpiTimestamp *dpiData_getTimestamp(dpiData *data);
+DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 // return the unsigned integer portion of the data
-uint64_t dpiData_getUint64(dpiData *data);
+DPI_EXPORT uint64_t dpiData_getUint64(dpiData *data);
 
 // set the boolean portion of the data
-void dpiData_setBool(dpiData *data, int value);
+DPI_EXPORT void dpiData_setBool(dpiData *data, int value);
 
 // set the bytes portion of the data
-void dpiData_setBytes(dpiData *data, char *ptr, uint32_t length);
+DPI_EXPORT void dpiData_setBytes(dpiData *data, char *ptr, uint32_t length);
 
 // set the double portion of the data
-void dpiData_setDouble(dpiData *data, double value);
+DPI_EXPORT void dpiData_setDouble(dpiData *data, double value);
 
 // set the float portion of the data
-void dpiData_setFloat(dpiData *data, float value);
+DPI_EXPORT void dpiData_setFloat(dpiData *data, float value);
 
 // set the integer portion of the data
-void dpiData_setInt64(dpiData *data, int64_t value);
+DPI_EXPORT void dpiData_setInt64(dpiData *data, int64_t value);
 
 // set the interval (days/seconds) portion of the data
-void dpiData_setIntervalDS(dpiData *data, int32_t days, int32_t hours,
-        int32_t minutes, int32_t seconds, int32_t fsceconds);
+DPI_EXPORT void dpiData_setIntervalDS(dpiData *data, int32_t days,
+        int32_t hours, int32_t minutes, int32_t seconds, int32_t fsceconds);
 
 // set the interval (years/months) portion of the data
-void dpiData_setIntervalYM(dpiData *data, int32_t years, int32_t months);
+DPI_EXPORT void dpiData_setIntervalYM(dpiData *data, int32_t years,
+        int32_t months);
 
 // set the LOB portion of the data
-void dpiData_setLOB(dpiData *data, dpiLob *lob);
+DPI_EXPORT void dpiData_setLOB(dpiData *data, dpiLob *lob);
 
 // set data to the null value
-void dpiData_setNull(dpiData *data);
+DPI_EXPORT void dpiData_setNull(dpiData *data);
 
 // set the object portion of the data
-void dpiData_setObject(dpiData *data, dpiObject *obj);
+DPI_EXPORT void dpiData_setObject(dpiData *data, dpiObject *obj);
 
 // set the statement portion of the data
-void dpiData_setStmt(dpiData *data, dpiStmt *stmt);
+DPI_EXPORT void dpiData_setStmt(dpiData *data, dpiStmt *stmt);
 
 // set the timestamp portion of the data
-void dpiData_setTimestamp(dpiData *data, int16_t year, uint8_t month,
-        uint8_t day, uint8_t hour, uint8_t minute, uint8_t second,
-        uint32_t fsecond, int8_t tzHourOffset, int8_t tzMinuteOffset);
+DPI_EXPORT void dpiData_setTimestamp(dpiData *data, int16_t year,
+        uint8_t month, uint8_t day, uint8_t hour, uint8_t minute,
+        uint8_t second, uint32_t fsecond, int8_t tzHourOffset,
+        int8_t tzMinuteOffset);
 
 // set the unsigned integer portion of the data
-void dpiData_setUint64(dpiData *data, uint64_t value);
+DPI_EXPORT void dpiData_setUint64(dpiData *data, uint64_t value);
 
 
 //-----------------------------------------------------------------------------
@@ -1009,80 +1063,83 @@ void dpiData_setUint64(dpiData *data, uint64_t value);
 //-----------------------------------------------------------------------------
 
 // add a reference to dequeue options
-int dpiDeqOptions_addRef(dpiDeqOptions *options);
+DPI_EXPORT int dpiDeqOptions_addRef(dpiDeqOptions *options);
 
 // return condition associated with dequeue options
-int dpiDeqOptions_getCondition(dpiDeqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiDeqOptions_getCondition(dpiDeqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return consumer name associated with dequeue options
-int dpiDeqOptions_getConsumerName(dpiDeqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiDeqOptions_getConsumerName(dpiDeqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return correlation associated with dequeue options
-int dpiDeqOptions_getCorrelation(dpiDeqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiDeqOptions_getCorrelation(dpiDeqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return mode associated with dequeue options
-int dpiDeqOptions_getMode(dpiDeqOptions *options, dpiDeqMode *value);
+DPI_EXPORT int dpiDeqOptions_getMode(dpiDeqOptions *options,
+        dpiDeqMode *value);
 
 // return message id associated with dequeue options
-int dpiDeqOptions_getMsgId(dpiDeqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiDeqOptions_getMsgId(dpiDeqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return navigation associated with dequeue options
-int dpiDeqOptions_getNavigation(dpiDeqOptions *options,
+DPI_EXPORT int dpiDeqOptions_getNavigation(dpiDeqOptions *options,
         dpiDeqNavigation *value);
 
 // return transformation associated with dequeue options
-int dpiDeqOptions_getTransformation(dpiDeqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiDeqOptions_getTransformation(dpiDeqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return visibility associated with dequeue options
-int dpiDeqOptions_getVisibility(dpiDeqOptions *options, dpiVisibility *value);
+DPI_EXPORT int dpiDeqOptions_getVisibility(dpiDeqOptions *options,
+        dpiVisibility *value);
 
 // return wait time associated with dequeue options
-int dpiDeqOptions_getWait(dpiDeqOptions *options, uint32_t *value);
+DPI_EXPORT int dpiDeqOptions_getWait(dpiDeqOptions *options, uint32_t *value);
 
 // release a reference from dequeue options
-int dpiDeqOptions_release(dpiDeqOptions *options);
+DPI_EXPORT int dpiDeqOptions_release(dpiDeqOptions *options);
 
 // set condition associated with dequeue options
-int dpiDeqOptions_setCondition(dpiDeqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiDeqOptions_setCondition(dpiDeqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set consumer name associated with dequeue options
-int dpiDeqOptions_setConsumerName(dpiDeqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiDeqOptions_setConsumerName(dpiDeqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set correlation associated with dequeue options
-int dpiDeqOptions_setCorrelation(dpiDeqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiDeqOptions_setCorrelation(dpiDeqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set delivery mode associated with dequeue options
-int dpiDeqOptions_setDeliveryMode(dpiDeqOptions *options,
+DPI_EXPORT int dpiDeqOptions_setDeliveryMode(dpiDeqOptions *options,
         dpiMessageDeliveryMode value);
 
 // set mode associated with dequeue options
-int dpiDeqOptions_setMode(dpiDeqOptions *options, dpiDeqMode value);
+DPI_EXPORT int dpiDeqOptions_setMode(dpiDeqOptions *options, dpiDeqMode value);
 
 // set message id associated with dequeue options
-int dpiDeqOptions_setMsgId(dpiDeqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiDeqOptions_setMsgId(dpiDeqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set navigation associated with dequeue options
-int dpiDeqOptions_setNavigation(dpiDeqOptions *options,
+DPI_EXPORT int dpiDeqOptions_setNavigation(dpiDeqOptions *options,
         dpiDeqNavigation value);
 
 // set transformation associated with dequeue options
-int dpiDeqOptions_setTransformation(dpiDeqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiDeqOptions_setTransformation(dpiDeqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set visibility associated with dequeue options
-int dpiDeqOptions_setVisibility(dpiDeqOptions *options, dpiVisibility value);
+DPI_EXPORT int dpiDeqOptions_setVisibility(dpiDeqOptions *options,
+        dpiVisibility value);
 
 // set wait time associated with dequeue options
-int dpiDeqOptions_setWait(dpiDeqOptions *options, uint32_t value);
+DPI_EXPORT int dpiDeqOptions_setWait(dpiDeqOptions *options, uint32_t value);
 
 
 //-----------------------------------------------------------------------------
@@ -1090,28 +1147,30 @@ int dpiDeqOptions_setWait(dpiDeqOptions *options, uint32_t value);
 //-----------------------------------------------------------------------------
 
 // add a reference to enqueue options
-int dpiEnqOptions_addRef(dpiEnqOptions *options);
+DPI_EXPORT int dpiEnqOptions_addRef(dpiEnqOptions *options);
 
 // return transformation associated with enqueue options
-int dpiEnqOptions_getTransformation(dpiEnqOptions *options, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiEnqOptions_getTransformation(dpiEnqOptions *options,
+        const char **value, uint32_t *valueLength);
 
 // return visibility associated with enqueue options
-int dpiEnqOptions_getVisibility(dpiEnqOptions *options, dpiVisibility *value);
+DPI_EXPORT int dpiEnqOptions_getVisibility(dpiEnqOptions *options,
+        dpiVisibility *value);
 
 // release a reference from enqueue options
-int dpiEnqOptions_release(dpiEnqOptions *options);
+DPI_EXPORT int dpiEnqOptions_release(dpiEnqOptions *options);
 
 // set delivery mode associated with enqueue options
-int dpiEnqOptions_setDeliveryMode(dpiEnqOptions *options,
+DPI_EXPORT int dpiEnqOptions_setDeliveryMode(dpiEnqOptions *options,
         dpiMessageDeliveryMode value);
 
 // set transformation associated with enqueue options
-int dpiEnqOptions_setTransformation(dpiEnqOptions *options, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiEnqOptions_setTransformation(dpiEnqOptions *options,
+        const char *value, uint32_t valueLength);
 
 // set visibility associated with enqueue options
-int dpiEnqOptions_setVisibility(dpiEnqOptions *options, dpiVisibility value);
+DPI_EXPORT int dpiEnqOptions_setVisibility(dpiEnqOptions *options,
+        dpiVisibility value);
 
 
 //-----------------------------------------------------------------------------
@@ -1119,63 +1178,64 @@ int dpiEnqOptions_setVisibility(dpiEnqOptions *options, dpiVisibility value);
 //-----------------------------------------------------------------------------
 
 // add a reference to the LOB
-int dpiLob_addRef(dpiLob *lob);
+DPI_EXPORT int dpiLob_addRef(dpiLob *lob);
 
 // close the LOB
-int dpiLob_close(dpiLob *lob);
+DPI_EXPORT int dpiLob_close(dpiLob *lob);
 
 // close the LOB's resources
-int dpiLob_closeResource(dpiLob *lob);
+DPI_EXPORT int dpiLob_closeResource(dpiLob *lob);
 
 // create a copy of the LOB
-int dpiLob_copy(dpiLob *lob, dpiLob **copiedLob);
+DPI_EXPORT int dpiLob_copy(dpiLob *lob, dpiLob **copiedLob);
 
 // get buffer size in bytes for a LOB
-int dpiLob_getBufferSize(dpiLob *lob, uint64_t sizeInChars,
+DPI_EXPORT int dpiLob_getBufferSize(dpiLob *lob, uint64_t sizeInChars,
         uint64_t *sizeInBytes);
 
 // return the chunk size for the LOB
-int dpiLob_getChunkSize(dpiLob *lob, uint32_t *size);
+DPI_EXPORT int dpiLob_getChunkSize(dpiLob *lob, uint32_t *size);
 
 // return the directory alias name and file name of a BFILE LOB
-int dpiLob_getDirectoryAndFileName(dpiLob *lob, const char **directoryAlias,
-        uint32_t *directoryAliasLength, const char **fileName,
-        uint32_t *fileNameLength);
+DPI_EXPORT int dpiLob_getDirectoryAndFileName(dpiLob *lob,
+        const char **directoryAlias, uint32_t *directoryAliasLength,
+        const char **fileName, uint32_t *fileNameLength);
 
 // return if the file associated with a BFILE LOB exists
-int dpiLob_getFileExists(dpiLob *lob, int *exists);
+DPI_EXPORT int dpiLob_getFileExists(dpiLob *lob, int *exists);
 
 // return if the LOB's resources are currently open
-int dpiLob_getIsResourceOpen(dpiLob *lob, int *isOpen);
+DPI_EXPORT int dpiLob_getIsResourceOpen(dpiLob *lob, int *isOpen);
 
 // return the current size of the LOB
-int dpiLob_getSize(dpiLob *lob, uint64_t *size);
+DPI_EXPORT int dpiLob_getSize(dpiLob *lob, uint64_t *size);
 
 // open the LOB's resources (used to improve performance of multiple
 // read/writes operations)
-int dpiLob_openResource(dpiLob *lob);
+DPI_EXPORT int dpiLob_openResource(dpiLob *lob);
 
 // read bytes from the LOB at the specified offset
-int dpiLob_readBytes(dpiLob *lob, uint64_t offset, uint64_t amount,
+DPI_EXPORT int dpiLob_readBytes(dpiLob *lob, uint64_t offset, uint64_t amount,
         char *value, uint64_t *valueLength);
 
 // release a reference to the LOB
-int dpiLob_release(dpiLob *lob);
+DPI_EXPORT int dpiLob_release(dpiLob *lob);
 
 // set the directory name and file name of the BFILE LOB
-int dpiLob_setDirectoryAndFileName(dpiLob *lob, const char *directoryAlias,
-        uint32_t directoryAliasLength, const char *fileName,
-        uint32_t fileNameLength);
+DPI_EXPORT int dpiLob_setDirectoryAndFileName(dpiLob *lob,
+        const char *directoryAlias, uint32_t directoryAliasLength,
+        const char *fileName, uint32_t fileNameLength);
 
 // sets the contents of a LOB from a byte string
-int dpiLob_setFromBytes(dpiLob *lob, const char *value, uint64_t valueLength);
+DPI_EXPORT int dpiLob_setFromBytes(dpiLob *lob, const char *value,
+        uint64_t valueLength);
 
 // trim the LOB to the specified size
-int dpiLob_trim(dpiLob *lob, uint64_t newSize);
+DPI_EXPORT int dpiLob_trim(dpiLob *lob, uint64_t newSize);
 
 // write bytes to the LOB at the specified offset
-int dpiLob_writeBytes(dpiLob *lob, uint64_t offset, const char *value,
-        uint64_t valueLength);
+DPI_EXPORT int dpiLob_writeBytes(dpiLob *lob, uint64_t offset,
+        const char *value, uint64_t valueLength);
 
 
 //-----------------------------------------------------------------------------
@@ -1183,80 +1243,82 @@ int dpiLob_writeBytes(dpiLob *lob, uint64_t offset, const char *value,
 //-----------------------------------------------------------------------------
 
 // add a reference to message properties
-int dpiMsgProps_addRef(dpiMsgProps *props);
+DPI_EXPORT int dpiMsgProps_addRef(dpiMsgProps *props);
 
 // return the number of attempts made to deliver the message
-int dpiMsgProps_getNumAttempts(dpiMsgProps *props, int32_t *value);
+DPI_EXPORT int dpiMsgProps_getNumAttempts(dpiMsgProps *props, int32_t *value);
 
 // return correlation associated with the message
-int dpiMsgProps_getCorrelation(dpiMsgProps *props, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiMsgProps_getCorrelation(dpiMsgProps *props,
+        const char **value, uint32_t *valueLength);
 
 // return the number of seconds the message was delayed
-int dpiMsgProps_getDelay(dpiMsgProps *props, int32_t *value);
+DPI_EXPORT int dpiMsgProps_getDelay(dpiMsgProps *props, int32_t *value);
 
 // return the mode used for delivering the message
-int dpiMsgProps_getDeliveryMode(dpiMsgProps *props,
+DPI_EXPORT int dpiMsgProps_getDeliveryMode(dpiMsgProps *props,
         dpiMessageDeliveryMode *value);
 
 // return the time the message was enqueued
-int dpiMsgProps_getEnqTime(dpiMsgProps *props, dpiTimestamp *value);
+DPI_EXPORT int dpiMsgProps_getEnqTime(dpiMsgProps *props, dpiTimestamp *value);
 
 // return the name of the exception queue associated with the message
-int dpiMsgProps_getExceptionQ(dpiMsgProps *props, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiMsgProps_getExceptionQ(dpiMsgProps *props,
+        const char **value, uint32_t *valueLength);
 
 // return the number of seconds until the message expires
-int dpiMsgProps_getExpiration(dpiMsgProps *props, int32_t *value);
+DPI_EXPORT int dpiMsgProps_getExpiration(dpiMsgProps *props, int32_t *value);
 
 // return the message id for the message (after enqueuing or dequeuing)
-int dpiMsgProps_getMsgId(dpiMsgProps *props, const char **value,
+DPI_EXPORT int dpiMsgProps_getMsgId(dpiMsgProps *props, const char **value,
         uint32_t *valueLength);
 
 // return the original message id for the message
-int dpiMsgProps_getOriginalMsgId(dpiMsgProps *props, const char **value,
-        uint32_t *valueLength);
+DPI_EXPORT int dpiMsgProps_getOriginalMsgId(dpiMsgProps *props,
+        const char **value, uint32_t *valueLength);
 
 // return the payload of the message (object or bytes)
-int dpiMsgProps_getPayload(dpiMsgProps *props, dpiObject **obj,
+DPI_EXPORT int dpiMsgProps_getPayload(dpiMsgProps *props, dpiObject **obj,
         const char **value, uint32_t *valueLength);
 
 // return the priority of the message
-int dpiMsgProps_getPriority(dpiMsgProps *props, int32_t *value);
+DPI_EXPORT int dpiMsgProps_getPriority(dpiMsgProps *props, int32_t *value);
 
 // return the state of the message
-int dpiMsgProps_getState(dpiMsgProps *props, dpiMessageState *value);
+DPI_EXPORT int dpiMsgProps_getState(dpiMsgProps *props,
+        dpiMessageState *value);
 
 // release a reference from message properties
-int dpiMsgProps_release(dpiMsgProps *props);
+DPI_EXPORT int dpiMsgProps_release(dpiMsgProps *props);
 
 // set correlation associated with the message
-int dpiMsgProps_setCorrelation(dpiMsgProps *props, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiMsgProps_setCorrelation(dpiMsgProps *props,
+        const char *value, uint32_t valueLength);
 
 // set the number of seconds to delay the message
-int dpiMsgProps_setDelay(dpiMsgProps *props, int32_t value);
+DPI_EXPORT int dpiMsgProps_setDelay(dpiMsgProps *props, int32_t value);
 
 // set the name of the exception queue associated with the message
-int dpiMsgProps_setExceptionQ(dpiMsgProps *props, const char *value,
+DPI_EXPORT int dpiMsgProps_setExceptionQ(dpiMsgProps *props, const char *value,
         uint32_t valueLength);
 
 // set the number of seconds until the message expires
-int dpiMsgProps_setExpiration(dpiMsgProps *props, int32_t value);
+DPI_EXPORT int dpiMsgProps_setExpiration(dpiMsgProps *props, int32_t value);
 
 // set the original message id for the message
-int dpiMsgProps_setOriginalMsgId(dpiMsgProps *props, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiMsgProps_setOriginalMsgId(dpiMsgProps *props,
+        const char *value, uint32_t valueLength);
 
 // set the payload of the message (as a series of bytes)
-int dpiMsgProps_setPayloadBytes(dpiMsgProps *props, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiMsgProps_setPayloadBytes(dpiMsgProps *props,
+        const char *value, uint32_t valueLength);
 
 // set the payload of the message (as an object)
-int dpiMsgProps_setPayloadObject(dpiMsgProps *props, dpiObject *obj);
+DPI_EXPORT int dpiMsgProps_setPayloadObject(dpiMsgProps *props,
+        dpiObject *obj);
 
 // set the priority of the message
-int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value);
+DPI_EXPORT int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value);
 
 
 //-----------------------------------------------------------------------------
@@ -1264,60 +1326,62 @@ int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value);
 //-----------------------------------------------------------------------------
 
 // add a reference to the object
-int dpiObject_addRef(dpiObject *obj);
+DPI_EXPORT int dpiObject_addRef(dpiObject *obj);
 
 // append an element to the collection
-int dpiObject_appendElement(dpiObject *obj, dpiNativeTypeNum nativeTypeNum,
-        dpiData *value);
+DPI_EXPORT int dpiObject_appendElement(dpiObject *obj,
+        dpiNativeTypeNum nativeTypeNum, dpiData *value);
 
 // copy the object and return the copied object
-int dpiObject_copy(dpiObject *obj, dpiObject **copiedObj);
+DPI_EXPORT int dpiObject_copy(dpiObject *obj, dpiObject **copiedObj);
 
 // delete an element from the collection
-int dpiObject_deleteElementByIndex(dpiObject *obj, int32_t index);
+DPI_EXPORT int dpiObject_deleteElementByIndex(dpiObject *obj, int32_t index);
 
 // get the value of the specified attribute
-int dpiObject_getAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
+DPI_EXPORT int dpiObject_getAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
         dpiNativeTypeNum nativeTypeNum, dpiData *value);
 
 // return whether an element exists in a collection at the specified index
-int dpiObject_getElementExistsByIndex(dpiObject *obj, int32_t index,
+DPI_EXPORT int dpiObject_getElementExistsByIndex(dpiObject *obj, int32_t index,
         int *exists);
 
 // get the value of the element in a collection at the specified index
-int dpiObject_getElementValueByIndex(dpiObject *obj, int32_t index,
+DPI_EXPORT int dpiObject_getElementValueByIndex(dpiObject *obj, int32_t index,
         dpiNativeTypeNum nativeTypeNum, dpiData *value);
 
 // return the first index used in a collection
-int dpiObject_getFirstIndex(dpiObject *obj, int32_t *index, int *exists);
+DPI_EXPORT int dpiObject_getFirstIndex(dpiObject *obj, int32_t *index,
+        int *exists);
 
 // return the last index used in a collection
-int dpiObject_getLastIndex(dpiObject *obj, int32_t *index, int *exists);
+DPI_EXPORT int dpiObject_getLastIndex(dpiObject *obj, int32_t *index,
+        int *exists);
 
 // return the next index used in a collection given an index
-int dpiObject_getNextIndex(dpiObject *obj, int32_t index, int32_t *nextIndex,
-        int *exists);
+DPI_EXPORT int dpiObject_getNextIndex(dpiObject *obj, int32_t index,
+        int32_t *nextIndex, int *exists);
 
 // return the previous index used in a collection given an index
-int dpiObject_getPrevIndex(dpiObject *obj, int32_t index, int32_t *prevIndex,
-        int *exists);
+DPI_EXPORT int dpiObject_getPrevIndex(dpiObject *obj, int32_t index,
+        int32_t *prevIndex, int *exists);
 
 // return the number of elements in a collection
-int dpiObject_getSize(dpiObject *obj, int32_t *size);
+DPI_EXPORT int dpiObject_getSize(dpiObject *obj, int32_t *size);
 
 // release a reference to the object
-int dpiObject_release(dpiObject *obj);
+DPI_EXPORT int dpiObject_release(dpiObject *obj);
 
 // set the value of the specified attribute
-int dpiObject_setAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
+DPI_EXPORT int dpiObject_setAttributeValue(dpiObject *obj, dpiObjectAttr *attr,
         dpiNativeTypeNum nativeTypeNum, dpiData *value);
 
 // set the value of the element in a collection at the specified index
-int dpiObject_setElementValueByIndex(dpiObject *obj, int32_t index,
+DPI_EXPORT int dpiObject_setElementValueByIndex(dpiObject *obj, int32_t index,
         dpiNativeTypeNum nativeTypeNum, dpiData *value);
 
 // trim a number of elements from the end of a collection
-int dpiObject_trim(dpiObject *obj, uint32_t numToTrim);
+DPI_EXPORT int dpiObject_trim(dpiObject *obj, uint32_t numToTrim);
 
 
 //-----------------------------------------------------------------------------
@@ -1325,13 +1389,14 @@ int dpiObject_trim(dpiObject *obj, uint32_t numToTrim);
 //-----------------------------------------------------------------------------
 
 // add a reference to the attribute
-int dpiObjectAttr_addRef(dpiObjectAttr *attr);
+DPI_EXPORT int dpiObjectAttr_addRef(dpiObjectAttr *attr);
 
 // return the name of the attribute
-int dpiObjectAttr_getInfo(dpiObjectAttr *attr, dpiObjectAttrInfo *info);
+DPI_EXPORT int dpiObjectAttr_getInfo(dpiObjectAttr *attr,
+        dpiObjectAttrInfo *info);
 
 // release a reference to the attribute
-int dpiObjectAttr_release(dpiObjectAttr *attr);
+DPI_EXPORT int dpiObjectAttr_release(dpiObjectAttr *attr);
 
 
 //-----------------------------------------------------------------------------
@@ -1339,20 +1404,22 @@ int dpiObjectAttr_release(dpiObjectAttr *attr);
 //-----------------------------------------------------------------------------
 
 // add a reference to the object type
-int dpiObjectType_addRef(dpiObjectType *objType);
+DPI_EXPORT int dpiObjectType_addRef(dpiObjectType *objType);
 
 // create an object of the specified type and return it
-int dpiObjectType_createObject(dpiObjectType *objType, dpiObject **obj);
+DPI_EXPORT int dpiObjectType_createObject(dpiObjectType *objType,
+        dpiObject **obj);
 
 // return the attributes available on the object type
-int dpiObjectType_getAttributes(dpiObjectType *objType, uint16_t numAttributes,
-        dpiObjectAttr **attributes);
+DPI_EXPORT int dpiObjectType_getAttributes(dpiObjectType *objType,
+        uint16_t numAttributes, dpiObjectAttr **attributes);
 
 // return information about the object type
-int dpiObjectType_getInfo(dpiObjectType *objType, dpiObjectTypeInfo *info);
+DPI_EXPORT int dpiObjectType_getInfo(dpiObjectType *objType,
+        dpiObjectTypeInfo *info);
 
 // release a reference to the object type
-int dpiObjectType_release(dpiObjectType *objType);
+DPI_EXPORT int dpiObjectType_release(dpiObjectType *objType);
 
 
 //-----------------------------------------------------------------------------
@@ -1360,64 +1427,64 @@ int dpiObjectType_release(dpiObjectType *objType);
 //-----------------------------------------------------------------------------
 
 // acquire a connection from the pool and return it
-int dpiPool_acquireConnection(dpiPool *pool, const char *userName,
+DPI_EXPORT int dpiPool_acquireConnection(dpiPool *pool, const char *userName,
         uint32_t userNameLength, const char *password, uint32_t passwordLength,
         dpiConnCreateParams *createParams, dpiConn **conn);
 
 // add a reference to a pool
-int dpiPool_addRef(dpiPool *pool);
+DPI_EXPORT int dpiPool_addRef(dpiPool *pool);
 
 // destroy the pool now, not when its reference count reaches zero
-int dpiPool_close(dpiPool *pool, dpiPoolCloseMode closeMode);
+DPI_EXPORT int dpiPool_close(dpiPool *pool, dpiPoolCloseMode closeMode);
 
 // create a session pool and return it
-int dpiPool_create(const dpiContext *context, const char *userName,
+DPI_EXPORT int dpiPool_create(const dpiContext *context, const char *userName,
         uint32_t userNameLength, const char *password, uint32_t passwordLength,
         const char *connectString, uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         dpiPoolCreateParams *createParams, dpiPool **pool);
 
 // get the pool's busy count
-int dpiPool_getBusyCount(dpiPool *pool, uint32_t *value);
+DPI_EXPORT int dpiPool_getBusyCount(dpiPool *pool, uint32_t *value);
 
 // return the encoding information used by the session pool
-int dpiPool_getEncodingInfo(dpiPool *pool, dpiEncodingInfo *info);
+DPI_EXPORT int dpiPool_getEncodingInfo(dpiPool *pool, dpiEncodingInfo *info);
 
 // get the pool's "get" mode
-int dpiPool_getGetMode(dpiPool *pool, dpiPoolGetMode *value);
+DPI_EXPORT int dpiPool_getGetMode(dpiPool *pool, dpiPoolGetMode *value);
 
 // get the pool's maximum lifetime session
-int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value);
+DPI_EXPORT int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value);
 
 // get the pool's open count
-int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value);
+DPI_EXPORT int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value);
 
 // return the statement cache size
-int dpiPool_getStmtCacheSize(dpiPool *pool, uint32_t *cacheSize);
+DPI_EXPORT int dpiPool_getStmtCacheSize(dpiPool *pool, uint32_t *cacheSize);
 
 // get the pool's timeout value
-int dpiPool_getTimeout(dpiPool *pool, uint32_t *value);
+DPI_EXPORT int dpiPool_getTimeout(dpiPool *pool, uint32_t *value);
 
 // get the pool's wait timeout value
-int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value);
+DPI_EXPORT int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value);
 
 // release a reference to the pool
-int dpiPool_release(dpiPool *pool);
+DPI_EXPORT int dpiPool_release(dpiPool *pool);
 
 // set the pool's "get" mode
-int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
+DPI_EXPORT int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
 
 // set the pool's maximum lifetime session
-int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value);
+DPI_EXPORT int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value);
 
 // set the statement cache size
-int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t cacheSize);
+DPI_EXPORT int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t cacheSize);
 
 // set the pool's timeout value
-int dpiPool_setTimeout(dpiPool *pool, uint32_t value);
+DPI_EXPORT int dpiPool_setTimeout(dpiPool *pool, uint32_t value);
 
 // set the pool's wait timeout value
-int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
+DPI_EXPORT int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
 
 
 //-----------------------------------------------------------------------------
@@ -1425,28 +1492,32 @@ int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
 //-----------------------------------------------------------------------------
 
 // add a reference to the queue
-int dpiQueue_addRef(dpiQueue *queue);
+DPI_EXPORT int dpiQueue_addRef(dpiQueue *queue);
 
 // dequeue multiple messages from the queue
-int dpiQueue_deqMany(dpiQueue *queue, uint32_t *numProps, dpiMsgProps **props);
+DPI_EXPORT int dpiQueue_deqMany(dpiQueue *queue, uint32_t *numProps,
+        dpiMsgProps **props);
 
 // dequeue a single message from the queue
-int dpiQueue_deqOne(dpiQueue *queue, dpiMsgProps **props);
+DPI_EXPORT int dpiQueue_deqOne(dpiQueue *queue, dpiMsgProps **props);
 
 // enqueue multiple message to the queue
-int dpiQueue_enqMany(dpiQueue *queue, uint32_t numProps, dpiMsgProps **props);
+DPI_EXPORT int dpiQueue_enqMany(dpiQueue *queue, uint32_t numProps,
+        dpiMsgProps **props);
 
 // enqueue a single message to the queue
-int dpiQueue_enqOne(dpiQueue *queue, dpiMsgProps *props);
+DPI_EXPORT int dpiQueue_enqOne(dpiQueue *queue, dpiMsgProps *props);
 
 // get a reference to the dequeue options associated with the queue
-int dpiQueue_getDeqOptions(dpiQueue *queue, dpiDeqOptions **options);
+DPI_EXPORT int dpiQueue_getDeqOptions(dpiQueue *queue,
+        dpiDeqOptions **options);
 
 // get a reference to the enqueue options associated with the queue
-int dpiQueue_getEnqOptions(dpiQueue *queue, dpiEnqOptions **options);
+DPI_EXPORT int dpiQueue_getEnqOptions(dpiQueue *queue,
+        dpiEnqOptions **options);
 
 // release a reference to the queue
-int dpiQueue_release(dpiQueue *queue);
+DPI_EXPORT int dpiQueue_release(dpiQueue *queue);
 
 
 //-----------------------------------------------------------------------------
@@ -1454,62 +1525,71 @@ int dpiQueue_release(dpiQueue *queue);
 //-----------------------------------------------------------------------------
 
 // add a reference to the SODA collection
-int dpiSodaColl_addRef(dpiSodaColl *coll);
+DPI_EXPORT int dpiSodaColl_addRef(dpiSodaColl *coll);
 
 // create an index on the collection
-int dpiSodaColl_createIndex(dpiSodaColl *coll, const char *indexSpec,
-        uint32_t indexSpecLength, uint32_t flags);
+DPI_EXPORT int dpiSodaColl_createIndex(dpiSodaColl *coll,
+        const char *indexSpec, uint32_t indexSpecLength, uint32_t flags);
 
 // drop a SODA collection
-int dpiSodaColl_drop(dpiSodaColl *coll, uint32_t flags, int *isDropped);
+DPI_EXPORT int dpiSodaColl_drop(dpiSodaColl *coll, uint32_t flags,
+        int *isDropped);
 
 // drop an index on the collection
-int dpiSodaColl_dropIndex(dpiSodaColl *coll, const char *name,
+DPI_EXPORT int dpiSodaColl_dropIndex(dpiSodaColl *coll, const char *name,
         uint32_t nameLength, uint32_t flags, int *isDropped);
 
 // find documents in a SODA collection and return a cursor
-int dpiSodaColl_find(dpiSodaColl *coll, const dpiSodaOperOptions *options,
-        uint32_t flags, dpiSodaDocCursor **cursor);
+DPI_EXPORT int dpiSodaColl_find(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, uint32_t flags,
+        dpiSodaDocCursor **cursor);
 
 // find a single document in a SODA collection
-int dpiSodaColl_findOne(dpiSodaColl *coll, const dpiSodaOperOptions *options,
-        uint32_t flags, dpiSodaDoc **doc);
+DPI_EXPORT int dpiSodaColl_findOne(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, uint32_t flags, dpiSodaDoc **doc);
 
 // get the data guide for the collection
-int dpiSodaColl_getDataGuide(dpiSodaColl *coll, uint32_t flags,
+DPI_EXPORT int dpiSodaColl_getDataGuide(dpiSodaColl *coll, uint32_t flags,
         dpiSodaDoc **doc);
 
 // get the count of documents that match the criteria
-int dpiSodaColl_getDocCount(dpiSodaColl *coll,
+DPI_EXPORT int dpiSodaColl_getDocCount(dpiSodaColl *coll,
         const dpiSodaOperOptions *options, uint32_t flags, uint64_t *count);
 
 // get the metadata of the collection
-int dpiSodaColl_getMetadata(dpiSodaColl *coll, const char **value,
+DPI_EXPORT int dpiSodaColl_getMetadata(dpiSodaColl *coll, const char **value,
         uint32_t *valueLength);
 
 // get the name of the collection
-int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
+DPI_EXPORT int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
         uint32_t *valueLength);
 
 // insert multiple documents into the SODA collection
-int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
+DPI_EXPORT int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
         dpiSodaDoc **docs, uint32_t flags, dpiSodaDoc **insertedDocs);
 
 // insert a document into the SODA collection
-int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
-        dpiSodaDoc **insertedDoc);
+DPI_EXPORT int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc,
+        uint32_t flags, dpiSodaDoc **insertedDoc);
 
 // release a reference to the SODA collection
-int dpiSodaColl_release(dpiSodaColl *coll);
+DPI_EXPORT int dpiSodaColl_release(dpiSodaColl *coll);
 
 // remove documents from a SODA collection (with operation options)
-int dpiSodaColl_remove(dpiSodaColl *coll, const dpiSodaOperOptions *options,
-        uint32_t flags, uint64_t *count);
+DPI_EXPORT int dpiSodaColl_remove(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, uint32_t flags, uint64_t *count);
 
 // replace a document in a SODA collection (with operation options)
-int dpiSodaColl_replaceOne(dpiSodaColl *coll,
+DPI_EXPORT int dpiSodaColl_replaceOne(dpiSodaColl *coll,
         const dpiSodaOperOptions *options, dpiSodaDoc *doc, uint32_t flags,
         int *replaced, dpiSodaDoc **replacedDoc);
+
+// save a document to a SODA collection
+DPI_EXPORT int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc,
+        uint32_t flags, dpiSodaDoc **savedDoc);
+
+// remove all of the documents from a SODA collection
+DPI_EXPORT int dpiSodaColl_truncate(dpiSodaColl *coll);
 
 
 //-----------------------------------------------------------------------------
@@ -1517,17 +1597,17 @@ int dpiSodaColl_replaceOne(dpiSodaColl *coll,
 //-----------------------------------------------------------------------------
 
 // add a reference to the SODA collection cursor
-int dpiSodaCollCursor_addRef(dpiSodaCollCursor *cursor);
+DPI_EXPORT int dpiSodaCollCursor_addRef(dpiSodaCollCursor *cursor);
 
 // close the SODA collection cursor
-int dpiSodaCollCursor_close(dpiSodaCollCursor *cursor);
+DPI_EXPORT int dpiSodaCollCursor_close(dpiSodaCollCursor *cursor);
 
 // get the next collection from the cursor
-int dpiSodaCollCursor_getNext(dpiSodaCollCursor *cursor, uint32_t flags,
-        dpiSodaColl **coll);
+DPI_EXPORT int dpiSodaCollCursor_getNext(dpiSodaCollCursor *cursor,
+        uint32_t flags, dpiSodaColl **coll);
 
 // release a reference to the SODA collection cursor
-int dpiSodaCollCursor_release(dpiSodaCollCursor *cursor);
+DPI_EXPORT int dpiSodaCollCursor_release(dpiSodaCollCursor *cursor);
 
 
 //-----------------------------------------------------------------------------
@@ -1535,37 +1615,38 @@ int dpiSodaCollCursor_release(dpiSodaCollCursor *cursor);
 //-----------------------------------------------------------------------------
 
 // add a reference to the SODA database
-int dpiSodaDb_addRef(dpiSodaDb *db);
+DPI_EXPORT int dpiSodaDb_addRef(dpiSodaDb *db);
 
 // create a new SODA collection
-int dpiSodaDb_createCollection(dpiSodaDb *db, const char *name,
+DPI_EXPORT int dpiSodaDb_createCollection(dpiSodaDb *db, const char *name,
         uint32_t nameLength, const char *metadata, uint32_t metadataLength,
         uint32_t flags, dpiSodaColl **coll);
 
 // create a new SODA document
-int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
+DPI_EXPORT int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
         uint32_t keyLength, const char *content, uint32_t contentLength,
         const char *mediaType, uint32_t mediaTypeLength, uint32_t flags,
         dpiSodaDoc **doc);
 
 // free the memory allocated when getting an array of SODA collection names
-int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiSodaCollNames *names);
+DPI_EXPORT int dpiSodaDb_freeCollectionNames(dpiSodaDb *db,
+        dpiSodaCollNames *names);
 
 // return a cursor to iterate over SODA collections
-int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
+DPI_EXPORT int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
         uint32_t startNameLength, uint32_t flags, dpiSodaCollCursor **cursor);
 
 // return an array of SODA collection names
-int dpiSodaDb_getCollectionNames(dpiSodaDb *db, const char *startName,
-        uint32_t startNameLength, uint32_t limit, uint32_t flags,
-        dpiSodaCollNames *names);
+DPI_EXPORT int dpiSodaDb_getCollectionNames(dpiSodaDb *db,
+        const char *startName, uint32_t startNameLength, uint32_t limit,
+        uint32_t flags, dpiSodaCollNames *names);
 
 // open an existing SODA collection
-int dpiSodaDb_openCollection(dpiSodaDb *db, const char *name,
+DPI_EXPORT int dpiSodaDb_openCollection(dpiSodaDb *db, const char *name,
         uint32_t nameLength, uint32_t flags, dpiSodaColl **coll);
 
 // release a reference to the SODA database
-int dpiSodaDb_release(dpiSodaDb *db);
+DPI_EXPORT int dpiSodaDb_release(dpiSodaDb *db);
 
 
 //-----------------------------------------------------------------------------
@@ -1573,34 +1654,34 @@ int dpiSodaDb_release(dpiSodaDb *db);
 //-----------------------------------------------------------------------------
 
 // add a reference to the SODA document
-int dpiSodaDoc_addRef(dpiSodaDoc *cursor);
+DPI_EXPORT int dpiSodaDoc_addRef(dpiSodaDoc *cursor);
 
 // get the content of the document
-int dpiSodaDoc_getContent(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getContent(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength, const char **encoding);
 
 // get the created timestamp associated with the document
-int dpiSodaDoc_getCreatedOn(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getCreatedOn(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // get the key associated with the document
-int dpiSodaDoc_getKey(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getKey(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // get the last modified timestamp associated with the document
-int dpiSodaDoc_getLastModified(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getLastModified(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // get the media type of the document
-int dpiSodaDoc_getMediaType(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getMediaType(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // get the version of the document
-int dpiSodaDoc_getVersion(dpiSodaDoc *doc, const char **value,
+DPI_EXPORT int dpiSodaDoc_getVersion(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // release a reference to the SODA document
-int dpiSodaDoc_release(dpiSodaDoc *cursor);
+DPI_EXPORT int dpiSodaDoc_release(dpiSodaDoc *cursor);
 
 
 //-----------------------------------------------------------------------------
@@ -1608,17 +1689,17 @@ int dpiSodaDoc_release(dpiSodaDoc *cursor);
 //-----------------------------------------------------------------------------
 
 // add a reference to the SODA document cursor
-int dpiSodaDocCursor_addRef(dpiSodaDocCursor *cursor);
+DPI_EXPORT int dpiSodaDocCursor_addRef(dpiSodaDocCursor *cursor);
 
 // close the SODA document cursor
-int dpiSodaDocCursor_close(dpiSodaDocCursor *cursor);
+DPI_EXPORT int dpiSodaDocCursor_close(dpiSodaDocCursor *cursor);
 
 // get the next document from the cursor
-int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, uint32_t flags,
-        dpiSodaDoc **doc);
+DPI_EXPORT int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor,
+        uint32_t flags, dpiSodaDoc **doc);
 
 // release a reference to the SODA document cursor
-int dpiSodaDocCursor_release(dpiSodaDocCursor *cursor);
+DPI_EXPORT int dpiSodaDocCursor_release(dpiSodaDocCursor *cursor);
 
 
 //-----------------------------------------------------------------------------
@@ -1626,115 +1707,121 @@ int dpiSodaDocCursor_release(dpiSodaDocCursor *cursor);
 //-----------------------------------------------------------------------------
 
 // add a reference to a statement
-int dpiStmt_addRef(dpiStmt *stmt);
+DPI_EXPORT int dpiStmt_addRef(dpiStmt *stmt);
 
 // bind a variable to the statement using the given name
-int dpiStmt_bindByName(dpiStmt *stmt, const char *name, uint32_t nameLength,
-        dpiVar *var);
+DPI_EXPORT int dpiStmt_bindByName(dpiStmt *stmt, const char *name,
+        uint32_t nameLength, dpiVar *var);
 
 // bind a variable to the statement at the given position
 // positions are determined by the order in which names are introduced
-int dpiStmt_bindByPos(dpiStmt *stmt, uint32_t pos, dpiVar *var);
+DPI_EXPORT int dpiStmt_bindByPos(dpiStmt *stmt, uint32_t pos, dpiVar *var);
 
 // bind a value to the statement using the given name
 // this creates the variable by looking at the type and then binds it
-int dpiStmt_bindValueByName(dpiStmt *stmt, const char *name,
+DPI_EXPORT int dpiStmt_bindValueByName(dpiStmt *stmt, const char *name,
         uint32_t nameLength, dpiNativeTypeNum nativeTypeNum, dpiData *data);
 
 // bind a value to the statement at the given position
 // this creates the variable by looking at the type and then binds it
-int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
+DPI_EXPORT int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
         dpiNativeTypeNum nativeTypeNum, dpiData *data);
 
 // close the statement now, not when its reference count reaches zero
-int dpiStmt_close(dpiStmt *stmt, const char *tag, uint32_t tagLength);
+DPI_EXPORT int dpiStmt_close(dpiStmt *stmt, const char *tag,
+        uint32_t tagLength);
 
 // define a variable to accept the data for the specified column (1 based)
-int dpiStmt_define(dpiStmt *stmt, uint32_t pos, dpiVar *var);
+DPI_EXPORT int dpiStmt_define(dpiStmt *stmt, uint32_t pos, dpiVar *var);
 
 // define type of data to use for the specified column (1 based)
-int dpiStmt_defineValue(dpiStmt *stmt, uint32_t pos,
+DPI_EXPORT int dpiStmt_defineValue(dpiStmt *stmt, uint32_t pos,
         dpiOracleTypeNum oracleTypeNum, dpiNativeTypeNum nativeTypeNum,
         uint32_t size, int sizeIsBytes, dpiObjectType *objType);
 
 // execute the statement and return the number of query columns
 // zero implies the statement is not a query
-int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
+DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
         uint32_t *numQueryColumns);
 
 // execute the statement multiple times (queries not supported)
-int dpiStmt_executeMany(dpiStmt *stmt, dpiExecMode mode, uint32_t numIters);
+DPI_EXPORT int dpiStmt_executeMany(dpiStmt *stmt, dpiExecMode mode,
+        uint32_t numIters);
 
 // fetch a single row and return the index into the defined variables
 // this will internally perform any execute and array fetch as needed
-int dpiStmt_fetch(dpiStmt *stmt, int *found, uint32_t *bufferRowIndex);
+DPI_EXPORT int dpiStmt_fetch(dpiStmt *stmt, int *found,
+        uint32_t *bufferRowIndex);
 
 // return the number of rows that are available in the defined variables
 // up to the maximum specified; this will internally perform execute/array
 // fetch only if no rows are available in the defined variables and there are
 // more rows available to fetch
-int dpiStmt_fetchRows(dpiStmt *stmt, uint32_t maxRows,
+DPI_EXPORT int dpiStmt_fetchRows(dpiStmt *stmt, uint32_t maxRows,
         uint32_t *bufferRowIndex, uint32_t *numRowsFetched, int *moreRows);
 
 // get the number of batch errors that took place in the previous execution
-int dpiStmt_getBatchErrorCount(dpiStmt *stmt, uint32_t *count);
+DPI_EXPORT int dpiStmt_getBatchErrorCount(dpiStmt *stmt, uint32_t *count);
 
 // get the batch errors that took place in the previous execution
-int dpiStmt_getBatchErrors(dpiStmt *stmt, uint32_t numErrors,
+DPI_EXPORT int dpiStmt_getBatchErrors(dpiStmt *stmt, uint32_t numErrors,
         dpiErrorInfo *errors);
 
 // get the number of bind variables that are in the prepared statement
-int dpiStmt_getBindCount(dpiStmt *stmt, uint32_t *count);
+DPI_EXPORT int dpiStmt_getBindCount(dpiStmt *stmt, uint32_t *count);
 
 // get the names of the bind variables that are in the prepared statement
-int dpiStmt_getBindNames(dpiStmt *stmt, uint32_t *numBindNames,
+DPI_EXPORT int dpiStmt_getBindNames(dpiStmt *stmt, uint32_t *numBindNames,
         const char **bindNames, uint32_t *bindNameLengths);
 
 // get the number of rows to (internally) fetch at one time
-int dpiStmt_getFetchArraySize(dpiStmt *stmt, uint32_t *arraySize);
+DPI_EXPORT int dpiStmt_getFetchArraySize(dpiStmt *stmt, uint32_t *arraySize);
 
 // get next implicit result from previous execution; NULL if no more exist
-int dpiStmt_getImplicitResult(dpiStmt *stmt, dpiStmt **implicitResult);
+DPI_EXPORT int dpiStmt_getImplicitResult(dpiStmt *stmt,
+        dpiStmt **implicitResult);
 
 // return information about the statement
-int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info);
+DPI_EXPORT int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info);
 
 // get the rowid of the last row affected by a DML statement
-int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid);
+DPI_EXPORT int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid);
 
 // get the number of query columns (zero implies the statement is not a query)
-int dpiStmt_getNumQueryColumns(dpiStmt *stmt, uint32_t *numQueryColumns);
+DPI_EXPORT int dpiStmt_getNumQueryColumns(dpiStmt *stmt,
+        uint32_t *numQueryColumns);
 
 // return metadata about the column at the specified position (1 based)
-int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos, dpiQueryInfo *info);
+DPI_EXPORT int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos,
+        dpiQueryInfo *info);
 
 // get the value for the specified column of the current row fetched
-int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
+DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
         dpiNativeTypeNum *nativeTypeNum, dpiData **data);
 
 // get the row count for the statement
 // for queries, this is the number of rows that have been fetched so far
 // for non-queries, this is the number of rows affected by the last execution
-int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count);
+DPI_EXPORT int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count);
 
 // get the number of rows affected for each DML operation just executed
 // using the mode DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS
-int dpiStmt_getRowCounts(dpiStmt *stmt, uint32_t *numRowCounts,
+DPI_EXPORT int dpiStmt_getRowCounts(dpiStmt *stmt, uint32_t *numRowCounts,
         uint64_t **rowCounts);
 
 // get subscription query id for continuous query notification
-int dpiStmt_getSubscrQueryId(dpiStmt *stmt, uint64_t *queryId);
+DPI_EXPORT int dpiStmt_getSubscrQueryId(dpiStmt *stmt, uint64_t *queryId);
 
 // release a reference to the statement
-int dpiStmt_release(dpiStmt *stmt);
+DPI_EXPORT int dpiStmt_release(dpiStmt *stmt);
 
 // scroll the statement to the desired row
 // this is only valid for scrollable statements
-int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
+DPI_EXPORT int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
         int32_t rowCountOffset);
 
 // set the number of rows to (internally) fetch at one time
-int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize);
+DPI_EXPORT int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize);
 
 
 //-----------------------------------------------------------------------------
@@ -1742,14 +1829,14 @@ int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize);
 //-----------------------------------------------------------------------------
 
 // add a reference to the rowid
-int dpiRowid_addRef(dpiRowid *rowid);
+DPI_EXPORT int dpiRowid_addRef(dpiRowid *rowid);
 
 // get string representation from rowid
-int dpiRowid_getStringValue(dpiRowid *rowid, const char **value,
+DPI_EXPORT int dpiRowid_getStringValue(dpiRowid *rowid, const char **value,
         uint32_t *valueLength);
 
 // release a reference to the rowid
-int dpiRowid_release(dpiRowid *subscr);
+DPI_EXPORT int dpiRowid_release(dpiRowid *subscr);
 
 
 //-----------------------------------------------------------------------------
@@ -1757,14 +1844,14 @@ int dpiRowid_release(dpiRowid *subscr);
 //-----------------------------------------------------------------------------
 
 // add a reference to the subscription
-int dpiSubscr_addRef(dpiSubscr *subscr);
+DPI_EXPORT int dpiSubscr_addRef(dpiSubscr *subscr);
 
 // prepare statement for registration with subscription
-int dpiSubscr_prepareStmt(dpiSubscr *subscr, const char *sql,
+DPI_EXPORT int dpiSubscr_prepareStmt(dpiSubscr *subscr, const char *sql,
         uint32_t sqlLength, dpiStmt **stmt);
 
 // release a reference to the subscription
-int dpiSubscr_release(dpiSubscr *subscr);
+DPI_EXPORT int dpiSubscr_release(dpiSubscr *subscr);
 
 
 //-----------------------------------------------------------------------------
@@ -1772,43 +1859,48 @@ int dpiSubscr_release(dpiSubscr *subscr);
 //-----------------------------------------------------------------------------
 
 // add a reference to the variable
-int dpiVar_addRef(dpiVar *var);
+DPI_EXPORT int dpiVar_addRef(dpiVar *var);
 
 // copy the data from one variable to another variable
-int dpiVar_copyData(dpiVar *var, uint32_t pos, dpiVar *sourceVar,
+DPI_EXPORT int dpiVar_copyData(dpiVar *var, uint32_t pos, dpiVar *sourceVar,
         uint32_t sourcePos);
 
 // return the number of elements in a PL/SQL index-by table
-int dpiVar_getNumElementsInArray(dpiVar *var, uint32_t *numElements);
+DPI_EXPORT int dpiVar_getNumElementsInArray(dpiVar *var,
+        uint32_t *numElements);
 
 // return pointer to array of dpiData structures for transferring data
 // this is needed for DML returning where the number of elements is modified
-int dpiVar_getReturnedData(dpiVar *var, uint32_t pos, uint32_t *numElements,
-        dpiData **data);
+DPI_EXPORT int dpiVar_getReturnedData(dpiVar *var, uint32_t pos,
+        uint32_t *numElements, dpiData **data);
 
 // return the size in bytes of the buffer used for fetching/binding
-int dpiVar_getSizeInBytes(dpiVar *var, uint32_t *sizeInBytes);
+DPI_EXPORT int dpiVar_getSizeInBytes(dpiVar *var, uint32_t *sizeInBytes);
 
 // release a reference to the variable
-int dpiVar_release(dpiVar *var);
+DPI_EXPORT int dpiVar_release(dpiVar *var);
 
 // set the value of the variable from a byte string
-int dpiVar_setFromBytes(dpiVar *var, uint32_t pos, const char *value,
-        uint32_t valueLength);
+DPI_EXPORT int dpiVar_setFromBytes(dpiVar *var, uint32_t pos,
+        const char *value, uint32_t valueLength);
 
 // set the value of the variable from a LOB
-int dpiVar_setFromLob(dpiVar *var, uint32_t pos, dpiLob *lob);
+DPI_EXPORT int dpiVar_setFromLob(dpiVar *var, uint32_t pos, dpiLob *lob);
 
 // set the value of the variable from an object
-int dpiVar_setFromObject(dpiVar *var, uint32_t pos, dpiObject *obj);
+DPI_EXPORT int dpiVar_setFromObject(dpiVar *var, uint32_t pos, dpiObject *obj);
 
 // set the value of the variable from a rowid
-int dpiVar_setFromRowid(dpiVar *var, uint32_t pos, dpiRowid *rowid);
+DPI_EXPORT int dpiVar_setFromRowid(dpiVar *var, uint32_t pos, dpiRowid *rowid);
 
 // set the value of the variable from a statement
-int dpiVar_setFromStmt(dpiVar *var, uint32_t pos, dpiStmt *stmt);
+DPI_EXPORT int dpiVar_setFromStmt(dpiVar *var, uint32_t pos, dpiStmt *stmt);
 
 // set the number of elements in a PL/SQL index-by table
-int dpiVar_setNumElementsInArray(dpiVar *var, uint32_t numElements);
+DPI_EXPORT int dpiVar_setNumElementsInArray(dpiVar *var, uint32_t numElements);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

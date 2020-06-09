@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -62,7 +62,7 @@ int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
 int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
         int minReleaseNum, dpiError *error)
 {
-    if (dpiConn__getServerVersion(conn, error) < 0)
+    if (dpiConn__getServerVersion(conn, 0, error) < 0)
         return DPI_FAILURE;
     if (conn->versionInfo.versionNum < minVersionNum ||
             (conn->versionInfo.versionNum == minVersionNum &&
@@ -87,6 +87,29 @@ void dpiUtils__clearMemory(void *ptr, size_t length)
 
     while (length--)
         *temp++ = '\0';
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiUtils__ensureBuffer() [INTERNAL]
+//   Ensure that a buffer of the specified size is available. If a buffer of
+// the requested size is not available, free any existing buffer and allocate a
+// new, larger buffer.
+//-----------------------------------------------------------------------------
+int dpiUtils__ensureBuffer(size_t desiredSize, const char *action,
+        void **ptr, size_t *currentSize, dpiError *error)
+{
+    if (desiredSize <= *currentSize)
+        return DPI_SUCCESS;
+    if (*ptr) {
+        dpiUtils__freeMemory(*ptr);
+        *ptr = NULL;
+        *currentSize = 0;
+    }
+    if (dpiUtils__allocateMemory(1, desiredSize, 0, action, ptr, error) < 0)
+        return DPI_FAILURE;
+    *currentSize = desiredSize;
+    return DPI_SUCCESS;
 }
 
 
@@ -122,6 +145,77 @@ int dpiUtils__getAttrStringWithDup(const char *action, const void *ociHandle,
     *value = (const char*) memcpy(temp, source, *valueLength);
     return DPI_SUCCESS;
 }
+
+
+#ifdef _WIN32
+//-----------------------------------------------------------------------------
+// dpiUtils__getWindowsError() [INTERNAL]
+//   Get the error message from Windows and place into the supplied buffer. The
+// buffer and length are provided as pointers and memory is allocated as needed
+// in order to be able to store the entire error message.
+//-----------------------------------------------------------------------------
+int dpiUtils__getWindowsError(DWORD errorNum, char **buffer,
+        size_t *bufferLength, dpiError *error)
+{
+    char *fallbackErrorFormat = "failed to get message for Windows Error %d";
+    wchar_t *wLoadError = NULL;
+    DWORD length = 0, status;
+
+    // use English unless English error messages aren't available
+    status = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ALLOCATE_BUFFER,
+            NULL, errorNum, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+            (LPWSTR) &wLoadError, 0, NULL);
+    if (!status && GetLastError() == ERROR_MUI_FILE_NOT_FOUND)
+        FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM |
+                FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ALLOCATE_BUFFER,
+                NULL, errorNum, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                (LPWSTR) &wLoadError, 0, NULL);
+
+    // transform UTF-16 to UTF-8
+    if (wLoadError) {
+
+        // strip trailing period and carriage return from message, if needed
+        length = (DWORD) wcslen(wLoadError);
+        while (length > 0) {
+            if (wLoadError[length - 1] > 127 ||
+                    (wLoadError[length - 1] != L'.' &&
+                    !isspace(wLoadError[length - 1])))
+                break;
+            length--;
+        }
+        wLoadError[length] = L'\0';
+
+        // convert to UTF-8 encoding
+        if (length > 0) {
+            length = WideCharToMultiByte(CP_UTF8, 0, wLoadError, -1, NULL, 0,
+                    NULL, NULL);
+            if (length > 0) {
+                if (dpiUtils__ensureBuffer(length,
+                        "allocate buffer for Windows error message",
+                        (void**) buffer, bufferLength, error) < 0) {
+                    LocalFree(wLoadError);
+                    return DPI_FAILURE;
+                }
+                length = WideCharToMultiByte(CP_UTF8, 0, wLoadError, -1,
+                        *buffer, (int) *bufferLength, NULL, NULL);
+            }
+        }
+        LocalFree(wLoadError);
+
+    }
+
+    if (length == 0) {
+        if (dpiUtils__ensureBuffer(strlen(fallbackErrorFormat) + 20,
+                "allocate buffer for fallback error message",
+                (void**) buffer, bufferLength, error) < 0)
+            return DPI_FAILURE;
+        (void) sprintf(*buffer, fallbackErrorFormat, errorNum);
+    }
+
+    return DPI_SUCCESS;
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -377,19 +471,10 @@ int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
         uint32_t handleType, const dpiCommonCreateParams *params,
         dpiError *error)
 {
-    uint32_t driverNameLength;
-    const char *driverName;
-
-    if (params->driverName && params->driverNameLength > 0) {
-        driverName = params->driverName;
-        driverNameLength = params->driverNameLength;
-    } else {
-        driverName = DPI_DEFAULT_DRIVER_NAME;
-        driverNameLength = (uint32_t) strlen(driverName);
-    }
-    if (driverName && driverNameLength > 0 && dpiOci__attrSet(handle,
-            handleType, (void*) driverName, driverNameLength,
-            DPI_OCI_ATTR_DRIVER_NAME, "set driver name", error) < 0)
+    if (params->driverName && params->driverNameLength > 0 &&
+            dpiOci__attrSet(handle, handleType, (void*) params->driverName,
+                    params->driverNameLength, DPI_OCI_ATTR_DRIVER_NAME,
+                    "set driver name", error) < 0)
         return DPI_FAILURE;
     if (params->edition && params->editionLength > 0 &&
             dpiOci__attrSet(handle, handleType,
