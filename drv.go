@@ -360,7 +360,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			case []byte:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_RAW
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-				cs := (*C.char)(unsafe.Pointer(&value[0]))
+				cs := (*C.char)(C.CBytes(value))
 				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
