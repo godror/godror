@@ -100,8 +100,8 @@ const (
 	DefaultSessionIncrement = 1
 	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
 	DefaultPoolIncrement = DefaultSessionIncrement
-	// DefaultConnectionClass is the default connectionClass
-	DefaultConnectionClass = "GODROR"
+	// DefaultConnectionClass is empty, which allows to use the default connections created as part of session pool creation
+	DefaultConnectionClass = ""
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1
 	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
