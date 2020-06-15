@@ -40,15 +40,6 @@ extern "C" {
 #include <stdint.h>
 #endif
 
-#ifndef _MSC_VER
-#ifndef	_DLFCN_H
-#ifndef __USE_GNU
-#define __USE_GNU 1
-#endif
-#include <dlfcn.h>
-#endif
-#endif
-
 // define __func__ for older versions of Microsoft Visual Studio
 #ifdef _MSC_VER
 #if _MSC_VER < 1900
@@ -91,6 +82,9 @@ extern "C" {
 
 // define default array size to use
 #define DPI_DEFAULT_FETCH_ARRAY_SIZE            100
+
+// define default number of rows to prefetch
+#define DPI_DEFAULT_PREFETCH_ROWS               2
 
 // define ping interval (in seconds) used when getting connections
 #define DPI_DEFAULT_PING_INTERVAL               60
@@ -1791,6 +1785,9 @@ DPI_EXPORT int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid);
 DPI_EXPORT int dpiStmt_getNumQueryColumns(dpiStmt *stmt,
         uint32_t *numQueryColumns);
 
+// return the number of rows that are prefetched by the Oracle Client library
+DPI_EXPORT int dpiStmt_getPrefetchRows(dpiStmt *stmt, uint32_t *numRows);
+
 // return metadata about the column at the specified position (1 based)
 DPI_EXPORT int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos,
         dpiQueryInfo *info);
@@ -1822,6 +1819,10 @@ DPI_EXPORT int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
 
 // set the number of rows to (internally) fetch at one time
 DPI_EXPORT int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize);
+
+// set the number of rows that are prefetched by the Oracle Client library
+DPI_EXPORT int dpiStmt_setPrefetchRows(dpiStmt *stmt,
+        uint32_t numRows);
 
 
 //-----------------------------------------------------------------------------

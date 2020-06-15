@@ -256,8 +256,7 @@ int dpiError__setFromOS(dpiError *error, const char *action)
 
     char buffer[512];
     int err = errno;
-// https://linux.die.net/man/3/strerror_r
-#if !defined _GNU_SOURCE && (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600)
+#if defined _GNU_SOURCE && !defined __APPLE__
     message = strerror_r(err, buffer, sizeof(buffer));
 #else
     message = (strerror_r(err, buffer, sizeof(buffer)) == 0) ? buffer : NULL;

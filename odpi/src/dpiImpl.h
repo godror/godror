@@ -993,6 +993,7 @@ struct dpiStmt {
     uint64_t rowCount;                  // rows affected or rows fetched so far
     uint64_t bufferMinRow;              // row num of first row in buffers
     uint16_t statementType;             // type of statement
+    uint32_t prefetchRows;              // rows to prefetch on query execute
     dpiRowid *lastRowid;                // rowid of last affected row
     int isOwned;                        // owned by structure?
     int hasRowsToFetch;                 // potentially more rows to fetch?
