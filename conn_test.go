@@ -20,6 +20,10 @@ import (
 
 func TestParseConnString(t *testing.T) {
 	t.Parallel()
+	cc := DefaultConnectionClass
+	if DefaultStandaloneConnection {
+		cc = ""
+	}
 	wantAt := ConnectionParams{
 		CommonParams: CommonParams{
 			Username: "cc",
@@ -129,11 +133,12 @@ func TestParseConnString(t *testing.T) {
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
-					//ConnClass: "GODROR",
+					ConnClass: cc,
 				},
 				PoolParams: PoolParams{
 					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
 					WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
+					ExternalAuth: DefaultStandaloneConnection,
 				},
 			},
 		},
