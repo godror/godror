@@ -36,9 +36,9 @@
 //
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.
-// Thus you can cluster the session pool with classes, or use POOLED for DRCP.
+// Thus you can cluster the session pool with classes.
 //
-// For what can be used as "sid", see https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/configuring-naming-methods.html#GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
+// For what can be used as "sid", see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
 package godror
 
 /*
@@ -811,9 +811,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			P.Password, P.DSN = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
-		}
-		if strings.HasSuffix(P.DSN, ":POOLED") {
-			P.ConnClass, P.DSN = "POOLED", P.DSN[:len(P.DSN)-7]
 		}
 		P.comb()
 		if Log != nil {
