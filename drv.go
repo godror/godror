@@ -103,7 +103,7 @@ const (
 	DefaultSessionIncrement = 1
 	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
 	DefaultPoolIncrement = DefaultSessionIncrement
-	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non DRCP ofcourse. 
+	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non DRCP. For DRCP, connectionClass needs to be explicitly mentioned. 
 	DefaultConnectionClass = ""
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1
