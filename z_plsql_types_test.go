@@ -22,67 +22,58 @@ import (
 )
 
 var _ godror.ObjectScanner = new(MyRecord)
-var _ godror.ObjectWriter = new(MyRecord)
 
 var _ godror.ObjectScanner = new(MyTable)
 
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
-	*godror.Object
+	ot  godror.ObjectType
 	ID  int64
 	Txt string
 }
 
+func (r MyRecord) GetObjectType() godror.ObjectType { return r.ot }
+
 type coder interface{ Code() int }
 
 func (r *MyRecord) Scan(src interface{}) error {
-
-	switch obj := src.(type) {
-	case *godror.Object:
-		id, err := obj.Get("ID")
-		if err != nil {
-			return err
-		}
-		r.ID = id.(int64)
-
-		txt, err := obj.Get("TXT")
-		if err != nil {
-			return err
-		}
-		r.Txt = string(txt.([]byte))
-
-	default:
+	obj, ok := src.(*godror.Object)
+	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
 	}
+	id, err := obj.Get("ID")
+	if err != nil {
+		return err
+	}
+	r.ID = id.(int64)
+
+	txt, err := obj.Get("TXT")
+	if err != nil {
+		return err
+	}
+	r.Txt = string(txt.([]byte))
 
 	return nil
 }
 
 // WriteObject update godror.Object with struct attributes values.
 // Implement this method if you need the record as an input parameter.
-func (r MyRecord) WriteObject() error {
+func (r MyRecord) WriteObject(obj *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	err := r.ResetAttributes()
-	if err != nil {
-		return err
-	}
-
 	var data godror.Data
-	err = r.GetAttribute(&data, "ID")
-	if err != nil {
+	if err := obj.GetAttribute(&data, "ID"); err != nil {
 		return err
 	}
 	data.SetInt64(r.ID)
-	r.SetAttribute("ID", &data)
+	obj.SetAttribute("ID", &data)
 
 	if r.Txt != "" {
-		err = r.GetAttribute(&data, "TXT")
-		if err != nil {
+		if err := obj.GetAttribute(&data, "TXT"); err != nil {
 			return err
 		}
 
 		data.SetBytes([]byte(r.Txt))
-		r.SetAttribute("TXT", &data)
+		obj.SetAttribute("TXT", &data)
 	}
 
 	return nil
@@ -90,75 +81,79 @@ func (r MyRecord) WriteObject() error {
 
 // MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
-	godror.ObjectCollection
+	ot    godror.ObjectType
 	Items []*MyRecord
 }
 
+func (r MyTable) GetObjectType() godror.ObjectType { return r.ot }
 func (t *MyTable) Scan(src interface{}) error {
 	fmt.Printf("Scan(%T(%#v))\n", src, src)
-	switch obj := src.(type) {
-	case *godror.Object:
-		collection := obj.Collection()
-		length, err := collection.Len()
-		fmt.Printf("Collection: %d: %#v: %+v\n", length, collection, err)
+	obj, ok := src.(*godror.Object)
+	if !ok {
+		return fmt.Errorf("Cannot scan from type %T", src)
+	}
+	collection := obj.Collection()
+	length, err := collection.Len()
+	fmt.Printf("Collection: %d: %#v: %+v\n", length, collection, err)
+	if err != nil {
+		return err
+	}
+	if length == 0 {
+		return nil
+	}
+	t.Items = make([]*MyRecord, length)
+	var i int
+	for i, err = collection.First(); err == nil; i, err = collection.Next(i) {
+		fmt.Printf("Scan[%d]: %+v\n", i, err)
+		if err != nil {
+			break
+		}
+		var data godror.Data
+		err = collection.GetItem(&data, i)
 		if err != nil {
 			return err
 		}
-		if length != 0 {
-			t.Items = make([]*MyRecord, length)
-			i, err := collection.First()
-			for {
-				fmt.Printf("Scan[%d]: %+v\n", i, err)
-				if err != nil {
-					break
-				}
-				var data godror.Data
-				err = collection.GetItem(&data, i)
-				if err != nil {
-					return err
-				}
 
-				o := data.GetObject()
-				defer o.Close()
+		o := data.GetObject()
+		defer o.Close()
 
-				var item MyRecord
-				err = item.Scan(o)
-				if err != nil {
-					return err
-				}
-				t.Items = append(t.Items, &item)
-
-				i, err = collection.Next(i)
-			}
+		var item MyRecord
+		err = item.Scan(o)
+		if err != nil {
+			return err
 		}
-		if err == godror.ErrNotExist {
-			return nil
-		}
-		return err
-
-	default:
-		return fmt.Errorf("Cannot scan from type %T", src)
+		t.Items = append(t.Items, &item)
+		fmt.Printf("Scan[%d]: %v\n", i, item)
 	}
+	if err == godror.ErrNotExist {
+		return nil
+	}
+	return err
+
 }
 
-func (r MyTable) WriteObject(ctx context.Context) error {
+func (r MyTable) WriteObject(obj *godror.Object) error {
 	if len(r.Items) == 0 {
 		return nil
 	}
 
-	data, err := r.NewData(r.Items[0], len(r.Items), 0)
+	data, err := obj.NewData(r.Items[0], len(r.Items), 0)
 	if err != nil {
 		return err
 	}
 
+	oc := &godror.ObjectCollection{Object: obj}
 	for i, item := range r.Items {
-		err = item.WriteObject()
+		o, err := item.GetObjectType().NewObject()
 		if err != nil {
 			return err
 		}
+		if err = item.WriteObject(o); err != nil {
+			return err
+		}
 		d := data[i]
-		d.SetObject(item.ObjectRef())
-		r.Append(d)
+		d.SetObject(o)
+		oc.Append(d)
 	}
 	return nil
 }
@@ -331,11 +326,11 @@ func TestPLSQLTypes(t *testing.T) {
 			txt  string
 			want MyRecord
 		}{
-			"default":    {ID: 1, txt: "test", want: MyRecord{obj, 1, "test"}},
-			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{obj, 2, ""}},
-			"zeroValues": {want: MyRecord{Object: obj}},
+			"default":    {ID: 1, txt: "test", want: MyRecord{objType, 1, "test"}},
+			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{objType, 2, ""}},
+			"zeroValues": {want: MyRecord{ot: objType}},
 		} {
-			rec := MyRecord{Object: obj}
+			rec := MyRecord{ot: objType}
 			params := []interface{}{
 				sql.Named("id", tCase.ID),
 				sql.Named("txt", tCase.txt),
@@ -350,7 +345,7 @@ func TestPLSQLTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if rec != tCase.want {
+			if !(rec.ID == tCase.want.ID && rec.Txt == tCase.want.Txt) {
 				t.Errorf("%s: record got %v, wanted %v", tName, rec, tCase.want)
 			}
 		}
@@ -381,7 +376,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			rec := MyRecord{Object: obj, ID: tCase.in.ID, Txt: tCase.in.Txt}
+			rec := MyRecord{ot: objType, ID: tCase.in.ID, Txt: tCase.in.Txt}
 			params := []interface{}{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
@@ -418,8 +413,8 @@ func TestPLSQLTypes(t *testing.T) {
 			in   int64
 			want MyTable
 		}{
-			"one": {in: 1, want: MyTable{Items: items[:1]}},
-			"two": {in: 2, want: MyTable{Items: items}},
+			"one": {in: 1, want: MyTable{ot: objType, Items: items[:1]}},
+			"two": {in: 2, want: MyTable{ot: objType, Items: items}},
 		} {
 
 			obj, err := objType.NewObject()
@@ -428,7 +423,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection()}
+			tb := MyTable{ot: objType}
 			params := []interface{}{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -443,7 +438,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 
 			if len(tb.Items) != len(tCase.want.Items) {
-				t.Errorf("%s: table got %v items, wanted %v items", tName, len(tb.Items), len(tCase.want.Items))
+				t.Errorf("%s: table got %v items, wanted %v items", tName, tb.Items, len(tCase.want.Items))
 			} else {
 				for i := 0; i < len(tb.Items); i++ {
 					got := tb.Items[i]
@@ -480,20 +475,20 @@ func TestPLSQLTypes(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer obj1.Close()
-		items = append(items, &MyRecord{ID: 1, Txt: "test - 2", Object: obj1})
+		items = append(items, &MyRecord{ot: recordObjType, ID: 1, Txt: "test - 2"})
 
 		obj2, err := recordObjType.NewObject()
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer obj2.Close()
-		items = append(items, &MyRecord{ID: 2, Txt: "test - 4", Object: obj2})
+		items = append(items, &MyRecord{ot: recordObjType, ID: 2, Txt: "test - 4"})
 
 		for tName, tCase := range map[string]struct {
 			want MyTable
 		}{
-			"one": {want: MyTable{Items: items[:1]}},
-			"two": {want: MyTable{Items: items}},
+			"one": {want: MyTable{ot: tableObjType, Items: items[:1]}},
+			"two": {want: MyTable{ot: tableObjType, Items: items}},
 		} {
 
 			obj, err := tableObjType.NewObject()
@@ -502,7 +497,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items}
+			tb := MyTable{ot: tableObjType, Items: tCase.want.Items}
 			params := []interface{}{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
