@@ -36,24 +36,21 @@ type MyRecord struct {
 type coder interface{ Code() int }
 
 func (r *MyRecord) Scan(src interface{}) error {
-
-	switch obj := src.(type) {
-	case *godror.Object:
-		id, err := obj.Get("ID")
-		if err != nil {
-			return err
-		}
-		r.ID = id.(int64)
-
-		txt, err := obj.Get("TXT")
-		if err != nil {
-			return err
-		}
-		r.Txt = string(txt.([]byte))
-
-	default:
+	obj, ok := src.(*godror.Object)
+	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
 	}
+	id, err := obj.Get("ID")
+	if err != nil {
+		return err
+	}
+	r.ID = id.(int64)
+
+	txt, err := obj.Get("TXT")
+	if err != nil {
+		return err
+	}
+	r.Txt = string(txt.([]byte))
 
 	return nil
 }
@@ -95,50 +92,49 @@ type MyTable struct {
 }
 
 func (t *MyTable) Scan(src interface{}) error {
-	fmt.Printf("Scan(%T(%#v))\n", src, src)
-	switch obj := src.(type) {
-	case *godror.Object:
-		collection := obj.Collection()
-		length, err := collection.Len()
-		fmt.Printf("Collection: %d: %#v: %+v\n", length, collection, err)
+	//fmt.Printf("Scan(%T(%#v))\n", src, src)
+	obj, ok := src.(*godror.Object)
+	if !ok {
+		return fmt.Errorf("Cannot scan from type %T", src)
+	}
+	collection := obj.Collection()
+	length, err := collection.Len()
+	//fmt.Printf("Collection[%d] %#v: %+v\n", length, collection, err)
+	if err != nil {
+		return err
+	}
+	if length == 0 {
+		return nil
+	}
+	t.Items = make([]*MyRecord, 0, length)
+	var i int
+	for i, err = collection.First(); err == nil; i, err = collection.Next(i) {
+		//fmt.Printf("Scan[%d]: %+v\n", i, err)
+		if err != nil {
+			break
+		}
+		var data godror.Data
+		err = collection.GetItem(&data, i)
 		if err != nil {
 			return err
 		}
-		if length != 0 {
-			t.Items = make([]*MyRecord, length)
-			i, err := collection.First()
-			for {
-				fmt.Printf("Scan[%d]: %+v\n", i, err)
-				if err != nil {
-					break
-				}
-				var data godror.Data
-				err = collection.GetItem(&data, i)
-				if err != nil {
-					return err
-				}
 
-				o := data.GetObject()
-				defer o.Close()
+		o := data.GetObject()
+		defer o.Close()
+		//fmt.Printf("%d. data=%#v => o=%#v\n", i, data, o)
 
-				var item MyRecord
-				err = item.Scan(o)
-				if err != nil {
-					return err
-				}
-				t.Items = append(t.Items, &item)
-
-				i, err = collection.Next(i)
-			}
+		var item MyRecord
+		err = item.Scan(o)
+		//fmt.Printf("%d. item=%#v: %+v\n", i, item, err)
+		if err != nil {
+			return err
 		}
-		if err == godror.ErrNotExist {
-			return nil
-		}
-		return err
-
-	default:
-		return fmt.Errorf("Cannot scan from type %T", src)
+		t.Items = append(t.Items, &item)
 	}
+	if err == godror.ErrNotExist {
+		return nil
+	}
+	return err
 }
 
 func (r MyTable) WriteObject(ctx context.Context) error {
@@ -312,9 +308,8 @@ func TestPLSQLTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	//t.Run("Record", func(t *testing.T) {
-	// you must have execute privilege on package and use uppercase
-	{
+	t.Run("Record", func(t *testing.T) {
+		// you must have execute privilege on package and use uppercase
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
@@ -354,12 +349,10 @@ func TestPLSQLTypes(t *testing.T) {
 				t.Errorf("%s: record got %v, wanted %v", tName, rec, tCase.want)
 			}
 		}
-	}
-	//})
+	})
 
-	//t.Run("Record IN OUT", func(t *testing.T) {
-	// you must have execute privilege on package and use uppercase
-	{
+	t.Run("Record IN OUT", func(t *testing.T) {
+		// you must have execute privilege on package and use uppercase
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
 		if err != nil {
 			t.Fatal(err)
@@ -401,11 +394,9 @@ func TestPLSQLTypes(t *testing.T) {
 				t.Errorf("%s: Txt got %s, wanted %s", tName, rec.Txt, tCase.wantTxt)
 			}
 		}
-	}
-	//})
+	})
 
-	//t.Run("Table", func(t *testing.T) {
-	{
+	t.Run("Table", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
 		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
@@ -443,7 +434,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 
 			if len(tb.Items) != len(tCase.want.Items) {
-				t.Errorf("%s: table got %v items, wanted %v items", tName, len(tb.Items), len(tCase.want.Items))
+				t.Errorf("%s: table got %v items, wanted %d items", tName, tb.Items, len(tCase.want.Items))
 			} else {
 				for i := 0; i < len(tb.Items); i++ {
 					got := tb.Items[i]
@@ -457,11 +448,9 @@ func TestPLSQLTypes(t *testing.T) {
 				}
 			}
 		}
-	}
-	//})
+	})
 
-	//t.Run("Table IN", func(t *testing.T) {
-	{
+	t.Run("Table IN", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
 		tableObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
 		if err != nil {
@@ -530,8 +519,7 @@ func TestPLSQLTypes(t *testing.T) {
 				}
 			}
 		}
-	}
-	//})
+	})
 
 }
 
