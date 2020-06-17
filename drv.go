@@ -17,7 +17,7 @@
 //     poolMinSessions=1& \
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
-//     connectionClass=POOLED& \
+//     connectionClass=HRMS& \
 //     standaloneConnection=1& \
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
@@ -37,6 +37,8 @@
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.
 // Thus you can cluster the session pool with classes.
+//
+// For connectionClass usage, see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-CE6E4DCC-92DF-4946-92B8-2BDD9845DA35
 //
 // For what can be used as "sid", see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
 package godror

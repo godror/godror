@@ -67,8 +67,6 @@ with OUT parameters, or sending/retrieving PL/SQL array types - just give a
 
 The array size of the returned PL/SQL arrays can be set with `godror.ArraySize(2000)` (default value is 1024).
 
-Connections are pooled by default (except `AS SYSOPER` or `AS SYSDBA`).
-
 ## Speed
 
 Correctness and simplicity is more important than speed, but the underlying ODPI-C library
