@@ -1100,7 +1100,7 @@ func TestExecuteMany(t *testing.T) {
 }
 func TestReadWriteLob(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {

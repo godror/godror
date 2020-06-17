@@ -1088,7 +1088,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 
 	case userType:
-		info.objType = v.GetObjectType().dpiObjectType
+		info.objType = v.ObjectRef().ObjectType.dpiObjectType
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		info.set = st.dataSetObject
 		if info.isOut {
@@ -2038,7 +2038,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 }
 
 type userType interface {
-	GetObjectType() ObjectType
+	ObjectRef() *Object
 }
 
 // ObjectScanner assigns a value from a database object
@@ -2049,7 +2049,7 @@ type ObjectScanner interface {
 
 // ObjectWriter update database object before binding
 type ObjectWriter interface {
-	WriteObject(*Object) error
+	WriteObject() error
 	userType
 }
 
@@ -2075,38 +2075,24 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 			objs[i] = *x
 		}
 	case ObjectWriter:
-		O, err := o.GetObjectType().NewObject()
+		err := o.WriteObject()
 		if err != nil {
 			return err
 		}
-		if err = o.WriteObject(O); err != nil {
-			return err
-		}
-		objs[0] = *O
+		objs[0] = *o.ObjectRef()
 	case []ObjectWriter:
 		for _, ut := range o {
-			O, err := ut.GetObjectType().NewObject()
+			err := ut.WriteObject()
 			if err != nil {
 				return err
 			}
-			if err = ut.WriteObject(O); err != nil {
-				return err
-			}
-			objs = append(objs, *O)
+			objs = append(objs, *ut.ObjectRef())
 		}
 	case userType:
-		O, err := o.GetObjectType().NewObject()
-		if err != nil {
-			return err
-		}
-		objs[0] = *O
+		objs[0] = *o.ObjectRef()
 	case []userType:
 		for _, ut := range o {
-			O, err := ut.GetObjectType().NewObject()
-			if err != nil {
-				return err
-			}
-			objs = append(objs, *O)
+			objs = append(objs, *ut.ObjectRef())
 		}
 	}
 	for i, obj := range objs {
@@ -2135,7 +2121,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 		*out = *d.GetObject()
 	case ObjectScanner:
 		d := Data{
-			ObjectType: out.GetObjectType(),
+			ObjectType: out.ObjectRef().ObjectType,
 			dpiData:    data[0],
 		}
 		if Log != nil {

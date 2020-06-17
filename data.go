@@ -455,10 +455,10 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		switch v := v.(type) {
 		case userType:
-			vi.ObjectType = v.GetObjectType().dpiObjectType
+			vi.ObjectType = v.ObjectRef().ObjectType.dpiObjectType
 		case []userType:
 			if len(v) > 0 {
-				vi.ObjectType = v[0].GetObjectType().dpiObjectType
+				vi.ObjectType = v[0].ObjectRef().ObjectType.dpiObjectType
 			}
 		}
 	default:

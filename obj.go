@@ -256,7 +256,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 		return errors.Errorf("exists(%d): %w", idx, O.getError())
 	}
 	if exists == 0 {
-		return fmt.Errorf("%p.GetItem(%d): %w", O.dpiObject, i, ErrNotExist)
+		return ErrNotExist
 	}
 	data.reset()
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
