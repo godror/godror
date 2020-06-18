@@ -17,7 +17,7 @@
 //     poolMinSessions=1& \
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
-//     connectionClass=HRMS& \
+//     connectionClass=MyClassName& \
 //     standaloneConnection=1& \
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
@@ -40,7 +40,7 @@
 //
 // For connectionClass usage, see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-CE6E4DCC-92DF-4946-92B8-2BDD9845DA35
 //
-// If you specify server_type as POOLED in sid, DRCP is used. 
+// If you specify server_type as POOLED in sid, DRCP is used.
 // For what can be used as "sid", see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
 package godror
 
@@ -103,7 +103,7 @@ const (
 	DefaultSessionIncrement = 1
 	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
 	DefaultPoolIncrement = DefaultSessionIncrement
-	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non DRCP. For DRCP, connectionClass needs to be explicitly mentioned. 
+	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non-DRCP. For DRCP, connectionClass needs to be explicitly mentioned.
 	DefaultConnectionClass = ""
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1

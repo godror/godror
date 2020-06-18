@@ -96,14 +96,14 @@ func TestParseConnString(t *testing.T) {
 		Want ConnectionParams
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=HRMS&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: "pass", DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
-					ConnClass: "HRMS", IsSysOper: true,
+					ConnClass: "TestClassName", IsSysOper: true,
 				},
 				PoolParams: PoolParams{
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
@@ -138,14 +138,14 @@ func TestParseConnString(t *testing.T) {
 			},
 		},
 
-		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=HRMS&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
+		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: "pass", DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
-					ConnClass: "HRMS", IsSysOper: true,
+					ConnClass: "TestClassName", IsSysOper: true,
 				},
 				PoolParams: PoolParams{
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
