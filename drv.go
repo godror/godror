@@ -344,7 +344,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		mem := C.malloc(C.sizeof_dpiShardingKeyColumn *
 			C.size_t(len(P.ShardingKey)))
 		defer C.free(mem)
-		columns := (*[(math.MaxInt32 - 1) / unsafe.Sizeof(C.dpiShardingKeyColumn)]C.dpiShardingKeyColumn)(mem)
+		columns := (*[(math.MaxInt32 - 1) / C.sizeof_dpiShardingKeyColumn]C.dpiShardingKeyColumn)(mem)
 		tbd := make([]func(), 0, len(P.ShardingKey))
 		for i, value := range P.ShardingKey {
 			switch value := value.(type) {
