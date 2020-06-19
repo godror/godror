@@ -1,4 +1,4 @@
-module github.com/godror/godror
+module github.com/yunbaoguan/godror
 
 go 1.12
 
