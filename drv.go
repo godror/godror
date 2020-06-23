@@ -17,7 +17,7 @@
 //     poolMinSessions=1& \
 //     poolMaxSessions=1000& \
 //     poolIncrement=1& \
-//     connectionClass=POOLED& \
+//     connectionClass=MyClassName& \
 //     standaloneConnection=1& \
 //     enableEvents=0& \
 //     heterogeneousPool=0& \
@@ -38,7 +38,10 @@
 // without the connectionClass, but will specify it on each session acquire.
 // Thus you can cluster the session pool with classes, or use POOLED for DRCP.
 //
-// For what can be used as "sid", see https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/configuring-naming-methods.html#GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
+// For connectionClass usage, see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-CE6E4DCC-92DF-4946-92B8-2BDD9845DA35
+//
+// If you specify server_type as POOLED in sid, DRCP is used.
+// For what can be used as "sid", see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
 package godror
 
 /*
@@ -101,8 +104,8 @@ const (
 	DefaultSessionIncrement = 1
 	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
 	DefaultPoolIncrement = DefaultSessionIncrement
-	// DefaultConnectionClass is the default connectionClass
-	DefaultConnectionClass = "GODROR"
+	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non-DRCP. For DRCP, connectionClass needs to be explicitly mentioned.
+	DefaultConnectionClass = ""
 	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
 	// It is the same as setting standaloneConnection=1
 	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
@@ -812,9 +815,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			P.Password, P.DSN = connString[:i], connString[i+1:]
 		} else {
 			P.Password = connString
-		}
-		if strings.HasSuffix(P.DSN, ":POOLED") {
-			P.ConnClass, P.DSN = "POOLED", P.DSN[:len(P.DSN)-7]
 		}
 		P.comb()
 		if Log != nil {

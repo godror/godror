@@ -139,7 +139,7 @@ func init() {
 			EnableEvents: true,
 		},
 		ConnParams: godror.ConnParams{
-			ConnClass:   "POOLED",
+			ConnClass:   "TestClassName",
 			ShardingKey: []interface{}{"gold", []byte("silver"), int(42)},
 		},
 		PoolParams: godror.PoolParams{
@@ -1949,7 +1949,7 @@ func TestNoConnectionPooling(t *testing.T) {
 	t.Parallel()
 	db, err := sql.Open("godror",
 		strings.Replace(
-			strings.Replace(testConStr, "POOLED", godror.NoConnectionPoolingConnectionClass, 1),
+			strings.Replace(testConStr, "TestClassName", godror.NoConnectionPoolingConnectionClass, 1),
 			"standaloneConnection=0", "standaloneConnection=1", 1,
 		),
 	)
