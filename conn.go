@@ -94,7 +94,14 @@ func (c *conn) Ping(ctx context.Context) error {
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
+		dl, ok := ctx.Deadline()
+		if ok {
+			c.setCallTimeout(time.Until(dl))
+		}
 		failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+		if ok {
+			c.setCallTimeout(0)
+		}
 		if failure {
 			done <- maybeBadConn(errors.Errorf("Ping: %w", c.getError()), c)
 			return
@@ -544,6 +551,17 @@ func parseTZ(s string) (int, error) {
 	}
 	tz += int(i64 * 3600)
 	return tz, nil
+}
+
+func (c *conn) setCallTimeout(dur time.Duration) {
+	if c.Client.Version < 18 {
+		return
+	}
+	ms := C.uint32_t(dur / time.Millisecond)
+	if Log != nil {
+		Log("msg", "setCallTimeout", "ms", ms)
+	}
+	C.dpiConn_setCallTimeout(c.dpiConn, ms)
 }
 
 // maybeBadConn checks whether the error is because of a bad connection,

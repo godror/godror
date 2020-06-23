@@ -1924,7 +1924,12 @@ func TestNullIntoNum(t *testing.T) {
 
 func TestPing(t *testing.T) {
 	t.Parallel()
-	badDB, err := sql.Open("godror", "bad/passw@1.1.1.1")
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.Username += "--BAD---"
+	badDB, err := sql.Open("godror", P.String())
 	if err != nil {
 		t.Fatal(err)
 	}
