@@ -36,7 +36,7 @@
 //
 // If you specify connectionClass, that'll reuse the same session pool
 // without the connectionClass, but will specify it on each session acquire.
-// Thus you can cluster the session pool with classes, or use POOLED for DRCP.
+// Thus you can cluster the session pool with classes.
 //
 // For connectionClass usage, see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-CE6E4DCC-92DF-4946-92B8-2BDD9845DA35
 //
