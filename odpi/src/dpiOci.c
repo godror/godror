@@ -1976,8 +1976,47 @@ static int dpiOci__loadLibWithDir(dpiOciLoadLibParams *loadParams,
 int dpiOci__loadLib(dpiContextCreateParams *params,
         dpiVersionInfo **clientVersionInfo, dpiError *error)
 {
+    static const char *envNamesToCheck[] = {
+        "ORACLE_HOME",
+        "ORA_TZFILE",
+        "TNS_ADMIN",
+#ifdef _WIN32
+        "PATH",
+#else
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LIBPATH",
+        "SHLIB_PATH",
+#endif
+        NULL
+    };
     dpiOciLoadLibParams loadLibParams;
-    int status;
+    const char *temp;
+    int status, i;
+
+    // log the directory parameter values and any environment variables that
+    // have an impact on loading the library
+    if (dpiDebugLevel & DPI_DEBUG_LEVEL_LOAD_LIB) {
+
+        // first log directory parameter values
+        dpiDebug__print("Context Parameters:\n");
+        if (params->oracleClientLibDir)
+            dpiDebug__print("    Oracle Client Lib Dir: %s\n",
+                    params->oracleClientLibDir);
+        if (params->oracleClientConfigDir)
+            dpiDebug__print("    Oracle Client Config Dir: %s\n",
+                    params->oracleClientConfigDir);
+
+        // now log environment variable values
+        dpiDebug__print("Environment Variables:\n");
+        for (i = 0; envNamesToCheck[i]; i++) {
+            temp = getenv(envNamesToCheck[i]);
+            if (temp)
+                dpiDebug__print("    %s => \"%s\"\n", envNamesToCheck[i],
+                        temp);
+        }
+
+    }
 
     // if a config directory was specified in the create params, set the
     // TNS_ADMIN environment variable
