@@ -40,7 +40,7 @@ import (
 
 type stmtOptions struct {
 	boolString         boolString
-	fetchRowCount      int
+	fetchArraySize     int
 	prefetchCount      int
 	arraySize          int
 	callTimeout        time.Duration
@@ -89,17 +89,17 @@ func (o stmtOptions) ArraySize() int {
 	}
 	return o.arraySize
 }
-func (o stmtOptions) prefetchCount() int {
+func (o stmtOptions) PrefetchCount() int {
 	if o.prefetchCount <= 0 {
 		return DefaultPrefetchCount
 	}
 	return o.prefetchCount
 }
-func (o stmtOptions) FetchRowCount() int {
-	if o.fetchRowCount <= 0 {
-		return DefaultFetchRowCount
+func (o stmtOptions) FetchArraySize() int {
+	if o.fetchArraySize <= 0 {
+		return DefaultFetchArraySize
 	}
-	return o.fetchRowCount
+	return o.fetchArraySize
 }
 func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
@@ -143,12 +143,17 @@ func BoolToString(trueVal, falseVal string) Option {
 // be left as is - the default is to treat them as arguments for ExecMany.
 var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
 
-// FetchRowCount returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
-func FetchRowCount(rowCount int) Option {
+// FetchRowCount is DEPRECATED, use FetchArraySize.
+//
+// It returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
+func FetchRowCount(rowCount int) Option { return FetchArraySize(rowCount) }
+
+// FetchArraySize returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
+func FetchArraySize(rowCount int) Option {
 	if rowCount <= 0 {
 		return nil
 	}
-	return func(o *stmtOptions) { o.fetchRowCount = rowCount }
+	return func(o *stmtOptions) { o.fetchArraySize = rowCount }
 }
 
 // PrefetchCount returns an option to set the rows to be fetched, overriding DefaultPrefetchCount.
@@ -2201,8 +2206,9 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 }
 
 func (st *statement) openRows(colCount int) (*rows, error) {
-	sliceLen := st.FetchRowCount()
+	sliceLen := st.FetchArraySize()
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(sliceLen))
+	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
 	r := rows{
 		statement: st,

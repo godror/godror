@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.17.0]
+### Added 
+- PrefetchCount statement option to set prefetch row count.
+
+### Changed
+- Use ODPI-C v4.0.0
+- Deprecate FetchRowCount in favor of FetchArraySize.
+
 ## [0.16.1]
 ### Changed
 - Add Finalizer for conn, statement and rows, prints ugly stack trace on forgotten Close()s.

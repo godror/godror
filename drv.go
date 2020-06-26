@@ -72,8 +72,11 @@ import (
 )
 
 const (
-	// DefaultFetchRowCount is the number of prefetched rows by default (if not changed through FetchRowCount statement option).
-	DefaultFetchRowCount = 1 << 8
+	// DefaultFetchArraySize is the fetch array size by default (if not changed through FetchArraySize statement option).
+	DefaultFetchArraySize = C.DPI_DEFAULT_FETCH_ARRAY_SIZE
+
+	// DefaultPrefetchCountis the number of prefetched rows by default (if not changed through PrefetchCount statement option).
+	DefaultPrefetchCount = C.DPI_DEFAULT_PREFETCH_ROWS
 
 	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ArraySize statement option).
 	DefaultArraySize = 1 << 10

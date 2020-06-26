@@ -379,6 +379,22 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 var _ = driver.Tx((*conn)(nil))
 
 func (c *conn) ServerVersion() (VersionInfo, error) {
+	if c.Server.Version == 0 {
+		var v C.dpiVersionInfo
+		var release *C.char
+		var releaseLen C.uint32_t
+		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+			if c.params.IsPrelim {
+				return c.Server, nil
+			}
+			return c.Server, errors.Errorf("getServerVersion: %w", c.getError())
+		}
+		c.Server.set(&v)
+		c.Server.ServerRelease = string(bytes.Replace(
+			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
+			[]byte{'\n'}, []byte{';', ' '}, -1))
+	}
+
 	return c.Server, nil
 }
 
@@ -394,29 +410,13 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 		}
 	}
 
-	if err := c.initVersionTZ(); err != nil || onInit == nil || !c.newSession {
+	if err := c.initTZ(); err != nil || onInit == nil || !c.newSession {
 		return err
 	}
 	return onInit(c)
 }
 
-func (c *conn) initVersionTZ() error {
-	if c.Server.Version == 0 {
-		var v C.dpiVersionInfo
-		var release *C.char
-		var releaseLen C.uint32_t
-		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-			if c.params.IsPrelim {
-				return nil
-			}
-			return errors.Errorf("getServerVersion: %w", c.getError())
-		}
-		c.Server.set(&v)
-		c.Server.ServerRelease = string(bytes.Replace(
-			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
-			[]byte{'\n'}, []byte{';', ' '}, -1))
-	}
-
+func (c *conn) initTZ() error {
 	if c.params.Timezone != nil && (c.params.Timezone != time.Local || c.tzOffSecs != 0) {
 		return nil
 	}
@@ -859,6 +859,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
+	tz, tzOffSecs := c.params.Timezone, c.tzOffSecs
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -870,6 +871,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
+	c.params.Timezone, c.tzOffSecs = tz, tzOffSecs
 	if paramsFromCtx || newSession {
 		c.init(P.OnInit)
 	}

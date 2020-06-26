@@ -273,7 +273,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if r.fetched == 0 {
 		var moreRows C.int
 		var start time.Time
-		maxRows := C.uint32_t(r.statement.FetchRowCount())
+		maxRows := C.uint32_t(r.statement.FetchArraySize())
 		r.statement.Lock()
 		if debugRowsNext {
 			fmt.Printf("fetching max=%d\n", maxRows)
