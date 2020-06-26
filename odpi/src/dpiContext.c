@@ -268,19 +268,11 @@ int dpiContext_getClientVersion(const dpiContext *context,
 //-----------------------------------------------------------------------------
 void dpiContext_getError(const dpiContext *context, dpiErrorInfo *info)
 {
-    dpiErrorInfo localErrorInfo;
     dpiError error;
-    int status;
 
     dpiGlobal__initError(NULL, &error);
-    status = dpiGen__checkHandle(context, DPI_HTYPE_CONTEXT, "check handle",
-            &error);
-    if (status < 0 || context->dpiMinorVersion < 4) {
-        dpiError__getInfo(&error, &localErrorInfo);
-        memcpy(info, &localErrorInfo, sizeof(dpiErrorInfo__v33));
-    } else {
-        dpiError__getInfo(&error, info);
-    }
+    dpiGen__checkHandle(context, DPI_HTYPE_CONTEXT, "check handle", &error);
+    dpiError__getInfo(&error, info);
 }
 
 
