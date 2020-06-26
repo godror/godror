@@ -158,7 +158,7 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
-	c.setTraceTag(TraceTag{})
+	c.currentTT = TraceTag{}
 	dpiConn := c.dpiConn
 	c.dpiConn = nil
 	if dpiConn == nil {

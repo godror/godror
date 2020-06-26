@@ -137,16 +137,18 @@ type drv struct {
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
+	timezones     map[string]timeZone
 	clientVersion VersionInfo
+}
+type timeZone struct {
+	*time.Location
+	OffSecs int
 }
 
 type connPool struct {
-	dpiPool  *C.dpiPool
-	params   commonAndPoolParams
-	timeZone *time.Location
-	key      string
-	//tzOffSecs     int
-	//serverVersion VersionInfo
+	dpiPool *C.dpiPool
+	params  commonAndPoolParams
+	key     string
 }
 
 func (d *drv) init() error {
@@ -154,6 +156,9 @@ func (d *drv) init() error {
 	defer d.mu.Unlock()
 	if d.pools == nil {
 		d.pools = make(map[string]*connPool)
+	}
+	if d.timezones == nil {
+		d.timezones = make(map[string]timeZone)
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -247,6 +252,12 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		newSession: pool == nil || newSession,
 		poolKey:    poolKey,
 	}
+	d.mu.Lock()
+	tz, ok := d.timezones[P.DSN]
+	d.mu.Unlock()
+	if ok {
+		c.params.Timezone, c.tzOffSecs = tz.Location, tz.OffSecs
+	}
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
 		if c.params.Username == "" {
@@ -254,6 +265,10 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	c.init(P.OnInit)
+	d.mu.Lock()
+	d.timezones[P.DSN] = timeZone{Location: c.params.Timezone, OffSecs: c.tzOffSecs}
+	d.mu.Unlock()
+
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
 	runtime.SetFinalizer(&c, func(c *conn) {
@@ -609,7 +624,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	// set statement cache
 	C.dpiPool_setStmtCacheSize(dp, 40)
 
-	return &connPool{dpiPool: dp, params: P, timeZone: P.Timezone}, nil
+	return &connPool{dpiPool: dp, params: P}, nil
 }
 
 // PoolStats contains Oracle session pool statistics
