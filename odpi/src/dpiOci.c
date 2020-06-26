@@ -1795,6 +1795,7 @@ static int dpiOci__loadLibInModuleDir(dpiOciLoadLibParams *loadParams,
 static int dpiOci__loadLibInModuleDir(dpiOciLoadLibParams *loadParams,
         dpiError *error)
 {
+#ifndef _AIX
     char *dirName;
     Dl_info info;
 
@@ -1806,6 +1807,7 @@ static int dpiOci__loadLibInModuleDir(dpiOciLoadLibParams *loadParams,
             return dpiOci__loadLibWithDir(loadParams, info.dli_fname,
                     (size_t) (dirName - info.dli_fname), 0, error);
     }
+#endif
 
     return DPI_FAILURE;
 }
@@ -1821,14 +1823,10 @@ static int dpiOci__loadLibInModuleDir(dpiOciLoadLibParams *loadParams,
 static int dpiOci__loadLibWithName(dpiOciLoadLibParams *loadParams,
         const char *libName, dpiError *error)
 {
-    const char *directErrorFormat = "direct load of %s is not supported";
     char *osError;
-    size_t length;
 
     loadParams->handle = dlopen(libName, RTLD_LAZY);
     if (!loadParams->handle) {
-
-        // acquire OS error information
         osError = dlerror();
         if (dpiUtils__ensureBuffer(strlen(osError) + 1,
                 "allocate load error buffer",
@@ -1836,20 +1834,6 @@ static int dpiOci__loadLibWithName(dpiOciLoadLibParams *loadParams,
                 &loadParams->errorBufferLength, error) < 0)
             return DPI_FAILURE;
         strcpy(loadParams->errorBuffer, osError);
-
-        // check error information for the failure to load a subsidiary library
-        // and report this error immediately
-        if (strstr(loadParams->errorBuffer, "libnnz") ||
-                strstr(loadParams->errorBuffer, "libmql1")) {
-            length = strlen(directErrorFormat) + strlen(libName) + 1;
-            if (dpiUtils__ensureBuffer(length, "allocate load error buffer",
-                    (void**) &loadParams->loadError,
-                    &loadParams->loadErrorLength, error) < 0)
-                return DPI_FAILURE;
-            (void) sprintf(loadParams->loadError, directErrorFormat, libName);
-            return DPI_FAILURE;
-        }
-
     }
 
     return DPI_SUCCESS;

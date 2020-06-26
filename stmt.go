@@ -41,6 +41,7 @@ import (
 type stmtOptions struct {
 	boolString         boolString
 	fetchRowCount      int
+	prefetchCount      int
 	arraySize          int
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
@@ -87,6 +88,12 @@ func (o stmtOptions) ArraySize() int {
 		return 1 << 16
 	}
 	return o.arraySize
+}
+func (o stmtOptions) prefetchCount() int {
+	if o.prefetchCount <= 0 {
+		return DefaultPrefetchCount
+	}
+	return o.prefetchCount
 }
 func (o stmtOptions) FetchRowCount() int {
 	if o.fetchRowCount <= 0 {
@@ -142,6 +149,14 @@ func FetchRowCount(rowCount int) Option {
 		return nil
 	}
 	return func(o *stmtOptions) { o.fetchRowCount = rowCount }
+}
+
+// PrefetchCount returns an option to set the rows to be fetched, overriding DefaultPrefetchCount.
+func PrefetchCount(rowCount int) Option {
+	if rowCount <= 0 {
+		return nil
+	}
+	return func(o *stmtOptions) { o.prefetchCount = rowCount }
 }
 
 // ArraySize returns an option to set the array size to be used, overriding DefaultArraySize.
