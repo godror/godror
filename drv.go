@@ -242,7 +242,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	}
 	// create connection and initialize it, if needed
 	c := conn{
-		drv: d, Client: d.clientVersion, dpiConn: dc,
+		drv: d, dpiConn: dc,
 		params:     ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
 		newSession: pool == nil || newSession,
 		poolKey:    poolKey,

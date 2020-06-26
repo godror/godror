@@ -44,18 +44,18 @@ var _ driver.Pinger = (*conn)(nil)
 //var _ driver.NamedValueChecker = (*conn)(nil)
 
 type conn struct {
-	currentTT      TraceTag
-	params         ConnectionParams
-	Client, Server VersionInfo
-	tranParams     tranParams
-	mu             sync.RWMutex
-	poolKey        string
-	drv            *drv
-	dpiConn        *C.dpiConn
-	tzOffSecs      int
-	inTransaction  bool
-	newSession     bool
-	released       bool
+	currentTT     TraceTag
+	params        ConnectionParams
+	Server        VersionInfo
+	tranParams    tranParams
+	mu            sync.RWMutex
+	poolKey       string
+	drv           *drv
+	dpiConn       *C.dpiConn
+	tzOffSecs     int
+	inTransaction bool
+	newSession    bool
+	released      bool
 }
 
 func (c *conn) getError() error {
@@ -379,21 +379,22 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 var _ = driver.Tx((*conn)(nil))
 
 func (c *conn) ServerVersion() (VersionInfo, error) {
-	if c.Server.Version == 0 {
-		var v C.dpiVersionInfo
-		var release *C.char
-		var releaseLen C.uint32_t
-		if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
-			if c.params.IsPrelim {
-				return c.Server, nil
-			}
-			return c.Server, errors.Errorf("getServerVersion: %w", c.getError())
-		}
-		c.Server.set(&v)
-		c.Server.ServerRelease = string(bytes.Replace(
-			((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
-			[]byte{'\n'}, []byte{';', ' '}, -1))
+	if c.Server.Version != 0 {
+		return c.Server, nil
 	}
+	var v C.dpiVersionInfo
+	var release *C.char
+	var releaseLen C.uint32_t
+	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+		if c.params.IsPrelim {
+			return c.Server, nil
+		}
+		return c.Server, errors.Errorf("getServerVersion: %w", c.getError())
+	}
+	c.Server.set(&v)
+	c.Server.ServerRelease = string(bytes.Replace(
+		((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
+		[]byte{'\n'}, []byte{';', ' '}, -1))
 
 	return c.Server, nil
 }
@@ -402,12 +403,6 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 	c.released = false
 	if Log != nil {
 		Log("msg", "init connection", "conn", c, "onInit", onInit)
-	}
-	if c.Client.Version == 0 {
-		var err error
-		if c.Client, err = c.drv.ClientVersion(); err != nil {
-			return err
-		}
 	}
 
 	if err := c.initTZ(); err != nil || onInit == nil || !c.newSession {
@@ -554,7 +549,7 @@ func parseTZ(s string) (int, error) {
 }
 
 func (c *conn) setCallTimeout(dur time.Duration) {
-	if c.Client.Version < 18 {
+	if c.drv.clientVersion.Version < 18 {
 		return
 	}
 	ms := C.uint32_t(dur / time.Millisecond)

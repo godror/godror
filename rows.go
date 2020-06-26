@@ -608,8 +608,11 @@ func (r *rows) HasNextResultSet() bool {
 	if r.nextRs != nil {
 		return true
 	}
-	if !((r.conn.Client.Version > 12 || r.conn.Client.Version == 12 && r.conn.Client.Release >= 1) &&
-		(r.conn.Server.Version > 12 || r.conn.Server.Version == 12 && r.conn.Server.Release >= 1)) {
+	if cv := r.conn.drv.clientVersion; !(cv.Version > 12 || cv.Version == 12 && cv.Release >= 1) {
+		return false
+	}
+	if sv, err := r.conn.ServerVersion(); !(err == nil &&
+		(sv.Version > 12 || sv.Version == 12 && sv.Release >= 1)) {
 		return false
 	}
 	r.getImplicitResult()
