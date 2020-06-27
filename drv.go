@@ -27,7 +27,9 @@
 //     poolSessionTimeout=30s& \
 //     timezone=Local& \
 //     newPassword= \
-//     onInit=ALTER+SESSION+SET+current_schema%3Dmy_schema
+//     onInit=ALTER+SESSION+SET+current_schema%3Dmy_schema& \
+//     configDir=&
+//     libDir=
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
@@ -151,7 +153,7 @@ type connPool struct {
 	key     string
 }
 
-func (d *drv) init() error {
+func (d *drv) init(configDir, libDir string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.pools == nil {
@@ -165,8 +167,19 @@ func (d *drv) init() error {
 	}
 	var errInfo C.dpiErrorInfo
 	var dpiCtx *C.dpiContext
+	var ctxParams *C.dpiContextCreateParams
+	if !(configDir == "" && libDir == "") {
+		ctxParams = new(C.dpiContextCreateParams)
+		ctxParams.defaultDriverName, ctxParams.defaultEncoding = cDriverName, cUTF8
+		if configDir != "" {
+			ctxParams.oracleClientConfigDir = C.CString(configDir)
+		}
+		if libDir != "" {
+			ctxParams.oracleClientLibDir = C.CString(libDir)
+		}
+	}
 	if C.dpiContext_createWithParams(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
-		nil, // *C.dpiContextCreateParams
+		ctxParams,
 		(**C.dpiContext)(unsafe.Pointer(&dpiCtx)), &errInfo,
 	) == C.DPI_FAILURE {
 		return fromErrorInfo(errInfo)
@@ -233,7 +246,7 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 // connection is created.
 func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	// initialize driver, if necessary
-	if err := d.init(); err != nil {
+	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
 		return nil, err
 	}
 
@@ -478,7 +491,7 @@ func (d *drv) createConnFromParams(P ConnectionParams) (*conn, error) {
 func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 
 	// initialize driver, if necessary
-	if err := d.init(); err != nil {
+	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
 		return nil, err
 	}
 
@@ -694,9 +707,10 @@ func (P ConnectionParams) IsStandalone() bool {
 
 type CommonParams struct {
 	Username, Password, DSN string
-	EnableEvents            bool
+	ConfigDir, LibDir       string
 	OnInit                  func(driver.Conn) error
 	Timezone                *time.Location
+	EnableEvents            bool
 }
 
 type ConnParams struct {
@@ -781,6 +795,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	q["onInit"] = P.onInitStmts
+	q.Add("configDir", P.ConfigDir)
+	q.Add("libDir", P.LibDir)
 	return (&url.URL{
 		Scheme:   "oracle",
 		User:     url.UserPassword(P.Username, password),
@@ -964,6 +980,8 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.OnInit = mkExecMany(P.onInitStmts)
 	}
 	P.NewPassword = q.Get("newPassword")
+	P.ConfigDir = q.Get("configDir")
+	P.LibDir = q.Get("libDir")
 
 	P.comb()
 
