@@ -169,7 +169,9 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 
 // Enqueue all the messages given.
 //
-// WARNING: calling this function in parallel on different connections acquired from the same pool may fail due to Oracle bug 29928074. Ensure that this function is not run in parallel, use standalone connections or connections from different pools, or make multiple calls to Queue.enqOne() instead. The function Queue.Dequeue() call is not affected.
+// WARNING: calling this function in parallel on different connections acquired from the same pool may fail due to Oracle bug 29928074.
+// Ensure that this function is not run in parallel, use standalone connections or connections from different pools, or make multiple calls to Queue.enqOne() instead.
+// The function Queue.Dequeue() call is not affected.
 func (Q *Queue) Enqueue(messages []Message) error {
 	Q.mu.Lock()
 	defer Q.mu.Unlock()
@@ -245,9 +247,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	if M.Delay != 0 {
-		OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay)), "setDelay")
-	}
+	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay)), "setDelay")
 
 	if M.ExceptionQ != "" {
 		value := C.CString(M.ExceptionQ)
@@ -255,9 +255,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	if M.Expiration != 0 {
-		OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration)), "setExpiration")
-	}
+	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration)), "setExpiration")
 
 	if M.OriginalMsgID != zeroMsgID {
 		OK(C.dpiMsgProps_setOriginalMsgId(props, (*C.char)(unsafe.Pointer(&M.OriginalMsgID[0])), MsgIDLength), "setMsgOriginalId")
