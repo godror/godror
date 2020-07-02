@@ -11,6 +11,7 @@ package godror
 import "C"
 import (
 	//"fmt"
+	"fmt"
 	"io"
 	"unicode/utf8"
 	"unsafe"
@@ -77,11 +78,14 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
+	if Log != nil {
+		Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
+	}
 	if dlr.finished {
 		return 0, io.EOF
 	}
 	if len(p) == 0 {
-		return 0, nil
+		return 0, io.ErrShortBuffer
 	}
 	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
 	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
@@ -98,12 +102,18 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	n := C.uint64_t(len(p))
 	//fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
 	if dlr.offset+1 >= dlr.sizePlusOne {
+		if Log != nil {
+			Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
+		}
 		return 0, io.EOF
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
 		err := dlr.getError()
+		if Log != nil {
+			Log("msg", "LOB read", "error", err)
+		}
 		if dlr.finished = err.(interface{ Code() int }).Code() == 1403; dlr.finished {
 			dlr.offset += n
 			return int(n), io.EOF
@@ -122,6 +132,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		dlr.dpiLob = nil
 		dlr.finished = true
 		err = io.EOF
+	}
+	if Log != nil {
+		Log("msg", "LOB", "n", n, "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob, "error", err)
 	}
 	return int(n), err
 }

@@ -1131,11 +1131,11 @@ func TestReadWriteLob(t *testing.T) {
 		{[]byte{0, 1, 2, 3, 4, 5}, "12345"},
 	} {
 
-		if _, err = stmt.Exec(tN*2, tC.Bytes, tC.String); err != nil {
+		if _, err = stmt.ExecContext(ctx, tN*2, tC.Bytes, tC.String); err != nil {
 			t.Errorf("%d/1. (%v, %q): %v", tN, tC.Bytes, tC.String, err)
 			continue
 		}
-		if _, err = stmt.Exec(tN*2+1,
+		if _, err = stmt.ExecContext(ctx, tN*3+1,
 			godror.Lob{Reader: bytes.NewReader(tC.Bytes)},
 			godror.Lob{Reader: strings.NewReader(tC.String), IsClob: true},
 		); err != nil {
@@ -1159,26 +1159,26 @@ func TestReadWriteLob(t *testing.T) {
 				continue
 			}
 			t.Logf("%d. blob=%+v clob=%+v", id, blob, clob)
-			if clob, ok := clob.(*godror.Lob); !ok {
-				t.Errorf("%d. %T is not LOB", id, blob)
-			} else {
-				var got []byte
-				got, err = ioutil.ReadAll(clob)
-				if err != nil {
-					t.Errorf("%d. %v", id, err)
-				} else if got := string(got); got != tC.String {
-					t.Errorf("%d. got %q for CLOB, wanted %q", id, got, tC.String)
-				}
-			}
 			if blob, ok := blob.(*godror.Lob); !ok {
 				t.Errorf("%d. %T is not LOB", id, blob)
 			} else {
-				var got []byte
-				got, err = ioutil.ReadAll(blob)
+				got := make([]byte, len(tC.Bytes))
+				n, err := io.ReadFull(blob, got)
+				t.Logf("%d. BLOB read %d (%q =%t= %q): %+v", id, n, got, bytes.Equal(got, tC.Bytes), tC.Bytes, err)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				} else if !bytes.Equal(got, tC.Bytes) {
-					t.Errorf("%d. got %v for BLOB, wanted %v", id, got, tC.Bytes)
+					t.Errorf("%d. got %q for BLOB, wanted %q", id, got, tC.Bytes)
+				}
+			}
+			if clob, ok := clob.(*godror.Lob); !ok {
+				t.Errorf("%d. %T is not LOB", id, clob)
+			} else {
+				var got []byte
+				if got, err = ioutil.ReadAll(clob); err != nil {
+					t.Errorf("%d. %v", id, err)
+				} else if got := string(got); got != tC.String {
+					t.Errorf("%d. got %q for CLOB, wanted %q", id, got, tC.String)
 				}
 			}
 		}
@@ -1186,21 +1186,22 @@ func TestReadWriteLob(t *testing.T) {
 	}
 
 	rows, err := conn.QueryContext(ctx,
-		"SELECT F_clob FROM "+tbl+"", //nolint:gas
+		"SELECT F_blob, F_clob FROM "+tbl+"", //nolint:gas
 		godror.ClobAsString())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	for rows.Next() {
+		var b []byte
 		var s string
-		if err = rows.Scan(&s); err != nil {
+		if err = rows.Scan(&b, &s); err != nil {
 			t.Error(err)
 		}
 		t.Logf("clobAsString: %q", s)
 	}
 
-	qry := "SELECT CURSOR(SELECT f_id, f_clob FROM " + tbl + " WHERE ROWNUM <= 10) FROM DUAL"
+	qry := "SELECT CURSOR(SELECT f_id, F_blob, f_clob FROM " + tbl + " WHERE ROWNUM <= 10) FROM DUAL"
 	rows, err = testDb.QueryContext(ctx, qry, godror.ClobAsString())
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
