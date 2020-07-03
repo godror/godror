@@ -3050,7 +3050,7 @@ func TestBool(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	qry = "SELECT F_bool, F_bool FROM " + tbl + " ORDER BY 1"
+	qry = "SELECT F_bool, F_bool FROM " + tbl + " A ORDER BY ASCII(A.F_bool)"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
@@ -3067,7 +3067,7 @@ func TestBool(t *testing.T) {
 		got = append(got, bool(b))
 	}
 	t.Log("got:", got)
-	want := []bool{false, true, true, true}
+	want := []bool{true, true, false, true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wanted %v got %v", want, got)
 	}
