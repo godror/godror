@@ -47,7 +47,8 @@ func TestConnCut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	ctx, cancel := context.WithTimeout(testContext("ConnCut"), 10*time.Second)
+
+	ctx, cancel := context.WithTimeout(testContext("ConnCut"), 52*time.Second)
 	defer cancel()
 	const qry = "SELECT SYS_CONTEXT('userenv', 'service_name') FROM all_objects"
 	var upstream net.TCPAddr
@@ -57,7 +58,7 @@ func TestConnCut(t *testing.T) {
 		for k := range rem2 {
 			delete(rem2, k)
 		}
-		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
+		shortCtx, shortCancel := context.WithTimeout(ctx, 5*time.Second)
 		rows, err := db.QueryContext(shortCtx, qry)
 		if err != nil {
 			t.Fatal(err)
@@ -149,7 +150,7 @@ func TestConnCut(t *testing.T) {
 	rows1.Close()
 
 	for i := 0; i < 10; i++ {
-		shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
+		shortCtx, shortCancel = context.WithTimeout(ctx, 5*time.Second)
 		var s string
 		err = stmt.QueryRowContext(shortCtx, 1).Scan(&s)
 		shortCancel()
@@ -162,7 +163,7 @@ func TestConnCut(t *testing.T) {
 		}
 		t.Log(s)
 
-		shortCtx, shortCancel = context.WithTimeout(ctx, 3*time.Second)
+		shortCtx, shortCancel = context.WithTimeout(ctx, 5*time.Second)
 		err := db.PingContext(shortCtx)
 		shortCancel()
 		if err != nil {

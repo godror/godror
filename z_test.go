@@ -1857,7 +1857,7 @@ func TestReturning(t *testing.T) {
 func TestMaxOpenCursors(t *testing.T) {
 	var openCursors sql.NullInt64
 	const qry1 = "SELECT p.value FROM v$parameter p WHERE p.name = 'open_cursors'"
-	ctx, cancel := context.WithTimeout(testContext("MaxOpenCursors"), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("MaxOpenCursors"), 2*time.Minute)
 	defer cancel()
 	if err := testDb.QueryRowContext(ctx, qry1).Scan(&openCursors); err != nil {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
@@ -2408,7 +2408,7 @@ func TestGetDBTimeZone(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
 
-	ctx, cancel := context.WithTimeout(testContext("GetDBTimeZone"), time.Second)
+	ctx, cancel := context.WithTimeout(testContext("GetDBTimeZone"), 10*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -3060,14 +3060,14 @@ func TestBool(t *testing.T) {
 	for rows.Next() {
 		var b booler
 		var s string
-		if err = rows.Scan(&b, &s); err != nil {
+		if err = rows.Scan(&s, &b); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("%q: %v", s, b)
 		got = append(got, bool(b))
 	}
 	t.Log("got:", got)
-	want := []bool{true, true, false, true}
+	want := []bool{false, true, true, true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wanted %v got %v", want, got)
 	}
@@ -3110,7 +3110,7 @@ func TestResetSession(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("ResetSession"), time.Minute)
 	defer cancel()
 	for i := 0; i < 2*poolSize; i++ {
-		shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
+		shortCtx, shortCancel := context.WithTimeout(ctx, 5*time.Second)
 		conn, err := db.Conn(shortCtx)
 		if err != nil {
 			shortCancel()
@@ -3119,7 +3119,7 @@ func TestResetSession(t *testing.T) {
 		err = conn.PingContext(shortCtx)
 		shortCancel()
 		if err != nil {
-			t.Fatalf("%d. Pint: %+v", i, err)
+			t.Fatalf("%d. Ping: %+v", i, err)
 		}
 		conn.Close()
 	}
