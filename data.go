@@ -417,13 +417,13 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 		}
 	case Number, []Number:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
-	case int8, []int8, int16, []int16, int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
+	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-	case int32, []int32, sql.NullInt32, []sql.NullInt32:
+	case int8, []int8, int16, []int16, int32, []int32, sql.NullInt32, []sql.NullInt32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
-	case uint8, uint16, []uint16, uint, []uint, uint64, []uint64:
+	case uint, []uint, uint64, []uint64:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-	case uint32, []uint32:
+	case uint8, uint16, []uint16, uint32, []uint32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
 	case float32, []float32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
