@@ -1439,7 +1439,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int32(C.dpiData_getInt64(&data[0]))
+			*x = int8(C.dpiData_getInt64(&data[0]))
 		}
 	case *[]int8:
 		*x = (*x)[:0]
@@ -1447,14 +1447,14 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, int8(C.dpiData_getInt64(&data[i])))
 			}
 		}
 	case *int16:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int32(C.dpiData_getInt64(&data[0]))
+			*x = int16(C.dpiData_getInt64(&data[0]))
 		}
 	case *[]int16:
 		*x = (*x)[:0]
@@ -1462,7 +1462,7 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, int16(C.dpiData_getInt64(&data[i])))
 			}
 		}
 	case *int32:
@@ -1499,16 +1499,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(&data[0]))
+			x.Valid, x.Int32 = true, int32(C.dpiData_getInt64(&data[0]))
 		}
 	case *[]sql.NullInt32:
 		*x = (*x)[:0]
 		for i := range data {
 			if data[i].isNull == 1 {
-				*x = append(*x, sql.NullInt64{Valid: false})
+				*x = append(*x, sql.NullInt32{Valid: false})
 			} else {
-				*x = append(*x, sql.NullInt64{Valid: true,
-					Int64: int64(C.dpiData_getInt64(&data[i]))})
+				*x = append(*x, sql.NullInt32{Valid: true,
+					Int32: int32(C.dpiData_getInt64(&data[i]))})
 			}
 		}
 	case *sql.NullInt64:
@@ -1564,14 +1564,14 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, uint8(C.dpiData_getUint64(&data[i])))
 			}
 		}
 	case *uint8:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint32(C.dpiData_getUint64(&data[0]))
+			*x = uint8(C.dpiData_getUint64(&data[0]))
 		}
 	case *[]uint16:
 		*x = (*x)[:0]
@@ -1579,14 +1579,14 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, uint16(C.dpiData_getUint64(&data[i])))
 			}
 		}
 	case *uint16:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint32(C.dpiData_getUint64(&data[0]))
+			*x = uint16(C.dpiData_getUint64(&data[0]))
 		}
 	case *uint32:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -1705,7 +1705,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		i, x := 0, slice
 		if x.Valid {
 			data[i].isNull = 0
-			C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
+			C.dpiData_setInt64(&data[i], C.int64_t(x.Int32))
 		} else {
 			data[i].isNull = 1
 		}
@@ -1713,7 +1713,7 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 		for i, x := range slice {
 			if x.Valid {
 				data[i].isNull = 0
-				C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
+				C.dpiData_setInt64(&data[i], C.int64_t(x.Int32))
 			} else {
 				data[i].isNull = 1
 			}
