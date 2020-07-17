@@ -943,6 +943,22 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 				*get = dataGetNumber
 			}
 		}
+	case int8, []int8:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case int16, []int16:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
 	case int32, []int32:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
 		if !nilPtr {
@@ -961,6 +977,22 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 	case uint, []uint:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case uint8:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
+		if !nilPtr {
+			info.set = dataSetNumber
+			if info.isOut {
+				*get = dataGetNumber
+			}
+		}
+	case uint16, []uint16:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
 		if !nilPtr {
 			info.set = dataSetNumber
 			if info.isOut {
