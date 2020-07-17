@@ -12,13 +12,14 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 
 At least Go 1.11 is required!
 
-Although an Oracle client is NOT required for compiling, it is at run time.
+Although an Oracle client is NOT required for compiling, it *is* at run time.
 One can download it from <https://www.oracle.com/database/technologies/instant-client/downloads.html>
 
 ## Connect
 
 In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
-as connString, or an URL like "oracle://user:passw@service_name".
+as connString, or an URL like "oracle://user:passw@service_name", 
+where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`.
 
 You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does redact the password
@@ -40,23 +41,10 @@ TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/inst
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
 `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
 
-### Warnings
-#### ContextWithParams
-**WARNING** to provide connection params through `context.Context` (with `godror.ContextWithParams`),
-you should set `DB.SetMaxIdleConns(0)`, to force the Go `*sql.DB` connection pool to acquire a
-new connection, using the params in the Context!
-
-Without this, you may get a previously acquired and now idle connection!
-
-#### Oracle Session Pooling
-**WARNING WARNING** also, you *MUST* disable Go connection pooling if you're using Oracle Session pooling
-(`standaloneConnection=0`), that's why the default is `standaloneConnection=1`.
-
-Either use `standaloneConnection=1` connection parameter, or disable Go connection pooling with
-
-    db.SetMaxIdleConns(0)
-	db.SetMaxOpenConns(0)
-	db.SetConnMaxLifetime(0)
+### Oracle Session Pooling
+Set `standaloneConnection=0`- this is the default. All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
+It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
+eliminates the need for it.
 
 ## Rationale
 
