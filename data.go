@@ -313,12 +313,18 @@ func (d *Data) Set(v interface{}) error {
 		return errors.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	switch x := v.(type) {
-	case int8, int16, int32, int64:
+	case int8, int16, int32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
-	case uint8, uint16, uint32, uint64:
+	case int64:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(x)
+	case uint8, uint16, uint32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
+	case uint64:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(x)
 	case float32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
 		d.SetFloat32(x)
