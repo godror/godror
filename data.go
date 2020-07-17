@@ -318,7 +318,7 @@ func (d *Data) Set(v interface{}) error {
 		d.SetInt64(int64(x))
 	case uint8, uint16, uint32, uint64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
-		d.SetUint64(int64(x))
+		d.SetUint64(uint64(x))
 	case float32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
 		d.SetFloat32(x)
