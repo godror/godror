@@ -267,12 +267,10 @@ type tranParams struct {
 // context is for the preparation of the statement,
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	return c.prepareContext(ctx, query)
-}
-func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
 		c.mu.Lock()
 		c.setTraceTag(tt)
@@ -286,12 +284,19 @@ func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return &statement{conn: c, query: query}, nil
 	}
 
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.prepareContextNotLocked(ctx, query)
+}
+func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (driver.Stmt, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	cSQL := C.CString(query)
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	st := statement{conn: c, query: query}
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
@@ -426,12 +431,12 @@ func (c *conn) initTZ() error {
 	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	st, err := c.PrepareContext(ctx, qry)
+	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
 		return errors.Errorf("%s: %w", qry, err)
 	}
 	defer st.Close()
-	rows, err := st.Query(nil) //lint:ignore SA1019 - it's hard to use QueryContext here
+	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
 	if err != nil {
 		if Log != nil {
 			Log("qry", qry, "error", err)

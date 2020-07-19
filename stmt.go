@@ -486,7 +486,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	Log := ctxGetLog(ctx)
 
 	st.Lock()
 	defer st.Unlock()
@@ -495,7 +494,15 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
+	return st.queryContextNotLocked(ctx, args)
+}
 
+func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	Log := ctxGetLog(ctx)
 	switch st.query {
 	case getConnection:
 		if Log != nil {
