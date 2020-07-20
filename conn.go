@@ -161,7 +161,7 @@ func (c *conn) closeNotLocking() error {
 	}
 	c.currentTT = TraceTag{}
 	dpiConn := c.dpiConn
-	c.dpiConn = nil
+	c.dpiConn, c.params.Timezone, c.tzOffSecs, c.tzValid = nil, nil, 0, false
 	if dpiConn == nil {
 		return nil
 	}
@@ -860,7 +860,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
-	tz, tzOffSecs := c.params.Timezone, c.tzOffSecs
+	tz, tzOffSecs, tzValid := c.params.Timezone, c.tzOffSecs, c.tzValid
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -872,7 +872,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	c.params.Timezone, c.tzOffSecs = tz, tzOffSecs
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, tzOffSecs, tzValid
 	if paramsFromCtx || newSession {
 		c.init(P.OnInit)
 	}
