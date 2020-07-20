@@ -56,6 +56,7 @@ type conn struct {
 	inTransaction bool
 	newSession    bool
 	released      bool
+	tzValid       bool
 }
 
 func (c *conn) getError() error {
@@ -417,7 +418,7 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 }
 
 func (c *conn) initTZ() error {
-	if c.params.Timezone != nil && (c.params.Timezone != time.Local || c.tzOffSecs != 0) {
+	if c.tzValid && c.params.Timezone != nil {
 		return nil
 	}
 	c.params.Timezone = time.Local
@@ -459,7 +460,7 @@ func (c *conn) initTZ() error {
 	if err != nil || tz == nil {
 		return err
 	}
-	c.params.Timezone, c.tzOffSecs = tz, off
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, off, true
 
 	return nil
 }

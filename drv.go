@@ -269,7 +269,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	tz, ok := d.timezones[P.DSN]
 	d.mu.Unlock()
 	if ok {
-		c.params.Timezone, c.tzOffSecs = tz.Location, tz.OffSecs
+		c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.OffSecs, true
 	}
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
@@ -278,9 +278,11 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	c.init(P.OnInit)
-	d.mu.Lock()
-	d.timezones[P.DSN] = timeZone{Location: c.params.Timezone, OffSecs: c.tzOffSecs}
-	d.mu.Unlock()
+	if c.tzValid {
+		d.mu.Lock()
+		d.timezones[P.DSN] = timeZone{Location: c.params.Timezone, OffSecs: c.tzOffSecs}
+		d.mu.Unlock()
+	}
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
