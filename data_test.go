@@ -19,6 +19,34 @@ func TestDataSetGet(t *testing.T) {
 		}
 	}
 
+	for _, want := range []int8{-126, 126} {
+		d.Set(want)
+		if got := d.Get(); got.(int64) != int64(want) {
+			t.Errorf("set %v, got %v", want, got)
+		}
+	}
+
+	for _, want := range []int16{-30000, -15000, 0, 15000, 30000} {
+		d.Set(want)
+		if got := d.Get(); got.(int64) != int64(want) {
+			t.Errorf("set %v, got %v", want, got)
+		}
+	}
+
+	for _, want := range []uint8{0, 128, 253} {
+		d.Set(want)
+		if got := d.Get(); got.(uint64) != uint64(want) {
+			t.Errorf("set %v, got %v", want, got)
+		}
+	}
+
+	for _, want := range []uint16{0, 15000, 30000, 45000, 60000} {
+		d.Set(want)
+		if got := d.Get(); got.(uint64) != uint64(want) {
+			t.Errorf("set %v, got %v", want, got)
+		}
+	}
+
 	for _, want := range []bool{true, false} {
 		d.SetBool(want)
 		if got := d.GetBool(); got != want {

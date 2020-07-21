@@ -313,12 +313,27 @@ func (d *Data) Set(v interface{}) error {
 		return errors.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	switch x := v.(type) {
+	case int8:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(int64(x))
+	case int16:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(int64(x))
 	case int32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
 	case int64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(x)
+	case uint8:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(uint64(x))
+	case uint16:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(uint64(x))
+	case uint32:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(uint64(x))
 	case uint64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(x)
@@ -422,11 +437,11 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
 	case int, []int, int64, []int64, sql.NullInt64, []sql.NullInt64:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
-	case int32, []int32:
+	case int8, []int8, int16, []int16, int32, []int32, sql.NullInt32, []sql.NullInt32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
 	case uint, []uint, uint64, []uint64:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
-	case uint32, []uint32:
+	case uint8, uint16, []uint16, uint32, []uint32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64
 	case float32, []float32:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
