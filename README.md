@@ -46,6 +46,9 @@ Set `standaloneConnection=0`- this is the default. All old advices of `db.SetMax
 It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
 eliminates the need for it.
 
+***WARNING*** if you cannot use Go 1.14.6 or newer, then either set `standaloneConnection=1` or
+disable Go connection pooling by `db.SetMaxIdleConns(0)` - they do not work well together, resulting in stalls!
+
 ## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
