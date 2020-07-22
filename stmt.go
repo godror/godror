@@ -1278,7 +1278,7 @@ func (c *conn) dataGetTimeC(t *time.Time, data *C.dpiData) {
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, c.params.Timezone),
+		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, c.Timezone()),
 	)
 }
 
@@ -1325,7 +1325,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		if data[i].isNull == 1 {
 			continue
 		}
-		t = t.In(c.params.Timezone)
+		t = t.In(c.Timezone())
 		Y, M, D := t.Date()
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],

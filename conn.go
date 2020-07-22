@@ -457,11 +457,14 @@ func (c *conn) initTZ() error {
 	if Log != nil {
 		Log("timezone", timezone, "tz", tz, "offSecs", off)
 	}
-	if err != nil || tz == nil {
+	if err == nil && tz == nil {
+		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
+	}
+	if err != nil {
 		return err
 	}
-	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, off, true
 
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, off, true
 	return nil
 }
 
@@ -802,7 +805,11 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 
 // Timezone returns the connection's timezone.
 func (c *conn) Timezone() *time.Location {
-	return c.params.Timezone
+	tz := c.params.Timezone 
+	if false && tz == nil {
+		return time.Local
+	}
+	return tz
 }
 
 var _ = driver.SessionResetter((*conn)(nil))
@@ -860,7 +867,6 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
-	tz, tzOffSecs, tzValid := c.params.Timezone, c.tzOffSecs, c.tzValid
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -872,8 +878,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, tzOffSecs, tzValid
-	if paramsFromCtx || newSession {
+	if !c.tzValid || paramsFromCtx || newSession {
 		c.init(P.OnInit)
 	}
 	return nil
