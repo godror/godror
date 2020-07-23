@@ -70,7 +70,6 @@ import (
 	"time"
 	"unsafe"
 
-	"golang.org/x/sync/singleflight"
 	errors "golang.org/x/xerrors"
 )
 
@@ -140,8 +139,12 @@ type drv struct {
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
-	timezones     singleflight.Group
+	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
+}
+type locationWithOffSecs struct {
+	*time.Location
+	offSecs int
 }
 type connPool struct {
 	dpiPool *C.dpiPool
@@ -154,6 +157,9 @@ func (d *drv) init(configDir, libDir string) error {
 	defer d.mu.Unlock()
 	if d.pools == nil {
 		d.pools = make(map[string]*connPool)
+	}
+	if d.timezones == nil {
+		d.timezones = make(map[string]locationWithOffSecs)
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -170,6 +176,9 @@ func (d *drv) init(configDir, libDir string) error {
 		if libDir != "" {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
 		}
+	}
+	if Log != nil {
+		Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
 	if C.dpiContext_createWithParams(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
 		ctxParams,
@@ -1120,7 +1129,8 @@ func (V VersionInfo) String() string {
 	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
 }
 
-var timezones singleflight.Group
+var timezones = make(map[string]*time.Location)
+var timezonesMu sync.RWMutex
 
 func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.Location {
 	if hourOffset == 0 && minuteOffset == 0 {
@@ -1134,20 +1144,28 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 		tS = local.String()
 	}
 	key := fmt.Sprintf("%02d:%02d\t%s", hourOffset, minuteOffset, tS)
-	I, _, _ := timezones.Do(key, func() (interface{}, error) {
-		var tz *time.Location
-		off := int(hourOffset)*3600 + int(minuteOffset)*60
-		if local != nil {
-			if _, localOff := time.Now().In(local).Zone(); off == localOff {
-				tz = local
-			}
+	timezonesMu.RLock()
+	tz, ok := timezones[key]
+	timezonesMu.RUnlock()
+	if ok {
+		return tz
+	}
+	timezonesMu.Lock()
+	defer timezonesMu.Unlock()
+	if tz, ok = timezones[key]; ok {
+		return tz
+	}
+	off := int(hourOffset)*3600 + int(minuteOffset)*60
+	if local != nil {
+		if _, localOff := time.Now().In(local).Zone(); off == localOff {
+			tz = local
 		}
-		if tz == nil {
-			tz = time.FixedZone(key[:5], off)
-		}
-		return tz, nil
-	})
-	return I.(*time.Location)
+	}
+	if tz == nil {
+		tz = time.FixedZone(key[:5], off)
+	}
+	timezones[key] = tz
+	return tz
 }
 
 type ctxKey string
