@@ -143,11 +143,6 @@ type drv struct {
 	timezones     singleflight.Group
 	clientVersion VersionInfo
 }
-type timeZone struct {
-	*time.Location
-	OffSecs int
-}
-
 type connPool struct {
 	dpiPool *C.dpiPool
 	params  commonAndPoolParams
