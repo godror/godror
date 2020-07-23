@@ -70,6 +70,7 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sync/singleflight"
 	errors "golang.org/x/xerrors"
 )
 
@@ -139,7 +140,7 @@ type drv struct {
 	mu            sync.Mutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
-	timezones     map[string]timeZone
+	timezones     singleflight.Group
 	clientVersion VersionInfo
 }
 type timeZone struct {
@@ -158,9 +159,6 @@ func (d *drv) init(configDir, libDir string) error {
 	defer d.mu.Unlock()
 	if d.pools == nil {
 		d.pools = make(map[string]*connPool)
-	}
-	if d.timezones == nil {
-		d.timezones = make(map[string]timeZone)
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -265,12 +263,6 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		newSession: pool == nil || newSession,
 		poolKey:    poolKey,
 	}
-	d.mu.Lock()
-	tz, ok := d.timezones[P.DSN]
-	d.mu.Unlock()
-	if ok {
-		c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.OffSecs, true
-	}
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
 		if c.params.Username == "" {
@@ -278,11 +270,6 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	c.init(P.OnInit)
-	if c.tzValid {
-		d.mu.Lock()
-		d.timezones[P.DSN] = timeZone{Location: c.params.Timezone, OffSecs: c.tzOffSecs}
-		d.mu.Unlock()
-	}
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]

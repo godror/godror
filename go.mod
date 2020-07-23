@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/google/go-cmp v0.4.0
+	go4.org v0.0.0-20200411211856-f5505b9728dd
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 )

@@ -422,49 +422,54 @@ func (c *conn) initTZ() error {
 		return nil
 	}
 	c.params.Timezone = time.Local
+
+	I, err, _ := c.drv.timezones.Do(c.params.String()+"\t"+time.Local.String(), func() (interface{}, error) {
+		// DBTIMEZONE is useless, false, and misdirecting!
+		// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
+		const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		st, err := c.prepareContextNotLocked(ctx, qry)
+		if err != nil {
+			return nil, errors.Errorf("%s: %w", qry, err)
+		}
+		defer st.Close()
+		rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
+		if err != nil {
+			if Log != nil {
+				Log("qry", qry, "error", err)
+			}
+			return nil, err
+		}
+		defer rows.Close()
+		var dbTZ, timezone string
+		vals := []driver.Value{dbTZ, timezone}
+		if err = rows.Next(vals); err != nil && err != io.EOF {
+			return nil, errors.Errorf("%s: %w", qry, err)
+		}
+		dbTZ = vals[0].(string)
+		timezone = vals[1].(string)
+
+		tz, off, err := calculateTZ(dbTZ, timezone)
+		if Log != nil {
+			Log("timezone", timezone, "tz", tz, "offSecs", off)
+		}
+		if err == nil && tz == nil {
+			err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
+		}
+		return tz, err
+		return nil, err
+	})
+	if err != nil {
+		return err
+	}
+	c.params.Timezone = I.(*time.Location)
 	_, c.tzOffSecs = time.Now().In(c.params.Timezone).Zone()
 	if Log != nil {
 		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
-	// DBTIMEZONE is useless, false, and misdirecting!
-	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
-	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	st, err := c.prepareContextNotLocked(ctx, qry)
-	if err != nil {
-		return errors.Errorf("%s: %w", qry, err)
-	}
-	defer st.Close()
-	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
-	if err != nil {
-		if Log != nil {
-			Log("qry", qry, "error", err)
-		}
-		return nil
-	}
-	defer rows.Close()
-	var dbTZ, timezone string
-	vals := []driver.Value{dbTZ, timezone}
-	if err = rows.Next(vals); err != nil && err != io.EOF {
-		return errors.Errorf("%s: %w", qry, err)
-	}
-	dbTZ = vals[0].(string)
-	timezone = vals[1].(string)
-
-	tz, off, err := calculateTZ(dbTZ, timezone)
-	if Log != nil {
-		Log("timezone", timezone, "tz", tz, "offSecs", off)
-	}
-	if err == nil && tz == nil {
-		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
-	}
-	if err != nil {
-		return err
-	}
-
-	c.params.Timezone, c.tzOffSecs, c.tzValid = tz, off, true
+	c.tzValid = c.params.Timezone != nil
 	return nil
 }
 
@@ -805,7 +810,7 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 
 // Timezone returns the connection's timezone.
 func (c *conn) Timezone() *time.Location {
-	tz := c.params.Timezone 
+	tz := c.params.Timezone
 	if false && tz == nil {
 		return time.Local
 	}
