@@ -1120,8 +1120,7 @@ func (V VersionInfo) String() string {
 	return fmt.Sprintf("%d.%d.%d.%d.%d%s", V.Version, V.Release, V.Update, V.PortRelease, V.PortUpdate, s)
 }
 
-var timezones = make(map[[2]C.int8_t]*time.Location)
-var timezonesMu sync.RWMutex
+var timezones singleflight.Group
 
 func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.Location {
 	if hourOffset == 0 && minuteOffset == 0 {
@@ -1130,27 +1129,25 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 		}
 		return local
 	}
-	key := [2]C.int8_t{hourOffset, minuteOffset}
-	timezonesMu.RLock()
-	tz := timezones[key]
-	timezonesMu.RUnlock()
-	if tz == nil {
-		timezonesMu.Lock()
-		if tz = timezones[key]; tz == nil {
-			off := int(hourOffset)*3600 + int(minuteOffset)*60
-			if local != nil {
-				if _, localOff := time.Now().In(local).Zone(); off == localOff {
-					tz = local
-				}
-			}
-			if tz == nil {
-				tz = time.FixedZone(fmt.Sprintf("%02d:%02d", hourOffset, minuteOffset), off)
-			}
-			timezones[key] = tz
-		}
-		timezonesMu.Unlock()
+	var tS string
+	if local != nil {
+		tS = local.String()
 	}
-	return tz
+	key := fmt.Sprintf("%02d:%02d\t%s", hourOffset, minuteOffset, tS)
+	I, _, _ := timezones.Do(key, func() (interface{}, error) {
+		var tz *time.Location
+		off := int(hourOffset)*3600 + int(minuteOffset)*60
+		if local != nil {
+			if _, localOff := time.Now().In(local).Zone(); off == localOff {
+				tz = local
+			}
+		}
+		if tz == nil {
+			tz = time.FixedZone(key[:5], off)
+		}
+		return tz, nil
+	})
+	return I.(*time.Location)
 }
 
 type ctxKey string
