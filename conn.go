@@ -250,12 +250,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.New("already in transaction")
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.inTransaction = true
-	c.mu.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.mu.Unlock()
 	}
 	return c, nil
 }
@@ -320,6 +318,7 @@ func (c *conn) Rollback() error {
 }
 func (c *conn) endTran(isCommit bool) error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.inTransaction = false
 	c.tranParams = tranParams{}
 
@@ -335,7 +334,6 @@ func (c *conn) endTran(isCommit bool) error {
 			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
-	c.mu.Unlock()
 	//fmt.Printf("%p.%s\n", c, msg)
 	return err
 }
@@ -424,9 +422,14 @@ func (c *conn) initTZ() error {
 	c.params.Timezone = time.Local
 
 	key := time.Local.String() + "\t" + c.params.String()
-	c.drv.mu.Lock()
+	c.drv.mu.RLock()
 	tz, ok := c.drv.timezones[key]
-	defer c.drv.mu.Unlock()
+	c.drv.mu.RUnlock()
+	if !ok {
+		c.drv.mu.Lock()
+		defer c.drv.mu.Unlock()
+		tz, ok = c.drv.timezones[key]
+	}
 	if ok {
 		c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
 		return nil
@@ -705,20 +708,21 @@ func (c *conn) GetPoolStats() (stats PoolStats, err error) {
 	if c == nil {
 		return stats, nil
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.poolKey == "" {
+	c.mu.RLock()
+	key, drv := c.poolKey, c.drv
+	c.mu.RUnlock()
+	if key == "" {
 		// not pooled connection
 		return stats, nil
 	}
 
-	c.drv.mu.Lock()
-	pool := c.drv.pools[c.poolKey]
-	c.drv.mu.Unlock()
+	drv.mu.RLock()
+	pool := drv.pools[key]
+	drv.mu.RUnlock()
 	if pool == nil {
 		return stats, nil
 	}
-	return c.drv.getPoolStats(pool)
+	return drv.getPoolStats(pool)
 }
 
 const traceTagCtxKey = ctxKey("tracetag")
@@ -845,11 +849,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if c == nil {
 		return driver.ErrBadConn
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.poolKey == "" {
+	c.mu.RLock()
+	key, drv, params, dpiConnOK := c.poolKey, c.drv, c.params, c.dpiConn != nil
+	c.mu.RUnlock()
+	if key == "" {
 		// not pooled connection
-		if c.dpiConn == nil {
+		if !dpiConnOK {
 			return driver.ErrBadConn
 		}
 		return nil
@@ -861,22 +866,22 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	//
 	// See https://github.com/godror/godror/issues/57 for example.
 
-	c.drv.mu.Lock()
-	pool := c.drv.pools[c.poolKey]
-	c.drv.mu.Unlock()
+	drv.mu.RLock()
+	pool := drv.pools[key]
+	drv.mu.RUnlock()
 	if pool == nil {
-		if c.dpiConn == nil {
+		if !dpiConnOK {
 			return driver.ErrBadConn
 		}
 		return nil
 	}
-	P := commonAndConnParams{CommonParams: c.params.CommonParams, ConnParams: c.params.ConnParams}
+	P := commonAndConnParams{CommonParams: params.CommonParams, ConnParams: params.ConnParams}
 	var paramsFromCtx bool
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
 			// ContextWithUserPassw does not fill ConnParam.DSN
 			if P.DSN == "" {
-				P.DSN = c.params.DSN
+				P.DSN = params.DSN
 			}
 			if Log != nil {
 				Log("msg", "paramsFromContext", "params", P)
@@ -886,6 +891,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -897,7 +904,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	if !c.tzValid || paramsFromCtx || newSession {
+	if paramsFromCtx || newSession || !(c.tzValid && c.params.Timezone != nil) {
 		c.init(P.OnInit)
 	}
 	return nil
@@ -915,21 +922,25 @@ func (c *conn) IsValid() bool {
 	if c == nil {
 		return false
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.dpiConn == nil {
-		return c.released
+	c.mu.RLock()
+	dpiConnOK, released, pooled := c.dpiConn != nil, c.released, c.poolKey != ""
+	c.mu.RUnlock()
+	if !dpiConnOK {
+		return released
 	}
-	if c.poolKey == "" {
+	if !pooled {
 		// not pooled connection
-		return c.dpiConn != nil
+		return dpiConnOK
 	}
+
 	// FIXME(tgulacsi): Prepared statements hold the previous session,
 	// so sometimes sessions are not released, resulting in
 	//
 	//     ORA-24459: OCISessionGet()
 	//
 	// See https://github.com/godror/godror/issues/57 for example.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.closeNotLocking()
 	c.released = true
 	return true

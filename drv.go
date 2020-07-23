@@ -136,7 +136,7 @@ func init() {
 var _ driver.Driver = (*drv)(nil)
 
 type drv struct {
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
 	timezones     map[string]locationWithOffSecs
@@ -504,12 +504,17 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	// pool; hold the lock while the pool is looked up (and created, if needed)
 	// in order to ensure that multiple goroutines do not attempt to create a
 	// pool
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	d.mu.RLock()
 	pool, ok := d.pools[poolKey]
+	d.mu.RUnlock()
 	if ok {
 		return pool, nil
 	}
+	d.mu.Lock()
+	if pool, ok = d.pools[poolKey]; ok {
+		return pool, nil
+	}
+	defer d.mu.Unlock()
 	pool, err := d.createPool(P)
 	if err != nil {
 		return nil, err
