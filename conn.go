@@ -468,7 +468,9 @@ func (c *conn) initTZ() error {
 		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
 	}
 	if err != nil {
-		Log("msg", "initTZ", "error", err)
+		if Log != nil {
+			Log("msg", "initTZ", "error", err)
+		}
 		return err
 	}
 
