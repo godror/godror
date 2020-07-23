@@ -200,7 +200,7 @@ func init() {
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range time.NewTicker(1 * time.Minute).C {
+			for range time.NewTicker(30 * time.Second).C {
 				fmt.Printf("testDb: %+v\n", testDb.Stats())
 			}
 		}()
@@ -210,7 +210,7 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range time.NewTicker(1 * time.Minute).C {
+			for range time.NewTicker(30 * time.Second).C {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
@@ -1492,24 +1492,6 @@ func TestPtrArg(t *testing.T) {
 	}
 	rows.Close()
 }
-func TestORA1000(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(testContext("ORA1000"))
-	defer cancel()
-	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for i := 0; i < 1000; i++ {
-		var n int64
-		if err := testDb.QueryRowContext(ctx,
-			"SELECT /*"+strconv.Itoa(i)+"*/ 1 FROM DUAL", //nolint:gas
-		).Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
 
 func TestRanaOraIssue244(t *testing.T) {
 	tableName := "test_ora_issue_244" + tblSuffix
@@ -1857,34 +1839,41 @@ func TestReturning(t *testing.T) {
 	t.Logf("RETURNING (zero set): %v", got)
 }
 
-func TestMaxOpenCursors(t *testing.T) {
+func TestMaxOpenCursorsORA1000(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(testContext("ORA1000"))
+	defer cancel()
+	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects WHERE ROWNUM < 100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
 	var openCursors sql.NullInt64
 	const qry1 = "SELECT p.value FROM v$parameter p WHERE p.name = 'open_cursors'"
-	ctx, cancel := context.WithTimeout(testContext("MaxOpenCursors"), 2*time.Minute)
-	defer cancel()
-	if err := testDb.QueryRowContext(ctx, qry1).Scan(&openCursors); err != nil {
+	if err := testDb.QueryRowContext(ctx, qry1).Scan(&openCursors); err == nil {
+		t.Logf("open_cursors=%v", openCursors)
+	} else {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
 			var cErr interface{ Code() int }
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
-				t.Log(err)
+				t.Logf("%s: %+v", qry1, err)
 			} else {
 				t.Error(errors.Errorf("%s: %w", qry1, err))
 			}
 		} else {
 			t.Log(errors.Errorf("%s: %w", qry1, err))
 		}
-	} else {
-		t.Logf("open_cursors=%v", openCursors)
 	}
 	n := int(openCursors.Int64)
-	if n <= 0 {
-		n = 1000
+	if 0 <= n || n >= 100 {
+		n = 100
 	}
 	n *= 2
 	for i := 0; i < n; i++ {
 		var cnt int64
-		const qry2 = "DECLARE cnt PLS_INTEGER; BEGIN SELECT COUNT(0) INTO cnt FROM DUAL; :1 := cnt; END;"
-		if _, err := testDb.ExecContext(ctx, qry2, sql.Out{Dest: &cnt}); err != nil {
+		qry2 := "SELECT /* " + strconv.Itoa(i) + " */ 1 FROM DUAL"
+		if err = testDb.QueryRowContext(ctx, qry2).Scan(&cnt); err != nil {
 			t.Fatal(errors.Errorf("%d. %s: %w", i, qry2, err))
 		}
 	}

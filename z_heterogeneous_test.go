@@ -19,7 +19,7 @@ import (
 )
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
-
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("HeterogeneousPoolIntegration"), 30*time.Second)
 	defer cancel()
 
