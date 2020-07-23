@@ -64,6 +64,7 @@ func init() {
 		}
 	}
 
+	var configDir string
 	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
 		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
@@ -111,6 +112,7 @@ func init() {
 		fmt.Println("Using default database for tests: ", fn)
 		fmt.Printf("export TNS_ADMIN=%s\n", wd)
 		os.Setenv("TNS_ADMIN", tempDir)
+		configDir = tempDir
 
 		if b, err = ioutil.ReadFile(fn); err != nil {
 			fmt.Println(err)
@@ -137,6 +139,7 @@ func init() {
 			Password:     os.Getenv("GODROR_TEST_PASSWORD"),
 			DSN:          os.Getenv("GODROR_TEST_DB"),
 			EnableEvents: true,
+			ConfigDir:    configDir,
 		},
 		ConnParams: godror.ConnParams{
 			ConnClass:   "TestClassName",
