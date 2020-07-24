@@ -337,15 +337,15 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	}
 
 	// assign new password (only relevant for standalone connections)
-	if pool == nil && P.NewPassword != "" {
-		cNewPassword = C.CString(P.NewPassword)
+	if pool == nil && !P.NewPassword.IsZero() {
+		cNewPassword = C.CString(P.NewPassword.Unhide())
 		connCreateParams.newPassword = cNewPassword
-		connCreateParams.newPasswordLength = C.uint32_t(len(P.NewPassword))
+		connCreateParams.newPasswordLength = C.uint32_t(P.NewPassword.Len())
 	}
 
 	// assign external authentication flag (only relevant for standalone
 	// connections)
-	if pool == nil && P.Username == "" && P.Password == "" {
+	if pool == nil && P.Username == "" && P.Password.IsZero() {
 		connCreateParams.externalAuth = 1
 	}
 
@@ -413,7 +413,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	}
 
 	// setup credentials
-	username, password := P.Username, P.Password
+	username, password := P.Username, P.Password.Unhide()
 	if pool != nil && !pool.params.Heterogeneous {
 		username, password = "", ""
 	}
@@ -489,7 +489,8 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	if P.Heterogeneous {
-		P.Username, P.Password = "", ""
+		P.Username = ""
+		P.Password.Reset()
 	}
 	// determine key to use for pool
 	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
@@ -603,8 +604,8 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		cUsername = C.CString(P.Username)
 		defer C.free(unsafe.Pointer(cUsername))
 	}
-	if P.Password != "" {
-		cPassword = C.CString(P.Password)
+	if !P.Password.IsZero() {
+		cPassword = C.CString(P.Password.Unhide())
 		defer C.free(unsafe.Pointer(cPassword))
 	}
 	if P.DSN != "" {
@@ -622,13 +623,13 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	if C.dpiPool_create(
 		d.dpiContext,
 		cUsername, C.uint32_t(len(P.Username)),
-		cPassword, C.uint32_t(len(P.Password)),
+		cPassword, C.uint32_t(P.Password.Len()),
 		cDSN, C.uint32_t(len(P.DSN)),
 		&commonCreateParams,
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Errorf("params=%v extAuth=%v: %w",
+		return nil, errors.Errorf("params=%s extAuth=%v: %w",
 			P, poolCreateParams.externalAuth, d.getError())
 	}
 
@@ -677,6 +678,113 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 	return stats, d.getError()
 }
 
+type commonAndConnParams struct {
+	CommonParams
+	ConnParams
+}
+
+func (P commonAndConnParams) String() string {
+	return P.CommonParams.String() + "&" + P.ConnParams.String()
+}
+
+type commonAndPoolParams struct {
+	CommonParams
+	PoolParams
+}
+
+func (P commonAndPoolParams) String() string {
+	return P.CommonParams.String() + "&" + P.PoolParams.String()
+}
+
+type CommonParams struct {
+	Username, DSN     string
+	Password          Password
+	ConfigDir, LibDir string
+	OnInit            func(driver.Conn) error
+	Timezone          *time.Location
+	EnableEvents      bool
+}
+
+func (P CommonParams) String() string {
+	q := make(url.Values, 8)
+	q.Add("username", P.Username)
+	q.Add("password", P.Password.String())
+	q.Add("dsn", P.DSN)
+	if P.ConfigDir != "" {
+		q.Add("configDir", P.ConfigDir)
+	}
+	if P.LibDir != "" {
+		q.Add("libDir", P.LibDir)
+	}
+	s := "local"
+	tz := P.Timezone
+	if tz != nil && tz != time.Local {
+		s = tz.String()
+	}
+	q.Add("timezone", s)
+	if P.EnableEvents {
+		q.Add("enableEvents", "1")
+	}
+
+	return q.Encode()
+}
+
+type ConnParams struct {
+	NewPassword                             Password
+	ConnClass                               string
+	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
+	ShardingKey, SuperShardingKey           []interface{}
+}
+
+func (P ConnParams) String() string {
+	q := make(url.Values, 8)
+	if P.ConnClass != "" {
+		q.Add("connectionClass", P.ConnClass)
+	}
+	if !P.NewPassword.IsZero() {
+		q.Add("newPassword", P.NewPassword.String())
+	}
+	if P.IsSysDBA {
+		q.Add("sysdba", "1")
+	}
+	if P.IsSysOper {
+		q.Add("sysoper", "1")
+	}
+	if P.IsSysASM {
+		q.Add("sysasm", "1")
+	}
+	if P.ShardingKey != nil {
+		q.Add("shardingKey", fmt.Sprintf("%v", P.ShardingKey))
+	}
+	if P.SuperShardingKey != nil {
+		q.Add("superShardingKey", fmt.Sprintf("%v", P.SuperShardingKey))
+	}
+	return q.Encode()
+}
+
+type PoolParams struct {
+	MinSessions, MaxSessions, SessionIncrement int
+	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
+	Heterogeneous, ExternalAuth                bool
+}
+
+func (P PoolParams) String() string {
+	q := make(url.Values, 8)
+	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
+	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
+	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
+	if P.Heterogeneous {
+		q.Add("heterogeneousPool", "1")
+	}
+	q.Add("poolWaitTimeout", P.WaitTimeout.String())
+	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
+	q.Add("poolSessionTimeout", P.SessionTimeout.String())
+	if P.ExternalAuth {
+		q.Add("externalAuth", "1")
+	}
+	return q.Encode()
+}
+
 // ConnectionParams holds the params for a connection (pool).
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
@@ -685,42 +793,13 @@ type ConnectionParams struct {
 	ConnParams
 	PoolParams
 	// NewPassword is used iff StandaloneConnection is true!
-	NewPassword          string
+	NewPassword          Password
 	onInitStmts          []string
 	StandaloneConnection bool
 }
 
-type commonAndConnParams struct {
-	CommonParams
-	ConnParams
-}
-type commonAndPoolParams struct {
-	CommonParams
-	PoolParams
-}
-
 func (P ConnectionParams) IsStandalone() bool {
 	return P.StandaloneConnection || P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim
-}
-
-type CommonParams struct {
-	Username, Password, DSN string
-	ConfigDir, LibDir       string
-	OnInit                  func(driver.Conn) error
-	Timezone                *time.Location
-	EnableEvents            bool
-}
-
-type ConnParams struct {
-	NewPassword, ConnClass                  string
-	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
-	ShardingKey, SuperShardingKey           []interface{}
-}
-
-type PoolParams struct {
-	MinSessions, MaxSessions, SessionIncrement int
-	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
-	Heterogeneous, ExternalAuth                bool
 }
 
 // String returns the string representation of ConnectionParams.
@@ -755,16 +834,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 
 	var password string
 	if withPassword {
-		password = P.Password
-		q.Add("newPassword", P.NewPassword)
+		password = P.Password.Unhide()
+		q.Add("newPassword", P.NewPassword.Unhide())
 	} else {
-		hsh := fnv.New64()
-		io.WriteString(hsh, P.Password)
-		password = "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
-		if P.NewPassword != "" {
-			hsh.Reset()
-			io.WriteString(hsh, P.NewPassword)
-			q.Add("newPassword", "SECRET-"+base64.URLEncoding.EncodeToString(hsh.Sum(nil)))
+		password = P.Password.String()
+		if !P.NewPassword.IsZero() {
+			q.Add("newPassword", P.NewPassword.String())
 		}
 	}
 	s = "local"
@@ -843,9 +918,9 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			}
 		}
 		if i = strings.LastIndexByte(connString, '@'); i >= 0 {
-			P.Password, P.DSN = connString[:i], connString[i+1:]
+			P.Password.secret, P.DSN = connString[:i], connString[i+1:]
 		} else {
-			P.Password = connString
+			P.Password.secret = connString
 		}
 		P.comb()
 		if Log != nil {
@@ -860,7 +935,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	}
 	if usr := u.User; usr != nil {
 		P.Username = usr.Username()
-		P.Password, _ = usr.Password()
+		P.Password.secret, _ = usr.Password()
 	}
 	P.DSN = u.Hostname()
 	// IPv6 literal address brackets are removed by u.Hostname,
@@ -977,7 +1052,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
 		P.OnInit = mkExecMany(P.onInitStmts)
 	}
-	P.NewPassword = q.Get("newPassword")
+	P.NewPassword.secret = q.Get("newPassword")
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
 
@@ -996,10 +1071,10 @@ func (P *ConnectionParams) comb() {
 		P.Heterogeneous = false
 	}
 	if !P.IsStandalone() {
-		P.NewPassword = ""
+		P.NewPassword.Reset()
 		// only enable external authentication if we are dealing with a
 		// homogeneous pool and no user name/password has been specified
-		if P.Username == "" && P.Password == "" && !P.Heterogeneous {
+		if P.Username == "" && P.Password.IsZero() && !P.Heterogeneous {
 			P.ExternalAuth = true
 		}
 	}
@@ -1291,3 +1366,24 @@ func mkExecMany(qrys []string) func(driver.Conn) error {
 		return nil
 	}
 }
+
+// Password is printed obfuscated with String, use Unhide to reveal the secret.
+type Password struct {
+	secret string
+}
+
+// NewPassword creates a new Password, containing the given secret.
+func NewPassword(secret string) Password { return Password{secret: secret} }
+
+func (P Password) String() string {
+	if P.secret == "" {
+		return ""
+	}
+	hsh := fnv.New64()
+	io.WriteString(hsh, P.secret)
+	return "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
+}
+func (P Password) Unhide() string { return P.secret }
+func (P Password) IsZero() bool   { return P.secret == "" }
+func (P Password) Len() int       { return len(P.secret) }
+func (P *Password) Reset()        { P.secret = "" }

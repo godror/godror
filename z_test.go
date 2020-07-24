@@ -136,7 +136,7 @@ func init() {
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
 			Username:     os.Getenv("GODROR_TEST_USERNAME"),
-			Password:     os.Getenv("GODROR_TEST_PASSWORD"),
+			Password:     godror.NewPassword(os.Getenv("GODROR_TEST_PASSWORD")),
 			DSN:          os.Getenv("GODROR_TEST_DB"),
 			EnableEvents: true,
 			ConfigDir:    configDir,
@@ -2652,9 +2652,9 @@ func TestNewPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	P.Username, P.Password = user, oldPassword
+	P.Username, P.Password = user, godror.NewPassword(oldPassword)
 	P.StandaloneConnection = true
-	P.NewPassword = newPassword
+	P.NewPassword = godror.NewPassword(newPassword)
 	{
 		db, err := sql.Open("godror", P.StringWithPassword())
 		if err != nil {
@@ -2663,7 +2663,8 @@ func TestNewPassword(t *testing.T) {
 		db.Close()
 	}
 
-	P.Password, P.NewPassword = P.NewPassword, ""
+	P.Password = P.NewPassword
+	P.NewPassword.Reset()
 	{
 		db, err := sql.Open("godror", P.StringWithPassword())
 		if err != nil {

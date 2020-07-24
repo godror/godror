@@ -16,7 +16,9 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -748,6 +750,26 @@ type TraceTag struct {
 	Action string
 }
 
+func (tt TraceTag) String() string {
+	q := make(url.Values, 5)
+	if tt.ClientIdentifier != "" {
+		q.Add("clientIdentifier", tt.ClientIdentifier)
+	}
+	if tt.ClientInfo != "" {
+		q.Add("clientInfo", tt.ClientInfo)
+	}
+	if tt.DbOp != "" {
+		q.Add("dbOp", tt.DbOp)
+	}
+	if tt.Module != "" {
+		q.Add("module", tt.Module)
+	}
+	if tt.Action != "" {
+		q.Add("action", tt.Action)
+	}
+	return q.Encode()
+}
+
 const paramsCtxKey = ctxKey("params")
 
 // ContextWithParams returns a context with the specified parameters. These parameters are used
@@ -769,7 +791,7 @@ func ContextWithParams(ctx context.Context, commonParams CommonParams, connParam
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return ContextWithParams(ctx,
-		CommonParams{Username: user, Password: password},
+		CommonParams{Username: user, Password: Password{password}},
 		ConnParams{ConnClass: connClass},
 	)
 }
@@ -944,4 +966,9 @@ func (c *conn) IsValid() bool {
 	c.closeNotLocking()
 	c.released = true
 	return true
+}
+
+func (c *conn) String() string {
+	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d&new=%t",
+		c.currentTT, c.params, c.Server, c.tzOffSecs, c.newSession)
 }

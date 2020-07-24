@@ -27,7 +27,7 @@ func TestParseConnString(t *testing.T) {
 	wantAt := ConnectionParams{
 		CommonParams: CommonParams{
 			Username: "cc",
-			Password: "c@c*1",
+			Password: Password{"c@c*1"},
 			DSN:      "192.168.1.1/cc",
 			Timezone: time.Local,
 		},
@@ -41,7 +41,7 @@ func TestParseConnString(t *testing.T) {
 		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
 			Username: "user",
-			Password: "pass",
+			Password: Password{"pass"},
 			DSN:      "sid",
 			Timezone: time.Local,
 		},
@@ -84,6 +84,7 @@ func TestParseConnString(t *testing.T) {
 			const tzFmt = "2006-01-02T15:04:05"
 			return now.In(a).Format(tzFmt) == now.In(b).Format(tzFmt)
 		}),
+		cmp.Comparer(func(a, b Password) bool { return a.secret == b.secret }),
 	}
 
 	setP := func(s, p string) string {
@@ -103,7 +104,7 @@ func TestParseConnString(t *testing.T) {
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: "pass", DSN: "sid",
+					Username: "user", Password: Password{"pass"}, DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
@@ -117,7 +118,7 @@ func TestParseConnString(t *testing.T) {
 		},
 
 		"@": {
-			In:   setP(wantAt.String(), wantAt.Password),
+			In:   setP(wantAt.String(), wantAt.Password.Unhide()),
 			Want: wantAt,
 		},
 
@@ -146,7 +147,7 @@ func TestParseConnString(t *testing.T) {
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: "pass", DSN: "sid",
+					Username: "user", Password: Password{"pass"}, DSN: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
@@ -172,7 +173,7 @@ func TestParseConnString(t *testing.T) {
 				t.Errorf("parse of %q\ngot\n\t%#v,\nwanted\n\t%#v\n%s", tCase.In, P, tCase.Want, diff)
 				return
 			}
-			s := setP(P.String(), P.Password)
+			s := setP(P.String(), P.Password.Unhide())
 			Q, err := ParseConnString(s)
 			if err != nil {
 				t.Errorf("parseConnString %v", err)
@@ -182,7 +183,7 @@ func TestParseConnString(t *testing.T) {
 				t.Errorf("params got %+v, wanted %+v\n%s", P, Q, diff)
 				return
 			}
-			if got := setP(Q.String(), Q.Password); s != got {
+			if got := setP(Q.String(), Q.Password.Unhide()); s != got {
 				t.Errorf("paramString got %q, wanted %q", got, s)
 			}
 		})

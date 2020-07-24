@@ -671,7 +671,7 @@ type argInfo struct {
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	if Log != nil {
-		Log("enter", "bindVars", st, fmt.Sprintf("%p", st), "args", args)
+		Log("enter", "bindVars", "st", fmt.Sprintf("%p", st), "args", args)
 	}
 	for i, v := range st.vars[:cap(st.vars)] {
 		if v != nil {
