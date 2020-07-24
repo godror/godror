@@ -11,6 +11,7 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
 At least Go 1.11 is required!
+Cgo is required, so cross-compilation is hard, and you cannot set `CGO_ENABLED=0`!
 
 Although an Oracle client is NOT required for compiling, it *is* at run time.
 One can download it from <https://www.oracle.com/database/technologies/instant-client/downloads.html>
