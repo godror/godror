@@ -29,6 +29,8 @@ import (
 // It can be used to parse or build a SID.
 //
 // See https://docs.oracle.com/cd/B28359_01/network.111/b28317/tnsnames.htm#NETRF271
+// or
+// https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html#GUID-E69D27B7-2B59-4946-89B3-5DDD491C2D9A
 type Statement struct {
 	Name, Value string
 	Statements  []Statement
