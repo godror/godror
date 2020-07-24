@@ -18,7 +18,7 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 ## Connect
 
 In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
-as connString, or an URL like "oracle://user:passw@service_name", 
+as connString, or an URL like "oracle://user:passw@service_name?params=..." (with URL-encoded parameters), 
 where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`.
 
 You can provide all possible options with `ConnectionParams`.
@@ -27,16 +27,22 @@ Watch out the `ConnectionParams.String()` does redact the password
 So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
-`user/pass@(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
+`user/pass@(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
 
 A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
 described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
 
-For other possible connection strings, see <https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings>
-and <https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE> .
+For other possible connection strings, see 
+[node-oracledb connection strings](https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings)
+and [Easy Connect Naming](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE)
+and [Oracle Database 19c Easy Connect Plus Configurable Database Connection](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
 
 TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
 `(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
+
+The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
+It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
+`sql.Open`, or set as the `libDir` connection parameter.
 
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
 `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
