@@ -338,7 +338,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// assign new password (only relevant for standalone connections)
 	if pool == nil && !P.NewPassword.IsZero() {
-		cNewPassword = C.CString(P.NewPassword.Unhide())
+		cNewPassword = C.CString(P.NewPassword.Secret())
 		connCreateParams.newPassword = cNewPassword
 		connCreateParams.newPasswordLength = C.uint32_t(P.NewPassword.Len())
 	}
@@ -413,7 +413,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	}
 
 	// setup credentials
-	username, password := P.Username, P.Password.Unhide()
+	username, password := P.Username, P.Password.Secret()
 	if pool != nil && !pool.params.Heterogeneous {
 		username, password = "", ""
 	}
@@ -605,7 +605,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		defer C.free(unsafe.Pointer(cUsername))
 	}
 	if !P.Password.IsZero() {
-		cPassword = C.CString(P.Password.Unhide())
+		cPassword = C.CString(P.Password.Secret())
 		defer C.free(unsafe.Pointer(cPassword))
 	}
 	if P.DSN != "" {
@@ -834,8 +834,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 
 	var password string
 	if withPassword {
-		password = P.Password.Unhide()
-		q.Add("newPassword", P.NewPassword.Unhide())
+		password = P.Password.Secret()
+		q.Add("newPassword", P.NewPassword.Secret())
 	} else {
 		password = P.Password.String()
 		if !P.NewPassword.IsZero() {
@@ -1367,7 +1367,7 @@ func mkExecMany(qrys []string) func(driver.Conn) error {
 	}
 }
 
-// Password is printed obfuscated with String, use Unhide to reveal the secret.
+// Password is printed obfuscated with String, use Secret to reveal the secret.
 type Password struct {
 	secret string
 }
@@ -1383,7 +1383,7 @@ func (P Password) String() string {
 	io.WriteString(hsh, P.secret)
 	return "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
 }
-func (P Password) Unhide() string { return P.secret }
+func (P Password) Secret() string { return P.secret }
 func (P Password) IsZero() bool   { return P.secret == "" }
 func (P Password) Len() int       { return len(P.secret) }
 func (P *Password) Reset()        { P.secret = "" }

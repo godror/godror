@@ -118,7 +118,7 @@ func TestParseConnString(t *testing.T) {
 		},
 
 		"@": {
-			In:   setP(wantAt.String(), wantAt.Password.Unhide()),
+			In:   setP(wantAt.String(), wantAt.Password.Secret()),
 			Want: wantAt,
 		},
 
@@ -173,7 +173,7 @@ func TestParseConnString(t *testing.T) {
 				t.Errorf("parse of %q\ngot\n\t%#v,\nwanted\n\t%#v\n%s", tCase.In, P, tCase.Want, diff)
 				return
 			}
-			s := setP(P.String(), P.Password.Unhide())
+			s := setP(P.String(), P.Password.Secret())
 			Q, err := ParseConnString(s)
 			if err != nil {
 				t.Errorf("parseConnString %v", err)
@@ -183,7 +183,7 @@ func TestParseConnString(t *testing.T) {
 				t.Errorf("params got %+v, wanted %+v\n%s", P, Q, diff)
 				return
 			}
-			if got := setP(Q.String(), Q.Password.Unhide()); s != got {
+			if got := setP(Q.String(), Q.Password.Secret()); s != got {
 				t.Errorf("paramString got %q, wanted %q", got, s)
 			}
 		})

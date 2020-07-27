@@ -110,7 +110,7 @@ func TestContextWithUserPassw(t *testing.T) {
 	}
 	defer testHeterogeneousDB.Close()
 
-	ctx = godror.ContextWithUserPassw(ctx, username, password.Unhide(), "")
+	ctx = godror.ContextWithUserPassw(ctx, username, password.Secret(), "")
 	if err := testHeterogeneousDB.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}
