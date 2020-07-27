@@ -418,7 +418,7 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 }
 
 func (c *conn) initTZ() error {
-	if c.tzValid && c.params.Timezone != nil {
+	if c.tzValid {
 		return nil
 	}
 	c.params.Timezone = time.Local
@@ -439,6 +439,7 @@ func (c *conn) initTZ() error {
 	if Log != nil {
 		Log("msg", "initTZ", "key", key)
 	}
+	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
@@ -446,6 +447,7 @@ func (c *conn) initTZ() error {
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return errors.Errorf("%s: %w", qry, err)
 	}
 	defer st.Close()
@@ -454,38 +456,44 @@ func (c *conn) initTZ() error {
 		if Log != nil {
 			Log("qry", qry, "error", err)
 		}
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return err
 	}
 	defer rows.Close()
 	var dbTZ, timezone string
 	vals := []driver.Value{dbTZ, timezone}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return errors.Errorf("%s: %w", qry, err)
 	}
 	dbTZ = vals[0].(string)
 	timezone = vals[1].(string)
 
 	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, timezone)
+	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if Log != nil {
 		Log("timezone", timezone, "tz", tz, "error", err)
 	}
-	if err == nil && tz.Location == nil {
+	if err == nil && tz.Location == nil && tz.offSecs != 0 {
 		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
 	}
 	if err != nil {
 		if Log != nil {
 			Log("msg", "initTZ", "error", err)
 		}
-		return err
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
+		panic(err)
 	}
 
-	c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
-	c.drv.timezones[key] = tz
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, true
 	if Log != nil {
 		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
-	c.tzValid = c.params.Timezone != nil
+	if c.tzValid {
+		c.drv.timezones[key] = tz
+	}
+	//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 	return nil
 }
 
@@ -500,41 +508,40 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	now := time.Now()
 	_, localOff := time.Now().Local().Zone()
 	off := localOff
-	var ok bool
-	var err error
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
-		tz, err = time.LoadLocation(dbTZ)
-		if ok = err == nil; ok {
-			if tz == time.Local {
-				return tz, off, nil
+		var err error
+		if tz, err = time.LoadLocation(dbTZ); err != nil {
+			if Log != nil {
+				Log("LoadLocation", dbTZ, "error", err)
 			}
+		} else {
 			_, off = now.In(tz).Zone()
-		} else if Log != nil {
-			Log("LoadLocation", dbTZ, "error", err)
+			return tz, off, nil
 		}
 	}
 	// If not, use the numbers.
-	if !ok {
-		if timezone != "" {
-			if off, err = parseTZ(timezone); err != nil {
-				return tz, off, errors.Errorf("%s: %w", timezone, err)
-			}
-		} else if off, err = parseTZ(dbTZ); err != nil {
-			return tz, off, errors.Errorf("%s: %w", dbTZ, err)
+	var err error
+	if timezone != "" {
+		if off, err = parseTZ(timezone); err != nil {
+			return tz, off, errors.Errorf("%s: %w", timezone, err)
 		}
+	} else if off, err = parseTZ(dbTZ); err != nil {
+		return tz, off, errors.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
 	//
 	// So if the given offset is the same as with the Local time zone,
 	// then keep the local.
-	if off != localOff && tz == nil {
-		if off == 0 {
-			tz = time.UTC
-		} else {
-			tz = time.FixedZone(timezone, off)
-		}
+	//fmt.Printf("off=%d localOff=%d tz=%p\n", off, localOff, tz)
+	if off == localOff {
+		return time.Local, off, nil
+	}
+	if off == 0 {
+		tz = time.UTC
+	} else {
+		tz = time.FixedZone(timezone, off)
 	}
 	return tz, off, nil
 }
@@ -926,7 +933,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	if paramsFromCtx || newSession || !(c.tzValid && c.params.Timezone != nil) {
+	if paramsFromCtx || newSession || !c.tzValid {
 		c.init(P.OnInit)
 	}
 	return nil

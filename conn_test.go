@@ -226,6 +226,7 @@ func TestCalculateTZ(t *testing.T) {
 		{dbTZ: "+01:00", off: +3600},
 		{off: 1800, err: io.EOF},
 		{timezone: "+00:30", off: 1800},
+		{dbTZ: "+02:00", timezone: "+02:00", off: 7200},
 	} {
 		prefix := fmt.Sprintf("%q/%q", tC.dbTZ, tC.timezone)
 		_, off, err := calculateTZ(tC.dbTZ, tC.timezone)
@@ -241,9 +242,11 @@ func TestParseTZ(t *testing.T) {
 	for k, v := range map[string]int{
 		"00:00": 0, "+00:00": 0, "-00:00": 0,
 		"01:00": 3600, "+01:00": 3600, "-01:01": -3660,
+		"+02:00": 7200,
 		"+02:03": 7380,
 	} {
 		i, err := parseTZ(k)
+		t.Logf("Parse(%q): %d %v", k, i, err)
 		if err != nil {
 			t.Fatal(errors.Errorf("%s: %w", k, err))
 		}
