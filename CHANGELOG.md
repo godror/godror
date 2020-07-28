@@ -5,8 +5,25 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- Timezone getting logic when TZ is not UTC.
+
+### Changed
+- Password, a new type to hide secrets - BACKWARD INCOMPATIBLE CHANGE!
+
+## [0.17.5]
+### Changed
+- Better caching of timezone information
+
+### Added
+- Allow uint16, int8, int16, sql.NullInt32 types for Data.Set.
+
+## [0.17.1]
 ### Added
 - Allow specifying OCI lib path and config dir
+
+### Changed
+- Fixed TimeZone caching and lock issues.
 
 ## [0.17.0]
 ### Added 

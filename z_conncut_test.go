@@ -93,6 +93,7 @@ func TestConnCut(t *testing.T) {
 	}
 	t.Log("upstream:", upstream.String())
 
+	t.Parallel()
 	// Second, create proxy for it
 	px, err := newTCPProxy(ctx, upstream, t)
 	if err != nil {

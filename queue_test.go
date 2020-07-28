@@ -17,6 +17,7 @@ import (
 )
 
 func TestQueue(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -102,6 +103,7 @@ func TestQueue(t *testing.T) {
 	}
 }
 func TestQueueObject(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("QueueObject"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)

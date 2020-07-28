@@ -424,7 +424,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			ts := C.dpiData_getTimestamp(d)
-			tz := r.conn.params.Timezone
+			tz := r.conn.Timezone()
 			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
 				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz)
 			}

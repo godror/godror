@@ -19,7 +19,7 @@ import (
 )
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
-
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("HeterogeneousPoolIntegration"), 30*time.Second)
 	defer cancel()
 
@@ -99,7 +99,8 @@ func TestContextWithUserPassw(t *testing.T) {
 	}
 	cs.Heterogeneous = true
 	username, password := cs.Username, cs.Password
-	cs.Username, cs.Password = "", ""
+	cs.Username = ""
+	cs.Password.Reset()
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testConStr, " -> ", testHeterogeneousConStr)
 
@@ -109,7 +110,7 @@ func TestContextWithUserPassw(t *testing.T) {
 	}
 	defer testHeterogeneousDB.Close()
 
-	ctx = godror.ContextWithUserPassw(ctx, username, password, "")
+	ctx = godror.ContextWithUserPassw(ctx, username, password.Secret(), "")
 	if err := testHeterogeneousDB.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}

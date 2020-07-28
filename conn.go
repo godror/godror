@@ -16,7 +16,9 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,6 +58,7 @@ type conn struct {
 	inTransaction bool
 	newSession    bool
 	released      bool
+	tzValid       bool
 }
 
 func (c *conn) getError() error {
@@ -160,7 +163,7 @@ func (c *conn) closeNotLocking() error {
 	}
 	c.currentTT = TraceTag{}
 	dpiConn := c.dpiConn
-	c.dpiConn = nil
+	c.dpiConn, c.params.Timezone, c.tzOffSecs, c.tzValid = nil, nil, 0, false
 	if dpiConn == nil {
 		return nil
 	}
@@ -249,12 +252,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, errors.New("already in transaction")
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.inTransaction = true
-	c.mu.Unlock()
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
-		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.mu.Unlock()
 	}
 	return c, nil
 }
@@ -267,12 +268,10 @@ type tranParams struct {
 // context is for the preparation of the statement,
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	return c.prepareContext(ctx, query)
-}
-func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
 		c.mu.Lock()
 		c.setTraceTag(tt)
@@ -286,12 +285,19 @@ func (c *conn) prepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return &statement{conn: c, query: query}, nil
 	}
 
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.prepareContextNotLocked(ctx, query)
+}
+func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (driver.Stmt, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	cSQL := C.CString(query)
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	st := statement{conn: c, query: query}
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
@@ -314,6 +320,7 @@ func (c *conn) Rollback() error {
 }
 func (c *conn) endTran(isCommit bool) error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.inTransaction = false
 	c.tranParams = tranParams{}
 
@@ -329,7 +336,6 @@ func (c *conn) endTran(isCommit bool) error {
 			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
-	c.mu.Unlock()
 	//fmt.Printf("%p.%s\n", c, msg)
 	return err
 }
@@ -412,54 +418,89 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 }
 
 func (c *conn) initTZ() error {
-	if c.params.Timezone != nil && (c.params.Timezone != time.Local || c.tzOffSecs != 0) {
+	if c.tzValid {
 		return nil
 	}
 	c.params.Timezone = time.Local
-	_, c.tzOffSecs = time.Now().In(c.params.Timezone).Zone()
-	if Log != nil {
-		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
-	}
 
+	key := time.Local.String() + "\t" + c.params.String()
+	c.drv.mu.RLock()
+	tz, ok := c.drv.timezones[key]
+	c.drv.mu.RUnlock()
+	if !ok {
+		c.drv.mu.Lock()
+		defer c.drv.mu.Unlock()
+		tz, ok = c.drv.timezones[key]
+	}
+	if ok {
+		c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
+		return nil
+	}
+	if Log != nil {
+		Log("msg", "initTZ", "key", key)
+	}
+	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	st, err := c.PrepareContext(ctx, qry)
+	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return errors.Errorf("%s: %w", qry, err)
 	}
 	defer st.Close()
-	rows, err := st.Query(nil) //lint:ignore SA1019 - it's hard to use QueryContext here
+	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
 	if err != nil {
 		if Log != nil {
 			Log("qry", qry, "error", err)
 		}
-		return nil
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
+		return err
 	}
 	defer rows.Close()
 	var dbTZ, timezone string
 	vals := []driver.Value{dbTZ, timezone}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return errors.Errorf("%s: %w", qry, err)
 	}
 	dbTZ = vals[0].(string)
 	timezone = vals[1].(string)
 
-	tz, off, err := calculateTZ(dbTZ, timezone)
+	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, timezone)
+	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if Log != nil {
-		Log("timezone", timezone, "tz", tz, "offSecs", off)
+		Log("timezone", timezone, "tz", tz, "error", err)
 	}
-	if err != nil || tz == nil {
-		return err
+	if err == nil && tz.Location == nil && tz.offSecs != 0 {
+		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
 	}
-	c.params.Timezone, c.tzOffSecs = tz, off
+	if err != nil {
+		if Log != nil {
+			Log("msg", "initTZ", "error", err)
+		}
+		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
+		panic(err)
+	}
 
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, true
+	if Log != nil {
+		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
+	}
+
+	if c.tzValid {
+		c.drv.timezones[key] = tz
+	}
+	//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 	return nil
 }
 
 func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
+	if dbTZ == "+00:00" && timezone == "+00:00" {
+		return time.UTC, 0, nil
+	}
 	if Log != nil {
 		Log("dbTZ", dbTZ, "timezone", timezone)
 	}
@@ -467,41 +508,40 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	now := time.Now()
 	_, localOff := time.Now().Local().Zone()
 	off := localOff
-	var ok bool
-	var err error
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
-		tz, err = time.LoadLocation(dbTZ)
-		if ok = err == nil; ok {
-			if tz == time.Local {
-				return tz, off, nil
+		var err error
+		if tz, err = time.LoadLocation(dbTZ); err != nil {
+			if Log != nil {
+				Log("LoadLocation", dbTZ, "error", err)
 			}
+		} else {
 			_, off = now.In(tz).Zone()
-		} else if Log != nil {
-			Log("LoadLocation", dbTZ, "error", err)
+			return tz, off, nil
 		}
 	}
 	// If not, use the numbers.
-	if !ok {
-		if timezone != "" {
-			if off, err = parseTZ(timezone); err != nil {
-				return tz, off, errors.Errorf("%s: %w", timezone, err)
-			}
-		} else if off, err = parseTZ(dbTZ); err != nil {
-			return tz, off, errors.Errorf("%s: %w", dbTZ, err)
+	var err error
+	if timezone != "" {
+		if off, err = parseTZ(timezone); err != nil {
+			return tz, off, errors.Errorf("%s: %w", timezone, err)
 		}
+	} else if off, err = parseTZ(dbTZ); err != nil {
+		return tz, off, errors.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
 	//
 	// So if the given offset is the same as with the Local time zone,
 	// then keep the local.
-	if off != localOff && tz == nil {
-		if off == 0 {
-			tz = time.UTC
-		} else {
-			tz = time.FixedZone(timezone, off)
-		}
+	//fmt.Printf("off=%d localOff=%d tz=%p\n", off, localOff, tz)
+	if off == localOff {
+		return time.Local, off, nil
+	}
+	if off == 0 {
+		tz = time.UTC
+	} else {
+		tz = time.FixedZone(timezone, off)
 	}
 	return tz, off, nil
 }
@@ -677,20 +717,21 @@ func (c *conn) GetPoolStats() (stats PoolStats, err error) {
 	if c == nil {
 		return stats, nil
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.poolKey == "" {
+	c.mu.RLock()
+	key, drv := c.poolKey, c.drv
+	c.mu.RUnlock()
+	if key == "" {
 		// not pooled connection
 		return stats, nil
 	}
 
-	c.drv.mu.Lock()
-	pool := c.drv.pools[c.poolKey]
-	c.drv.mu.Unlock()
+	drv.mu.RLock()
+	pool := drv.pools[key]
+	drv.mu.RUnlock()
 	if pool == nil {
 		return stats, nil
 	}
-	return c.drv.getPoolStats(pool)
+	return drv.getPoolStats(pool)
 }
 
 const traceTagCtxKey = ctxKey("tracetag")
@@ -716,6 +757,26 @@ type TraceTag struct {
 	Action string
 }
 
+func (tt TraceTag) String() string {
+	q := make(url.Values, 5)
+	if tt.ClientIdentifier != "" {
+		q.Add("clientIdentifier", tt.ClientIdentifier)
+	}
+	if tt.ClientInfo != "" {
+		q.Add("clientInfo", tt.ClientInfo)
+	}
+	if tt.DbOp != "" {
+		q.Add("dbOp", tt.DbOp)
+	}
+	if tt.Module != "" {
+		q.Add("module", tt.Module)
+	}
+	if tt.Action != "" {
+		q.Add("action", tt.Action)
+	}
+	return q.Encode()
+}
+
 const paramsCtxKey = ctxKey("params")
 
 // ContextWithParams returns a context with the specified parameters. These parameters are used
@@ -737,7 +798,7 @@ func ContextWithParams(ctx context.Context, commonParams CommonParams, connParam
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return ContextWithParams(ctx,
-		CommonParams{Username: user, Password: password},
+		CommonParams{Username: user, Password: Password{password}},
 		ConnParams{ConnClass: connClass},
 	)
 }
@@ -796,7 +857,11 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 
 // Timezone returns the connection's timezone.
 func (c *conn) Timezone() *time.Location {
-	return c.params.Timezone
+	tz := c.params.Timezone
+	if false && tz == nil {
+		return time.Local
+	}
+	return tz
 }
 
 var _ = driver.SessionResetter((*conn)(nil))
@@ -813,11 +878,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if c == nil {
 		return driver.ErrBadConn
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.poolKey == "" {
+	c.mu.RLock()
+	key, drv, params, dpiConnOK := c.poolKey, c.drv, c.params, c.dpiConn != nil
+	c.mu.RUnlock()
+	if key == "" {
 		// not pooled connection
-		if c.dpiConn == nil {
+		if !dpiConnOK {
 			return driver.ErrBadConn
 		}
 		return nil
@@ -829,22 +895,22 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	//
 	// See https://github.com/godror/godror/issues/57 for example.
 
-	c.drv.mu.Lock()
-	pool := c.drv.pools[c.poolKey]
-	c.drv.mu.Unlock()
+	drv.mu.RLock()
+	pool := drv.pools[key]
+	drv.mu.RUnlock()
 	if pool == nil {
-		if c.dpiConn == nil {
+		if !dpiConnOK {
 			return driver.ErrBadConn
 		}
 		return nil
 	}
-	P := commonAndConnParams{CommonParams: c.params.CommonParams, ConnParams: c.params.ConnParams}
+	P := commonAndConnParams{CommonParams: params.CommonParams, ConnParams: params.ConnParams}
 	var paramsFromCtx bool
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
 			// ContextWithUserPassw does not fill ConnParam.DSN
 			if P.DSN == "" {
-				P.DSN = c.params.DSN
+				P.DSN = params.DSN
 			}
 			if Log != nil {
 				Log("msg", "paramsFromContext", "params", P)
@@ -854,7 +920,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if Log != nil {
 		Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
-	tz, tzOffSecs := c.params.Timezone, c.tzOffSecs
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -866,8 +933,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	c.params.Timezone, c.tzOffSecs = tz, tzOffSecs
-	if paramsFromCtx || newSession {
+	if paramsFromCtx || newSession || !c.tzValid {
 		c.init(P.OnInit)
 	}
 	return nil
@@ -885,22 +951,31 @@ func (c *conn) IsValid() bool {
 	if c == nil {
 		return false
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.dpiConn == nil {
-		return c.released
+	c.mu.RLock()
+	dpiConnOK, released, pooled := c.dpiConn != nil, c.released, c.poolKey != ""
+	c.mu.RUnlock()
+	if !dpiConnOK {
+		return released
 	}
-	if c.poolKey == "" {
+	if !pooled {
 		// not pooled connection
-		return c.dpiConn != nil
+		return dpiConnOK
 	}
+
 	// FIXME(tgulacsi): Prepared statements hold the previous session,
 	// so sometimes sessions are not released, resulting in
 	//
 	//     ORA-24459: OCISessionGet()
 	//
 	// See https://github.com/godror/godror/issues/57 for example.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.closeNotLocking()
 	c.released = true
 	return true
+}
+
+func (c *conn) String() string {
+	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d&new=%t",
+		c.currentTT, c.params, c.Server, c.tzOffSecs, c.newSession)
 }
