@@ -11,6 +11,7 @@ import (
 	"hash/fnv"
 	"io"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,12 +46,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	q.Add("connectionClass", s)
 
-	var password string
+	q.Add("username", P.Username)
 	if withPassword {
-		password = P.Password.Secret()
+		q.Add("password", P.Password.Secret())
 		q.Add("newPassword", P.NewPassword.Secret())
 	} else {
-		password = P.Password.String()
+		q.Add("password", P.Password.String())
 		if !P.NewPassword.IsZero() {
 			q.Add("newPassword", P.NewPassword.String())
 		}
@@ -83,7 +84,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Values["onInit"] = P.onInitStmts
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
-	return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.DSN + "\n" + q.String()
+	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.DSN + "\n" + q.String()
+	return P.CommonParams.DSN + "\n" + q.String()
 }
 
 // ParseConnString parses the given connection string into a struct.
@@ -117,10 +119,11 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if !strings.HasPrefix(connString, "oracle://") {
 		up, connString := splitQuoted(connString, '@')
 		if connString == "" {
-			return P, errors.New("no '@' in connection string")
+			connString = up
+		} else {
+			P.Username, P.Password.secret = splitQuoted(up, '/')
+			P.Username, P.Password.secret = unquote(P.Username), unquote(P.Password.secret)
 		}
-		P.Username, P.Password.secret = splitQuoted(up, '/')
-		P.Username, P.Password.secret = unquote(P.Username), unquote(P.Password.secret)
 
 		uSid := strings.ToUpper(connString)
 		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
@@ -134,13 +137,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			}
 		}
 		P.DSN = connString
-		/*
-			P.comb()
-			if Log != nil {
-				Log("msg", "ParseConnString", "connString", origConnString, "commonParams", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
-			}
-			return P, nil
-		*/
 		q = make(url.Values, 32)
 	} else {
 		u, err := url.Parse(connString)
@@ -178,6 +174,12 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		}
 		if err := d.Err(); err != nil {
 			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
+		}
+		if vv, ok := q["username"]; ok {
+			P.Username = vv[0]
+		}
+		if vv, ok := q["password"]; ok {
+			P.Password.secret = vv[0]
 		}
 	}
 
@@ -325,17 +327,20 @@ func NewParamsArray(cap int) ParamsArray { return ParamsArray{Values: make(url.V
 func (p ParamsArray) String() string {
 	var buf strings.Builder
 	var n int
+	keys := make([]string, 0, len(p.Values))
 	for k, vv := range p.Values {
 		for _, v := range vv {
 			n += len(k) + 1 + len(v) + 1
 		}
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	buf.Grow(n)
 
 	enc := logfmt.NewEncoder(&buf)
 	var firstErr error
-	for k, vv := range p.Values {
-		for _, v := range vv {
+	for _, k := range keys {
+		for _, v := range p.Values[k] {
 			if err := enc.EncodeKeyval(k, v); err != nil && firstErr == nil {
 				firstErr = err
 			}
@@ -349,6 +354,8 @@ func (p ParamsArray) String() string {
 	}
 	return buf.String()
 }
+
+/*
 func quoteRunes(s, runes string) string {
 	if !strings.ContainsAny(s, runes) {
 		return s
@@ -363,6 +370,7 @@ func quoteRunes(s, runes string) string {
 	}
 	return buf.String()
 }
+*/
 func unquote(s string) string {
 	if !strings.ContainsRune(s, '\\') {
 		return s

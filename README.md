@@ -20,7 +20,17 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 
 In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
 as connString, or an URL like "oracle://user:passw@service_name?params=..." (with URL-encoded parameters), 
-where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`.
+where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`, 
+or _ANYTHING_ that sqlplus or OCI accepts. All godror params can be specified as [logfmt](https://brandur.org/logfmt)-encoded parameters, _on_the_next_line_ - after a newline.
+
+So 
+
+```
+scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
+poolSessionTimeout=42s password=tiger
+```
+
+will connect to "salesserver1", port 1521, as scott/tiger, using the [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf) syntax.
 
 You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does redact the password

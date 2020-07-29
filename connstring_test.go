@@ -88,9 +88,22 @@ func TestParseConnString(t *testing.T) {
 			if j := strings.Index(s[i:], "@"); j >= 0 {
 				return s[:i+1] + p + s[i+j:]
 			}
+		} else if i := strings.Index(s, "=\"SECRET-"); i >= 0 {
+			if j := strings.Index(s[i+2:], "\" "); j >= 0 {
+				return s[:i+2] + p + s[i+2+j:]
+			}
+		} else if i := strings.Index(s, "=SECRET-"); i >= 0 {
+			if j := strings.Index(s[i+1:], " "); j >= 0 {
+				return s[:i+1] + p + s[i+1+j:]
+			}
 		}
 		return s
 	}
+	// "scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60",
+	wantEasy := wantDefault
+	wantEasy.Username, wantEasy.PoolParams.SessionTimeout = "scott", 42*time.Second
+	wantEasy.Password.Reset()
+	wantEasy.DSN = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
 
 	for tName, tCase := range map[string]struct {
 		In   string
@@ -138,6 +151,11 @@ func TestParseConnString(t *testing.T) {
 					ExternalAuth: DefaultStandaloneConnection,
 				},
 			},
+		},
+
+		"easy": {
+			In:   "scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60\npoolSessionTimeout=42s",
+			Want: wantEasy,
 		},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
