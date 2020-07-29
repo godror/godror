@@ -57,9 +57,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/base64"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"math"
 	"net/url"
@@ -70,6 +68,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/go-logfmt/logfmt"
 	errors "golang.org/x/xerrors"
 )
 
@@ -126,6 +125,19 @@ const (
 // If you want to change this, change it to a github.com/go-kit/kit/log.Swapper.Log
 // or analog to be race-free.
 var Log func(...interface{}) error
+
+// NewLogfmtLog returns a function that can be used as the Log variable,
+// and that logs using logfmt, to the given io.Writer.
+func NewLogfmtLog(w io.Writer) func(...interface{}) error {
+	enc := logfmt.NewEncoder(w)
+	return func(keyvals ...interface{}) error {
+		firstErr := enc.EncodeKeyvals(keyvals...)
+		if err := enc.EndRecord(); err != nil && firstErr == nil {
+			return err
+		}
+		return firstErr
+	}
+}
 
 var defaultDrv = &drv{}
 
@@ -802,267 +814,6 @@ func (P ConnectionParams) IsStandalone() bool {
 	return P.StandaloneConnection || P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim
 }
 
-// String returns the string representation of ConnectionParams.
-// The password is replaced with a "SECRET" string!
-func (P ConnectionParams) String() string {
-	return P.string(true, false)
-}
-
-// StringNoClass returns the string representation of ConnectionParams, without class info.
-// The password is replaced with a "SECRET" string!
-func (P ConnectionParams) StringNoClass() string {
-	return P.string(false, false)
-}
-
-// StringWithPassword returns the string representation of ConnectionParams (as String() does),
-// but does NOT obfuscate the password, just prints it as is.
-func (P ConnectionParams) StringWithPassword() string {
-	return P.string(true, true)
-}
-
-func (P ConnectionParams) string(class, withPassword bool) string {
-	host, path := P.DSN, ""
-	if i := strings.IndexByte(host, '/'); i >= 0 {
-		host, path = host[:i], host[i:]
-	}
-	q := make(url.Values, 32)
-	s := P.ConnClass
-	if !class {
-		s = ""
-	}
-	q.Add("connectionClass", s)
-
-	var password string
-	if withPassword {
-		password = P.Password.Secret()
-		q.Add("newPassword", P.NewPassword.Secret())
-	} else {
-		password = P.Password.String()
-		if !P.NewPassword.IsZero() {
-			q.Add("newPassword", P.NewPassword.String())
-		}
-	}
-	s = "local"
-	tz := P.Timezone
-	if tz != nil && tz != time.Local {
-		s = tz.String()
-	}
-	q.Add("timezone", s)
-	B := func(b bool) string {
-		if b {
-			return "1"
-		}
-		return "0"
-	}
-	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
-	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
-	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
-	q.Add("sysdba", B(P.IsSysDBA))
-	q.Add("sysoper", B(P.IsSysOper))
-	q.Add("sysasm", B(P.IsSysASM))
-	q.Add("standaloneConnection", B(P.StandaloneConnection))
-	q.Add("enableEvents", B(P.EnableEvents))
-	q.Add("heterogeneousPool", B(P.Heterogeneous))
-	q.Add("prelim", B(P.IsPrelim))
-	q.Add("poolWaitTimeout", P.WaitTimeout.String())
-	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
-	q.Add("poolSessionTimeout", P.SessionTimeout.String())
-	q["onInit"] = P.onInitStmts
-	q.Add("configDir", P.ConfigDir)
-	q.Add("libDir", P.LibDir)
-	return (&url.URL{
-		Scheme:   "oracle",
-		User:     url.UserPassword(P.Username, password),
-		Host:     host,
-		Path:     path,
-		RawQuery: q.Encode(),
-	}).String()
-}
-
-// ParseConnString parses the given connection string into a struct.
-func ParseConnString(connString string) (ConnectionParams, error) {
-	P := ConnectionParams{
-		StandaloneConnection: DefaultStandaloneConnection,
-		CommonParams: CommonParams{
-			Timezone: time.Local,
-		},
-		ConnParams: ConnParams{
-			ConnClass: DefaultConnectionClass,
-		},
-		PoolParams: PoolParams{
-			MinSessions:      DefaultPoolMinSessions,
-			MaxSessions:      DefaultPoolMaxSessions,
-			SessionIncrement: DefaultPoolIncrement,
-			MaxLifeTime:      DefaultMaxLifeTime,
-			WaitTimeout:      DefaultWaitTimeout,
-			SessionTimeout:   DefaultSessionTimeout,
-		},
-	}
-	origConnString := connString
-	if !strings.HasPrefix(connString, "oracle://") {
-		i := strings.IndexByte(connString, '/')
-		if i < 0 {
-			return P, errors.New("no '/' in connection string")
-		}
-		P.Username, connString = connString[:i], connString[i+1:]
-
-		uSid := strings.ToUpper(connString)
-		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
-		if strings.Contains(uSid, " AS ") {
-			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-				connString = connString[:len(connString)-10]
-			} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-				connString = connString[:len(connString)-11]
-			} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-				connString = connString[:len(connString)-10]
-			}
-		}
-		if i = strings.LastIndexByte(connString, '@'); i >= 0 {
-			P.Password.secret, P.DSN = connString[:i], connString[i+1:]
-		} else {
-			P.Password.secret = connString
-		}
-		P.comb()
-		if Log != nil {
-			Log("msg", "ParseConnString", "connString", origConnString, "commonParams", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
-		}
-		return P, nil
-	}
-
-	u, err := url.Parse(connString)
-	if err != nil {
-		return P, errors.Errorf("%s: %w", connString, err)
-	}
-	if usr := u.User; usr != nil {
-		P.Username = usr.Username()
-		P.Password.secret, _ = usr.Password()
-	}
-	P.DSN = u.Hostname()
-	// IPv6 literal address brackets are removed by u.Hostname,
-	// so we have to put them back
-	if strings.HasPrefix(u.Host, "[") && !strings.Contains(P.DSN[1:], "]") {
-		P.DSN = "[" + P.DSN + "]"
-	}
-	if u.Port() != "" {
-		P.DSN += ":" + u.Port()
-	}
-	if u.Path != "" && u.Path != "/" {
-		P.DSN += u.Path
-	}
-
-	q := u.Query()
-	if vv, ok := q["connectionClass"]; ok {
-		P.ConnClass = vv[0]
-	}
-	for _, task := range []struct {
-		Dest *bool
-		Key  string
-	}{
-		{&P.IsSysDBA, "sysdba"},
-		{&P.IsSysOper, "sysoper"},
-		{&P.IsSysASM, "sysasm"},
-		{&P.IsPrelim, "prelim"},
-
-		{&P.EnableEvents, "enableEvents"},
-		{&P.Heterogeneous, "heterogeneousPool"},
-		{&P.StandaloneConnection, "standaloneConnection"},
-	} {
-		s := q.Get(task.Key)
-		if s == "" {
-			continue
-		}
-		if *task.Dest, err = strconv.ParseBool(s); err != nil {
-			return P, errors.Errorf("%s=%q: %w", task.Key, s, err)
-		}
-		if task.Key == "heterogeneousPool" {
-			P.StandaloneConnection = !P.Heterogeneous
-		}
-	}
-
-	if tz := q.Get("timezone"); tz != "" {
-		if strings.EqualFold(tz, "local") {
-			// P.Timezone = time.Local // already set
-		} else if strings.Contains(tz, "/") {
-			if P.Timezone, err = time.LoadLocation(tz); err != nil {
-				return P, errors.Errorf("%s: %w", tz, err)
-			}
-		} else if off, err := parseTZ(tz); err == nil {
-			P.Timezone = time.FixedZone(tz, off)
-		} else {
-			return P, errors.Errorf("%s: %w", tz, err)
-		}
-	}
-
-	for _, task := range []struct {
-		Dest *int
-		Key  string
-	}{
-		{&P.MinSessions, "poolMinSessions"},
-		{&P.MaxSessions, "poolMaxSessions"},
-		{&P.SessionIncrement, "poolIncrement"},
-		{&P.SessionIncrement, "sessionIncrement"},
-	} {
-		s := q.Get(task.Key)
-		if s == "" {
-			continue
-		}
-		var err error
-		*task.Dest, err = strconv.Atoi(s)
-		if err != nil {
-			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
-		}
-	}
-	for _, task := range []struct {
-		Dest *time.Duration
-		Key  string
-	}{
-		{&P.SessionTimeout, "poolSessionTimeout"},
-		{&P.WaitTimeout, "poolWaitTimeout"},
-		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
-	} {
-		s := q.Get(task.Key)
-		if s == "" {
-			continue
-		}
-		var err error
-		*task.Dest, err = time.ParseDuration(s)
-		if err != nil {
-			if !strings.Contains(err.Error(), "time: missing unit in duration") {
-				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
-			}
-			i, err := strconv.Atoi(s)
-			if err != nil {
-				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
-			}
-			base := time.Second
-			if task.Key == "poolWaitTimeout" {
-				base = time.Millisecond
-			}
-			*task.Dest = time.Duration(i) * base
-		}
-	}
-	if P.MinSessions > P.MaxSessions {
-		P.MinSessions = P.MaxSessions
-	}
-	if P.MinSessions == P.MaxSessions {
-		P.SessionIncrement = 0
-	} else if P.SessionIncrement < 1 {
-		P.SessionIncrement = 1
-	}
-	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
-		P.OnInit = mkExecMany(P.onInitStmts)
-	}
-	P.NewPassword.secret = q.Get("newPassword")
-	P.ConfigDir = q.Get("configDir")
-	P.LibDir = q.Get("libDir")
-
-	P.comb()
-
-	if Log != nil {
-		Log("msg", "ParseConnString", "connString", origConnString, "common", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
-	}
-	return P, nil
-}
 func (P *ConnectionParams) comb() {
 	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
 	if P.IsPrelim || P.StandaloneConnection {
@@ -1366,24 +1117,3 @@ func mkExecMany(qrys []string) func(driver.Conn) error {
 		return nil
 	}
 }
-
-// Password is printed obfuscated with String, use Secret to reveal the secret.
-type Password struct {
-	secret string
-}
-
-// NewPassword creates a new Password, containing the given secret.
-func NewPassword(secret string) Password { return Password{secret: secret} }
-
-func (P Password) String() string {
-	if P.secret == "" {
-		return ""
-	}
-	hsh := fnv.New64()
-	io.WriteString(hsh, P.secret)
-	return "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
-}
-func (P Password) Secret() string { return P.secret }
-func (P Password) IsZero() bool   { return P.secret == "" }
-func (P Password) Len() int       { return len(P.secret) }
-func (P *Password) Reset()        { P.secret = "" }
