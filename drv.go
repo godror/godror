@@ -11,24 +11,24 @@
 //
 // type (with sid being the sexp returned by tnsping),
 // or in the form of
-//   ora://login:password@sid/? \
-//     sysdba=0& \
-//     sysoper=0& \
-//     poolMinSessions=1& \
-//     poolMaxSessions=1000& \
-//     poolIncrement=1& \
-//     connectionClass=& \
-//     standaloneConnection=0& \
-//     enableEvents=0& \
-//     heterogeneousPool=0& \
-//     prelim=0& \
-//     poolWaitTimeout=5m& \
-//     poolSessionMaxLifetime=1h& \
-//     poolSessionTimeout=30s& \
-//     timezone=Local& \
+//   sid/? \n
+//     sysdba=0 \
+//     sysoper=0 \
+//     poolMinSessions=1 \
+//     poolMaxSessions=1000 \
+//     poolIncrement=1 \
+//     connectionClass= \
+//     standaloneConnection=0 \
+//     enableEvents=0 \
+//     heterogeneousPool=0 \
+//     prelim=0 \
+//     poolWaitTimeout=5m \
+//     poolSessionMaxLifetime=1h \
+//     poolSessionTimeout=30s \
+//     timezone=Local \
 //     newPassword= \
-//     onInit=ALTER+SESSION+SET+current_schema%3Dmy_schema& \
-//     configDir=&
+//     onInit="ALTER SESSION SET current_schema=my_schema" \
+//     configDir= \
 //     libDir=
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
@@ -60,7 +60,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
@@ -718,7 +717,7 @@ type CommonParams struct {
 }
 
 func (P CommonParams) String() string {
-	q := make(url.Values, 8)
+	q := NewParamsArray(8)
 	q.Add("username", P.Username)
 	q.Add("password", P.Password.String())
 	q.Add("dsn", P.DSN)
@@ -738,7 +737,7 @@ func (P CommonParams) String() string {
 		q.Add("enableEvents", "1")
 	}
 
-	return q.Encode()
+	return q.String()
 }
 
 type ConnParams struct {
@@ -749,7 +748,7 @@ type ConnParams struct {
 }
 
 func (P ConnParams) String() string {
-	q := make(url.Values, 8)
+	q := NewParamsArray(8)
 	if P.ConnClass != "" {
 		q.Add("connectionClass", P.ConnClass)
 	}
@@ -771,7 +770,7 @@ func (P ConnParams) String() string {
 	if P.SuperShardingKey != nil {
 		q.Add("superShardingKey", fmt.Sprintf("%v", P.SuperShardingKey))
 	}
-	return q.Encode()
+	return q.String()
 }
 
 type PoolParams struct {
@@ -781,7 +780,7 @@ type PoolParams struct {
 }
 
 func (P PoolParams) String() string {
-	q := make(url.Values, 8)
+	q := NewParamsArray(8)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
@@ -794,7 +793,7 @@ func (P PoolParams) String() string {
 	if P.ExternalAuth {
 		q.Add("externalAuth", "1")
 	}
-	return q.Encode()
+	return q.String()
 }
 
 // ConnectionParams holds the params for a connection (pool).

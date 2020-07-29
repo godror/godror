@@ -85,7 +85,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
 	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.DSN + "\n" + q.String()
-	return P.CommonParams.DSN + "\n" + q.String()
+
+	var buf strings.Builder
+	buf.WriteString(P.CommonParams.DSN)
+	buf.WriteByte('\n')
+	q.WriteTo(&buf)
+	return buf.String()
 }
 
 // ParseConnString parses the given connection string into a struct.
@@ -324,22 +329,26 @@ type ParamsArray struct {
 }
 
 func NewParamsArray(cap int) ParamsArray { return ParamsArray{Values: make(url.Values, cap)} }
-func (p ParamsArray) String() string {
-	var buf strings.Builder
-	var n int
+
+func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
+	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
-	for k, vv := range p.Values {
-		for _, v := range vv {
-			n += len(k) + 1 + len(v) + 1
+	for k := range p.Values {
+		if k == "password" || k == "username" {
+			firstKeys = append(firstKeys, k)
+		} else {
+			keys = append(keys, k)
 		}
-		keys = append(keys, k)
+	}
+	if len(firstKeys) == 2 && firstKeys[0] != "username" {
+		firstKeys[0], firstKeys[1] = firstKeys[1], firstKeys[0]
 	}
 	sort.Strings(keys)
-	buf.Grow(n)
 
-	enc := logfmt.NewEncoder(&buf)
+	cw := &countingWriter{W: w}
+	enc := logfmt.NewEncoder(cw)
 	var firstErr error
-	for _, k := range keys {
+	for _, k := range append(firstKeys, keys...) {
 		for _, v := range p.Values[k] {
 			if err := enc.EncodeKeyval(k, v); err != nil && firstErr == nil {
 				firstErr = err
@@ -349,8 +358,22 @@ func (p ParamsArray) String() string {
 	if err := enc.EndRecord(); err != nil && firstErr == nil {
 		firstErr = err
 	}
-	if firstErr != nil {
-		fmt.Fprintf(&buf, "\tERROR: %+v", firstErr)
+	return cw.N, firstErr
+}
+
+// String returns the values in the params array, logfmt-formatted,
+// starting with username and password, then the rest sorted alphabetically.
+func (p ParamsArray) String() string {
+	var buf strings.Builder
+	var n int
+	for k, vv := range p.Values {
+		for _, v := range vv {
+			n += len(k) + 1 + len(v) + 1
+		}
+	}
+	buf.Grow(n)
+	if _, err := p.WriteTo(&buf); err != nil {
+		fmt.Fprintf(&buf, "\tERROR: %+v", err)
 	}
 	return buf.String()
 }
@@ -405,4 +428,15 @@ func splitQuoted(s string, sep rune) (string, string) {
 		off += sepLen
 	}
 	return s, ""
+}
+
+type countingWriter struct {
+	W io.Writer
+	N int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.W.Write(p)
+	cw.N += int64(n)
+	return n, err
 }
