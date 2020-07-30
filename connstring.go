@@ -122,28 +122,38 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	var q url.Values
 
 	if !strings.HasPrefix(connString, "oracle://") {
-		up, connString := splitQuoted(connString, '@')
-		if connString == "" {
-			connString = up
-		} else {
-			P.Username, P.Password.secret = splitQuoted(up, '/')
-			P.Username, P.Password.secret = unquote(P.Username), unquote(P.Password.secret)
-		}
-
-		uSid := strings.ToUpper(connString)
-		//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
-		if strings.Contains(uSid, " AS ") {
-			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-				connString = connString[:len(connString)-10]
-			} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-				connString = connString[:len(connString)-11]
-			} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-				connString = connString[:len(connString)-10]
-			}
-		}
-		P.DSN = connString
+		// Not URL
 		q = make(url.Values, 32)
+		if paramsString == "" &&
+			(strings.HasPrefix(connString, "dsn=") ||
+				strings.Contains(connString, " dsn=")) {
+			// logfmt-formatted the whole string
+			paramsString, connString = connString, ""
+		} else {
+			// Old, or Easy Connect, or anything
+			up, connString := splitQuoted(connString, '@')
+			if connString == "" {
+				connString = up
+			} else {
+				P.Username, P.Password.secret = splitQuoted(up, '/')
+				P.Username, P.Password.secret = unquote(P.Username), unquote(P.Password.secret)
+			}
+
+			uSid := strings.ToUpper(connString)
+			//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
+			if strings.Contains(uSid, " AS ") {
+				if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
+					connString = connString[:len(connString)-10]
+				} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
+					connString = connString[:len(connString)-11]
+				} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
+					connString = connString[:len(connString)-10]
+				}
+			}
+			P.DSN = connString
+		}
 	} else {
+		// URL
 		u, err := url.Parse(connString)
 		if err != nil {
 			return P, errors.Errorf("%s: %w", connString, err)
@@ -166,13 +176,22 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		}
 		q = u.Query()
 	}
+
 	if paramsString != "" {
+		// Parse the logfmt-formatted parameters string
 		d := logfmt.NewDecoder(strings.NewReader(paramsString))
 		for d.ScanRecord() {
 			for d.ScanKeyval() {
-				if key, value := string(d.Key()), string(d.Value()); key == "onInit" {
+				switch key, value := string(d.Key()), string(d.Value()); key {
+				case "onInit":
 					q.Add(key, value)
-				} else {
+				case "dsn":
+					P.DSN = value
+				case "username":
+					P.Username = value
+				case "password":
+					P.Password.secret = value
+				default:
 					q.Set(key, value)
 				}
 			}
@@ -180,14 +199,10 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		if err := d.Err(); err != nil {
 			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
-		if vv, ok := q["username"]; ok {
-			P.Username = vv[0]
-		}
-		if vv, ok := q["password"]; ok {
-			P.Password.secret = vv[0]
-		}
 	}
 
+	// Override everything from the parameters,
+	// which can come from the URL values or the logfmt-formatted parameters string.
 	if vv, ok := q["connectionClass"]; ok {
 		P.ConnClass = vv[0]
 	}
