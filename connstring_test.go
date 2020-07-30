@@ -158,7 +158,8 @@ func TestParseConnString(t *testing.T) {
 			Want: wantEasy,
 		},
 
-		"logfmt": {In: "username=user password=pass dsn=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt":       {In: "username=user password=pass dsn=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt_oldpw": {In: "dsn=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{

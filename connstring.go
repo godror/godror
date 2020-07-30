@@ -131,13 +131,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			paramsString, connString = connString, ""
 		} else {
 			// Old, or Easy Connect, or anything
-			up, connString := splitQuoted(connString, '@')
-			if connString == "" {
-				connString = up
-			} else {
-				P.Username, P.Password.secret = splitQuoted(up, '/')
-				P.Username, P.Password.secret = unquote(P.Username), unquote(P.Password.secret)
-			}
+			P.Username, P.Password.secret, connString = parseUserPassw(connString)
 
 			uSid := strings.ToUpper(connString)
 			//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
@@ -186,7 +180,10 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 				case "onInit":
 					q.Add(key, value)
 				case "dsn":
-					P.DSN = value
+					var user, passw string
+					if user, passw, P.DSN = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
+						P.Username, P.Password.secret = user, passw
+					}
 				case "username":
 					P.Username = value
 				case "password":
@@ -443,6 +440,15 @@ func splitQuoted(s string, sep rune) (string, string) {
 		off += sepLen
 	}
 	return s, ""
+}
+
+func parseUserPassw(connString string) (user, passw, dsn string) {
+	var up string
+	if up, dsn = splitQuoted(connString, '@'); dsn == "" {
+		return "", "", connString
+	}
+	user, passw = splitQuoted(up, '/')
+	return unquote(user), unquote(passw), dsn
 }
 
 type countingWriter struct {
