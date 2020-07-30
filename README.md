@@ -1,5 +1,5 @@
 ![Go](https://github.com/godror/godror/workflows/Go/badge.svg)
-[![GoDoc](https://godoc.org/github.com/godror/godror?status.svg)](http://godoc.org/github.com/godror/godror)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/godror/godror)](https://pkg.go.dev/github.com/godror/godror)
 [![Go Report Card](https://goreportcard.com/badge/github.com/godror/godror)](https://goreportcard.com/report/github.com/godror/godror)
 [![codecov](https://codecov.io/gh/godror/godror/branch/master/graph/badge.svg)](https://codecov.io/gh/godror/godror)
 
@@ -205,12 +205,6 @@ Just
 go get github.com/godror/godror
 ```
 
-Or if you prefer `dep`
-
-```bash
-dep ensure -add github.com/godror/godror
-```
-
 and you're ready to go!
 
 Note that Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
@@ -243,7 +237,7 @@ and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godr
 
 ### pre-commit
 
-Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
+Add this to .git/hooks/pre-commit (after downloaded a [staticcheck](https://staticcheck.io) [release](https://github.com/dominikh/go-tools/releases)):
 
 ```bash
 #!/bin/sh
@@ -259,7 +253,7 @@ if [ -n "$output" ]; then
     exit 1
 fi
 
-golangci-lint run
+exec staticcheck
 ```
 
 # Third-party
