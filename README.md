@@ -18,38 +18,41 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 
 ## Connect
 
-In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
-as connString, or an URL like "oracle://user:passw@service_name?params=..." (with URL-encoded parameters), 
-where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`, 
-or _ANYTHING_ that sqlplus or OCI accepts. All godror params can be specified as [logfmt](https://brandur.org/logfmt)-encoded parameters, _on_the_next_line_ - after a newline.
+In `sql.Open("godror", connString)`, where `connString` is a [logfmt](https://brandur.org/logfmt)-encoded 
+parameter list, where you specify at least "username", "password" and "dsn" [1].
+The "dsn" can be can be _ANYTHING_ that sqlplus or OCI accepts: a service name, a `host:port/service_name`, 
+a `(DESCRIPTION=...)`, or an [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
+
+All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
 So 
 
 ```
-scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
-poolSessionTimeout=42s password=tiger
+username=scott password=tiger \
+dsn="tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60" \
+poolSessionTimeout=42s libDir=/tmp/admin heterogeneousPool=false standaloneConnection=false
 ```
 
-will connect to "salesserver1", port 1521, as scott/tiger, using the [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf) syntax.
+will connect to "salesserver1", port 1521, as scott/tiger, using the Easy Connect Naming syntax.
 
 You can provide all possible options with `ConnectionParams`.
-Watch out the `ConnectionParams.String()` does redact the password
+Watch out the `ConnectionParams.String()` does *redact* the password
 (for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
 So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
-`user/pass@(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
+`username=user password=pass dsn="(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))"`
 
-A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
-described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
+A configuration like this is how you would add functionality such as load balancing across multiple servers. 
+The portion described in parenthesis above can also be set in the `DSN` field of `ConnectionParams`.
 
 For other possible connection strings, see 
 [node-oracledb connection strings](https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings)
 and [Easy Connect Naming](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE)
 and [Oracle Database 19c Easy Connect Plus Configurable Database Connection](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
 
-TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
-`(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
+TL;DR; the short form is `username=username password=password dsn="[//]host[:port][/service_name][:server][/instance_name]"`, the long form is
+`dsn="(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))"`.
 
 The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
 It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
@@ -59,7 +62,8 @@ To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/p
 `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
 
 ### Oracle Session Pooling
-Set `standaloneConnection=0`- this is the default. All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
+Set `standaloneConnection=0`- this is the default. 
+All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
 It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
 eliminates the need for it.
 
@@ -261,3 +265,11 @@ golangci-lint run
 # Third-party
 
 * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
+
+
+---
+[1] For backward compatibility, you can provide _ANYTHING_ on the first line, and logfmt-ed parameters
+on the second line. Or no logfmt-ed parameters at all.
+So `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
+poolSessionTimeout=42s password=tiger
+` works, too.
