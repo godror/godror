@@ -42,14 +42,10 @@ So use `ConnectionParams.StringWithPassword()`.
 
 More advanced configurations can be set with a connection string such as:
 `username=user password=pass dsn="(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))"`
+as `tnsping` returns.
 
 A configuration like this is how you would add functionality such as load balancing across multiple servers. 
 The portion described in parenthesis above can also be set in the `DSN` field of `ConnectionParams`.
-
-For other possible connection strings, see 
-[node-oracledb connection strings](https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings)
-and [Easy Connect Naming](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE)
-and [Oracle Database 19c Easy Connect Plus Configurable Database Connection](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
 
 TL;DR; the short form is `username=username password=password dsn="[//]host[:port][/service_name][:server][/instance_name]"`, the long form is
 `dsn="(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))"`.
@@ -266,4 +262,7 @@ exec staticcheck
 on the second line. Or no logfmt-ed parameters at all.
 So `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
 poolSessionTimeout=42s password=tiger
-` works, too.
+` or `scott/tiger@salesserver1/sales.us.example.com`, or 
+`oracle://scott:tiger@salesserver1/sales.us.example.com&poolSessionTimeout=42s`, or
+`scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
+poolSessionTimeout=42s password=tiger` works, too.
