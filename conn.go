@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/godror/godror/connstr"
 	errors "golang.org/x/xerrors"
 )
 
@@ -47,7 +47,7 @@ var _ driver.Pinger = (*conn)(nil)
 
 type conn struct {
 	currentTT     TraceTag
-	params        ConnectionParams
+	params        connstr.ConnectionParams
 	Server        VersionInfo
 	tranParams    tranParams
 	mu            sync.RWMutex
@@ -523,10 +523,10 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	// If not, use the numbers.
 	var err error
 	if timezone != "" {
-		if off, err = parseTZ(timezone); err != nil {
+		if off, err = connstr.ParseTZ(timezone); err != nil {
 			return tz, off, errors.Errorf("%s: %w", timezone, err)
 		}
-	} else if off, err = parseTZ(dbTZ); err != nil {
+	} else if off, err = connstr.ParseTZ(dbTZ); err != nil {
 		return tz, off, errors.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
@@ -545,49 +545,6 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	}
 	return tz, off, nil
 }
-func parseTZ(s string) (int, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, io.EOF
-	}
-	if s == "Z" || s == "UTC" {
-		return 0, nil
-	}
-	var tz int
-	var ok bool
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		i64, err := strconv.ParseInt(s[i+1:], 10, 6)
-		if err != nil {
-			return tz, errors.Errorf("%s: %w", s, err)
-		}
-		tz = int(i64 * 60)
-		s = s[:i]
-		ok = true
-	}
-	if !ok {
-		if i := strings.IndexByte(s, '/'); i >= 0 {
-			targetLoc, err := time.LoadLocation(s)
-			if err != nil {
-				return tz, errors.Errorf("%s: %w", s, err)
-			}
-
-			_, localOffset := time.Now().In(targetLoc).Zone()
-
-			tz = localOffset
-			return tz, nil
-		}
-	}
-	i64, err := strconv.ParseInt(s, 10, 5)
-	if err != nil {
-		return tz, errors.Errorf("%s: %w", s, err)
-	}
-	if i64 < 0 {
-		tz = -tz
-	}
-	tz += int(i64 * 3600)
-	return tz, nil
-}
-
 func (c *conn) setCallTimeout(dur time.Duration) {
 	if c.drv.clientVersion.Version < 18 {
 		return
@@ -785,7 +742,7 @@ const paramsCtxKey = ctxKey("params")
 // If a standalone connection is being used this will have no effect.
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
-func ContextWithParams(ctx context.Context, commonParams CommonParams, connParams ConnParams) context.Context {
+func ContextWithParams(ctx context.Context, commonParams connstr.CommonParams, connParams connstr.ConnParams) context.Context {
 	return context.WithValue(ctx, paramsCtxKey,
 		commonAndConnParams{CommonParams: commonParams, ConnParams: connParams})
 }
@@ -798,8 +755,8 @@ func ContextWithParams(ctx context.Context, commonParams CommonParams, connParam
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return ContextWithParams(ctx,
-		CommonParams{Username: user, Password: Password{password}},
-		ConnParams{ConnClass: connClass},
+		connstr.CommonParams{Username: user, Password: connstr.NewPassword(password)},
+		connstr.ConnParams{ConnClass: connClass},
 	)
 }
 

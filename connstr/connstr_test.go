@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package godror
+package connstr
 
 import (
 	"strings"
@@ -12,9 +12,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	errors "golang.org/x/xerrors"
 )
 
-func TestParseConnString(t *testing.T) {
+func TestParse(t *testing.T) {
 	t.Parallel()
 	cc := DefaultConnectionClass
 	if DefaultStandaloneConnection {
@@ -105,6 +106,15 @@ func TestParseConnString(t *testing.T) {
 	wantEasy.Password.Reset()
 	wantEasy.DSN = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
 
+	// From fuzzing
+	for _, in := range []string{
+		"oracle://[]",
+		"@oracle://[]",
+	} {
+		if _, err := Parse(in); err != nil {
+			t.Errorf("%q: %+v", in, err)
+		}
+	}
 	for tName, tCase := range map[string]struct {
 		In   string
 		Want ConnectionParams
@@ -181,7 +191,7 @@ func TestParseConnString(t *testing.T) {
 		tCase := tCase
 		t.Run(tName, func(t *testing.T) {
 			t.Log(tCase.In)
-			P, err := ParseConnString(tCase.In)
+			P, err := Parse(tCase.In)
 			if err != nil {
 				t.Errorf("%v", err)
 				return
@@ -191,7 +201,7 @@ func TestParseConnString(t *testing.T) {
 				return
 			}
 			s := setP(P.String(), P.Password.Secret())
-			Q, err := ParseConnString(s)
+			Q, err := Parse(s)
 			if err != nil {
 				t.Errorf("parseConnString %v", err)
 				return
@@ -204,5 +214,23 @@ func TestParseConnString(t *testing.T) {
 				t.Errorf("paramString got %q, wanted %q", got, s)
 			}
 		})
+	}
+}
+
+func TestParseTZ(t *testing.T) {
+	for k, v := range map[string]int{
+		"00:00": 0, "+00:00": 0, "-00:00": 0,
+		"01:00": 3600, "+01:00": 3600, "-01:01": -3660,
+		"+02:00": 7200,
+		"+02:03": 7380,
+	} {
+		i, err := ParseTZ(k)
+		t.Logf("Parse(%q): %d %v", k, i, err)
+		if err != nil {
+			t.Fatal(errors.Errorf("%s: %w", k, err))
+		}
+		if i != v {
+			t.Errorf("%s. got %d, wanted %d.", k, i, v)
+		}
 	}
 }

@@ -3,9 +3,10 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package godror
+package connstr
 
 import (
+	"database/sql/driver"
 	"encoding/base64"
 	"fmt"
 	"hash/fnv"
@@ -19,6 +20,170 @@ import (
 	"github.com/go-logfmt/logfmt"
 	errors "golang.org/x/xerrors"
 )
+
+const (
+	// DefaultPoolMinSessions specifies the default value for minSessions for pool creation.
+	DefaultPoolMinSessions = 1
+	// DefaultPoolMaxSessions specifies the default value for maxSessions for pool creation.
+	DefaultPoolMaxSessions = 1000
+	// DefaultSessionIncrement specifies the default value for increment for pool creation.
+	DefaultSessionIncrement = 1
+	// DefaultPoolIncrement is a deprecated name for DefaultSessionIncrement.
+	DefaultPoolIncrement = DefaultSessionIncrement
+	// DefaultConnectionClass is empty, which allows to use the poolMinSessions created as part of session pool creation for non-DRCP. For DRCP, connectionClass needs to be explicitly mentioned.
+	DefaultConnectionClass = ""
+	// NoConnectionPoolingConnectionClass is a special connection class name to indicate no connection pooling.
+	// It is the same as setting standaloneConnection=1
+	NoConnectionPoolingConnectionClass = "NO-CONNECTION-POOLING"
+	// DefaultSessionTimeout is the seconds before idle pool sessions get evicted
+	DefaultSessionTimeout = 5 * time.Minute
+	// DefaultWaitTimeout is the milliseconds to wait for a session to become available
+	DefaultWaitTimeout = 30 * time.Second
+	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
+	DefaultMaxLifeTime = 1 * time.Hour
+	//DefaultStandaloneConnection holds the default for standaloneConnection.
+	DefaultStandaloneConnection = false
+)
+
+type CommonParams struct {
+	Username, DSN     string
+	Password          Password
+	ConfigDir, LibDir string
+	OnInit            func(driver.Conn) error
+	Timezone          *time.Location
+	EnableEvents      bool
+}
+
+func (P CommonParams) String() string {
+	q := NewParamsArray(8)
+	q.Add("username", P.Username)
+	q.Add("password", P.Password.String())
+	q.Add("dsn", P.DSN)
+	if P.ConfigDir != "" {
+		q.Add("configDir", P.ConfigDir)
+	}
+	if P.LibDir != "" {
+		q.Add("libDir", P.LibDir)
+	}
+	s := "local"
+	tz := P.Timezone
+	if tz != nil && tz != time.Local {
+		s = tz.String()
+	}
+	q.Add("timezone", s)
+	if P.EnableEvents {
+		q.Add("enableEvents", "1")
+	}
+
+	return q.String()
+}
+
+type ConnParams struct {
+	NewPassword                             Password
+	ConnClass                               string
+	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
+	ShardingKey, SuperShardingKey           []interface{}
+}
+
+func (P ConnParams) String() string {
+	q := NewParamsArray(8)
+	if P.ConnClass != "" {
+		q.Add("connectionClass", P.ConnClass)
+	}
+	if !P.NewPassword.IsZero() {
+		q.Add("newPassword", P.NewPassword.String())
+	}
+	if P.IsSysDBA {
+		q.Add("sysdba", "1")
+	}
+	if P.IsSysOper {
+		q.Add("sysoper", "1")
+	}
+	if P.IsSysASM {
+		q.Add("sysasm", "1")
+	}
+	if P.ShardingKey != nil {
+		q.Add("shardingKey", fmt.Sprintf("%v", P.ShardingKey))
+	}
+	if P.SuperShardingKey != nil {
+		q.Add("superShardingKey", fmt.Sprintf("%v", P.SuperShardingKey))
+	}
+	return q.String()
+}
+
+type PoolParams struct {
+	MinSessions, MaxSessions, SessionIncrement int
+	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
+	Heterogeneous, ExternalAuth                bool
+}
+
+func (P PoolParams) String() string {
+	q := NewParamsArray(8)
+	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
+	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
+	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
+	if P.Heterogeneous {
+		q.Add("heterogeneousPool", "1")
+	}
+	q.Add("poolWaitTimeout", P.WaitTimeout.String())
+	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
+	q.Add("poolSessionTimeout", P.SessionTimeout.String())
+	if P.ExternalAuth {
+		q.Add("externalAuth", "1")
+	}
+	return q.String()
+}
+
+// ConnectionParams holds the params for a connection (pool).
+// You can use ConnectionParams{...}.StringWithPassword()
+// as a connection string in sql.Open.
+type ConnectionParams struct {
+	CommonParams
+	ConnParams
+	PoolParams
+	// NewPassword is used iff StandaloneConnection is true!
+	NewPassword          Password
+	onInitStmts          []string
+	StandaloneConnection bool
+}
+
+func (P ConnectionParams) IsStandalone() bool {
+	return P.StandaloneConnection || P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim
+}
+
+func (P *ConnectionParams) comb() {
+	P.StandaloneConnection = P.StandaloneConnection || P.ConnClass == NoConnectionPoolingConnectionClass
+	if P.IsPrelim || P.StandaloneConnection {
+		// Prelim: the shared memory may not exist when Oracle is shut down.
+		P.ConnClass = ""
+		P.Heterogeneous = false
+	}
+	if !P.IsStandalone() {
+		P.NewPassword.Reset()
+		// only enable external authentication if we are dealing with a
+		// homogeneous pool and no user name/password has been specified
+		if P.Username == "" && P.Password.IsZero() && !P.Heterogeneous {
+			P.ExternalAuth = true
+		}
+	}
+}
+
+// SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
+func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
+	s := fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1))
+	P.onInitStmts = append(P.onInitStmts, s)
+	if old := P.OnInit; old == nil {
+		P.OnInit = MkExecMany(P.onInitStmts)
+	} else {
+		n := MkExecMany([]string{s})
+		P.OnInit = func(conn driver.Conn) error {
+			if err := old(conn); err != nil {
+				return err
+			}
+			return n(conn)
+		}
+	}
+}
 
 // String returns the string representation of ConnectionParams.
 // The password is replaced with a "SECRET" string!
@@ -93,8 +258,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	return buf.String()
 }
 
-// ParseConnString parses the given connection string into a struct.
-func ParseConnString(connString string) (ConnectionParams, error) {
+// Parse parses the given connection string into a struct.
+func Parse(connString string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
@@ -118,7 +283,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 	if i := strings.IndexByte(connString, '\n'); i >= 0 {
 		connString, paramsString = strings.TrimSpace(connString[:i]), strings.TrimSpace(connString[i+1:])
 	}
-	origConnString := connString
 	var q url.Values
 
 	if !strings.HasPrefix(connString, "oracle://") {
@@ -159,7 +323,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.DSN = u.Hostname()
 		// IPv6 literal address brackets are removed by u.Hostname,
 		// so we have to put them back
-		if strings.HasPrefix(u.Host, "[") && !strings.Contains(P.DSN[1:], "]") {
+		if strings.HasPrefix(u.Host, "[") && (len(P.DSN) <= 1 || !strings.Contains(P.DSN[1:], "]")) {
 			P.DSN = "[" + P.DSN + "]"
 		}
 		if u.Port() != "" {
@@ -237,7 +401,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
 				return P, errors.Errorf("%s: %w", tz, err)
 			}
-		} else if off, err := parseTZ(tz); err == nil {
+		} else if off, err := ParseTZ(tz); err == nil {
 			P.Timezone = time.FixedZone(tz, off)
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
@@ -301,7 +465,7 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 		P.SessionIncrement = 1
 	}
 	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
-		P.OnInit = mkExecMany(P.onInitStmts)
+		P.OnInit = MkExecMany(P.onInitStmts)
 	}
 	P.NewPassword.secret = q.Get("newPassword")
 	P.ConfigDir = q.Get("configDir")
@@ -309,9 +473,6 @@ func ParseConnString(connString string) (ConnectionParams, error) {
 
 	P.comb()
 
-	if Log != nil {
-		Log("msg", "ParseConnString", "connString", origConnString, "common", P.CommonParams, "connParams", P.ConnParams, "poolParams", P.PoolParams)
-	}
 	return P, nil
 }
 
@@ -460,4 +621,63 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	n, err := cw.W.Write(p)
 	cw.N += int64(n)
 	return n, err
+}
+
+func MkExecMany(qrys []string) func(driver.Conn) error {
+	return func(conn driver.Conn) error {
+		for _, qry := range qrys {
+			st, err := conn.Prepare(qry)
+			if err != nil {
+				return errors.Errorf("%s: %w", qry, err)
+			}
+			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
+			st.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+func ParseTZ(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, io.EOF
+	}
+	if s == "Z" || s == "UTC" {
+		return 0, nil
+	}
+	var tz int
+	var ok bool
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		i64, err := strconv.ParseInt(s[i+1:], 10, 6)
+		if err != nil {
+			return tz, errors.Errorf("%s: %w", s, err)
+		}
+		tz = int(i64 * 60)
+		s = s[:i]
+		ok = true
+	}
+	if !ok {
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			targetLoc, err := time.LoadLocation(s)
+			if err != nil {
+				return tz, errors.Errorf("%s: %w", s, err)
+			}
+
+			_, localOffset := time.Now().In(targetLoc).Zone()
+
+			tz = localOffset
+			return tz, nil
+		}
+	}
+	i64, err := strconv.ParseInt(s, 10, 5)
+	if err != nil {
+		return tz, errors.Errorf("%s: %w", s, err)
+	}
+	if i64 < 0 {
+		tz = -tz
+	}
+	tz += int(i64 * 3600)
+	return tz, nil
 }

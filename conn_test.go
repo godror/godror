@@ -63,20 +63,3 @@ func TestCalculateTZ(t *testing.T) {
 		}
 	}
 }
-func TestParseTZ(t *testing.T) {
-	for k, v := range map[string]int{
-		"00:00": 0, "+00:00": 0, "-00:00": 0,
-		"01:00": 3600, "+01:00": 3600, "-01:01": -3660,
-		"+02:00": 7200,
-		"+02:03": 7380,
-	} {
-		i, err := parseTZ(k)
-		t.Logf("Parse(%q): %d %v", k, i, err)
-		if err != nil {
-			t.Fatal(errors.Errorf("%s: %w", k, err))
-		}
-		if i != v {
-			t.Errorf("%s. got %d, wanted %d.", k, i, v)
-		}
-	}
-}
