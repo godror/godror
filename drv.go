@@ -7,28 +7,27 @@
 //
 // The connection string for the sql.Open("godror", dataSourceName) call can be
 // the simple
-//   login/password@sid [AS SYSDBA|AS SYSOPER]
 //
-// type (with sid being the sexp returned by tnsping),
-// or in the form of
-//   host:port/service_name? \n
-//     sysdba=0 \
-//     sysoper=0 \
-//     poolMinSessions=1 \
-//     poolMaxSessions=1000 \
-//     poolIncrement=1 \
-//     connectionClass= \
-//     standaloneConnection=0 \
-//     enableEvents=0 \
-//     heterogeneousPool=0 \
-//     prelim=0 \
-//     poolWaitTimeout=5m \
-//     poolSessionMaxLifetime=1h \
-//     poolSessionTimeout=30s \
-//     timezone=Local \
-//     newPassword= \
-//     onInit="ALTER SESSION SET current_schema=my_schema" \
-//     configDir= \
+//   user="login" password="password" connectString="host:port/service_name" sysdba=true
+//
+// with additional params (here with the defaults):
+//     sysdba=0
+//     sysoper=0
+//     poolMinSessions=1
+//     poolMaxSessions=1000
+//     poolIncrement=1
+//     connectionClass=
+//     standaloneConnection=0
+//     enableEvents=0
+//     heterogeneousPool=0
+//     prelim=0
+//     poolWaitTimeout=5m
+//     poolSessionMaxLifetime=1h
+//     poolSessionTimeout=30s
+//     timezone=local
+//     newPassword=
+//     onInit="ALTER SESSION SET current_schema=my_schema"
+//     configDir=
 //     libDir=
 //
 // These are the defaults. Many advocate that a static session pool (min=max, incr=0)
