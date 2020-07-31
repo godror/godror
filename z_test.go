@@ -135,11 +135,11 @@ func init() {
 
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
-			Username:     os.Getenv("GODROR_TEST_USERNAME"),
-			Password:     godror.NewPassword(os.Getenv("GODROR_TEST_PASSWORD")),
-			DSN:          os.Getenv("GODROR_TEST_DB"),
-			EnableEvents: true,
-			ConfigDir:    configDir,
+			Username:      os.Getenv("GODROR_TEST_USERNAME"),
+			Password:      godror.NewPassword(os.Getenv("GODROR_TEST_PASSWORD")),
+			ConnectString: os.Getenv("GODROR_TEST_DB"),
+			EnableEvents:  true,
+			ConfigDir:     configDir,
 		},
 		ConnParams: godror.ConnParams{
 			ConnClass:   "TestClassName",

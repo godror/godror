@@ -23,10 +23,10 @@ func TestParse(t *testing.T) {
 	}
 	wantAt := ConnectionParams{
 		CommonParams: CommonParams{
-			Username: "cc",
-			Password: Password{"c@c*1"},
-			DSN:      "192.168.1.1/cc",
-			Timezone: time.Local,
+			Username:      "cc",
+			Password:      Password{"c@c*1"},
+			ConnectString: "192.168.1.1/cc",
+			Timezone:      time.Local,
 		},
 		PoolParams: PoolParams{
 			MaxLifeTime:    DefaultMaxLifeTime,
@@ -37,10 +37,10 @@ func TestParse(t *testing.T) {
 	wantDefault := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
-			Username: "user",
-			Password: Password{"pass"},
-			DSN:      "sid",
-			Timezone: time.Local,
+			Username:      "user",
+			Password:      Password{"pass"},
+			ConnectString: "sid",
+			Timezone:      time.Local,
 		},
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
@@ -60,7 +60,7 @@ func TestParse(t *testing.T) {
 	}
 
 	wantXO := wantDefault
-	wantXO.DSN = "localhost/sid"
+	wantXO.ConnectString = "localhost/sid"
 
 	wantHeterogeneous := wantXO
 	wantHeterogeneous.Heterogeneous = true
@@ -104,7 +104,7 @@ func TestParse(t *testing.T) {
 	wantEasy := wantDefault
 	wantEasy.Username, wantEasy.PoolParams.SessionTimeout = "scott", 42*time.Second
 	wantEasy.Password.Reset()
-	wantEasy.DSN = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
+	wantEasy.ConnectString = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
 
 	// From fuzzing
 	for _, in := range []string{
@@ -123,7 +123,7 @@ func TestParse(t *testing.T) {
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: Password{"pass"}, DSN: "sid",
+					Username: "user", Password: Password{"pass"}, ConnectString: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
@@ -149,8 +149,8 @@ func TestParse(t *testing.T) {
 			Want: ConnectionParams{
 				StandaloneConnection: DefaultStandaloneConnection,
 				CommonParams: CommonParams{
-					DSN:      "[::1]:12345/dbname",
-					Timezone: time.Local,
+					ConnectString: "[::1]:12345/dbname",
+					Timezone:      time.Local,
 				},
 				ConnParams: ConnParams{
 					ConnClass: cc,
@@ -168,13 +168,13 @@ func TestParse(t *testing.T) {
 			Want: wantEasy,
 		},
 
-		"logfmt":       {In: "username=user password=pass dsn=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
-		"logfmt_oldpw": {In: "dsn=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt":       {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt_oldpw": {In: "connectString=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: Password{"pass"}, DSN: "sid",
+					Username: "user", Password: Password{"pass"}, ConnectString: "sid",
 					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{

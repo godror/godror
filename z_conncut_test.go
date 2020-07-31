@@ -102,7 +102,7 @@ func TestConnCut(t *testing.T) {
 	pxCtx, pxCancel := context.WithCancel(ctx)
 	defer pxCancel()
 	go func() { px.Serve(pxCtx) }()
-	P.DSN = px.ListenAddr() + "/" + serviceName
+	P.ConnectString = px.ListenAddr() + "/" + serviceName
 	db, err = sql.Open("godror", P.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)

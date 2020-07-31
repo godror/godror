@@ -865,9 +865,9 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	var paramsFromCtx bool
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
-			// ContextWithUserPassw does not fill ConnParam.DSN
-			if P.DSN == "" {
-				P.DSN = params.DSN
+			// ContextWithUserPassw does not fill ConnParam.ConnectString
+			if P.ConnectString == "" {
+				P.ConnectString = params.ConnectString
 			}
 			if Log != nil {
 				Log("msg", "paramsFromContext", "params", P)

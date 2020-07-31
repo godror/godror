@@ -328,7 +328,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	}
 
 	// manage strings
-	var cUsername, cPassword, cNewPassword, cDSN, cConnClass *C.char
+	var cUsername, cPassword, cNewPassword, cConnectString, cConnClass *C.char
 	defer func() {
 		if cUsername != nil {
 			C.free(unsafe.Pointer(cUsername))
@@ -339,8 +339,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		if cNewPassword != nil {
 			C.free(unsafe.Pointer(cNewPassword))
 		}
-		if cDSN != nil {
-			C.free(unsafe.Pointer(cDSN))
+		if cConnectString != nil {
+			C.free(unsafe.Pointer(cConnectString))
 		}
 		if cConnClass != nil {
 			C.free(unsafe.Pointer(cConnClass))
@@ -448,8 +448,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	if password != "" {
 		cPassword = C.CString(password)
 	}
-	if P.DSN != "" {
-		cDSN = C.CString(P.DSN)
+	if P.ConnectString != "" {
+		cConnectString = C.CString(P.ConnectString)
 	}
 
 	// create ODPI-C connection
@@ -458,18 +458,18 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		d.dpiContext,
 		cUsername, C.uint32_t(len(username)),
 		cPassword, C.uint32_t(len(password)),
-		cDSN, C.uint32_t(len(P.DSN)),
+		cConnectString, C.uint32_t(len(P.ConnectString)),
 		commonCreateParamsPtr,
 		&connCreateParams, &dc,
 	) == C.DPI_FAILURE {
 		err := d.getError()
 		if pool != nil {
 			stats, _ := d.getPoolStats(pool)
-			return nil, false, errors.Errorf("username=%q dsn=%q stats=%s params=%+v: %w",
-				username, P.DSN, stats, connCreateParams, err)
+			return nil, false, errors.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
+				username, P.ConnectString, stats, connCreateParams, err)
 		}
-		return nil, false, errors.Errorf("username=%q dsn=%q standalone params=%+v: %w",
-			username, P.DSN, connCreateParams, err)
+		return nil, false, errors.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
+			username, P.ConnectString, connCreateParams, err)
 	}
 	return dc, connCreateParams.outNewSession == 1, nil
 }
@@ -519,7 +519,7 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 	// determine key to use for pool
 	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
-		P.Username, P.DSN, P.MinSessions, P.MaxSessions,
+		P.Username, P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth)
 	if Log != nil {
@@ -620,7 +620,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	// setup credentials
-	var cUsername, cPassword, cDSN *C.char
+	var cUsername, cPassword, cConnectString *C.char
 	if P.Username != "" {
 		cUsername = C.CString(P.Username)
 		defer C.free(unsafe.Pointer(cUsername))
@@ -629,15 +629,15 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		cPassword = C.CString(P.Password.Secret())
 		defer C.free(unsafe.Pointer(cPassword))
 	}
-	if P.DSN != "" {
-		cDSN = C.CString(P.DSN)
-		defer C.free(unsafe.Pointer(cDSN))
+	if P.ConnectString != "" {
+		cConnectString = C.CString(P.ConnectString)
+		defer C.free(unsafe.Pointer(cConnectString))
 	}
 
 	// create pool
 	var dp *C.dpiPool
 	if Log != nil {
-		Log("C", "dpiPool_create", "username", P.Username, "DSN", P.DSN,
+		Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
 			fmt.Sprintf("%#v", poolCreateParams))
 	}
@@ -645,7 +645,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		d.dpiContext,
 		cUsername, C.uint32_t(len(P.Username)),
 		cPassword, C.uint32_t(P.Password.Len()),
-		cDSN, C.uint32_t(len(P.DSN)),
+		cConnectString, C.uint32_t(len(P.ConnectString)),
 		&commonCreateParams,
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
@@ -934,9 +934,9 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
 		if params, ok := ctxValue.(commonAndConnParams); ok {
-			// ContextWithUserPassw does not fill ConnParam.DSN
-			if params.DSN == "" {
-				params.DSN = c.DSN
+			// ContextWithUserPassw does not fill ConnParam.ConnectString
+			if params.ConnectString == "" {
+				params.ConnectString = c.ConnectString
 			}
 			if Log != nil {
 				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params, "common", params.CommonParams)

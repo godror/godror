@@ -18,18 +18,21 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 
 ## Connect
 
-In `sql.Open("godror", connString)`, where `connString` is a [logfmt](https://brandur.org/logfmt)-encoded 
-parameter list, where you specify at least "username", "password" and "dsn" [1].
-The "dsn" can be can be _ANYTHING_ that sqlplus or OCI accepts: a service name, a `host:port/service_name`, 
+In `sql.Open("godror", dataSourceName)`, 
+where `dataSourceName` is a [logfmt](https://brandur.org/logfmt)-encoded 
+parameter list, where you specify at least "user", "password" and "connectString".
+The "connectString" can be can be _ANYTHING_ that sqlplus or OCI accepts: 
+a service name, a `host:port/service_name`, 
 a `(DESCRIPTION=...)`, or an [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
+For details, see [connstr](./connstr/README.md).
 
 All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
 So 
 
 ```
-username=scott password=tiger \
-dsn="tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60" \
+user="scott" password="tiger" \
+connectString="tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60" \
 poolSessionTimeout=42s libDir=/tmp/admin heterogeneousPool=false standaloneConnection=false
 ```
 
@@ -39,16 +42,6 @@ You can provide all possible options with `ConnectionParams`.
 Watch out the `ConnectionParams.String()` does *redact* the password
 (for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
 So use `ConnectionParams.StringWithPassword()`.
-
-More advanced configurations can be set with a connection string such as:
-`username=user password=pass dsn="(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))"`
-as `tnsping` returns.
-
-A configuration like this is how you would add functionality such as load balancing across multiple servers. 
-The portion described in parenthesis above can also be set in the `DSN` field of `ConnectionParams`.
-
-TL;DR; the short form is `username=username password=password dsn="[//]host[:port][/service_name][:server][/instance_name]"`, the long form is
-`dsn="(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))"`.
 
 The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
 It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
@@ -255,14 +248,3 @@ exec staticcheck
 # Third-party
 
 * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
-
-
----
-[1] For backward compatibility, you can provide _ANYTHING_ on the first line, and logfmt-ed parameters
-on the second line. Or no logfmt-ed parameters at all.
-So `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
-poolSessionTimeout=42s password=tiger
-` or `scott/tiger@salesserver1/sales.us.example.com`, or 
-`oracle://scott:tiger@salesserver1/sales.us.example.com&poolSessionTimeout=42s`, or
-`scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
-poolSessionTimeout=42s password=tiger` works, too.

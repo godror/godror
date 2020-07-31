@@ -46,19 +46,19 @@ const (
 )
 
 type CommonParams struct {
-	Username, DSN     string
-	Password          Password
-	ConfigDir, LibDir string
-	OnInit            func(driver.Conn) error
-	Timezone          *time.Location
-	EnableEvents      bool
+	Username, ConnectString string
+	Password                Password
+	ConfigDir, LibDir       string
+	OnInit                  func(driver.Conn) error
+	Timezone                *time.Location
+	EnableEvents            bool
 }
 
 func (P CommonParams) String() string {
 	q := NewParamsArray(8)
-	q.Add("username", P.Username)
+	q.Add("user", P.Username)
 	q.Add("password", P.Password.String())
-	q.Add("dsn", P.DSN)
+	q.Add("connectString", P.ConnectString)
 	if P.ConfigDir != "" {
 		q.Add("configDir", P.ConfigDir)
 	}
@@ -211,7 +211,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	q.Add("connectionClass", s)
 
-	q.Add("username", P.Username)
+	q.Add("user", P.Username)
 	if withPassword {
 		q.Add("password", P.Password.Secret())
 		q.Add("newPassword", P.NewPassword.Secret())
@@ -249,17 +249,17 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Values["onInit"] = P.onInitStmts
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
-	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.DSN + "\n" + q.String()
+	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.ConnectString + "\n" + q.String()
 
 	var buf strings.Builder
-	buf.WriteString(P.CommonParams.DSN)
+	buf.WriteString(P.CommonParams.ConnectString)
 	buf.WriteByte('\n')
 	q.WriteTo(&buf)
 	return buf.String()
 }
 
 // Parse parses the given connection string into a struct.
-func Parse(connString string) (ConnectionParams, error) {
+func Parse(dataSourceName string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
@@ -279,58 +279,58 @@ func Parse(connString string) (ConnectionParams, error) {
 	}
 
 	var paramsString string
-	connString = strings.TrimSpace(connString)
-	if i := strings.IndexByte(connString, '\n'); i >= 0 {
-		connString, paramsString = strings.TrimSpace(connString[:i]), strings.TrimSpace(connString[i+1:])
+	dataSourceName = strings.TrimSpace(dataSourceName)
+	if i := strings.IndexByte(dataSourceName, '\n'); i >= 0 {
+		dataSourceName, paramsString = strings.TrimSpace(dataSourceName[:i]), strings.TrimSpace(dataSourceName[i+1:])
 	}
 	var q url.Values
 
-	if !strings.HasPrefix(connString, "oracle://") {
+	if !strings.HasPrefix(dataSourceName, "oracle://") {
 		// Not URL
 		q = make(url.Values, 32)
 		if paramsString == "" &&
-			(strings.HasPrefix(connString, "dsn=") ||
-				strings.Contains(connString, " dsn=")) {
+			(strings.HasPrefix(dataSourceName, "connectString=") ||
+				strings.Contains(dataSourceName, " connectString=")) {
 			// logfmt-formatted the whole string
-			paramsString, connString = connString, ""
+			paramsString, dataSourceName = dataSourceName, ""
 		} else {
 			// Old, or Easy Connect, or anything
-			P.Username, P.Password.secret, connString = parseUserPassw(connString)
+			P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
 
-			uSid := strings.ToUpper(connString)
-			//fmt.Printf("connString=%q SID=%q\n", connString, uSid)
+			uSid := strings.ToUpper(dataSourceName)
+			//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
 			if strings.Contains(uSid, " AS ") {
 				if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-					connString = connString[:len(connString)-10]
+					dataSourceName = dataSourceName[:len(dataSourceName)-10]
 				} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-					connString = connString[:len(connString)-11]
+					dataSourceName = dataSourceName[:len(dataSourceName)-11]
 				} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-					connString = connString[:len(connString)-10]
+					dataSourceName = dataSourceName[:len(dataSourceName)-10]
 				}
 			}
-			P.DSN = connString
+			P.ConnectString = dataSourceName
 		}
 	} else {
 		// URL
-		u, err := url.Parse(connString)
+		u, err := url.Parse(dataSourceName)
 		if err != nil {
-			return P, errors.Errorf("%s: %w", connString, err)
+			return P, errors.Errorf("%s: %w", dataSourceName, err)
 		}
 		if usr := u.User; usr != nil {
 			P.Username = usr.Username()
 			P.Password.secret, _ = usr.Password()
 		}
-		P.DSN = u.Hostname()
+		P.ConnectString = u.Hostname()
 		// IPv6 literal address brackets are removed by u.Hostname,
 		// so we have to put them back
-		if strings.HasPrefix(u.Host, "[") && (len(P.DSN) <= 1 || !strings.Contains(P.DSN[1:], "]")) {
-			P.DSN = "[" + P.DSN + "]"
+		if strings.HasPrefix(u.Host, "[") && (len(P.ConnectString) <= 1 || !strings.Contains(P.ConnectString[1:], "]")) {
+			P.ConnectString = "[" + P.ConnectString + "]"
 		}
 		if u.Port() != "" {
-			P.DSN += ":" + u.Port()
+			P.ConnectString += ":" + u.Port()
 		}
 		if u.Path != "" && u.Path != "/" {
-			P.DSN += u.Path
+			P.ConnectString += u.Path
 		}
 		q = u.Query()
 	}
@@ -343,12 +343,12 @@ func Parse(connString string) (ConnectionParams, error) {
 				switch key, value := string(d.Key()), string(d.Value()); key {
 				case "onInit":
 					q.Add(key, value)
-				case "dsn":
+				case "connectString":
 					var user, passw string
-					if user, passw, P.DSN = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
+					if user, passw, P.ConnectString = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
 						P.Username, P.Password.secret = user, passw
 					}
-				case "username":
+				case "user":
 					P.Username = value
 				case "password":
 					P.Password.secret = value
@@ -507,13 +507,13 @@ func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
 	for k := range p.Values {
-		if k == "password" || k == "username" {
+		if k == "password" || k == "user" {
 			firstKeys = append(firstKeys, k)
 		} else {
 			keys = append(keys, k)
 		}
 	}
-	if len(firstKeys) == 2 && firstKeys[0] != "username" {
+	if len(firstKeys) == 2 && firstKeys[0] != "user" {
 		firstKeys[0], firstKeys[1] = firstKeys[1], firstKeys[0]
 	}
 	sort.Strings(keys)
@@ -603,13 +603,13 @@ func splitQuoted(s string, sep rune) (string, string) {
 	return s, ""
 }
 
-func parseUserPassw(connString string) (user, passw, dsn string) {
+func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	var up string
-	if up, dsn = splitQuoted(connString, '@'); dsn == "" {
-		return "", "", connString
+	if up, connectString = splitQuoted(dataSourceName, '@'); connectString == "" {
+		return "", "", dataSourceName
 	}
 	user, passw = splitQuoted(up, '/')
-	return unquote(user), unquote(passw), dsn
+	return unquote(user), unquote(passw), connectString
 }
 
 type countingWriter struct {
