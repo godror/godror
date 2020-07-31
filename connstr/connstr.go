@@ -102,11 +102,11 @@ func (P ConnParams) String() string {
 	if P.IsSysASM {
 		q.Add("sysasm", "1")
 	}
-	if P.ShardingKey != nil {
-		q.Add("shardingKey", fmt.Sprintf("%v", P.ShardingKey))
+	for _, v := range P.ShardingKey {
+		q.Add("shardingKey", fmt.Sprintf("%v", v))
 	}
-	if P.SuperShardingKey != nil {
-		q.Add("superShardingKey", fmt.Sprintf("%v", P.SuperShardingKey))
+	for _, v := range P.SuperShardingKey {
+		q.Add("superShardingKey", fmt.Sprintf("%v", v))
 	}
 	return q.String()
 }
@@ -341,8 +341,6 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		for d.ScanRecord() {
 			for d.ScanKeyval() {
 				switch key, value := string(d.Key()), string(d.Value()); key {
-				case "onInit":
-					q.Add(key, value)
 				case "connectString":
 					var user, passw string
 					if user, passw, P.ConnectString = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
@@ -352,6 +350,8 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 					P.Username = value
 				case "password":
 					P.Password.secret = value
+				case "onInit", "shardingKey", "superShardingKey":
+					q.Add(key, value)
 				default:
 					q.Set(key, value)
 				}
@@ -467,6 +467,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
 		P.OnInit = MkExecMany(P.onInitStmts)
 	}
+	P.ShardingKey = strToIntf(q["shardingKey"])
+	P.SuperShardingKey = strToIntf(q["superShardingKey"])
+
 	P.NewPassword.secret = q.Get("newPassword")
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
@@ -680,4 +683,16 @@ func ParseTZ(s string) (int, error) {
 	}
 	tz += int(i64 * 3600)
 	return tz, nil
+}
+
+func strToIntf(ss []string) []interface{} {
+	n := len(ss)
+	if n == 0 {
+		return nil
+	}
+	intf := make([]interface{}, n)
+	for i, s := range ss {
+		intf[i] = s
+	}
+	return intf
 }

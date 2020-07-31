@@ -5,13 +5,13 @@
 
 // Package godror is a database/sql/driver for Oracle DB.
 //
-// The connection string for the sql.Open("godror", connstr) call can be
+// The connection string for the sql.Open("godror", dataSourceName) call can be
 // the simple
 //   login/password@sid [AS SYSDBA|AS SYSOPER]
 //
 // type (with sid being the sexp returned by tnsping),
 // or in the form of
-//   sid/? \n
+//   host:port/service_name? \n
 //     sysdba=0 \
 //     sysoper=0 \
 //     poolMinSessions=1 \
