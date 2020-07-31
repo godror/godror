@@ -24,40 +24,29 @@ parameter list, where you specify at least "user", "password" and "connectString
 The "connectString" can be can be _ANYTHING_ that sqlplus or OCI accepts: 
 a service name, a `host:port/service_name`, 
 a `(DESCRIPTION=...)`, or an [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
-For details, see [connstr](./connstr/README.md).
 
 All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
-So 
+For more connection details, see [connstr/README.md](./connstr/README.md).
 
-```
-user="scott" password="tiger" \
-connectString="tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60" \
-poolSessionTimeout=42s libDir=/tmp/admin heterogeneousPool=false standaloneConnection=false
-```
-
-will connect to "salesserver1", port 1521, as scott/tiger, using the Easy Connect Naming syntax.
-
-You can provide all possible options with `ConnectionParams`.
-Watch out the `ConnectionParams.String()` does *redact* the password
-(for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
-So use `ConnectionParams.StringWithPassword()`.
-
-The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
-It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
-`sql.Open`, or set as the `libDir` connection parameter.
-
-To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
-`godror.ContextWithUserPassw` or `godror.ContextWithParams`.
+You can provide all possible options with `ConnectionParams`.   Note
+`ConnectionParams.String()` *redacts* the password (for security, to avoid
+logging it - see <https://github.com/go-goracle/goracle/issues/79>).   If you
+need the password, then use `ConnectionParams.StringWithPassword()`.
 
 ### Oracle Session Pooling
-Set `standaloneConnection=0`- this is the default. 
-All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
-It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
-eliminates the need for it.
+Set `standaloneConnection=0`- this is the default.   The old advice of setting
+`db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.   It does no harm, but the
+revised connection pooling (synchronous ResetSession before pooling the
+connection) eliminates the need for it.
 
 ***WARNING*** if you cannot use Go 1.14.6 or newer, then either set `standaloneConnection=1` or
 disable Go connection pooling by `db.SetMaxIdleConns(0)` - they do not work well together, resulting in stalls!
+
+To use heterogeneous pools, set `heterogeneousPool=1` and provide the username
+and password through `godror.ContextWithUserPassw` or
+`godror.ContextWithParams`.
+Set `standaloneConnection=0`- this is the default. 
 
 ## Rationale
 
