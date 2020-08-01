@@ -3,11 +3,20 @@
 Connect to Oracle Database using `sql.Open("godror", dataSourceName)` where
 `dataSourceName` contains options such as the user credentials, the database
 connection string, and other configuration settings.   It should be a
-[logfmt](https://brandur.org/logfmt)-encoded  parameter list.   For example:
+[logfmt](https://brandur.org/logfmt)-encoded  parameter list.   
+For example:
 
 ```
-user="scott" password="tiger" connectString="dbhost:1521/orclpdb1" \
-poolSessionTimeout=42s configDir=/tmp/admin heterogeneousPool=false standaloneConnection=false
+db, err := sql.Open("godror", `user="scott" password="tiger" connectString="dbhost:1521/orclpdb1" 
+	poolSessionTimeout=42s configDir=/tmp/admin 
+	heterogeneousPool=false standaloneConnection=false`)
+```
+Other connection and driver options can also be used:
+```
+db, err := sql.Open("godror", `user="scott" password="tiger" 
+	connectString="dbhost:1521/orclpdb1?connect_timeout=2" 
+	poolSessionTimeout=42s configDir="/opt/oracle/configdir" 
+	heterogeneousPool=false standaloneConnection=false`)
 ```
 
 All godror parameters ([see
@@ -84,7 +93,8 @@ The files should be in a directory accessible to godror, not on the database
 server host.
 
 If the `configDir` connection option is not used, then a search heuristic is
-used to find the files.   The search includes:
+used to find the directory containing the files.
+The search includes:
 
 * `$TNS_ADMIN`
 * `/opt/oracle/instantclient_19_8/network/admin` if Instant Client is in `/opt/oracle/instantclient_19_8`.

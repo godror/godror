@@ -21,9 +21,10 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 In `sql.Open("godror", dataSourceName)`, 
 where `dataSourceName` is a [logfmt](https://brandur.org/logfmt)-encoded 
 parameter list, where you specify at least "user", "password" and "connectString".
-The "connectString" can be _ANYTHING_ that sqlplus or OCI accepts: 
-a service name, a `host:port/service_name`, 
-a `(DESCRIPTION=...)`, or an [Easy Connect Naming](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
+The "connectString" can be _ANYTHING_ that SQL*Plus or OCI accepts: 
+a service name, an 
+[Easy Connect string](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf) 
+like `host:port/service_name`, or a connect descriptor like `(DESCRIPTION=...)`.
 
 All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
