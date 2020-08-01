@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-logfmt/logfmt"
 	errors "golang.org/x/xerrors"
@@ -205,6 +206,7 @@ func (P ConnectionParams) StringWithPassword() string {
 
 func (P ConnectionParams) string(class, withPassword bool) string {
 	q := NewParamsArray(32)
+	q.Add("connectString", P.ConnectString)
 	s := P.ConnClass
 	if !class {
 		s = ""
@@ -251,11 +253,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("libDir", P.LibDir)
 	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.ConnectString + "\n" + q.String()
 
-	var buf strings.Builder
-	buf.WriteString(P.CommonParams.ConnectString)
-	buf.WriteByte('\n')
-	q.WriteTo(&buf)
-	return buf.String()
+	return q.String()
 }
 
 // Parse parses the given connection string into a struct.
@@ -280,37 +278,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 
 	var paramsString string
 	dataSourceName = strings.TrimSpace(dataSourceName)
-	if i := strings.IndexByte(dataSourceName, '\n'); i >= 0 {
-		dataSourceName, paramsString = strings.TrimSpace(dataSourceName[:i]), strings.TrimSpace(dataSourceName[i+1:])
-	}
 	var q url.Values
 
-	if !strings.HasPrefix(dataSourceName, "oracle://") {
-		// Not URL
-		q = make(url.Values, 32)
-		if paramsString == "" &&
-			(strings.HasPrefix(dataSourceName, "connectString=") ||
-				strings.Contains(dataSourceName, " connectString=")) {
-			// logfmt-formatted the whole string
-			paramsString, dataSourceName = dataSourceName, ""
-		} else {
-			// Old, or Easy Connect, or anything
-			P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
-
-			uSid := strings.ToUpper(dataSourceName)
-			//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
-			if strings.Contains(uSid, " AS ") {
-				if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-					dataSourceName = dataSourceName[:len(dataSourceName)-10]
-				} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-					dataSourceName = dataSourceName[:len(dataSourceName)-11]
-				} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-					dataSourceName = dataSourceName[:len(dataSourceName)-10]
-				}
-			}
-			P.ConnectString = dataSourceName
-		}
-	} else {
+	if strings.HasPrefix(dataSourceName, "oracle://") {
 		// URL
 		u, err := url.Parse(dataSourceName)
 		if err != nil {
@@ -333,15 +303,43 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.ConnectString += u.Path
 		}
 		q = u.Query()
+	} else if isLogfmt(dataSourceName) {
+		//fmt.Printf("logfmt=%q\n", dataSourceName)
+		paramsString, dataSourceName = dataSourceName, ""
+	} else {
+		// Not URL, not logfmt-ed - either starts with some old DSN or plain wrong
+		if i := strings.IndexByte(dataSourceName, '\n'); i >= 0 {
+			// Multiline, start with DSN, then the logfmt-ed parameters
+			dataSourceName, paramsString = strings.TrimSpace(dataSourceName[:i]), strings.TrimSpace(dataSourceName[i+1:])
+		}
+		// Old, or Easy Connect, or anything
+		P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
+		//fmt.Printf("dsn=%q\n", dataSourceName)
+		uSid := strings.ToUpper(dataSourceName)
+		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
+		if strings.Contains(uSid, " AS ") {
+			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
+				dataSourceName = dataSourceName[:len(dataSourceName)-10]
+			} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
+				dataSourceName = dataSourceName[:len(dataSourceName)-11]
+			} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
+				dataSourceName = dataSourceName[:len(dataSourceName)-10]
+			}
+		}
+		P.ConnectString = dataSourceName
 	}
 
 	if paramsString != "" {
+		if q == nil {
+			q = make(url.Values, 32)
+		}
 		// Parse the logfmt-formatted parameters string
 		d := logfmt.NewDecoder(strings.NewReader(paramsString))
 		for d.ScanRecord() {
 			for d.ScanKeyval() {
 				switch key, value := string(d.Key()), string(d.Value()); key {
 				case "connectString":
+					//fmt.Printf("connectString=%q\n", value)
 					var user, passw string
 					if user, passw, P.ConnectString = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
 						P.Username, P.Password.secret = user, passw
@@ -510,14 +508,16 @@ func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
 	for k := range p.Values {
-		if k == "password" || k == "user" {
+		if k == "password" || k == "user" || k == "connectString" {
 			firstKeys = append(firstKeys, k)
 		} else {
 			keys = append(keys, k)
 		}
 	}
-	if len(firstKeys) == 2 && firstKeys[0] != "user" {
-		firstKeys[0], firstKeys[1] = firstKeys[1], firstKeys[0]
+	sort.Strings(firstKeys)
+	// reverse
+	for i, j := 0, len(firstKeys)-1; i < j; i, j = i+1, j-1 {
+		firstKeys[i], firstKeys[j] = firstKeys[j], firstKeys[i]
 	}
 	sort.Strings(keys)
 
@@ -695,4 +695,38 @@ func strToIntf(ss []string) []interface{} {
 		intf[i] = s
 	}
 	return intf
+}
+func isLogfmt(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "=") {
+			return false
+		}
+	}
+	var buf strings.Builder
+	e := logfmt.NewEncoder(&buf)
+	d := logfmt.NewDecoder(strings.NewReader(s))
+	for d.ScanRecord() {
+		for d.ScanKeyval() {
+			e.EncodeKeyval(d.Key(), d.Value())
+		}
+	}
+	if d.Err() != nil {
+		return false
+	}
+	noSpcQ := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if r == '"' || unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, s)
+	}
+	return noSpcQ(s) == noSpcQ(buf.String())
 }

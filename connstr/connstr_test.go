@@ -119,7 +119,9 @@ func TestParse(t *testing.T) {
 		In   string
 		Want ConnectionParams
 	}{
-		"simple": {In: "user/pass@sid", Want: wantDefault},
+		"simple":        {In: "user/pass@sid", Want: wantDefault},
+		"simple_params": {In: "user/pass@sid\n" + wantDefault.PoolParams.String(), Want: wantDefault},
+
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
@@ -168,8 +170,9 @@ func TestParse(t *testing.T) {
 			Want: wantEasy,
 		},
 
-		"logfmt":       {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
-		"logfmt_oldpw": {In: "connectString=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt":           {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt_oldpw":     {In: "connectString=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt_multiline": {In: "user=user\npassword=pass\nconnectString=localhost/sid\nheterogeneousPool=1", Want: wantHeterogeneous},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
