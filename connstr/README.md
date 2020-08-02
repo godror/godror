@@ -23,6 +23,17 @@ All godror parameters ([see
 here](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should
 also be specified logfmt-ted.
 
+You can use `ParamsArray` to properly build such a string:
+
+    params := connstr.NewParamsArray(5)
+	params.Set("user", "scott")
+	params.Set("password", "tiger")
+	params.Set("connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
+	params.Set("poolSessionTimeout", "42s")
+	params.Add("onInit", "ALTER SESSION SET NLS_NUMERIC_CHARACTERS=',.'")
+	params.Add("onInit", "ALTER SESSION SET NLS_LANGUAGE='FRENCH'")
+	db, err := sql.Open("godror", params.String())
+
 ## Connection Strings
 
 The `connectString` parameter can be one of:

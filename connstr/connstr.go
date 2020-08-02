@@ -45,6 +45,7 @@ const (
 	DefaultStandaloneConnection = false
 )
 
+// CommonParams holds the common parameters for pooled or standalone connections.
 type CommonParams struct {
 	Username, ConnectString string
 	Password                Password
@@ -54,6 +55,7 @@ type CommonParams struct {
 	EnableEvents            bool
 }
 
+// String returns the string representation of CommonParams.
 func (P CommonParams) String() string {
 	q := NewParamsArray(8)
 	q.Add("user", P.Username)
@@ -78,6 +80,7 @@ func (P CommonParams) String() string {
 	return q.String()
 }
 
+// ConnParams holds the connection-specific parameters.
 type ConnParams struct {
 	NewPassword                             Password
 	ConnClass                               string
@@ -85,6 +88,7 @@ type ConnParams struct {
 	ShardingKey, SuperShardingKey           []interface{}
 }
 
+// String returns the string representation of the ConnParams.
 func (P ConnParams) String() string {
 	q := NewParamsArray(8)
 	if P.ConnClass != "" {
@@ -111,12 +115,14 @@ func (P ConnParams) String() string {
 	return q.String()
 }
 
+// PoolParams holds the configuration of the Oracle Session Pool.
 type PoolParams struct {
 	MinSessions, MaxSessions, SessionIncrement int
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
 	Heterogeneous, ExternalAuth                bool
 }
 
+// String returns the string representation of PoolParams.
 func (P PoolParams) String() string {
 	q := NewParamsArray(8)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
@@ -147,6 +153,7 @@ type ConnectionParams struct {
 	StandaloneConnection bool
 }
 
+// IsStandalone returns whether the connection should be standalone, not pooled.
 func (P ConnectionParams) IsStandalone() bool {
 	return P.StandaloneConnection || P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim
 }
@@ -481,6 +488,7 @@ type Password struct {
 // NewPassword creates a new Password, containing the given secret.
 func NewPassword(secret string) Password { return Password{secret: secret} }
 
+// String returns the secret obfuscated irreversibly.
 func (P Password) String() string {
 	if P.secret == "" {
 		return ""
@@ -489,17 +497,33 @@ func (P Password) String() string {
 	io.WriteString(hsh, P.secret)
 	return "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
 }
-func (P Password) Secret() string { return P.secret }
-func (P Password) IsZero() bool   { return P.secret == "" }
-func (P Password) Len() int       { return len(P.secret) }
-func (P *Password) Reset()        { P.secret = "" }
 
+// Secret reveals the real password.
+func (P Password) Secret() string { return P.secret }
+
+// IsZero returns whether the password is emtpy.
+func (P Password) IsZero() bool { return P.secret == "" }
+
+// Len returns the length of the  password.
+func (P Password) Len() int { return len(P.secret) }
+
+// Reset the password.
+func (P *Password) Reset() { P.secret = "" }
+
+// ParamsArray is an url.Values for holding parameters,
+// and logfmt-formatting them with the String() method.
 type ParamsArray struct {
 	url.Values
 }
 
+// NewParamsArray returns a new ParamsArray with the given capacity of parameters.
+//
+// You can use this to build a dataSourceName for godror.
 func NewParamsArray(cap int) ParamsArray { return ParamsArray{Values: make(url.Values, cap)} }
 
+// WriteTo the given writer, logfmt-encoded,
+// starting with username, password, connectString,
+// then the rest sorted alphabetically.
 func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
@@ -534,7 +558,7 @@ func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 }
 
 // String returns the values in the params array, logfmt-formatted,
-// starting with username and password, then the rest sorted alphabetically.
+// starting with username, password, connectString, then the rest sorted alphabetically.
 func (p ParamsArray) String() string {
 	var buf strings.Builder
 	var n int
@@ -566,6 +590,7 @@ func quoteRunes(s, runes string) string {
 	return buf.String()
 }
 */
+// unquote replaces quoted ("\\n") with the quoted.
 func unquote(s string) string {
 	if !strings.ContainsRune(s, '\\') {
 		return s
@@ -580,11 +605,26 @@ func unquote(s string) string {
 			}
 			continue
 		}
-		buf.WriteRune(r)
+		if !quoted {
+			buf.WriteRune(r)
+			continue
+		}
 		quoted = false
+		switch r {
+		case 'n':
+			buf.WriteByte('\n')
+		case 'r':
+			buf.WriteByte('\r')
+		case 't':
+			buf.WriteByte('\t')
+		default:
+			buf.WriteRune(r)
+		}
 	}
 	return buf.String()
 }
+
+// splitQuoted splits the string at sep, treating "\" as a quoting char.
 func splitQuoted(s string, sep rune) (string, string) {
 	var off int
 	sepLen := len(string([]rune{sep}))
@@ -602,6 +642,7 @@ func splitQuoted(s string, sep rune) (string, string) {
 	return s, ""
 }
 
+// parseUserPassw splits of the username/password@ from the connectString.
 func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	var up string
 	if up, connectString = splitQuoted(dataSourceName, '@'); connectString == "" {
@@ -611,17 +652,7 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	return unquote(user), unquote(passw), connectString
 }
 
-type countingWriter struct {
-	W io.Writer
-	N int64
-}
-
-func (cw *countingWriter) Write(p []byte) (int, error) {
-	n, err := cw.W.Write(p)
-	cw.N += int64(n)
-	return n, err
-}
-
+// MkExecMany returns a function that applies the queries to the connection.
 func MkExecMany(qrys []string) func(driver.Conn) error {
 	return func(conn driver.Conn) error {
 		for _, qry := range qrys {
@@ -638,6 +669,8 @@ func MkExecMany(qrys []string) func(driver.Conn) error {
 		return nil
 	}
 }
+
+// ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.
 func ParseTZ(s string) (int, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -691,4 +724,15 @@ func strToIntf(ss []string) []interface{} {
 		intf[i] = s
 	}
 	return intf
+}
+
+type countingWriter struct {
+	W io.Writer
+	N int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.W.Write(p)
+	cw.N += int64(n)
+	return n, err
 }
