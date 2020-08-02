@@ -102,7 +102,7 @@ func TestParse(t *testing.T) {
 	}
 	// "scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60",
 	wantEasy := wantDefault
-	wantEasy.Username, wantEasy.PoolParams.SessionTimeout = "scott", 42*time.Second
+	wantEasy.Username = "scott"
 	wantEasy.Password.Reset()
 	wantEasy.ConnectString = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
 
@@ -119,8 +119,7 @@ func TestParse(t *testing.T) {
 		In   string
 		Want ConnectionParams
 	}{
-		"simple":        {In: "user/pass@sid", Want: wantDefault},
-		"simple_params": {In: "user/pass@sid\n" + wantDefault.PoolParams.String(), Want: wantDefault},
+		"simple": {In: "user/pass@sid", Want: wantDefault},
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
@@ -166,7 +165,7 @@ func TestParse(t *testing.T) {
 		},
 
 		"easy": {
-			In:   "scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60\npoolSessionTimeout=42s",
+			In:   "scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60",
 			Want: wantEasy,
 		},
 

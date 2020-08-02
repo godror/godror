@@ -2,8 +2,8 @@
 
 Connect to Oracle Database using `sql.Open("godror", dataSourceName)` where
 `dataSourceName` contains options such as the user credentials, the database
-connection string, and other configuration settings.   It should be a
-[logfmt](https://brandur.org/logfmt)-encoded  parameter list.   
+connection string, and other configuration settings.   
+It should be a [logfmt](https://brandur.org/logfmt)-encoded  parameter list.   
 For example:
 
 ```
@@ -114,15 +114,13 @@ and password through `godror.ContextWithUserPassw` or `godror.ContextWithParams`
 
 
 ## Backward compatibility
-For backward compatibility, you can provide _ANYTHING_ on the first line, and logfmt-ed parameters
-on the second line. Or no logfmt-ed parameters at all.
+For backward compatibility, you can still provide _ANYTHING_ as the dataSourceName,
+if it is one line, and is not logfmt-encoded, then it will be treated as a connectString.
 So 
   
-  * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
-poolSessionTimeout=42s password=tiger`
+  * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60`
   * `scott/tiger@salesserver1/sales.us.example.com`
   * `oracle://scott:tiger@salesserver1/sales.us.example.com&poolSessionTimeout=42s`
-  * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60
-poolSessionTimeout=42s password=tiger`
+  * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60`
 
 works, too.

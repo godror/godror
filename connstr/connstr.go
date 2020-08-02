@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/go-logfmt/logfmt"
 	errors "golang.org/x/xerrors"
@@ -303,15 +302,12 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.ConnectString += u.Path
 		}
 		q = u.Query()
-	} else if isLogfmt(dataSourceName) {
-		//fmt.Printf("logfmt=%q\n", dataSourceName)
+	} else if strings.Contains(dataSourceName, "\n") || // multi-line, or
+		strings.Contains(dataSourceName, "connectString=") { // contains connectString
+		// This should be a proper logfmt-encoded parameter string, with connectString
 		paramsString, dataSourceName = dataSourceName, ""
 	} else {
-		// Not URL, not logfmt-ed - either starts with some old DSN or plain wrong
-		if i := strings.IndexByte(dataSourceName, '\n'); i >= 0 {
-			// Multiline, start with DSN, then the logfmt-ed parameters
-			dataSourceName, paramsString = strings.TrimSpace(dataSourceName[:i]), strings.TrimSpace(dataSourceName[i+1:])
-		}
+		// Not URL, not logfmt-ed - an old styled DSN
 		// Old, or Easy Connect, or anything
 		P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
@@ -695,38 +691,4 @@ func strToIntf(ss []string) []interface{} {
 		intf[i] = s
 	}
 	return intf
-}
-func isLogfmt(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if !strings.Contains(line, "=") {
-			return false
-		}
-	}
-	var buf strings.Builder
-	e := logfmt.NewEncoder(&buf)
-	d := logfmt.NewDecoder(strings.NewReader(s))
-	for d.ScanRecord() {
-		for d.ScanKeyval() {
-			e.EncodeKeyval(d.Key(), d.Value())
-		}
-	}
-	if d.Err() != nil {
-		return false
-	}
-	noSpcQ := func(s string) string {
-		return strings.Map(func(r rune) rune {
-			if r == '"' || unicode.IsSpace(r) {
-				return -1
-			}
-			return r
-		}, s)
-	}
-	return noSpcQ(s) == noSpcQ(buf.String())
 }
