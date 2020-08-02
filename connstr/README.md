@@ -23,16 +23,24 @@ All godror parameters ([see
 here](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should
 also be specified logfmt-ted.
 
-You can use `ParamsArray` to properly build such a string:
+You can use `ConnectionParams` to properly build such a string:
 
-    params := connstr.NewParamsArray(5)
-	params.Set("user", "scott")
-	params.Set("password", "tiger")
-	params.Set("connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
-	params.Set("poolSessionTimeout", "42s")
-	params.Add("onInit", "ALTER SESSION SET NLS_NUMERIC_CHARACTERS=',.'")
-	params.Add("onInit", "ALTER SESSION SET NLS_LANGUAGE='FRENCH'")
-	db, err := sql.Open("godror", params.String())
+    var P connstr.ConnectionParams
+	P.Username, P.Password = "scott", connstr.NewPassword("tiger")
+	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
+	P.PoolSessionTimeout = 42 * time.Second
+	P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
+	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
+	fmt.Println(P.StringWithPassword())
+	db := sql.OpenDB(godror.NewConnector(P))
+
+Or if you really want to build it "by hand", user connstr.AppendLogfmt:
+
+    var buf strings.Builder
+	connstr.AppendLogfmt(&buf, "user", "scott")
+	connstr.AppendLogfmt(&buf, "password", "tiger")
+	connstr.AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
+	fmt.Println(buf.String())
 
 ## Connection Strings
 

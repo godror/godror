@@ -898,7 +898,7 @@ type connector struct {
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // (for the default Driver registered with godror)
 //
-// ConnectionParams must be complete, so start with what Parseconnstr returns!
+// ConnectionParams must be complete, so start with what ParseConnString returns!
 func NewConnector(params connstr.ConnectionParams) driver.Connector {
 	return connector{drv: defaultDrv, ConnectionParams: params}
 }
@@ -959,7 +959,7 @@ func (c connector) Driver() driver.Driver { return c.drv }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
 //
-// Deprecated. Use Parseconnstr + ConnectionParams.SetSessionParamOnInit and NewConnector.
+// Deprecated. Use ParseConnString + ConnectionParams.SetSessionParamOnInit and NewConnector.
 // which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
 func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 	ss := make([]string, 0, len(m))

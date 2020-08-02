@@ -57,7 +57,7 @@ type CommonParams struct {
 
 // String returns the string representation of CommonParams.
 func (P CommonParams) String() string {
-	q := NewParamsArray(8)
+	q := newParamsArray(8)
 	q.Add("user", P.Username)
 	q.Add("password", P.Password.String())
 	q.Add("connectString", P.ConnectString)
@@ -90,7 +90,7 @@ type ConnParams struct {
 
 // String returns the string representation of the ConnParams.
 func (P ConnParams) String() string {
-	q := NewParamsArray(8)
+	q := newParamsArray(8)
 	if P.ConnClass != "" {
 		q.Add("connectionClass", P.ConnClass)
 	}
@@ -124,7 +124,7 @@ type PoolParams struct {
 
 // String returns the string representation of PoolParams.
 func (P PoolParams) String() string {
-	q := NewParamsArray(8)
+	q := newParamsArray(8)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
@@ -211,7 +211,7 @@ func (P ConnectionParams) StringWithPassword() string {
 }
 
 func (P ConnectionParams) string(class, withPassword bool) string {
-	q := NewParamsArray(32)
+	q := newParamsArray(32)
 	q.Add("connectString", P.ConnectString)
 	s := P.ConnClass
 	if !class {
@@ -512,19 +512,19 @@ func (P *Password) Reset() { P.secret = "" }
 
 // ParamsArray is an url.Values for holding parameters,
 // and logfmt-formatting them with the String() method.
-type ParamsArray struct {
+type paramsArray struct {
 	url.Values
 }
 
-// NewParamsArray returns a new ParamsArray with the given capacity of parameters.
+// newParamsArray returns a new paramsArray with the given capacity of parameters.
 //
 // You can use this to build a dataSourceName for godror.
-func NewParamsArray(cap int) ParamsArray { return ParamsArray{Values: make(url.Values, cap)} }
+func newParamsArray(cap int) paramsArray { return paramsArray{Values: make(url.Values, cap)} }
 
 // WriteTo the given writer, logfmt-encoded,
 // starting with username, password, connectString,
 // then the rest sorted alphabetically.
-func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
+func (p paramsArray) WriteTo(w io.Writer) (int64, error) {
 	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
 	for k := range p.Values {
@@ -544,11 +544,26 @@ func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 	cw := &countingWriter{W: w}
 	enc := logfmt.NewEncoder(cw)
 	var firstErr error
+	var prev, act int64
 	for _, k := range append(firstKeys, keys...) {
 		for _, v := range p.Values[k] {
-			if err := enc.EncodeKeyval(k, v); err != nil && firstErr == nil {
-				firstErr = err
+			if act > 72 {
+				act = 0
+				if err := enc.EndRecord(); err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+					break
+				}
+				prev = cw.N
 			}
+			if err := enc.EncodeKeyval(k, v); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				break
+			}
+			act = cw.N - prev
 		}
 	}
 	if err := enc.EndRecord(); err != nil && firstErr == nil {
@@ -559,7 +574,7 @@ func (p ParamsArray) WriteTo(w io.Writer) (int64, error) {
 
 // String returns the values in the params array, logfmt-formatted,
 // starting with username, password, connectString, then the rest sorted alphabetically.
-func (p ParamsArray) String() string {
+func (p paramsArray) String() string {
 	var buf strings.Builder
 	var n int
 	for k, vv := range p.Values {
@@ -712,6 +727,16 @@ func ParseTZ(s string) (int, error) {
 	}
 	tz += int(i64 * 3600)
 	return tz, nil
+}
+
+// AppendLogfmt appends the key=val logfmt-formatted.
+func AppendLogfmt(w io.Writer, key, value interface{}) error {
+	e := logfmt.NewEncoder(w)
+	err := e.EncodeKeyval(key, value)
+	if endErr := e.EndRecord(); endErr != nil && err == nil {
+		err = endErr
+	}
+	return err
 }
 
 func strToIntf(ss []string) []interface{} {

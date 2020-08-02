@@ -6,6 +6,7 @@
 package connstr
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -235,4 +236,33 @@ func TestParseTZ(t *testing.T) {
 			t.Errorf("%s. got %d, wanted %d.", k, i, v)
 		}
 	}
+}
+
+func ExampleAppendLogfmt() {
+	var buf strings.Builder
+	AppendLogfmt(&buf, "user", "scott")
+	AppendLogfmt(&buf, "password", "tiger")
+	AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
+	fmt.Println(buf.String())
+	// Output:
+	// user=scott
+	// password=tiger
+	// connectString="dbhost:1521/orclpdb1?connect_timeout=2"
+}
+
+func ExampleConnectString() {
+	var P ConnectionParams
+	P.Username, P.Password = "scott", NewPassword("tiger")
+	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
+	P.SessionTimeout = 42 * time.Second
+	P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
+	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
+	fmt.Println(P.StringWithPassword())
+	// Output:
+	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
+	// configDir= connectionClass= enableEvents=0 heterogeneousPool=0 libDir= newPassword=
+	// onInit="ALTER SESSION SET NLS_NUMERIC_CHARACTERS = q'(,.)'" onInit="ALTER SESSION SET NLS_LANGUAGE = q'(FRENCH)'"
+	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
+	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 standaloneConnection=0
+	// sysasm=0 sysdba=0 sysoper=0 timezone=local
 }
