@@ -297,7 +297,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 			c.params.Username = pool.params.Username
 		}
 	}
-	c.init(P.OnInit)
+	c.init(getOnInit(&P.CommonParams))
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
@@ -491,10 +491,14 @@ func (d *drv) createConnFromParams(P connstr.ConnectionParams) (*conn, error) {
 		}
 	}
 	conn, err := d.createConn(pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
-	if err != nil || P.OnInit == nil {
+	if err != nil {
 		return conn, err
 	}
-	if err = P.OnInit(conn); err != nil {
+	onInit := getOnInit(&P.CommonParams)
+	if onInit == nil {
+		return conn, err
+	}
+	if err = onInit(conn); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -962,9 +966,51 @@ func (c connector) Driver() driver.Driver { return c.drv }
 // Deprecated. Use ParseConnString + ConnectionParams.SetSessionParamOnInit and NewConnector.
 // which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
 func NewSessionIniter(m map[string]string) func(driver.Conn) error {
-	ss := make([]string, 0, len(m))
+	var buf strings.Builder
+	buf.WriteString("ALTER SESSION SET ")
 	for k, v := range m {
-		ss = append(ss, fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1)))
+		buf.WriteByte(' ')
+		fmt.Fprintf(&buf, "%s=q'(%s)'", k, strings.Replace(v, "'", "''", -1))
 	}
-	return connstr.MkExecMany(ss)
+	return mkExecMany([]string{buf.String()})
+}
+func getOnInit(P *CommonParams) func(driver.Conn) error {
+	if P.OnInit != nil {
+		return P.OnInit
+	}
+	stmts := P.OnInitStmts
+	stmts = stmts[:len(stmts):len(stmts)]
+	if len(P.AlterSession) != 0 {
+		var buf strings.Builder
+		buf.WriteString("ALTER SESSION SET")
+		for _, kv := range P.AlterSession {
+			buf.WriteByte(' ')
+			fmt.Fprintf(&buf, "%s=q'(%s)'", kv[0], strings.Replace(kv[1], "'", "''", -1))
+		}
+		stmts = append(stmts, buf.String())
+	}
+	if len(stmts) == 0 {
+		return nil
+	}
+
+	P.OnInit = mkExecMany(stmts)
+	return P.OnInit
+}
+
+// mkExecMany returns a function that applies the queries to the connection.
+func mkExecMany(qrys []string) func(driver.Conn) error {
+	return func(conn driver.Conn) error {
+		for _, qry := range qrys {
+			st, err := conn.Prepare(qry)
+			if err != nil {
+				return errors.Errorf("%s: %w", qry, err)
+			}
+			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
+			st.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }

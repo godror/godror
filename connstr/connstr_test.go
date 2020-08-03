@@ -178,7 +178,8 @@ func TestParse(t *testing.T) {
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: Password{"pass"}, ConnectString: "sid",
-					Timezone: time.Local,
+					Timezone:    time.Local,
+					OnInitStmts: []string{"a", "b"},
 				},
 				ConnParams: ConnParams{
 					ConnClass: "TestClassName", IsSysOper: true,
@@ -187,7 +188,6 @@ func TestParse(t *testing.T) {
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
 					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
 				},
-				onInitStmts: []string{"a", "b"},
 			},
 		},
 	} {
@@ -260,8 +260,8 @@ func ExampleConnectString() {
 	fmt.Println(P.StringWithPassword())
 	// Output:
 	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
+	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
 	// configDir= connectionClass= enableEvents=0 heterogeneousPool=0 libDir= newPassword=
-	// onInit="ALTER SESSION SET NLS_NUMERIC_CHARACTERS = q'(,.)'" onInit="ALTER SESSION SET NLS_LANGUAGE = q'(FRENCH)'"
 	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
 	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 standaloneConnection=0
 	// sysasm=0 sysdba=0 sysoper=0 timezone=local

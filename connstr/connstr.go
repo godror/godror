@@ -50,9 +50,14 @@ type CommonParams struct {
 	Username, ConnectString string
 	Password                Password
 	ConfigDir, LibDir       string
-	OnInit                  func(driver.Conn) error
-	Timezone                *time.Location
-	EnableEvents            bool
+	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
+	OnInit func(driver.Conn) error
+	// OnInitStmts are executed on session init, iff OnInit is nil.
+	OnInitStmts []string
+	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
+	AlterSession [][2]string
+	Timezone     *time.Location
+	EnableEvents bool
 }
 
 // String returns the string representation of CommonParams.
@@ -149,7 +154,6 @@ type ConnectionParams struct {
 	PoolParams
 	// NewPassword is used iff StandaloneConnection is true!
 	NewPassword          Password
-	onInitStmts          []string
 	StandaloneConnection bool
 }
 
@@ -177,19 +181,7 @@ func (P *ConnectionParams) comb() {
 
 // SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
 func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
-	s := fmt.Sprintf("ALTER SESSION SET %s = q'(%s)'", k, strings.Replace(v, "'", "''", -1))
-	P.onInitStmts = append(P.onInitStmts, s)
-	if old := P.OnInit; old == nil {
-		P.OnInit = MkExecMany(P.onInitStmts)
-	} else {
-		n := MkExecMany([]string{s})
-		P.OnInit = func(conn driver.Conn) error {
-			if err := old(conn); err != nil {
-				return err
-			}
-			return n(conn)
-		}
-	}
+	P.AlterSession = append(P.AlterSession, [2]string{k, v})
 }
 
 // String returns the string representation of ConnectionParams.
@@ -254,7 +246,13 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
-	q.Values["onInit"] = P.onInitStmts
+	as := newParamsArray(1)
+	for _, kv := range P.AlterSession {
+		as.Reset()
+		as.Add(kv[0], kv[1])
+		q.Add("alterSession", strings.TrimSpace(as.String()))
+	}
+	q.Values["onInit"] = P.OnInitStmts
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
 	//return quoteRunes(P.Username, "/@") + "/" + quoteRunes(password, "@") + "@" + P.CommonParams.ConnectString + "\n" + q.String()
@@ -351,7 +349,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 					P.Username = value
 				case "password":
 					P.Password.secret = value
-				case "onInit", "shardingKey", "superShardingKey":
+				case "alterSession", "onInit", "shardingKey", "superShardingKey":
 					q.Add(key, value)
 				default:
 					q.Set(key, value)
@@ -465,9 +463,18 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	} else if P.SessionIncrement < 1 {
 		P.SessionIncrement = 1
 	}
-	if P.onInitStmts = q["onInit"]; len(P.onInitStmts) != 0 {
-		P.OnInit = MkExecMany(P.onInitStmts)
+	for _, s := range q["alterSession"] {
+		d := logfmt.NewDecoder(strings.NewReader(s))
+		for d.ScanRecord() {
+			for d.ScanKeyval() {
+				P.AlterSession = append(P.AlterSession, [2]string{string(d.Key()), string(d.Value())})
+			}
+		}
+		if err := d.Err(); err != nil {
+			return P, errors.Errorf("%q: %w", s, err)
+		}
 	}
+	P.OnInitStmts = q["onInit"]
 	P.ShardingKey = strToIntf(q["shardingKey"])
 	P.SuperShardingKey = strToIntf(q["superShardingKey"])
 
@@ -588,6 +595,11 @@ func (p paramsArray) String() string {
 	}
 	return buf.String()
 }
+func (p paramsArray) Reset() {
+	for k := range p.Values {
+		delete(p.Values, k)
+	}
+}
 
 /*
 func quoteRunes(s, runes string) string {
@@ -665,24 +677,6 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	}
 	user, passw = splitQuoted(up, '/')
 	return unquote(user), unquote(passw), connectString
-}
-
-// MkExecMany returns a function that applies the queries to the connection.
-func MkExecMany(qrys []string) func(driver.Conn) error {
-	return func(conn driver.Conn) error {
-		for _, qry := range qrys {
-			st, err := conn.Prepare(qry)
-			if err != nil {
-				return errors.Errorf("%s: %w", qry, err)
-			}
-			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
-			st.Close()
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
 }
 
 // ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.

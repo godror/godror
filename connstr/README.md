@@ -25,10 +25,10 @@ also be specified logfmt-ted.
 
 You can use `ConnectionParams` to properly build such a string:
 
-    var P connstr.ConnectionParams
-	P.Username, P.Password = "scott", connstr.NewPassword("tiger")
+    var P godror.ConnectionParams
+	P.Username, P.Password = "scott", godror.NewPassword("tiger")
 	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
-	P.PoolSessionTimeout = 42 * time.Second
+	P.SessionTimeout = 42 * time.Second
 	P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
 	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
 	fmt.Println(P.StringWithPassword())
