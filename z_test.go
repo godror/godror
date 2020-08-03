@@ -3338,7 +3338,7 @@ func runPreFetchTests(t *testing.T, sid uint, pf int, as int) (uint, uint) {
 
 	t.Log("SingleRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
 	srt := rt2 - rt1
-	rt1 = getRoundTrips(t, sid)
+	rt1 = rt2
 	// Do some work
 	r = multiRowFetch(t, pf, as)
 	rt2 = getRoundTrips(t, sid)
