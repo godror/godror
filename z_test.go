@@ -3282,11 +3282,11 @@ func TestPreFetchQuery(t *testing.T) {
 	if srt != 1 || mrt != 2 {
 		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
-	srt, mrt = runPreFetchTests(t, sid(), 0, -1) // prefetch, arraysize not given
+	srt, mrt = runPreFetchTests(t, sid(), 0, -1) // arraysize not given
 	if srt != 2 || mrt != 2 {
 		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
-	srt, mrt = runPreFetchTests(t, sid(), -1, 100) // prefetch, arraysize not given
+	srt, mrt = runPreFetchTests(t, sid(), -1, 100) // prefetch not given
 	if srt != 1 || mrt != 2 {
 		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
