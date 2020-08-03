@@ -3316,23 +3316,16 @@ func runPreFetchTests(t *testing.T, sid uint, pf int, as int) (uint, uint) {
 	rt1 := getRoundTrips(t, sid)
 
 	var r uint
-	// TODO We might need to run multiple iterations for ignring
-	// any piggyback roundtrips
-
-	for i := 0; i < 1; i++ {
-		// Do some work
-		r = singleRowFetch(t, pf, as)
-	}
+	// Do some work
+	r = singleRowFetch(t, pf, as)
 
 	rt2 := getRoundTrips(t, sid)
 
 	t.Log("SingleRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
 	srt := rt2 - rt1
 	rt1 = getRoundTrips(t, sid)
-	for i := 0; i < 1; i++ {
-		// Do some work
-		r = multiRowFetch(t, pf, as)
-	}
+	// Do some work
+	r = multiRowFetch(t, pf, as)
 	rt2 = getRoundTrips(t, sid)
 	t.Log("MultiRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
 	mrt := rt2 - rt1
