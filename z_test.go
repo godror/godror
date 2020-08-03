@@ -3315,24 +3315,19 @@ func TestPreFetchQuery(t *testing.T) {
 		t.Fatal("wanted 1 SingleFetchRoundTrip and 1 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
 
-	srt, mrt = runPreFetchTests(t, sid(), -1, 100)
-	if srt != 1 || mrt != 2 {
-		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 1, -1)
+	srt, mrt = runPreFetchTests(t, sid(), 1, -1) // array size not given
 	if srt != 2 || mrt != 2 {
-		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
 
-	srt, mrt = runPreFetchTests(t, sid(), 2, -1)
+	srt, mrt = runPreFetchTests(t, sid(), 2, -1) // array size not given
 	if srt != 1 || mrt != 2 {
-		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
 
-	srt, mrt = runPreFetchTests(t, sid(), 100, -1)
+	srt, mrt = runPreFetchTests(t, sid(), 100, -1) // array size not given
 	if srt != 1 || mrt != 1 {
-		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+		t.Fatal("wanted 1 SingleFetchRoundTrip and 1 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
 }
 
