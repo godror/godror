@@ -1863,9 +1863,7 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 		t.Logf("open_cursors=%v", openCursors)
 	} else {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
-			var cErr interface {
-				Code() int
-			}
+			var cErr interface { Code() int	}
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
 				t.Logf("%s: %+v", qry1, err)
 			} else {
@@ -2973,9 +2971,7 @@ func TestSelectTypes(t *testing.T) {
 		t.Log(record)
 	}
 	if err = rows.Err(); err != nil {
-		var cErr interface {
-			Code() int
-		}
+		var cErr interface { Code() int	}
 		if errors.As(err, &cErr) && cErr.Code() == 1805 {
 			t.Skip(err)
 		}
