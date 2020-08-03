@@ -34,7 +34,7 @@ You can use `ConnectionParams` to properly build such a string:
 	fmt.Println(P.StringWithPassword())
 	db := sql.OpenDB(godror.NewConnector(P))
 
-Or if you really want to build it "by hand", user connstr.AppendLogfmt:
+Or if you really want to build it "by hand", use connstr.AppendLogfmt:
 
     var buf strings.Builder
 	connstr.AppendLogfmt(&buf, "user", "scott")

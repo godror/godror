@@ -1259,7 +1259,7 @@ func copySlice(orig interface{}) interface{} {
 }
 
 func TestOpenClose(t *testing.T) {
-	cs, err := godror.ParseConnString(testConStr)
+	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1917,7 +1917,7 @@ func TestNullIntoNum(t *testing.T) {
 
 func TestPing(t *testing.T) {
 	t.Parallel()
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2235,7 +2235,7 @@ func TestStartupShutdown(t *testing.T) {
 	if os.Getenv("GODROR_DB_SHUTDOWN") != "1" {
 		t.Skip("GODROR_DB_SHUTDOWN != 1, skipping shutdown/startup test")
 	}
-	p, err := godror.ParseConnString(testConStr)
+	p, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", testConStr, err))
 	}
@@ -2622,7 +2622,7 @@ END;`
 }
 
 func TestNewPassword(t *testing.T) {
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2675,7 +2675,7 @@ func TestNewPassword(t *testing.T) {
 }
 
 func TestConnClass(t *testing.T) {
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2712,7 +2712,7 @@ func TestConnClass(t *testing.T) {
 }
 
 func TestOnInit(t *testing.T) {
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3088,7 +3088,7 @@ func (b booler) Value() (driver.Value, error) {
 
 func TestResetSession(t *testing.T) {
 	const poolSize = 4
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3134,7 +3134,7 @@ func TestSelectNullTime(t *testing.T) {
 
 func TestOpenCloseLob(t *testing.T) {
 	const poolSize = 2
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}

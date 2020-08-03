@@ -24,7 +24,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/godror/godror/connstr"
+	"github.com/godror/godror/dsn"
 	errors "golang.org/x/xerrors"
 )
 
@@ -47,7 +47,7 @@ var _ driver.Pinger = (*conn)(nil)
 
 type conn struct {
 	currentTT     TraceTag
-	params        connstr.ConnectionParams
+	params        dsn.ConnectionParams
 	Server        VersionInfo
 	tranParams    tranParams
 	mu            sync.RWMutex
@@ -523,10 +523,10 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	// If not, use the numbers.
 	var err error
 	if timezone != "" {
-		if off, err = connstr.ParseTZ(timezone); err != nil {
+		if off, err = dsn.ParseTZ(timezone); err != nil {
 			return tz, off, errors.Errorf("%s: %w", timezone, err)
 		}
-	} else if off, err = connstr.ParseTZ(dbTZ); err != nil {
+	} else if off, err = dsn.ParseTZ(dbTZ); err != nil {
 		return tz, off, errors.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
@@ -742,7 +742,7 @@ const paramsCtxKey = ctxKey("params")
 // If a standalone connection is being used this will have no effect.
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
-func ContextWithParams(ctx context.Context, commonParams connstr.CommonParams, connParams connstr.ConnParams) context.Context {
+func ContextWithParams(ctx context.Context, commonParams dsn.CommonParams, connParams dsn.ConnParams) context.Context {
 	return context.WithValue(ctx, paramsCtxKey,
 		commonAndConnParams{CommonParams: commonParams, ConnParams: connParams})
 }
@@ -755,8 +755,8 @@ func ContextWithParams(ctx context.Context, commonParams connstr.CommonParams, c
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return ContextWithParams(ctx,
-		connstr.CommonParams{Username: user, Password: connstr.NewPassword(password)},
-		connstr.ConnParams{ConnClass: connClass},
+		dsn.CommonParams{Username: user, Password: dsn.NewPassword(password)},
+		dsn.ConnParams{ConnClass: connClass},
 	)
 }
 

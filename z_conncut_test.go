@@ -37,7 +37,7 @@ func TestConnCut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	P, err := godror.ParseConnString(testConStr)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}

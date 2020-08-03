@@ -1,4 +1,4 @@
-package connstr
+package dsn
 
 // See https://github.com/dvyukov/go-fuzz
 //
