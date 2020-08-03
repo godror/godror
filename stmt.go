@@ -41,7 +41,7 @@ import (
 type stmtOptions struct {
 	boolString         boolString
 	fetchArraySize     int // zero means DefaultFetchArraySize negative means 0
-	prefetchCount      int // zero means DefaultPrefetchCount negative means 0
+	prefetchCount      int // zero means DefaultPrefetchCount
 	arraySize          int
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
