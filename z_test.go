@@ -1863,7 +1863,9 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 		t.Logf("open_cursors=%v", openCursors)
 	} else {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
-			var cErr interface{ Code() int }
+			var cErr interface {
+				Code() int
+			}
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
 				t.Logf("%s: %+v", qry1, err)
 			} else {
@@ -2971,7 +2973,9 @@ func TestSelectTypes(t *testing.T) {
 		t.Log(record)
 	}
 	if err = rows.Err(); err != nil {
-		var cErr interface{ Code() int }
+		var cErr interface {
+			Code() int
+		}
 		if errors.As(err, &cErr) && cErr.Code() == 1805 {
 			t.Skip(err)
 		}
@@ -3309,6 +3313,26 @@ func TestPreFetchQuery(t *testing.T) {
 	srt, mrt = runPreFetchTests(t, sid(), 100, 100)
 	if srt != 1 || mrt != 1 {
 		t.Fatal("wanted 1 SingleFetchRoundTrip and 1 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
+	}
+
+	srt, mrt = runPreFetchTests(t, sid(), -1, 100)
+	if srt != 1 || mrt != 2 {
+		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+	}
+
+	srt, mrt = runPreFetchTests(t, sid(), 1, -1)
+	if srt != 2 || mrt != 2 {
+		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+	}
+
+	srt, mrt = runPreFetchTests(t, sid(), 2, -1)
+	if srt != 1 || mrt != 2 {
+		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
+	}
+
+	srt, mrt = runPreFetchTests(t, sid(), 100, -1)
+	if srt != 1 || mrt != 1 {
+		t.Fatal("SingleFetchRoundTrip: ", srt, " MultiFetchRoundTrip: ", mrt)
 	}
 }
 
