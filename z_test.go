@@ -3282,6 +3282,14 @@ func TestPreFetchQuery(t *testing.T) {
 	if srt != 1 || mrt != 2 {
 		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
 	}
+	srt, mrt = runPreFetchTests(t, sid(), 0, -1) // prefetch, arraysize not given
+	if srt != 2 || mrt != 2 {
+		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
+	}
+	srt, mrt = runPreFetchTests(t, sid(), -1, 100) // prefetch, arraysize not given
+	if srt != 1 || mrt != 2 {
+		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
+	}
 
 	srt, mrt = runPreFetchTests(t, sid(), 0, 100)
 	if srt != 2 || mrt != 2 {
@@ -3355,6 +3363,10 @@ func singleRowFetch(t *testing.T, pf int, as int) uint {
 
 	if pf == -1 && as == -1 {
 		err = testDb.QueryRowContext(ctx, query, 100).Scan(&last_name)
+	} else if pf == -1 && as != -1 {
+		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&last_name)
+	} else if pf != -1 && as == -1 {
+		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&last_name)
 	} else {
 		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&last_name)
 	}
@@ -3375,6 +3387,10 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 
 	if pf == -1 && as == -1 {
 		rows, err = testDb.QueryContext(ctx, query)
+	} else if pf == -1 && as != -1 {
+		rows, err = testDb.QueryContext(ctx, query, godror.FetchArraySize(as))
+	} else if pf != -1 && as == -1 {
+		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf))
 	} else {
 		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf), godror.FetchArraySize(as))
 	}
