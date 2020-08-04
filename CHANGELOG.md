@@ -5,11 +5,19 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Fixed
-- Timezone getting logic when TZ is not UTC.
 
+## [0.19.0]
+### Changed
+- New, logfmt-formatted dataSourceName with connectString included as what's the old connection string.
+  As the old format is accepted, this is backward-compatible.
+- Rename DSN to ConnectString in ConnectionParams - BACKWARD INCOMPATIBLE CHANGE!
+
+## [0.18.0]
 ### Changed
 - Password, a new type to hide secrets - BACKWARD INCOMPATIBLE CHANGE!
+
+### Fixed
+- Timezone getting logic when TZ is not UTC.
 
 ## [0.17.5]
 ### Changed
