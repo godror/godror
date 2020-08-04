@@ -1863,7 +1863,7 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 		t.Logf("open_cursors=%v", openCursors)
 	} else {
 		if err := testDb.QueryRow(qry1).Scan(&openCursors); err != nil {
-			var cErr interface { Code() int	}
+			var cErr interface{ Code() int }
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
 				t.Logf("%s: %+v", qry1, err)
 			} else {
@@ -2971,7 +2971,7 @@ func TestSelectTypes(t *testing.T) {
 		t.Log(record)
 	}
 	if err = rows.Err(); err != nil {
-		var cErr interface { Code() int	}
+		var cErr interface{ Code() int }
 		if errors.As(err, &cErr) && cErr.Code() == 1805 {
 			t.Skip(err)
 		}
@@ -3212,17 +3212,15 @@ func TestPreFetchQuery(t *testing.T) {
 
 	tbl := "t_employees" + tblSuffix
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
-	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (employee_id NUMBER, last_name VARCHAR2(30))"); err != nil {
+	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (employee_id NUMBER)"); err != nil {
 		t.Fatal(err)
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	const num = 120 // 120 rows to be created
 	nums := make([]godror.Number, num)
-	strs := make([]string, num)
 	for i := range nums {
 		nums[i] = godror.Number(strconv.Itoa(i))
-		strs[i] = fmt.Sprintf("%x", i)
 	}
 
 	tx, err := testDb.BeginTx(ctx, nil)
@@ -3235,7 +3233,6 @@ func TestPreFetchQuery(t *testing.T) {
 		Value interface{}
 	}{
 		{"employee_id", nums},
-		{"last_name", strs},
 	} {
 		res, execErr := tx.ExecContext(ctx,
 			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
@@ -3259,71 +3256,31 @@ func TestPreFetchQuery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// Get godror version number
-		var driver string
-		sql2 := `SELECT UNIQUE client_driver
-         FROM v$session_connect_info
-         WHERE sid = :sid`
-		err = testDb.QueryRow(sql2, sid).Scan(&driver)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Log(driver)
-
 		return sid
-
 	}
 
 	// verify round trips for SingleRowFetch and MultiRowFetch
 	// and return failure on unexpected roundtrips
 
-	srt, mrt := runPreFetchTests(t, sid(), -1, -1) // prefetch, arraysize not given
-	if srt != 1 || mrt != 2 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-	srt, mrt = runPreFetchTests(t, sid(), 0, -1) // arraysize not given
-	if srt != 2 || mrt != 2 {
-		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-	srt, mrt = runPreFetchTests(t, sid(), -1, 100) // prefetch not given
-	if srt != 1 || mrt != 2 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 0, 100)
-	if srt != 2 || mrt != 2 {
-		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 1, 100)
-	if srt != 2 || mrt != 2 {
-		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 2, 100)
-	if srt != 1 || mrt != 2 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 100, 100)
-	if srt != 1 || mrt != 1 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 1 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 1, -1) // array size not given
-	if srt != 2 || mrt != 2 {
-		t.Fatal("wanted 2 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 2, -1) // array size not given
-	if srt != 1 || mrt != 2 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 2 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
-	}
-
-	srt, mrt = runPreFetchTests(t, sid(), 100, -1) // array size not given
-	if srt != 1 || mrt != 1 {
-		t.Fatal("wanted 1 SingleFetchRoundTrip and 1 MultiFetchRoundTrip, got ", srt, " SingleFetchRoundTrip and ", mrt, " MultiFetchRoundTrip")
+	for _, tCase := range []struct {
+		pf, as   int
+		srt, mrt uint
+	}{
+		{-1, -1, 1, 2},
+		{0, -1, 2, 2},
+		{1, -1, 2, 2},
+		{2, -1, 1, 2},
+		{100, -1, 1, 1},
+		{-1, 100, 1, 2},
+		{0, 100, 2, 2},
+		{1, 100, 2, 2},
+		{2, 100, 1, 2},
+		{100, 100, 1, 1},
+	} {
+		srt, mrt := runPreFetchTests(t, sid(), tCase.pf, tCase.as)
+		if !(srt == tCase.srt && mrt == tCase.mrt) {
+			t.Fatalf("wanted %d/%d SingleFetchRoundTrip / MultiFetchRoundTrip, got %d/%d", tCase.srt, tCase.mrt, srt, mrt)
+		}
 	}
 }
 
@@ -3364,19 +3321,19 @@ func getRoundTrips(t *testing.T, sid uint) uint {
 func singleRowFetch(t *testing.T, pf int, as int) uint {
 	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
 	defer cancel()
-	var last_name string
+	var employeeid int
 	var err error
 	tbl := "t_employees" + tblSuffix
-	query := "select last_name from " + tbl + " where employee_id = :id"
+	query := "select employee_id from " + tbl + " where employee_id = :id"
 
 	if pf == -1 && as == -1 {
-		err = testDb.QueryRowContext(ctx, query, 100).Scan(&last_name)
+		err = testDb.QueryRowContext(ctx, query, 100).Scan(&employeeid)
 	} else if pf == -1 && as != -1 {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&last_name)
+		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&employeeid)
 	} else if pf != -1 && as == -1 {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&last_name)
+		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&employeeid)
 	} else {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&last_name)
+		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&employeeid)
 	}
 	if err != nil {
 		t.Fatal(err)
