@@ -26,7 +26,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	const proxyPassword = "myPassword666myPassword"
 	const proxyUser = "test_proxyUser"
 
-	cs, err := godror.ParseConnString(testConStr)
+	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestContextWithUserPassw(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("ContextWithUserPassw"), 30*time.Second)
 	defer cancel()
 
-	cs, err := godror.ParseConnString(testConStr)
+	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 ![Go](https://github.com/godror/godror/workflows/Go/badge.svg)
-[![GoDoc](https://godoc.org/github.com/godror/godror?status.svg)](http://godoc.org/github.com/godror/godror)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/godror/godror)](https://pkg.go.dev/github.com/godror/godror)
 [![Go Report Card](https://goreportcard.com/badge/github.com/godror/godror)](https://goreportcard.com/report/github.com/godror/godror)
 [![codecov](https://codecov.io/gh/godror/godror/branch/master/graph/badge.svg)](https://codecov.io/gh/godror/godror)
 
@@ -18,43 +18,36 @@ One can download it from <https://www.oracle.com/database/technologies/instant-c
 
 ## Connect
 
-In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
-as connString, or an URL like "oracle://user:passw@service_name?params=..." (with URL-encoded parameters), 
-where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`.
+In `sql.Open("godror", dataSourceName)`, 
+where `dataSourceName` is a [logfmt](https://brandur.org/logfmt)-encoded 
+parameter list, where you specify at least "user", "password" and "connectString".
+The "connectString" can be _ANYTHING_ that SQL*Plus or OCI accepts: 
+a service name, an 
+[Easy Connect string](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf) 
+like `host:port/service_name`, or a connect descriptor like `(DESCRIPTION=...)`.
 
-You can provide all possible options with `ConnectionParams`.
-Watch out the `ConnectionParams.String()` does redact the password
-(for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
-So use `ConnectionParams.StringWithPassword()`.
+All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
-More advanced configurations can be set with a connection string such as:
-`user/pass@(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
+For more connection details, see [connstr/README.md](./connstr/README.md).
 
-A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
-described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
-
-For other possible connection strings, see 
-[node-oracledb connection strings](https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings)
-and [Easy Connect Naming](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE)
-and [Oracle Database 19c Easy Connect Plus Configurable Database Connection](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
-
-TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
-`(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
-
-The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
-It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
-`sql.Open`, or set as the `libDir` connection parameter.
-
-To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
-`godror.ContextWithUserPassw` or `godror.ContextWithParams`.
+You can provide all possible options with `ConnectionParams`.   Note
+`ConnectionParams.String()` *redacts* the password (for security, to avoid
+logging it - see <https://github.com/go-goracle/goracle/issues/79>).   If you
+need the password, then use `ConnectionParams.StringWithPassword()`.
 
 ### Oracle Session Pooling
-Set `standaloneConnection=0`- this is the default. All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
-It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
-eliminates the need for it.
+Set `standaloneConnection=0`- this is the default.   The old advice of setting
+`db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.   It does no harm, but the
+revised connection pooling (synchronous ResetSession before pooling the
+connection) eliminates the need for it.
 
 ***WARNING*** if you cannot use Go 1.14.6 or newer, then either set `standaloneConnection=1` or
 disable Go connection pooling by `db.SetMaxIdleConns(0)` - they do not work well together, resulting in stalls!
+
+To use heterogeneous pools, set `heterogeneousPool=1` and provide the username
+and password through `godror.ContextWithUserPassw` or
+`godror.ContextWithParams`.
+Set `standaloneConnection=0`- this is the default. 
 
 ## Rationale
 
@@ -191,12 +184,6 @@ Just
 go get github.com/godror/godror
 ```
 
-Or if you prefer `dep`
-
-```bash
-dep ensure -add github.com/godror/godror
-```
-
 and you're ready to go!
 
 Note that Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
@@ -229,7 +216,7 @@ and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godr
 
 ### pre-commit
 
-Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
+Add this to .git/hooks/pre-commit (after downloaded a [staticcheck](https://staticcheck.io) [release](https://github.com/dominikh/go-tools/releases)):
 
 ```bash
 #!/bin/sh
@@ -245,7 +232,7 @@ if [ -n "$output" ]; then
     exit 1
 fi
 
-golangci-lint run
+exec staticcheck
 ```
 
 # Third-party
