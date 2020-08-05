@@ -40,8 +40,8 @@ import (
 
 type stmtOptions struct {
 	boolString         boolString
-	fetchArraySize     int // zero means DefaultFetchArraySize negative means 0
-	prefetchCount      int // zero means DefaultPrefetchCount
+	fetchArraySize     int // zero means DefaultFetchArraySize
+	prefetchCount      int // zero means DefaultPrefetchCount, -1 is zero.
 	arraySize          int
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
@@ -90,8 +90,7 @@ func (o stmtOptions) ArraySize() int {
 	return o.arraySize
 }
 func (o stmtOptions) PrefetchCount() int {
-	n := o.prefetchCount
-	switch {
+	switch n := o.prefetchCount; {
 	case n == 0:
 		return DefaultPrefetchCount
 	case n < 0:
@@ -101,13 +100,9 @@ func (o stmtOptions) PrefetchCount() int {
 	}
 }
 func (o stmtOptions) FetchArraySize() int {
-	n := o.fetchArraySize
-	switch {
-	case n == 0:
+	if n := o.fetchArraySize; n <= 0 {
 		return DefaultFetchArraySize
-	case n < 0:
-		return 0
-	default:
+	} else {
 		return n
 	}
 }
@@ -164,7 +159,7 @@ func FetchArraySize(rowCount int) Option {
 		if rowCount > 0 {
 			o.fetchArraySize = rowCount
 		} else {
-			o.fetchArraySize = -1
+			o.fetchArraySize = 0
 		}
 	}
 }
