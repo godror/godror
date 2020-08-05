@@ -36,11 +36,13 @@ import (
 )
 
 var (
-	testDb *sql.DB
-	tl     = &testLogger{}
+	testDb       *sql.DB
+	testSystemDb *sql.DB
+	tl           = &testLogger{}
 
 	clientVersion, serverVersion godror.VersionInfo
 	testConStr                   string
+	testSystemConStr             string
 )
 
 var tblSuffix string
@@ -166,6 +168,12 @@ func init() {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
+	if os.Getenv("GODROR_TEST_SYSTEM_USERNAME") != "" &&
+		(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD") != "") {
+		PSystem := P
+		PSystem.Username, PSystem.Password = os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), godror.NewPassword(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"))
+		testSystemConStr = PSystem.StringWithPassword()
+	}
 	var err error
 	if testDb, err = sql.Open("godror", testConStr); err != nil {
 		panic(errors.Errorf("%s: %+v", testConStr, err))
@@ -3184,4 +3192,185 @@ func TestOpenCloseLob(t *testing.T) {
 			t.Logf("0x%x", b)
 		})
 	}
+}
+
+func TestPreFetchQuery(t *testing.T) {
+
+	if os.Getenv("GODROR_TEST_SYSTEM_USERNAME") == "" ||
+		(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD") == "") {
+		t.Skip("Please define GODROR_TEST_SYSTEM_USERNAME and GODROR_TEST_SYSTEM_PASSWORD env variables")
+	}
+	var err error
+	if testSystemDb, err = sql.Open("godror", testSystemConStr); err != nil {
+		panic(errors.Errorf("%s: %+v", testConStr, err))
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("TestPreFetchQuery"), 30*time.Second)
+	defer cancel()
+
+	// Create a table used for Prefetch, ArrayFetch queries
+
+	tbl := "t_employees" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (employee_id NUMBER)"); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE " + tbl)
+
+	const num = 120 // 120 rows to be created
+	nums := make([]godror.Number, num)
+	for i := range nums {
+		nums[i] = godror.Number(strconv.Itoa(i))
+	}
+
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	for i, tc := range []struct {
+		Name  string
+		Value interface{}
+	}{
+		{"employee_id", nums},
+	} {
+		res, execErr := tx.ExecContext(ctx,
+			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
+			tc.Value)
+		if execErr != nil {
+			t.Fatal("%d. INSERT INTO "+tbl+" (%q) VALUES (%+v): %#v", //nolint:gas
+				i, tc.Name, tc.Value, execErr)
+		}
+		ra, raErr := res.RowsAffected()
+		if raErr != nil {
+			t.Error(raErr)
+		} else if ra != num {
+			t.Errorf("%d. %q: wanted %d rows, got %d", i, tc.Name, num, ra)
+		}
+	}
+	tx.Commit()
+	sid := func() uint {
+		var sid uint
+		sql := "SELECT sys_context('userenv','sid') FROM dual"
+		err := testDb.QueryRow(sql).Scan(&sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sid
+	}
+
+	// verify round trips for SingleRowFetch and MultiRowFetch
+	// and return failure on unexpected roundtrips
+
+	for _, tCase := range []struct {
+		pf, as   int
+		srt, mrt uint
+	}{
+		{-1, -1, 1, 2},
+		{0, -1, 2, 2},
+		{1, -1, 2, 2},
+		{2, -1, 1, 2},
+		{100, -1, 1, 1},
+		{-1, 100, 1, 2},
+		{0, 100, 2, 2},
+		{1, 100, 2, 2},
+		{2, 100, 1, 2},
+		{100, 100, 1, 1},
+	} {
+		srt, mrt := runPreFetchTests(t, sid(), tCase.pf, tCase.as)
+		if !(srt == tCase.srt && mrt == tCase.mrt) {
+			t.Fatalf("wanted %d/%d SingleFetchRoundTrip / MultiFetchRoundTrip, got %d/%d", tCase.srt, tCase.mrt, srt, mrt)
+		}
+	}
+}
+
+func runPreFetchTests(t *testing.T, sid uint, pf int, as int) (uint, uint) {
+	rt1 := getRoundTrips(t, sid)
+
+	var r uint
+	// Do some work
+	r = singleRowFetch(t, pf, as)
+
+	rt2 := getRoundTrips(t, sid)
+
+	t.Log("SingleRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
+	srt := rt2 - rt1
+	rt1 = rt2
+	// Do some work
+	r = multiRowFetch(t, pf, as)
+	rt2 = getRoundTrips(t, sid)
+	t.Log("MultiRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
+	mrt := rt2 - rt1
+	return srt, mrt
+}
+func getRoundTrips(t *testing.T, sid uint) uint {
+
+	sql := `SELECT ss.value
+        FROM v$sesstat ss, v$statname sn
+        WHERE ss.sid = :sid
+        AND ss.statistic# = sn.statistic#
+        AND sn.name LIKE '%roundtrip%client%'`
+	var rt uint
+	err := testSystemDb.QueryRow(sql, sid).Scan(&rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rt
+}
+
+func singleRowFetch(t *testing.T, pf int, as int) uint {
+	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
+	defer cancel()
+	var employeeid int
+	var err error
+	tbl := "t_employees" + tblSuffix
+	query := "select employee_id from " + tbl + " where employee_id = :id"
+
+	if pf == -1 && as == -1 {
+		err = testDb.QueryRowContext(ctx, query, 100).Scan(&employeeid)
+	} else if pf == -1 && as != -1 {
+		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&employeeid)
+	} else if pf != -1 && as == -1 {
+		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&employeeid)
+	} else {
+		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&employeeid)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return 1
+}
+
+func multiRowFetch(t *testing.T, pf int, as int) uint {
+
+	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
+	defer cancel()
+	tbl := "t_employees" + tblSuffix
+	query := "select employee_id from " + tbl + " where rownum < 100"
+	var rows *sql.Rows
+	var err error
+
+	if pf == -1 && as == -1 {
+		rows, err = testDb.QueryContext(ctx, query)
+	} else if pf == -1 && as != -1 {
+		rows, err = testDb.QueryContext(ctx, query, godror.FetchArraySize(as))
+	} else if pf != -1 && as == -1 {
+		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf))
+	} else {
+		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf), godror.FetchArraySize(as))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var /* employee_id,*/ c uint
+	for rows.Next() {
+		c++
+	}
+	err = rows.Err()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
