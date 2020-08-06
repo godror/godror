@@ -1,22 +1,26 @@
-# Connect
+[Contents](./contents.md)
+
+# Go DRiver for ORacle User Guide
+
+## Godor Connection Handling
 
 Connect to Oracle Database using `sql.Open("godror", dataSourceName)` where
 `dataSourceName` contains options such as the user credentials, the database
-connection string, and other configuration settings.   
-It should be a [logfmt](https://brandur.org/logfmt)-encoded  parameter list.   
+connection string, and other configuration settings.
+It should be a [logfmt](https://brandur.org/logfmt)-encoded  parameter list.
 For example:
 
 ```
-db, err := sql.Open("godror", `user="scott" password="tiger" connectString="dbhost:1521/orclpdb1" 
-	poolSessionTimeout=42s configDir=/tmp/admin 
-	heterogeneousPool=false standaloneConnection=false`)
+db, err := sql.Open("godror", `user="scott" password="tiger" connectString="dbhost:1521/orclpdb1"
+    poolSessionTimeout=42s configDir=/tmp/admin
+    heterogeneousPool=false standaloneConnection=false`)
 ```
 Other connection and driver options can also be used:
 ```
-db, err := sql.Open("godror", `user="scott" password="tiger" 
-	connectString="dbhost:1521/orclpdb1?connect_timeout=2" 
-	poolSessionTimeout=42s configDir="/opt/oracle/configdir" 
-	heterogeneousPool=false standaloneConnection=false`)
+db, err := sql.Open("godror", `user="scott" password="tiger"
+    connectString="dbhost:1521/orclpdb1?connect_timeout=2"
+    poolSessionTimeout=42s configDir="/opt/oracle/configdir"
+    heterogeneousPool=false standaloneConnection=false`)
 ```
 
 All godror parameters ([see
@@ -26,23 +30,23 @@ also be specified logfmt-ted.
 You can use `ConnectionParams` to properly build such a string:
 
     var P godror.ConnectionParams
-	P.Username, P.Password = "scott", godror.NewPassword("tiger")
-	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
-	P.SessionTimeout = 42 * time.Second
-	P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
-	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
-	fmt.Println(P.StringWithPassword())
-	db := sql.OpenDB(godror.NewConnector(P))
+    P.Username, P.Password = "scott", godror.NewPassword("tiger")
+    P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
+    P.SessionTimeout = 42 * time.Second
+    P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
+    P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
+    fmt.Println(P.StringWithPassword())
+    db := sql.OpenDB(godror.NewConnector(P))
 
 Or if you really want to build it "by hand", use connstr.AppendLogfmt:
 
     var buf strings.Builder
-	connstr.AppendLogfmt(&buf, "user", "scott")
-	connstr.AppendLogfmt(&buf, "password", "tiger")
-	connstr.AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
-	fmt.Println(buf.String())
+    connstr.AppendLogfmt(&buf, "user", "scott")
+    connstr.AppendLogfmt(&buf, "password", "tiger")
+    connstr.AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
+    fmt.Println(buf.String())
 
-## Connection Strings
+### Connection Strings
 
 The `connectString` parameter can be one of:
 
@@ -91,7 +95,7 @@ The `connectString` parameter can be one of:
 
    See "Optional Oracle Net Configuration Files" below.
 
-## Optional Oracle Net Configuration Files
+### Optional Oracle Net Configuration Files
 
 Optional Oracle Net configuration files are used by the Oracle Client libraries
 during the first call to `sql.Open`.   The directory containing the files can be
@@ -120,23 +124,22 @@ The search includes:
 * `/usr/lib/oracle/19.8/client64/lib/network/admin` if Oracle 19.8 Instant Client RPMs are used on Linux.
 * `$ORACLE_HOME/network/admin` if godror is using libraries from a database installation.
 
-## Oracle Session Pooling
+### Oracle Session Pooling
 
-Set `standaloneConnection=0`- this is the default.   
-The old advice of setting `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.   
+Set `standaloneConnection=0`- this is the default.
+The old advice of setting `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
 It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the
 connection) eliminates the need for it.
 
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username
 and password through `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
 
+### Backward compatibility
 
-
-## Backward compatibility
 For backward compatibility, you can still provide _ANYTHING_ as the dataSourceName,
 if it is one line, and is not logfmt-encoded, then it will be treated as a connectString.
-So 
-  
+So
+
   * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60`
   * `scott/tiger@salesserver1/sales.us.example.com`
   * `oracle://scott:tiger@salesserver1/sales.us.example.com&poolSessionTimeout=42s`
