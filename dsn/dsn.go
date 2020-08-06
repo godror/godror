@@ -573,9 +573,6 @@ func (p paramsArray) WriteTo(w io.Writer) (int64, error) {
 			act = cw.N - prev
 		}
 	}
-	if err := enc.EndRecord(); err != nil && firstErr == nil {
-		firstErr = err
-	}
 	return cw.N, firstErr
 }
 
