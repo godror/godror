@@ -28,7 +28,7 @@ like `host:port/service_name`, or a connect descriptor like `(DESCRIPTION=...)`.
 
 All godror params ([see](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should also be specified logfmt-ted. 
 
-For more connection details, see [connstr/README.md](./connstr/README.md).
+For more connection details, see [dsn/README.md](./dsn/README.md).
 
 You can provide all possible options with `ConnectionParams`.   Note
 `ConnectionParams.String()` *redacts* the password (for security, to avoid
