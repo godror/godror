@@ -649,31 +649,38 @@ func unquote(s string) string {
 }
 
 // splitQuoted splits the string at sep, treating "\" as a quoting char.
-func splitQuoted(s string, sep rune) (string, string) {
+func splitQuoted(s string, sep rune) []string {
 	var off int
 	sepLen := len(string([]rune{sep}))
 	for {
 		i := strings.IndexRune(s[off:], sep)
 		if i < 0 {
-			return s, ""
+			return []string{s}
 		}
 		off += i
 		if off == 0 || s[off-1] != '\\' {
-			return s[:off], s[off+sepLen:]
+			return []string{s[:off], s[off+sepLen:]}
 		}
 		off += sepLen
 	}
-	return s, ""
+	return []string{s}
 }
 
 // parseUserPassw splits of the username/password@ from the connectString.
 func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
-	var up string
-	if up, connectString = splitQuoted(dataSourceName, '@'); connectString == "" {
+	if i := strings.Index(dataSourceName, "://"); i >= 0 &&
+		strings.IndexFunc(
+			dataSourceName[:i],
+			func(r rune) bool { return !('a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9') },
+		) < 0 {
 		return "", "", dataSourceName
 	}
-	user, passw = splitQuoted(up, '/')
-	return unquote(user), unquote(passw), connectString
+	ups := splitQuoted(dataSourceName, '@')
+	userpass := splitQuoted(ups[0], '/')
+	if len(userpass) == 1 {
+		return "", "", dataSourceName
+	}
+	return unquote(userpass[0]), unquote(userpass[1]), connectString
 }
 
 // ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.

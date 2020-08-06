@@ -107,6 +107,9 @@ func TestParse(t *testing.T) {
 	wantEasy.Password.Reset()
 	wantEasy.ConnectString = "tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn=\"cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com\"&sdu=8128&connect_timeout=60"
 
+	wantEmptyConnectString := wantDefault
+	wantDefault.ConnectString = ""
+
 	// From fuzzing
 	for _, in := range []string{
 		"oracle://[]",
@@ -121,6 +124,7 @@ func TestParse(t *testing.T) {
 		Want ConnectionParams
 	}{
 		"simple": {In: "user/pass@sid", Want: wantDefault},
+		"userpass": {In:"user/pass", Want:wantEmptyConnectString},
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
