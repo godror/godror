@@ -2,7 +2,7 @@
 
 # Go DRiver for ORacle User Guide
 
-## Godor Connection Handling
+## <a name="connection"></a> Godror Connection Handling
 
 Connect to Oracle Database using `sql.Open("godror", dataSourceName)` where
 `dataSourceName` contains options such as the user credentials, the database
@@ -23,11 +23,11 @@ db, err := sql.Open("godror", `user="scott" password="tiger"
     heterogeneousPool=false standaloneConnection=false`)
 ```
 
-All godror parameters ([see
-here](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)) should
-also be specified logfmt-ted.
+All [godror
+parameters](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)
+should also be logfmt-ted.
 
-You can use `ConnectionParams` to properly build such a string:
+You can provide all possible options with `ConnectionParams`:
 
     var P godror.ConnectionParams
     P.Username, P.Password = "scott", godror.NewPassword("tiger")
@@ -38,7 +38,7 @@ You can use `ConnectionParams` to properly build such a string:
     fmt.Println(P.StringWithPassword())
     db := sql.OpenDB(godror.NewConnector(P))
 
-Or if you really want to build it "by hand", use connstr.AppendLogfmt:
+Or if you really want to build it "by hand", use `connstr.AppendLogfmt`:
 
     var buf strings.Builder
     connstr.AppendLogfmt(&buf, "user", "scott")
@@ -46,9 +46,14 @@ Or if you really want to build it "by hand", use connstr.AppendLogfmt:
     connstr.AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
     fmt.Println(buf.String())
 
-### Connection Strings
+Note `ConnectionParams.String()` *redacts* the password (for security, to avoid
+logging it - see <https://github.com/go-goracle/goracle/issues/79>).  If you
+need the password, then use `ConnectionParams.StringWithPassword()`.
 
-The `connectString` parameter can be one of:
+### <a name="connectionsstrings"></a> Connection Strings
+
+The `sql.Open()` data source name `connectString` parameter or
+`ConnectionParams` field `ConnectString` can be one of:
 
 - An Easy Connect String
 
@@ -95,7 +100,7 @@ The `connectString` parameter can be one of:
 
    See "Optional Oracle Net Configuration Files" below.
 
-### Optional Oracle Net Configuration Files
+### <a name="clientconfigfiles"></a> Optional Oracle Net Configuration Files
 
 Optional Oracle Net configuration files are used by the Oracle Client libraries
 during the first call to `sql.Open`.   The directory containing the files can be
@@ -124,15 +129,18 @@ The search includes:
 * `/usr/lib/oracle/19.8/client64/lib/network/admin` if Oracle 19.8 Instant Client RPMs are used on Linux.
 * `$ORACLE_HOME/network/admin` if godror is using libraries from a database installation.
 
-### Oracle Session Pooling
+### <a name="pooling"></a> Oracle Session Pooling
 
-Set `standaloneConnection=0`- this is the default.
-The old advice of setting `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
-It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the
+Set `standaloneConnection=0` - this is the default.  The old advice of setting
+`db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.  It does no harm, but the
+revised connection pooling (synchronous ResetSession before pooling the
 connection) eliminates the need for it.
 
 To use heterogeneous pools, set `heterogeneousPool=1` and provide the username
 and password through `godror.ContextWithUserPassw` or `godror.ContextWithParams`.
+
+***WARNING*** if you cannot use Go 1.14.6 or newer, then either set `standaloneConnection=1` or
+disable Go connection pooling by `db.SetMaxIdleConns(0)` - they do not work well together, resulting in stalls!
 
 ### Backward compatibility
 
