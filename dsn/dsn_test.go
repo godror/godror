@@ -68,7 +68,7 @@ func TestParse(t *testing.T) {
 	wantHeterogeneous.StandaloneConnection = false
 	wantHeterogeneous.ConnClass = DefaultConnectionClass
 	//wantHeterogeneous.PoolParams.Username, wantHeterogeneous.PoolParams.Password = "", ""
-	wantHeterogeneous.ConnectString = "localhost/Sid"
+	wantHeterogeneous.ConnectString = "localhost/sid"
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(ConnectionParams{}),
@@ -153,7 +153,7 @@ func TestParse(t *testing.T) {
 		},
 
 		"xo":            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
-		"heterogeneous": {In: "oracle://user:pass@localhost/Sid?heterogeneousPool=1", Want: wantHeterogeneous},
+		"heterogeneous": {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
 
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
@@ -220,21 +220,21 @@ func TestParse(t *testing.T) {
 				t.Errorf("parse of %q\ngot\n\t%#v,\nwanted\n\t%#v\n%s", tCase.In, P, tCase.Want, diff)
 				return
 			}
-			return
-
 			// FIXME(tgulacsi): this breaks logfmt
-			s := setP(P.String(), P.Password.Secret())
-			Q, err := Parse(s)
-			if err != nil {
-				t.Errorf("parseConnString %v", err)
-				return
-			}
-			if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" && P.String() != Q.String() {
-				t.Errorf("params got\n\t%+v,\nwanted\n\t%+v\n%s", P, Q, diff)
-				return
-			}
-			if got := setP(Q.String(), Q.Password.Secret()); s != got {
-				t.Errorf("paramString got %q, wanted %q", got, s)
+			if false {
+				s := setP(P.String(), P.Password.Secret())
+				Q, err := Parse(s)
+				if err != nil {
+					t.Errorf("parseConnString %v", err)
+					return
+				}
+				if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" && P.String() != Q.String() {
+					t.Errorf("params got\n\t%+v,\nwanted\n\t%+v\n%s", P, Q, diff)
+					return
+				}
+				if got := setP(Q.String(), Q.Password.Secret()); s != got {
+					t.Errorf("paramString got %q, wanted %q", got, s)
+				}
 			}
 		})
 	}
@@ -254,6 +254,24 @@ func TestParseTZ(t *testing.T) {
 		}
 		if i != v {
 			t.Errorf("%s. got %d, wanted %d.", k, i, v)
+		}
+	}
+}
+
+func TestSplitQuoted(t *testing.T) {
+	for tName, tCase := range map[string]struct {
+		In   string
+		Want []string
+	}{
+		"empty": {In: "", Want: []string{""}},
+		"one":   {In: "localhost", Want: []string{"localhost"}},
+		"oneQ":  {In: "localhost\\/sid", Want: []string{"localhost\\/sid"}},
+		"two":   {In: "localhost/sid", Want: []string{"localhost", "sid"}},
+		"twoQ":  {In: "local\\/@host/sid", Want: []string{"local\\/@host", "sid"}},
+		"three": {In: "localhost/sid/three", Want: []string{"localhost", "sid/three"}},
+	} {
+		if diff := cmp.Diff(tCase.Want, splitQuoted(tCase.In, '/')); diff != "" {
+			t.Error(tName+":", diff)
 		}
 	}
 }

@@ -344,11 +344,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			for d.ScanKeyval() {
 				switch key, value := string(d.Key()), string(d.Value()); key {
 				case "connectString":
-					//fmt.Printf("connectString=%q\n", value)
-					var user, passw string
-					if user, passw, P.ConnectString = parseUserPassw(value); P.Username == "" && P.Password.IsZero() {
-						P.Username, P.Password.secret = user, passw
-					}
+					P.ConnectString = value
 				case "user":
 					P.Username = value
 				case "password":
@@ -362,6 +358,11 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		if err := d.Err(); err != nil {
 			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
+		}
+		if P.Username == "" && P.Password.IsZero() && strings.Contains(P.ConnectString, "@") {
+			//fmt.Printf("connectString=%q\n", value)
+			P.Username, P.Password.secret, P.ConnectString = parseUserPassw(P.ConnectString)
+			fmt.Printf("P.ConnectString=%q\n", P.ConnectString)
 		}
 	}
 	//fmt.Printf("cs0=%q\n", P.ConnectString)
@@ -671,7 +672,6 @@ func splitQuoted(s string, sep rune) []string {
 		}
 		off += sepLen
 	}
-	return []string{s}
 }
 
 // parseUserPassw splits of the username/password@ from the connectString.
@@ -684,11 +684,16 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 		return "", "", dataSourceName
 	}
 	ups := splitQuoted(dataSourceName, '@')
+	//if len(ups) == 1 {  // user/pass, no '@'
 	userpass := splitQuoted(ups[0], '/')
-	if len(userpass) == 1 {
+	//fmt.Printf("ups=%q\nuserpass=%q\n", ups, userpass)
+	if len(ups) == 1 && len(userpass) == 1 {
 		return "", "", dataSourceName
 	}
-	user, passw = unquote(userpass[0]), unquote(userpass[1])
+	user = unquote(userpass[0])
+	if len(userpass) > 1 {
+		passw = unquote(userpass[1])
+	}
 	if len(ups) == 1 {
 		return user, passw, ""
 	}
