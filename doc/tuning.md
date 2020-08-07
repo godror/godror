@@ -2,7 +2,7 @@
 
 # Go DRiver for ORacle User Guide
 
-## Godror Tuning
+## <a name="tuning"></a> Godror Tuning
 
 Correctness and simplicity is more important than speed, but the underlying
 ODPI-C library helps a lot with the lower levels, so the performance is not bad.
@@ -39,7 +39,7 @@ Some general recommendations:
   Net Services: Best Practices for Database Performance and High
   Availability](https://static.rainfocus.com/oracle/oow19/sess/1553616880266001WLIh/PF/OOW19_Net_CON4641_1569022126580001esUl.pdf).
 
-### Round-trips between Godror and Oracle Database
+### <a name="roundtrips"></a> Round-trips between Godror and Oracle Database
 
 A round-trip is defined as the trip from the Oracle Client libraries (used by
 godror) to the database and back.  Calling each godror function, or accessing
@@ -68,7 +68,7 @@ Note running this query will also affect the round-trip count.  You may want to
 execute it in a second connection but replace the `SYS_CONTEXT()` call with the
 value of first connection's SID.
 
-### Query Performance
+### <a name="queryperformance"></a> Query Performance
 
 When queries (`SELECT` or `WITH` statements) are executed, the performance of
 fetching the rows from the database can be tuned with `PrefetchCount()` and
@@ -89,7 +89,7 @@ Here are some suggestions for the starting point to begin your tuning:
 
     ```go
     sql := "SELECT * FROM very_big_table"
-    rows, err := db.Query(sql, godor.PrefetchCount(1000), godor.FetchArraySize(1000))
+    rows, err := db.Query(sql, godror.PrefetchCount(1000), godror.FetchArraySize(1000))
     ```
 
     Adjust the values as needed for performance, memory and round-trip
@@ -113,7 +113,7 @@ Here are some suggestions for the starting point to begin your tuning:
             ORDER BY last_name
             OFFSET :offset ROWS FETCH NEXT :maxnumrows ROWS ONLY`
     rows, err := db.Query(sql, myoffset, mymaxnumrows,
-        godor.PrefetchCount(mymaxnumrows+1), godor.FetchArraySize(mymaxnumrows))
+        godror.PrefetchCount(mymaxnumrows+1), godror.FetchArraySize(mymaxnumrows))
     ```
 
     This will return all rows for the query in one round-trip.
@@ -125,10 +125,10 @@ Here are some suggestions for the starting point to begin your tuning:
 
     ```go
     sql := "SELECT last_nmae FROM employees WHERE employee_id = 100"
-    err := db.QueryRow(sql, godor.FetchArraySize(1))
+    err := db.QueryRow(sql, godror.FetchArraySize(1))
     ```
 
-### DML Performance
+### <a name="dmlperformance"></a> DML Performance
 
 Instead of looping over [DML
 statements](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-2E008D4A-F6FD-4F34-9071-7E10419CA24D)
