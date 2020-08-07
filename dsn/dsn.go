@@ -284,6 +284,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	dataSourceName = strings.TrimSpace(dataSourceName)
 	var q url.Values
 
+	//fmt.Printf("dsn=%q\n", dataSourceName)
 	if strings.HasPrefix(dataSourceName, "oracle://") {
 		// URL
 		u, err := url.Parse(dataSourceName)
@@ -306,6 +307,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		if u.Path != "" && u.Path != "/" {
 			P.ConnectString += u.Path
 		}
+		//fmt.Printf("URL=%s cs=%q host=%q port=%q path=%q\n", u, P.ConnectString, u.Host, u.Port(), u.Path)
 		q = u.Query()
 	} else if strings.Contains(dataSourceName, "\n") || // multi-line, or
 		strings.Contains(dataSourceName, "connectString=") { // contains connectString
@@ -329,6 +331,8 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		P.ConnectString = dataSourceName
 	}
+
+	//fmt.Printf("csa=%q\n", P.ConnectString)
 
 	if paramsString != "" {
 		if q == nil {
@@ -360,6 +364,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
 	}
+	//fmt.Printf("cs0=%q\n", P.ConnectString)
 
 	// Override everything from the parameters,
 	// which can come from the URL values or the logfmt-formatted parameters string.
@@ -482,7 +487,10 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
 
+	//fmt.Printf("cs1=%q\n", P.ConnectString)
 	P.comb()
+
+	//fmt.Printf("cs2=%q\n", P.ConnectString)
 
 	return P, nil
 }
@@ -680,7 +688,11 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	if len(userpass) == 1 {
 		return "", "", dataSourceName
 	}
-	return unquote(userpass[0]), unquote(userpass[1]), connectString
+	user, passw = unquote(userpass[0]), unquote(userpass[1])
+	if len(ups) == 1 {
+		return user, passw, ""
+	}
+	return user, passw, unquote(ups[1])
 }
 
 // ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.
