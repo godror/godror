@@ -359,11 +359,6 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		if err := d.Err(); err != nil {
 			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
-		if P.Username == "" && P.Password.IsZero() && strings.Contains(P.ConnectString, "@") {
-			//fmt.Printf("connectString=%q\n", value)
-			P.Username, P.Password.secret, P.ConnectString = parseUserPassw(P.ConnectString)
-			fmt.Printf("P.ConnectString=%q\n", P.ConnectString)
-		}
 	}
 	//fmt.Printf("cs0=%q\n", P.ConnectString)
 
