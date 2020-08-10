@@ -2398,7 +2398,9 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
-		//if Log != nil {Log("msg", "openRows", "col", i, "info", ti) }
+		if Log != nil {
+			Log("msg", "openRows", "col", i, "info", ti)
+		}
 		//if Log != nil {Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER) }
 		switch ti.oracleTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:

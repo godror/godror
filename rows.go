@@ -7,6 +7,10 @@ package godror
 
 /*
 #include "dpiImpl.h"
+
+dpiRowid *dpiData_getRowid(dpiData *data) {
+	return data->value.asRowid;
+}
 */
 import "C"
 import (
@@ -102,6 +106,8 @@ func (r *rows) Close() error {
 // bytea(30)     (30, true)
 func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 	switch col := r.columns[index]; col.OracleType {
+	case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
+		return int64(10), true
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
 		C.DPI_ORACLE_TYPE_LONG_VARCHAR,
@@ -379,8 +385,13 @@ func (r *rows) Next(dest []driver.Value) error {
 				Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 			}
 
-		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,
-			C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
+		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
+			if isNull {
+				dest[i] = nil
+				continue
+			}
+			dest[i] = C.GoBytes(unsafe.Pointer(C.dpiData_getRowid(d)), 10)
+		case C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
 			if isNull {
 				dest[i] = nil
 				continue

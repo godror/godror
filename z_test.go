@@ -3139,6 +3139,45 @@ func TestSelectNullTime(t *testing.T) {
 	}
 	t.Logf("t0=%s t1=%s nt=%v", t0, t1, nt)
 }
+func TestSelectROWID(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ROWID"), 10*time.Second)
+	defer cancel()
+	const tbl = "test_rowid_t"
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (F_seq NUMBER(6))"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
+
+	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
+	for i := 0; i < 10; i++ {
+		if _, err := testDb.ExecContext(ctx, qry, i); err != nil {
+			t.Fatal(errors.Errorf("%s: %w", qry, err))
+		}
+	}
+	qry = "SELECT F_seq, ROWID FROM " + tbl + " ORDER BY F_seq"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(errors.Errorf("%s: %w", qry, err))
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i int
+		var rowid []byte
+		if err = rows.Scan(&i, &rowid); err != nil {
+			t.Fatalf("scan: %+v", err)
+		}
+		t.Logf("%d. %v", i, rowid)
+		if len(rowid) != 10 {
+			t.Errorf("%d. got %v, wanted sth 10 bytes", i, rowid)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestOpenCloseLob(t *testing.T) {
 	const poolSize = 2
