@@ -180,7 +180,6 @@ func TestParse(t *testing.T) {
 		},
 
 		"logfmt":           {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
-		"logfmt_oldpw":     {In: "connectString=user/pass@localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
 		"logfmt_multiline": {In: "user=user\npassword=pass\nconnectString=localhost/sid\nheterogeneousPool=1", Want: wantHeterogeneous},
 		"logfmt_simple":    {In: `user="user" password="pass" connectString="sid"`, Want: wantDefault},
 		"logfmt_userpass":  {In: `user="user" password="pass" connectString=""`, Want: wantEmptyConnectString},
