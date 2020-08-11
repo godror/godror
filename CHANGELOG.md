@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.19.2]
 ### Added
 - SELECT ROWID as string (no need for the ''||ROWID workaround).
+- Documentation at godror.github.io/godror
 
 ## [0.19.1]
 ### Changed
