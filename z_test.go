@@ -180,6 +180,7 @@ func init() {
 	}
 
 	fmt.Println("#", P.String())
+	fmt.Println("Version:", godror.Version)
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
 	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
