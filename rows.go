@@ -8,6 +8,9 @@ package godror
 /*
 #include "dpiImpl.h"
 
+int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
+	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
+}
 dpiRowid *dpiData_getRowid(dpiData *data) {
 	return data->value.asRowid;
 }
@@ -390,7 +393,16 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = C.GoBytes(unsafe.Pointer(C.dpiData_getRowid(d)), 10)
+			// ROWID as returned by OCIRowidToChar
+			cRowid := C.dpiData_getRowid(d)
+			var cBuf *C.char
+			var cLen C.uint32_t
+			if C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen) == C.DPI_FAILURE {
+				return r.getError()
+			}
+			dest[i] = C.GoStringN(cBuf, C.int(cLen))
+			C.dpiRowid_release(cRowid)
+
 		case C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
 			if isNull {
 				dest[i] = nil

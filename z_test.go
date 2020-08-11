@@ -3165,13 +3165,13 @@ func TestSelectROWID(t *testing.T) {
 	defer rows.Close()
 	for rows.Next() {
 		var i int
-		var rowid []byte
+		var rowid string
 		if err = rows.Scan(&i, &rowid); err != nil {
 			t.Fatalf("scan: %+v", err)
 		}
 		t.Logf("%d. %v", i, rowid)
-		if len(rowid) != 10 {
-			t.Errorf("%d. got %v, wanted sth 10 bytes", i, rowid)
+		if len(rowid) != 18 {
+			t.Errorf("%d. got %v (%d bytes), wanted sth 18 bytes", i, rowid, len(rowid))
 		}
 	}
 	if err = rows.Err(); err != nil {
