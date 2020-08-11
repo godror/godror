@@ -5,7 +5,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## Changed
+
+## [0.19.2]
+### Added
+- SELECT ROWID as string (no need for the ''||ROWID workaround).
+- Documentation at godror.github.io/godror
+
+## [0.19.1]
+### Changed
 - Separate documentation under doc/
 - Only allow user/passwd@sid for old-style connection strings.
 
