@@ -3142,24 +3142,33 @@ func TestSelectNullTime(t *testing.T) {
 }
 func TestSelectROWID(t *testing.T) {
 	t.Parallel()
+	P, err := godror.ParseConnString("user=system password=oracle connectString=\"(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.56.65)(PORT=1521)))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=orcl)))\"\nconfigDir= connectionClass=godror enableEvents=0 heterogeneousPool=0 libDir=\nnewPassword= poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s\npoolSessionTimeout=0s poolWaitTimeout=0s prelim=0 standaloneConnection=0 sysasm=0\nsysdba=0 sysoper=0 timezone=local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	Q, _ := godror.ParseConnString(testConStr)
+	P.Username, P.ConnectString = Q.Username, Q.ConnectString
+	P.Password.CopyFrom(Q.Password)
+	t.Log(P)
+	db := sql.OpenDB(godror.NewConnector(P))
 	ctx, cancel := context.WithTimeout(testContext("ROWID"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_rowid_t"
-	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	db.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_seq NUMBER(6))"
-	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+	if _, err := db.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
 	for i := 0; i < 10; i++ {
-		if _, err := testDb.ExecContext(ctx, qry, i); err != nil {
+		if _, err := db.ExecContext(ctx, qry, i); err != nil {
 			t.Fatal(errors.Errorf("%s: %w", qry, err))
 		}
 	}
 	qry = "SELECT F_seq, ROWID FROM " + tbl + " ORDER BY F_seq"
-	rows, err := testDb.QueryContext(ctx, qry)
+	rows, err := db.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}

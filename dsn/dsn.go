@@ -521,6 +521,12 @@ func (P Password) Len() int { return len(P.secret) }
 // Reset the password.
 func (P *Password) Reset() { P.secret = "" }
 
+// Set the password.
+func (P *Password) Set(secret string) { P.secret = secret }
+
+// CopyFrom another password.
+func (P *Password) CopyFrom(Q Password) { P.secret = Q.secret }
+
 // ParamsArray is an url.Values for holding parameters,
 // and logfmt-formatting them with the String() method.
 type paramsArray struct {

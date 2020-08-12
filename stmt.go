@@ -292,7 +292,9 @@ func (st *statement) closeNotLocking() error {
 			C.dpiVar_release(v)
 		}
 	}
-	C.dpiStmt_release(dpiStmt)
+	if dpiStmt.refCount > 0 {
+		C.dpiStmt_release(dpiStmt)
+	}
 	if c == nil {
 		return driver.ErrBadConn
 	}
