@@ -401,7 +401,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				return r.getError()
 			}
 			dest[i] = C.GoStringN(cBuf, C.int(cLen))
-			C.dpiRowid_release(cRowid)
 
 		case C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
 			if isNull {
