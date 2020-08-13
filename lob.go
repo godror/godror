@@ -13,6 +13,7 @@ import (
 	//"fmt"
 	"fmt"
 	"io"
+	"sync"
 	"unicode/utf8"
 	"unsafe"
 
@@ -67,6 +68,7 @@ func (dlr *dpiLobReader) Scan(src interface{}) error {
 var _ = io.Reader((*dpiLobReader)(nil))
 
 type dpiLobReader struct {
+	mu sync.Mutex
 	*conn
 	dpiLob              *C.dpiLob
 	offset, sizePlusOne C.uint64_t
@@ -78,6 +80,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
 	if Log != nil {
 		Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
