@@ -40,8 +40,8 @@ import (
 
 type stmtOptions struct {
 	boolString         boolString
-	fetchArraySize     int
-	prefetchCount      int
+	fetchArraySize     int // zero means DefaultFetchArraySize
+	prefetchCount      int // zero means DefaultPrefetchCount, -1 is zero.
 	arraySize          int
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
@@ -90,16 +90,21 @@ func (o stmtOptions) ArraySize() int {
 	return o.arraySize
 }
 func (o stmtOptions) PrefetchCount() int {
-	if o.prefetchCount <= 0 {
+	switch n := o.prefetchCount; {
+	case n == 0:
 		return DefaultPrefetchCount
+	case n < 0:
+		return 0
+	default:
+		return n
 	}
-	return o.prefetchCount
 }
 func (o stmtOptions) FetchArraySize() int {
-	if o.fetchArraySize <= 0 {
+	if n := o.fetchArraySize; n <= 0 {
 		return DefaultFetchArraySize
+	} else {
+		return n
 	}
-	return o.fetchArraySize
 }
 func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
@@ -150,18 +155,24 @@ func FetchRowCount(rowCount int) Option { return FetchArraySize(rowCount) }
 
 // FetchArraySize returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
 func FetchArraySize(rowCount int) Option {
-	if rowCount <= 0 {
-		return nil
+	return func(o *stmtOptions) {
+		if rowCount > 0 {
+			o.fetchArraySize = rowCount
+		} else {
+			o.fetchArraySize = 0
+		}
 	}
-	return func(o *stmtOptions) { o.fetchArraySize = rowCount }
 }
 
 // PrefetchCount returns an option to set the rows to be fetched, overriding DefaultPrefetchCount.
 func PrefetchCount(rowCount int) Option {
-	if rowCount <= 0 {
-		return nil
+	return func(o *stmtOptions) {
+		if rowCount > 0 {
+			o.prefetchCount = rowCount
+		} else {
+			o.prefetchCount = -1
+		}
 	}
-	return func(o *stmtOptions) { o.prefetchCount = rowCount }
 }
 
 // ArraySize returns an option to set the array size to be used, overriding DefaultArraySize.
@@ -281,7 +292,9 @@ func (st *statement) closeNotLocking() error {
 			C.dpiVar_release(v)
 		}
 	}
-	C.dpiStmt_release(dpiStmt)
+	if dpiStmt.refCount > 0 {
+		C.dpiStmt_release(dpiStmt)
+	}
 	if c == nil {
 		return driver.ErrBadConn
 	}
@@ -537,6 +550,10 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
+
+	// set Prefetch Parameters before execute
+	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
+	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
 	// execute
 	var colCount C.uint32_t
@@ -2367,8 +2384,6 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 
 func (st *statement) openRows(colCount int) (*rows, error) {
 	sliceLen := st.FetchArraySize()
-	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(sliceLen))
-	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
 	r := rows{
 		statement: st,
@@ -2385,7 +2400,9 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
-		//if Log != nil {Log("msg", "openRows", "col", i, "info", ti) }
+		if Log != nil {
+			Log("msg", "openRows", "col", i, "info", ti)
+		}
 		//if Log != nil {Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER) }
 		switch ti.oracleTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:

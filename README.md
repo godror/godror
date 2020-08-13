@@ -1,5 +1,5 @@
 ![Go](https://github.com/godror/godror/workflows/Go/badge.svg)
-[![GoDoc](https://godoc.org/github.com/godror/godror?status.svg)](http://godoc.org/github.com/godror/godror)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/godror/godror)](https://pkg.go.dev/github.com/godror/godror)
 [![Go Report Card](https://goreportcard.com/badge/github.com/godror/godror)](https://goreportcard.com/report/github.com/godror/godror)
 [![codecov](https://codecov.io/gh/godror/godror/branch/master/graph/badge.svg)](https://codecov.io/gh/godror/godror)
 
@@ -13,103 +13,55 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 At least Go 1.11 is required!
 Cgo is required, so cross-compilation is hard, and you cannot set `CGO_ENABLED=0`!
 
-Although an Oracle client is NOT required for compiling, it *is* at run time.
-One can download it from <https://www.oracle.com/database/technologies/instant-client/downloads.html>
+Although Oracle Client libraries are NOT required for compiling, they *are*
+needed at run time.  Download the free Basic or Basic Light package from
+<https://www.oracle.com/database/technologies/instant-client/downloads.html>.
 
-## Connect
-
-In `sql.Open("godror", connString)`, you can provide the classic "user/passw@service_name"
-as connString, or an URL like "oracle://user:passw@service_name?params=..." (with URL-encoded parameters), 
-where *service_name* can be either a service name, either a `host:port/service_name`, or a `(DESCRIPTION=...)`.
-
-You can provide all possible options with `ConnectionParams`.
-Watch out the `ConnectionParams.String()` does redact the password
-(for security, to avoid logging it - see <https://github.com/go-goracle/goracle/issues/79>).
-So use `ConnectionParams.StringWithPassword()`.
-
-More advanced configurations can be set with a connection string such as:
-`user/pass@(DESCRIPTION=(CONNECT_TIMEOUT=3)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=hostname)(PORT=port)))(CONNECT_DATA=(SERVICE_NAME=sn)))`
-
-A configuration like this is how you would add functionality such as load balancing across multiple servers. The portion
-described in parenthesis above can also be set in the `SID` field of `ConnectionParams`.
-
-For other possible connection strings, see 
-[node-oracledb connection strings](https://oracle.github.io/node-oracledb/doc/api.html#connectionstrings)
-and [Easy Connect Naming](https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-B0437826-43C1-49EC-A94D-B650B6A4A6EE)
-and [Oracle Database 19c Easy Connect Plus Configurable Database Connection](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf).
-
-TL;DR; the short form is `username@[//]host[:port][/service_name][:server][/instance_name]`, the long form is
-`(DESCRIPTION= (ADDRESS=(PROTOCOL=tcp)(HOST=host)(PORT=port)) (CONNECT_DATA= (SERVICE_NAME=service_name) (SERVER=server) (INSTANCE_NAME=instance_name)))`.
-
-The names may be set in `tnsnames.ora` and other params set in `sqlnet.ora`.
-It's been searched at `TNS_ADMIN` environment variable, which can be set before the first call to
-`sql.Open`, or set as the `libDir` connection parameter.
-
-To use heterogeneous pools, set `heterogeneousPool=1` and provide the username/password through
-`godror.ContextWithUserPassw` or `godror.ContextWithParams`.
-
-### Oracle Session Pooling
-Set `standaloneConnection=0`- this is the default. All old advices of `db.SetMaxIdleConns(0)` are obsolete with Go 1.14.6.
-It does no harm, but the revised connection pooling (synchronous ResetSession before pooling the connection)
-eliminates the need for it.
-
-***WARNING*** if you cannot use Go 1.14.6 or newer, then either set `standaloneConnection=1` or
-disable Go connection pooling by `db.SetMaxIdleConns(0)` - they do not work well together, resulting in stalls!
-
-## Rationale
+### Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
-achieved with the standard _database/sql_ library. Even calling stored procedures
-with OUT parameters, or sending/retrieving PL/SQL array types - just give a
-`godror.PlSQLArrays` Option within the parameters of `Exec`!
+achieved with the standard _database/sql_ library. Even calling stored
+procedures with OUT parameters, or sending/retrieving PL/SQL array types - just
+give a `godror.PlSQLArrays` Option within the parameters of `Exec`!  For
+example, the array size of the returned PL/SQL arrays can be set with
+`godror.ArraySize(2000)` (default value is 1024).
 
-The array size of the returned PL/SQL arrays can be set with `godror.ArraySize(2000)` (default value is 1024).
+## Documentation
 
-## Speed
+See [Godror API Documentation](https://pkg.go.dev/github.com/godror/godror?tab=doc) and
+the [Godror User Guide](https://godror.github.io/godror/doc/contents.html).
 
-Correctness and simplicity is more important than speed, but the underlying ODPI-C library
-helps a lot with the lower levels, so the performance is not bad.
+## Installation
 
-Queries are prefetched (256 rows by default, can be changed by adding a
-`godror.FetchRowCount(1000)` argument to the call of Query),
-but you can speed up INSERT/UPDATE/DELETE statements
-by providing all the subsequent parameters at once, by putting each param's subsequent
-elements in a separate slice:
+Run:
 
-Instead of
-
-```go
-db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 1, "a")
-db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", 2, "b")
+```bash
+go get github.com/godror/godror
 ```
 
-do
+Then install Oracle Client libraries and you're ready to go!
 
-```go
-db.Exec("INSERT INTO table (a, b) VALUES (:1, :2)", []int{1, 2}, []string{"a", "b"})
+See [Godror
+Installation](https://godror.github.io/godror/doc/installation.html) for more information.
+
+## Connection
+
+To connect to Oracle Database use `sql.Open("godror", dataSourceName)`,
+where `dataSourceName` is a [logfmt](https://brandur.org/logfmt)-encoded
+parameter list.  Specify at least "user", "password" and "connectString".
+For example:
+
+```
+db, err := sql.Open("godror", `user="scott" password="tiger" connectString="dbhost:1521/orclpdb1"`)
 ```
 
-## Logging
+The `connectString` can be _ANYTHING_ that SQL*Plus or Oracle Call Interface
+(OCI) accepts: a service name, an [Easy Connect
+string](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf)
+like `host:port/service_name`, or a connect descriptor like `(DESCRIPTION=...)`.
 
-godror uses `github.com/go-kit/kit/log`'s concept of a `Log` function.
-Either set `godror.Log` to a logging function globally,
-or (better) set the logger in the Context of ExecContext or QueryContext:
-
-```go
-db.QueryContext(godror.ContextWithLog(ctx, logger.Log), qry)
-```
-
-## Tracing
-
-To set ClientIdentifier, ClientInfo, Module, Action and DbOp on the session,
-to be seen in the Database by the Admin, set godror.TraceTag on the Context:
-
-```go
-db.QueryContext(godror.ContextWithTraceTag(godror.TraceTag{
-    Module: "processing",
-    Action: "first",
-}), qry)
-```
+For more connection options, see [Godor Connection
+Handling](https://godror.github.io/godror/doc/connection.html).
 
 ## Extras
 
@@ -130,8 +82,8 @@ or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
 or (since Go 1.12) just Scan into `*sql.Rows`.
 
 For examples, see Anthony Tuininga's
-[presentation about Go](https://static.rainfocus.com/oracle/oow18/sess/1525791357522001Q5tc/PF/DEV5047%20-%20The%20Go%20Language_1540587475596001afdk.pdf)
-(page 39)!
+[presentation about Go](https://static.rainfocus.com/oracle/oow19/sess/1567058525476001cK8G/PF/DEV6708-Using-the-Go-Language-for-Efficient-Oracle-Database-Applications_1568841171132001jI7d.pdf)
+(page 41)!
 
 ## Caveats
 
@@ -183,24 +135,6 @@ time.Now().Format("2-Jan-06 3:04:05.000000 PM")
 
 See [#121 under the old project](https://github.com/go-goracle/goracle/issues/121).
 
-# Install
-
-Just
-
-```bash
-go get github.com/godror/godror
-```
-
-Or if you prefer `dep`
-
-```bash
-dep ensure -add github.com/godror/godror
-```
-
-and you're ready to go!
-
-Note that Windows may need some newer gcc (mingw-w64 with gcc 7.2.0).
-
 ## Contribute
 
 Just as with other Go projects, you don't want to change the import paths, but you can hack on the library
@@ -218,18 +152,21 @@ git remote add fork git@github.com:mygithubacc/godror
 git checkout -b newfeature upstream/master
 ```
 
-Change, experiment as you wish, then
+Change, experiment as you wish.  Then run
 
 ```bash
 git commit -m 'my great changes' *.go
 git push fork newfeature
 ```
 
-and you're ready to send a GitHub Pull Request from `github.com/mygithubacc/godror`, `newfeature` branch.
+and you're ready to send a GitHub Pull Request from the
+`github.com/mygithubacc/godror` branch called `newfeature`.
 
-### pre-commit
+### Pre-commit
 
-Add this to .git/hooks/pre-commit (after `go get github.com/golangci/golangci-lint/cmd/golangci-lint`)
+Download a [staticcheck](https://staticcheck.io)
+[release](https://github.com/dominikh/go-tools/releases) and add this to
+.git/hooks/pre-commit:
 
 ```bash
 #!/bin/sh
@@ -245,7 +182,7 @@ if [ -n "$output" ]; then
     exit 1
 fi
 
-golangci-lint run
+exec staticcheck
 ```
 
 # Third-party
