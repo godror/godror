@@ -3266,7 +3266,7 @@ func TestPreFetchQuery(t *testing.T) {
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
-	const num = 107 // 107 rows to be created
+	const num = 250 // 250 rows to be created
 	nums := make([]godror.Number, num)
 	for i := range nums {
 		nums[i] = godror.Number(strconv.Itoa(i))
@@ -3409,7 +3409,7 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
 	defer cancel()
 	tbl := "t_employees" + tblSuffix
-	query := "select employee_id from " + tbl + " union all select employee_id from " + tbl
+	query := "select employee_id from " + tbl + " where rownum < 215"
 	var rows *sql.Rows
 	var err error
 
