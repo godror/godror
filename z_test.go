@@ -48,6 +48,7 @@ var (
 var tblSuffix string
 
 const maxSessions = 16
+const useDefaultFetchValue = -99
 
 func init() {
 	hsh := fnv.New32()
@@ -3266,7 +3267,7 @@ func TestPreFetchQuery(t *testing.T) {
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
-	const num = 120 // 120 rows to be created
+	const num = 250 // 250 rows to be created
 	nums := make([]godror.Number, num)
 	for i := range nums {
 		nums[i] = godror.Number(strconv.Itoa(i))
@@ -3315,16 +3316,30 @@ func TestPreFetchQuery(t *testing.T) {
 		pf, as   int
 		srt, mrt uint
 	}{
-		{-1, -1, 1, 2},
-		{0, -1, 2, 2},
-		{1, -1, 2, 2},
-		{2, -1, 1, 2},
-		{100, -1, 1, 1},
-		{-1, 100, 1, 2},
-		{0, 100, 2, 2},
-		{1, 100, 2, 2},
-		{2, 100, 1, 2},
-		{100, 100, 1, 1},
+		{useDefaultFetchValue, useDefaultFetchValue, 1, 4},
+		{0, useDefaultFetchValue, 2, 4},
+		{1, useDefaultFetchValue, 2, 4},
+		{2, useDefaultFetchValue, 1, 4},
+		{100, useDefaultFetchValue, 1, 3},
+		{-1, 100, 2, 4},
+		{0, 100, 2, 4},
+		{1, 100, 2, 4},
+		{2, 100, 1, 4},
+		{100, 100, 1, 3},
+		{useDefaultFetchValue, 40, 1, 7},
+		{2, 40, 1, 7},
+		{-1, 40, 2, 7},
+		{120, useDefaultFetchValue, 1, 3},
+		{120, 100, 1, 3},
+		{120, 0, 1, 3},
+		{120, -1, 1, 3},
+		{120, 250, 1, 2},
+		{0, 10, 2, 23},
+		{10, 10, 1, 22},
+		{214, 214, 1, 2},
+		{215, 214, 1, 1},
+		{215, useDefaultFetchValue, 1, 1},
+		{215, 10, 1, 1},
 	} {
 		srt, mrt := runPreFetchTests(t, sid(), tCase.pf, tCase.as)
 		if !(srt == tCase.srt && mrt == tCase.mrt) {
@@ -3375,11 +3390,11 @@ func singleRowFetch(t *testing.T, pf int, as int) uint {
 	tbl := "t_employees" + tblSuffix
 	query := "select employee_id from " + tbl + " where employee_id = :id"
 
-	if pf == -1 && as == -1 {
+	if pf == useDefaultFetchValue && as == useDefaultFetchValue {
 		err = testDb.QueryRowContext(ctx, query, 100).Scan(&employeeid)
-	} else if pf == -1 && as != -1 {
+	} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
 		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&employeeid)
-	} else if pf != -1 && as == -1 {
+	} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
 		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&employeeid)
 	} else {
 		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&employeeid)
@@ -3395,15 +3410,15 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
 	defer cancel()
 	tbl := "t_employees" + tblSuffix
-	query := "select employee_id from " + tbl + " where rownum < 100"
+	query := "select employee_id from " + tbl + " where rownum < 215"
 	var rows *sql.Rows
 	var err error
 
-	if pf == -1 && as == -1 {
+	if pf == useDefaultFetchValue && as == useDefaultFetchValue {
 		rows, err = testDb.QueryContext(ctx, query)
-	} else if pf == -1 && as != -1 {
+	} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
 		rows, err = testDb.QueryContext(ctx, query, godror.FetchArraySize(as))
-	} else if pf != -1 && as == -1 {
+	} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
 		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf))
 	} else {
 		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf), godror.FetchArraySize(as))
