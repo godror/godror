@@ -49,11 +49,16 @@ type Queue struct {
 	mu sync.Mutex
 }
 
+type queueOption interface{ qOption() }
+
+func WithDeqOptions(o DeqOptions) queueOption { return o }
+func WithEnqOptions(o EnqOptions) queueOption { return o }
+
 // NewQueue creates a new Queue.
 //
 // WARNING: the connection given to it must not be closed before the Queue is closed!
 // So use an sql.Conn for it.
-func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string) (*Queue, error) {
+func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string, options ...queueOption) (*Queue, error) {
 	cx, err := DriverConn(ctx, execer)
 	if err != nil {
 		return nil, err
@@ -77,12 +82,22 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		cx.Close()
 		return nil, err
 	}
-	if err = Q.SetEnqOptions(DefaultEnqOptions); err != nil {
+	enqOpts := DefaultEnqOptions
+	deqOpts := DefaultDeqOptions
+	for _, o := range options {
+		switch x := o.(type) {
+		case DeqOptions:
+			deqOpts = x
+		case EnqOptions:
+			enqOpts = x
+		}
+	}
+	if err = Q.SetEnqOptions(enqOpts); err != nil {
 		cx.Close()
 		Q.Close()
 		return nil, err
 	}
-	if err = Q.SetDeqOptions(DefaultDeqOptions); err != nil {
+	if err = Q.SetDeqOptions(deqOpts); err != nil {
 		cx.Close()
 		Q.Close()
 		return nil, err
@@ -378,6 +393,8 @@ type EnqOptions struct {
 	DeliveryMode   DeliveryMode
 }
 
+func (EnqOptions) qOption() {}
+
 func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
@@ -445,6 +462,8 @@ type DeqOptions struct {
 	Visibility                       Visibility
 	Wait                             uint32
 }
+
+func (DeqOptions) qOption() {}
 
 func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
