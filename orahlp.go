@@ -500,7 +500,8 @@ func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
 	return loc, err
 }
 
-// DriverConn will acquire a separate connection to the same DB as what ex is connected to.
+// DriverConn will return the connection of ex.
+// For connection pools (*sql.DB) this may be a new connection.
 func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }

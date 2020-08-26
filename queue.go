@@ -25,7 +25,7 @@ var zeroMsgID [MsgIDLength]byte
 
 // DefaultEnqOptions is the default set for NewQueue.
 var DefaultEnqOptions = EnqOptions{
-	Visibility:   VisibleImmediate,
+	Visibility:   VisibleOnCommit,
 	DeliveryMode: DeliverPersistent,
 }
 
@@ -33,8 +33,8 @@ var DefaultEnqOptions = EnqOptions{
 var DefaultDeqOptions = DeqOptions{
 	Mode:         DeqRemove,
 	DeliveryMode: DeliverPersistent,
-	Navigation:   NavFirst,
-	Visibility:   VisibleImmediate,
+	Navigation:   NavNext,
+	Visibility:   VisibleOnCommit,
 	Wait:         30,
 }
 
@@ -51,7 +51,10 @@ type Queue struct {
 
 type queueOption interface{ qOption() }
 
+// WithDeqOptions returns a queueOption usable in NewQueue, applying the given DeqOptions.
 func WithDeqOptions(o DeqOptions) queueOption { return o }
+
+// WithEnqOptions returns a queueOption usable in NewQueue, applying the given EnqOptions.
 func WithEnqOptions(o EnqOptions) queueOption { return o }
 
 // NewQueue creates a new Queue.

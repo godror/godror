@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Allow specifying Enq/DeqOptions in NewQueue.
 
+### Changed
+- Changed the default Enq/Deq Queue options to the Oracle defaults.
+
 ## [0.19.2]
 ### Added
 - SELECT ROWID as string (no need for the ''||ROWID workaround).
