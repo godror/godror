@@ -150,6 +150,9 @@ func (O *Object) Collection() ObjectCollection {
 
 // Close releases a reference to the object.
 func (O *Object) Close() error {
+	if O == nil {
+		return nil
+	}
 	obj := O.dpiObject
 	O.dpiObject = nil
 	if obj == nil {
