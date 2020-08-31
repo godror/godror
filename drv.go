@@ -56,6 +56,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -67,7 +68,6 @@ import (
 	"unsafe"
 
 	"github.com/go-logfmt/logfmt"
-	errors "golang.org/x/xerrors"
 
 	"github.com/godror/godror/dsn"
 )
@@ -221,7 +221,7 @@ func (d *drv) init(configDir, libDir string) error {
 
 	var v C.dpiVersionInfo
 	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
-		return errors.Errorf("%s: %w", "getClientVersion", d.getError())
+		return fmt.Errorf("%s: %w", "getClientVersion", d.getError())
 	}
 	d.clientVersion.set(&v)
 	return nil
@@ -252,7 +252,7 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 
 	// initialize ODPI-C structure for common creation parameters
 	if C.dpiContext_initCommonCreateParams(d.dpiContext, P) == C.DPI_FAILURE {
-		return errors.Errorf("initCommonCreateParams: %w", d.getError())
+		return fmt.Errorf("initCommonCreateParams: %w", d.getError())
 	}
 
 	// assign encoding and national encoding (always use UTF-8)
@@ -357,7 +357,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	var connCreateParams C.dpiConnCreateParams
 	if C.dpiContext_initConnCreateParams(d.dpiContext,
 		&connCreateParams) == C.DPI_FAILURE {
-		return nil, false, errors.Errorf("initConnCreateParams: %w", d.getError())
+		return nil, false, fmt.Errorf("initConnCreateParams: %w", d.getError())
 	}
 
 	// assign connection class
@@ -422,7 +422,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
-				return nil, false, errors.New("Unsupported data type for sharding")
+				return nil, false, errors.New("unsupported data type for sharding")
 			}
 			columns[i].value = tempData.value
 		}
@@ -471,10 +471,10 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		err := d.getError()
 		if pool != nil {
 			stats, _ := d.getPoolStats(pool)
-			return nil, false, errors.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
+			return nil, false, fmt.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
 				username, P.ConnectString, stats, connCreateParams, err)
 		}
-		return nil, false, errors.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
+		return nil, false, fmt.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
 			username, P.ConnectString, connCreateParams, err)
 	}
 	return dc, connCreateParams.outNewSession == 1, nil
@@ -576,7 +576,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	var poolCreateParams C.dpiPoolCreateParams
 	if C.dpiContext_initPoolCreateParams(d.dpiContext,
 		&poolCreateParams) == C.DPI_FAILURE {
-		return nil, errors.Errorf("initPoolCreateParams: %w", d.getError())
+		return nil, fmt.Errorf("initPoolCreateParams: %w", d.getError())
 	}
 
 	// assign minimum number of sessions permitted in the pool
@@ -660,7 +660,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		&poolCreateParams,
 		(**C.dpiPool)(unsafe.Pointer(&dp)),
 	) == C.DPI_FAILURE {
-		return nil, errors.Errorf("params=%s extAuth=%v: %w",
+		return nil, fmt.Errorf("params=%s extAuth=%v: %w",
 			P, poolCreateParams.externalAuth, d.getError())
 	}
 
@@ -1010,7 +1010,7 @@ func mkExecMany(qrys []string) func(driver.Conn) error {
 		for _, qry := range qrys {
 			st, err := conn.Prepare(qry)
 			if err != nil {
-				return errors.Errorf("%s: %w", qry, err)
+				return fmt.Errorf("%s: %w", qry, err)
 			}
 			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
 			st.Close()

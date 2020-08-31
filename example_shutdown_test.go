@@ -8,9 +8,8 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
-
-	errors "golang.org/x/xerrors"
 
 	godror "github.com/godror/godror"
 )
@@ -27,7 +26,7 @@ func exampleStartup(startupMode godror.StartupMode) error {
 	dsn := "oracle://?sysdba=1&prelim=1"
 	db, err := sql.Open("godror", dsn)
 	if err != nil {
-		log.Fatal(errors.Errorf("%s: %w", dsn, err))
+		log.Fatal(fmt.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 
@@ -62,7 +61,7 @@ func ExampleShutdownMode() {
 	dsn := "oracle://?sysdba=1" // equivalent to "/ as sysdba"
 	db, err := sql.Open("godror", dsn)
 	if err != nil {
-		log.Fatal(errors.Errorf("%s: %w", dsn, err))
+		log.Fatal(fmt.Errorf("%s: %w", dsn, err))
 	}
 	defer db.Close()
 

@@ -7,10 +7,11 @@ package godror_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	godror "github.com/godror/godror"
-	errors "golang.org/x/xerrors"
 )
 
 func TestQRCN(t *testing.T) {
@@ -62,7 +63,7 @@ func TestQRCN(t *testing.T) {
 	qry := "SELECT regid, table_name FROM USER_CHANGE_NOTIFICATION_REGS"
 	rows, err := cx.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	t.Log("--- Registrations ---")
 	for rows.Next() {

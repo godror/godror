@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	errors "golang.org/x/xerrors"
-
 	godror "github.com/godror/godror"
 )
 
@@ -37,7 +35,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 
 	var testHeterogeneousDB *sql.DB
 	if testHeterogeneousDB, err = sql.Open("godror", testHeterogeneousConStr); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
+		t.Fatal(fmt.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
 	testHeterogeneousDB.SetMaxIdleConns(0)
@@ -61,7 +59,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 				t.Log("Please issue this:\nGRANT CREATE USER, DROP USER, ALTER USER TO " + username + ";\n" +
 					"GRANT CREATE SESSION TO " + username + " WITH ADMIN OPTION;\n")
 			}
-			t.Skip(errors.Errorf("%s: %w", qry, err))
+			t.Skip(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer func() {
@@ -106,7 +104,7 @@ func TestContextWithUserPassw(t *testing.T) {
 
 	var testHeterogeneousDB *sql.DB
 	if testHeterogeneousDB, err = sql.Open("godror", testHeterogeneousConStr); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", testHeterogeneousConStr, err))
+		t.Fatal(fmt.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
 

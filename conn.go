@@ -16,6 +16,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -25,7 +26,6 @@ import (
 	"unsafe"
 
 	"github.com/godror/godror/dsn"
-	errors "golang.org/x/xerrors"
 )
 
 const getConnection = "--GET_CONNECTION--"
@@ -75,7 +75,7 @@ func (c *conn) Break() error {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
-		return maybeBadConn(errors.Errorf("Break: %w", c.getError()), c)
+		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func (c *conn) Ping(ctx context.Context) error {
 			c.setCallTimeout(0)
 		}
 		if failure {
-			done <- maybeBadConn(errors.Errorf("Ping: %w", c.getError()), c)
+			done <- maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
 			return
 		}
 		done <- nil
@@ -220,7 +220,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	case sql.LevelSerializable:
 		todo.Level = trLS
 	default:
-		return nil, errors.Errorf("isolation level is not supported: %s", sql.IsolationLevel(opts.Isolation))
+		return nil, fmt.Errorf("isolation level is not supported: %s", sql.IsolationLevel(opts.Isolation))
 	}
 
 	if todo != c.tranParams {
@@ -239,7 +239,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 				stmt.Close()
 			}
 			if err != nil {
-				return nil, maybeBadConn(errors.Errorf("%s: %w", qry, err), c)
+				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
 			}
 		}
 		c.tranParams = todo
@@ -302,10 +302,10 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
 	) == C.DPI_FAILURE {
-		return nil, maybeBadConn(errors.Errorf("Prepare: %s: %w", query, c.getError()), c)
+		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
 	if C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
-		err := maybeBadConn(errors.Errorf("getStmtInfo: %w", c.getError()), c)
+		err := maybeBadConn(fmt.Errorf("getStmtInfo: %w", c.getError()), c)
 		st.Close()
 		return nil, err
 	}
@@ -328,12 +328,12 @@ func (c *conn) endTran(isCommit bool) error {
 	//msg := "Commit"
 	if isCommit {
 		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(errors.Errorf("Commit: %w", c.getError()), c)
+			err = maybeBadConn(fmt.Errorf("Commit: %w", c.getError()), c)
 		}
 	} else {
 		//msg = "Rollback"
 		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(errors.Errorf("Rollback: %w", c.getError()), c)
+			err = maybeBadConn(fmt.Errorf("Rollback: %w", c.getError()), c)
 		}
 	}
 	//fmt.Printf("%p.%s\n", c, msg)
@@ -370,7 +370,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 		isArray, vi.ObjectType,
 		&v, &dataArr,
 	) == C.DPI_FAILURE {
-		return nil, nil, errors.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, c.getError())
+		return nil, nil, fmt.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, c.getError())
 	}
 	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
 	/*
@@ -395,7 +395,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 		if c.params.IsPrelim {
 			return c.Server, nil
 		}
-		return c.Server, errors.Errorf("getServerVersion: %w", c.getError())
+		return c.Server, fmt.Errorf("getServerVersion: %w", c.getError())
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = string(bytes.Replace(
@@ -448,7 +448,7 @@ func (c *conn) initTZ() error {
 	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
-		return errors.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("%s: %w", qry, err)
 	}
 	defer st.Close()
 	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
@@ -464,7 +464,7 @@ func (c *conn) initTZ() error {
 	vals := []driver.Value{dbTZ, timezone}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
-		return errors.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("%s: %w", qry, err)
 	}
 	dbTZ = vals[0].(string)
 	timezone = vals[1].(string)
@@ -475,7 +475,7 @@ func (c *conn) initTZ() error {
 		Log("timezone", timezone, "tz", tz, "error", err)
 	}
 	if err == nil && tz.Location == nil && tz.offSecs != 0 {
-		err = errors.Errorf("nil timezone from %q,%q", dbTZ, timezone)
+		err = fmt.Errorf("nil timezone from %q,%q", dbTZ, timezone)
 	}
 	if err != nil {
 		if Log != nil {
@@ -524,10 +524,10 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 	var err error
 	if timezone != "" {
 		if off, err = dsn.ParseTZ(timezone); err != nil {
-			return tz, off, errors.Errorf("%s: %w", timezone, err)
+			return tz, off, fmt.Errorf("%s: %w", timezone, err)
 		}
 	} else if off, err = dsn.ParseTZ(dbTZ); err != nil {
-		return tz, off, errors.Errorf("%s: %w", dbTZ, err)
+		return tz, off, fmt.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
@@ -664,7 +664,7 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 			C.free(unsafe.Pointer(s))
 		}
 		if rc == C.DPI_FAILURE {
-			return errors.Errorf("%s: %w", nm, c.getError())
+			return fmt.Errorf("%s: %w", nm, c.getError())
 		}
 	}
 	c.currentTT = tt
@@ -778,7 +778,7 @@ const (
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Startup(mode StartupMode) error {
 	if C.dpiConn_startupDatabase(c.dpiConn, C.dpiStartupMode(mode)) == C.DPI_FAILURE {
-		return errors.Errorf("startup(%v): %w", mode, c.getError())
+		return fmt.Errorf("startup(%v): %w", mode, c.getError())
 	}
 	return nil
 }
@@ -807,7 +807,7 @@ const (
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Shutdown(mode ShutdownMode) error {
 	if C.dpiConn_shutdownDatabase(c.dpiConn, C.dpiShutdownMode(mode)) == C.DPI_FAILURE {
-		return errors.Errorf("shutdown(%v): %w", mode, c.getError())
+		return fmt.Errorf("shutdown(%v): %w", mode, c.getError())
 	}
 	return nil
 }
@@ -887,7 +887,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	var err error
 	var newSession bool
 	if c.dpiConn, newSession, err = c.drv.acquireConn(pool, P); err != nil {
-		return errors.Errorf("%v: %w", err, driver.ErrBadConn)
+		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
 	if paramsFromCtx || newSession || !c.tzValid {

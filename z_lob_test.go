@@ -9,11 +9,12 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
-	errors "golang.org/x/xerrors"
 )
 
 func TestLOBAppend(t *testing.T) {
@@ -35,7 +36,7 @@ END;`
 
 	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer stmt.Close()
 	var tmp godror.Lob

@@ -7,11 +7,11 @@ package godror_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
-
-	errors "golang.org/x/xerrors"
 
 	godror "github.com/godror/godror"
 )
@@ -50,7 +50,7 @@ func TestQueue(t *testing.T) {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
-		t.Log(errors.Errorf("%s: %w", qry, err))
+		t.Log(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() {
 		conn.ExecContext(
@@ -137,7 +137,7 @@ func TestQueueObject(t *testing.T) {
 	} {
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
 			if strings.HasPrefix(qry, "CREATE ") || !strings.Contains(err.Error(), "not exist") {
-				t.Log(errors.Errorf("%s: %w", qry, err))
+				t.Log(fmt.Errorf("%s: %w", qry, err))
 			}
 			if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 				t.Skip(err)
@@ -169,7 +169,7 @@ func TestQueueObject(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Logf("%v", errors.Errorf("%s: %w", qry, err))
+			t.Logf("%v", fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer func() {
@@ -239,5 +239,56 @@ func TestQueueObject(t *testing.T) {
 	t.Logf("received %d messages", n)
 	for _, m := range msgs[:n] {
 		t.Logf("got: %#v (%q)", m, string(m.Raw))
+	}
+}
+
+func TestQueueTx(t *testing.T) {
+	db := testDb
+	ctx, cancel := context.WithTimeout(testContext("QueueTx"), 30*time.Second)
+	defer cancel()
+
+	for i := 0; i < 2*maxSessions; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			q, err := godror.NewQueue(ctx, tx, "MYQUEUE", "SYS.AQ$_JMS_TEXT_MESSAGE",
+				godror.WithDeqOptions(godror.DeqOptions{
+					Mode:       godror.DeqRemove,
+					Visibility: godror.VisibleOnCommit,
+					Navigation: godror.NavNext,
+					Wait:       10,
+				}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer q.Close()
+
+			msgs := make([]godror.Message, 10)
+			n, err := q.Dequeue(msgs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range msgs[:n] {
+				textVC, _ := m.Object.Get("TEXT_VC")
+				_ = textVC
+				header, _ := m.Object.Get("HEADER")
+				props, _ := header.(*godror.Object).Get("PROPERTIES")
+				ps, _ := props.(*godror.ObjectCollection).AsSlice(nil)
+				headerMap := make(map[string]string)
+				for _, v := range ps.([]*godror.Object) {
+					name, _ := v.Get("NAME")
+					value, _ := v.Get("STR_VALUE")
+
+					headerMap[string(name.([]byte))] = string(value.([]byte))
+				}
+				// textVC and headerMap used here
+				m.Object.Close() // is this needed? the example in queue_test.go doesn't do this, I tried adding it see if it helped
+			}
+			_ = q.Close()
+			_ = tx.Commit()
+		})
 	}
 }
