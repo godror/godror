@@ -10,13 +10,14 @@ package godror
 */
 import "C"
 import (
-	"errors"
 	//"fmt"
 	"fmt"
 	"io"
 	"sync"
 	"unicode/utf8"
 	"unsafe"
+
+	errors "golang.org/x/xerrors"
 )
 
 // Lob is for reading/writing a LOB.
@@ -103,7 +104,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		dlr.sizePlusOne++
 	}
 	n := C.uint64_t(len(p))
-	//fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
+	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
 	if dlr.offset+1 >= dlr.sizePlusOne {
 		if Log != nil {
 			Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
@@ -123,7 +124,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		}
 		return int(n), fmt.Errorf("lob=%p offset=%d n=%d: %w", dlr.dpiLob, dlr.offset, len(p), err)
 	}
-	//fmt.Printf("read %d\n", n)
+	// fmt.Printf("read %d\n", n)
 	if dlr.IsClob {
 		dlr.offset += C.uint64_t(utf8.RuneCount(p[:n]))
 	} else {
@@ -153,7 +154,7 @@ type dpiLobWriter struct {
 func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	lob := dlw.dpiLob
 	if !dlw.opened {
-		//fmt.Printf("open %p\n", lob)
+		// fmt.Printf("open %p\n", lob)
 		if C.dpiLob_openResource(lob) == C.DPI_FAILURE {
 			return 0, fmt.Errorf("openResources(%p): %w", lob, dlw.getError())
 		}
@@ -167,7 +168,7 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 		C.dpiLob_closeResource(lob)
 		return 0, err
 	}
-	//fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)
+	// fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)
 	dlw.offset += n
 
 	return int(n), nil
@@ -179,7 +180,7 @@ func (dlw *dpiLobWriter) Close() error {
 	}
 	lob := dlw.dpiLob
 	dlw.dpiLob = nil
-	//C.dpiLob_flushBuffer(lob)
+	// C.dpiLob_flushBuffer(lob)
 	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
 		err := dlw.getError()
 		if ec, ok := err.(interface{ Code() int }); ok && !dlw.opened && ec.Code() == 22289 { // cannot perform %s operation on an unopened file or LOB
@@ -263,7 +264,7 @@ func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 // WriteAt writes p starting at offset.
 func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 	if !dl.opened {
-		//fmt.Printf("open %p\n", lob)
+		// fmt.Printf("open %p\n", lob)
 		if C.dpiLob_openResource(dl.dpiLob) == C.DPI_FAILURE {
 			return 0, fmt.Errorf("openResources(%p): %w", dl.dpiLob, dl.conn.getError())
 		}
@@ -275,4 +276,22 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 		return int(n), fmt.Errorf("writeBytes: %w", dl.conn.getError())
 	}
 	return int(n), nil
+}
+
+// GetFileName Return directory alias and file name for a BFILE type LOB.
+func (dl *DirectLob) GetFileName() (dir, file string, err error) {
+	var directoryAliasLength, fileNameLength C.uint32_t
+	var directoryAlias, fileName *C.char
+	if C.dpiLob_getDirectoryAndFileName(dl.dpiLob,
+		&directoryAlias,
+		&directoryAliasLength,
+		&fileName,
+		&fileNameLength,
+	) == C.DPI_FAILURE {
+		err = dl.conn.getError()
+		return dir, file, errors.Errorf("GetFileName: %w", err)
+	}
+	dir = C.GoStringN(directoryAlias, C.int(directoryAliasLength))
+	file = C.GoStringN(fileName, C.int(fileNameLength))
+	return dir, file, nil
 }
