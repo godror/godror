@@ -6,11 +6,9 @@
 package godror_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -69,13 +67,16 @@ func TestQueue(t *testing.T) {
 		)
 	}()
 
-	q, err := godror.NewQueue(ctx, tx, qName, "")
+	q, err := godror.NewQueue(ctx, tx, qName, "", godror.WithEnqOptions(godror.EnqOptions{
+		Visibility:   godror.VisibleOnCommit,
+		DeliveryMode: godror.DeliverPersistent,
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer q.Close()
 
-	t.Log("name:", q.Name())
+	t.Logf("name=%q q=%#v", q.Name(), q)
 	enqOpts, err := q.EnqOptions()
 	if err != nil {
 		t.Fatal(err)
@@ -88,19 +89,27 @@ func TestQueue(t *testing.T) {
 	t.Logf("deqOpts: %#v", deqOpts)
 
 	// Put some messages into the queue
-	var buf bytes.Buffer
-	msgs := make([]godror.Message, 1, 2)
+	msgs := make([]godror.Message, 2)
 	const msgCount = 2 * maxSessions
-	for i := 0; i < msgCount; i++ {
-		buf.Reset()
-		fmt.Fprintf(&buf, "%03d. árvíztűrő tükörfúrógép", i)
-		msgs[0] = godror.Message{Raw: append(make([]byte, 0, buf.Len()), buf.Bytes()...)}
+	want := make([]string, 0, msgCount)
+	for i := 0; i < msgCount; {
+		for j := range msgs {
+			want = append(want, fmt.Sprintf("%03d. árvíztűrő tükörfúrógép", i))
+			msgs[j] = godror.Message{
+				Expiration: 10 * time.Second,
+				Raw:        []byte(want[len(want)-1]),
+			}
+			i++
+		}
 		if err = q.Enqueue(msgs); err != nil {
 			var ec interface{ Code() int }
 			if errors.As(err, &ec) && ec.Code() == 24444 {
 				t.Skip(err)
 			}
 			t.Fatal("enqueue:", err)
+		}
+		if i > msgCount/3 {
+			msgs = msgs[:1]
 		}
 	}
 	t.Logf("enqueued %d messages", msgCount)
@@ -116,71 +125,75 @@ func TestQueue(t *testing.T) {
 		t.Logf("%d rows in %s", n, qTblName)
 	}
 
-	seen := make(map[int]int, msgCount)
-	defer func() {
-		PrintConnStats()
-		t.Logf("seen: %v", seen)
-		notSeen := make([]int, 0, msgCount)
-		for i := 0; i < cap(notSeen); i++ {
-			if _, ok := seen[i]; !ok {
-				notSeen = append(notSeen, i)
-			}
-		}
-		t.Logf("not seen: %v", notSeen)
-	}()
-
+	seen := make(map[string]int, msgCount)
 	msgs = msgs[:cap(msgs)]
 	for i := 0; i < msgCount; i++ {
-		tx, err := testDb.BeginTx(ctx, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if i == msgCount/3 {
-			msgs = msgs[:1]
-		}
-		q, err := godror.NewQueue(ctx, tx, qName, "",
-			godror.WithDeqOptions(godror.DeqOptions{
-				Mode:       godror.DeqRemove,
-				Visibility: godror.VisibleOnCommit,
-				Navigation: godror.NavNext,
-				Wait:       time.Second,
-			}))
-		if err != nil {
-			tx.Rollback()
-			t.Fatal(err)
-		}
-		n, err := q.Dequeue(msgs)
-		if err != nil {
-			tx.Rollback()
-			q.Close()
-			t.Error("dequeue:", err)
-		}
-		t.Logf("%d. received %d message(s)", i, n)
-		{
-			const qry = `SELECT COUNT(0) FROM ` + qTblName
-			var n int32
-			if err := testDb.QueryRowContext(ctx, qry).Scan(&n); err != nil {
-				t.Fatalf("%q: %+v", qry, err)
-			}
-			t.Logf("%d rows in %s", n, qTblName)
-		}
-		if n == 0 {
-			break
-		}
-		for j, m := range msgs[:n] {
-			if len(m.Raw) == 0 {
-				t.Logf("%d/%d. received empty message: %#v", i, j, m)
-				continue
-			}
-			t.Logf("%d/%d: got: %#v (%q)", i, j, m, string(m.Raw))
-			n, err := strconv.Atoi(string(m.Raw[:3]))
+		if func(i int) int {
+			tx, err := testDb.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			seen[n] = i
+			defer tx.Rollback()
+			if i == msgCount/3 {
+				msgs = msgs[:1]
+			}
+			q, err := godror.NewQueue(ctx, tx, qName, "",
+				godror.WithDeqOptions(godror.DeqOptions{
+					Mode:       godror.DeqRemove,
+					Visibility: godror.VisibleOnCommit,
+					Navigation: godror.NavNext,
+					Wait:       5 * time.Second,
+				}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer q.Close()
+			//t.Logf("name=%q q=%#v", q.Name(), q)
+			n, err := q.Dequeue(msgs)
+			if err != nil {
+				t.Error("dequeue:", err)
+			}
+			t.Logf("%d. received %d message(s)", i, n)
+			{
+				const qry = `SELECT COUNT(0) FROM ` + qTblName
+				var n int32
+				if err := testDb.QueryRowContext(ctx, qry).Scan(&n); err != nil {
+					t.Fatalf("%q: %+v", qry, err)
+				}
+				t.Logf("%d rows in %s", n, qTblName)
+			}
+			if n == 0 {
+				return 0
+			}
+			for j, m := range msgs[:n] {
+				if len(m.Raw) == 0 {
+					t.Logf("%d/%d. received empty message: %#v", i, j, m)
+					continue
+				}
+				s := string(m.Raw)
+				t.Logf("%d/%d: got: %q", i, j, s)
+				if k, ok := seen[s]; ok {
+					t.Fatalf("%d. %q already seen in %d", i, s, k)
+				}
+				seen[s] = i
+			}
+			return n
+		}(i) == 0 {
+			break
 		}
-		q.Close()
-		tx.Commit()
+	}
+
+	PrintConnStats()
+
+	t.Logf("seen: %v", seen)
+	notSeen := make([]string, 0, len(want))
+	for _, s := range want {
+		if _, ok := seen[s]; !ok {
+			notSeen = append(notSeen, s)
+		}
+	}
+	if len(notSeen) != 0 {
+		t.Errorf("not seen: %v", notSeen)
 	}
 }
 

@@ -73,8 +73,9 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		cx.Close()
 		return nil, err
 	}
-	owned := cx.(*conn).dpiConn == cx2.(*conn).dpiConn
-	if !owned {
+	//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
+	owned := cx.(*conn).dpiConn != cx2.(*conn).dpiConn
+	if owned {
 		cx2.Close()
 	}
 	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: owned}
@@ -139,7 +140,7 @@ func (Q *Queue) Close() error {
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
 		return fmt.Errorf("release: %w", c.getError())
 	}
-	if false && c != nil && Q.connIsOwned {
+	if c != nil && Q.connIsOwned {
 		c.Close()
 	}
 	return nil
@@ -263,7 +264,7 @@ type Message struct {
 	Enqueued                time.Time
 	MsgID, OriginalMsgID    [16]byte
 	Raw                     []byte
-	Delay, Expiration       int32
+	Delay, Expiration       time.Duration
 	Priority, NumAttempts   int32
 	Object                  *Object
 	DeliveryMode            DeliveryMode
@@ -282,7 +283,7 @@ func (M Message) Deadline() time.Time {
 	if M.Enqueued.IsZero() {
 		return M.Enqueued
 	}
-	return M.Enqueued.Add(time.Duration(M.Delay+M.Expiration) * time.Second)
+	return M.Enqueued.Add(M.Delay + M.Expiration)
 }
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	var firstErr error
@@ -300,7 +301,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay)), "setDelay")
+	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay/time.Second)), "setDelay")
 
 	if M.ExceptionQ != "" {
 		value := C.CString(M.ExceptionQ)
@@ -308,7 +309,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration)), "setExpiration")
+	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration/time.Second)), "setExpiration")
 
 	if M.OriginalMsgID != zeroMsgID {
 		OK(C.dpiMsgProps_setOriginalMsgId(props, (*C.char)(unsafe.Pointer(&M.OriginalMsgID[0])), MsgIDLength), "setMsgOriginalId")
@@ -350,7 +351,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 
 	M.Delay = 0
 	if OK(C.dpiMsgProps_getDelay(props, &cint), "getDelay") && cint > 0 {
-		M.Delay = int32(cint)
+		M.Delay = time.Duration(cint) * time.Second
 	}
 
 	M.DeliveryMode = DeliverPersistent
@@ -376,7 +377,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 
 	M.Expiration = 0
 	if OK(C.dpiMsgProps_getExpiration(props, &cint), "getExpiration") && cint > 0 {
-		M.Expiration = int32(cint)
+		M.Expiration = time.Duration(cint) * time.Second
 	}
 
 	M.MsgID = zeroMsgID

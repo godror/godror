@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - GetFileName method to DirectLob.
 
 ### Changed
-- DeqOptions.Wait became a time.Duration
+- DeqOptions.Delay, Expiration and Wait became a time.Duration
 
 ## [0.19.4]
 ### Added
