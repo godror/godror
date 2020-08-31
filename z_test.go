@@ -205,12 +205,19 @@ func init() {
 		}
 	}()
 
+	statTicker = make(chan time.Time)
+	ticks := time.NewTicker(30 * time.Second).C
+	go func() {
+		for t := range ticks {
+			statTicker <- t
+		}
+	}()
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range time.NewTicker(30 * time.Second).C {
+			for range statTicker {
 				fmt.Printf("testDb: %+v\n", testDb.Stats())
 			}
 		}()
@@ -220,7 +227,7 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range time.NewTicker(30 * time.Second).C {
+			for range statTicker {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
@@ -232,6 +239,13 @@ func init() {
 		}()
 	}
 }
+
+var statTicker chan time.Time
+
+func PrintConnStats() {
+	statTicker <- time.Now()
+}
+
 func testContext(name string) context.Context {
 	return godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
 }

@@ -35,7 +35,7 @@ var DefaultDeqOptions = DeqOptions{
 	DeliveryMode: DeliverPersistent,
 	Navigation:   NavNext,
 	Visibility:   VisibleOnCommit,
-	Wait:         30,
+	Wait:         0,
 }
 
 // Queue represents an Oracle Advanced Queue.
@@ -487,7 +487,7 @@ type DeqOptions struct {
 	DeliveryMode                     DeliveryMode
 	Navigation                       DeqNavigation
 	Visibility                       Visibility
-	Wait                             uint32
+	Wait                             time.Duration
 }
 
 func (DeqOptions) qOption() {}
@@ -542,7 +542,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	D.Wait = 0
 	var u32 C.uint
 	if OK(C.dpiDeqOptions_getWait(opts, &u32), "getWait") {
-		D.Wait = uint32(u32)
+		D.Wait = time.Duration(u32) * time.Second
 	}
 	return firstErr
 }
@@ -586,7 +586,7 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 
 	OK(C.dpiDeqOptions_setVisibility(opts, C.dpiVisibility(D.Visibility)), "setVisibility")
 
-	OK(C.dpiDeqOptions_setWait(opts, C.uint(D.Wait)), "setWait")
+	OK(C.dpiDeqOptions_setWait(opts, C.uint(D.Wait/time.Second)), "setWait")
 
 	return firstErr
 }
@@ -614,11 +614,6 @@ func (Q *Queue) SetDeqCorrelation(correlation string) error {
 	}
 	return nil
 }
-
-const (
-	NoWait      = uint32(0)
-	WaitForever = uint32(1<<31 - 1)
-)
 
 // MessageState constants representing message's state.
 type MessageState uint32

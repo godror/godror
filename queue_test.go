@@ -6,9 +6,11 @@
 package godror_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,13 +22,13 @@ func TestQueue(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
-	conn, err := testDb.Conn(ctx)
+	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer tx.Rollback()
 	var user string
-	if err = conn.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
 		t.Fatal(err)
 	}
 
@@ -46,14 +48,14 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
-	if _, err = conn.ExecContext(ctx, qry); err != nil {
+	if _, err = tx.ExecContext(ctx, qry); err != nil {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
 		t.Log(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() {
-		conn.ExecContext(
+		testDb.ExecContext(
 			testContext("Queue-drop"),
 			`DECLARE
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
@@ -67,7 +69,7 @@ func TestQueue(t *testing.T) {
 		)
 	}()
 
-	q, err := godror.NewQueue(ctx, conn, qName, "")
+	q, err := godror.NewQueue(ctx, tx, qName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,23 +87,79 @@ func TestQueue(t *testing.T) {
 	}
 	t.Logf("deqOpts: %#v", deqOpts)
 
-	if err = q.Enqueue([]godror.Message{godror.Message{Raw: []byte("árvíztűrő tükörfúrógép")}}); err != nil {
-		var ec interface{ Code() int }
-		if errors.As(err, &ec) && ec.Code() == 24444 {
-			t.Skip(err)
-		}
-		t.Fatal("enqueue:", err)
-	}
+	// Put some messages into the queue
+	var buf bytes.Buffer
 	msgs := make([]godror.Message, 1)
-	n, err := q.Dequeue(msgs)
-	if err != nil {
-		t.Error("dequeue:", err)
+	const msgCount = maxSessions
+	for i := 0; i < msgCount; i++ {
+		buf.Reset()
+		fmt.Fprintf(&buf, "%03d. árvíztűrő tükörfúrógép", i)
+		msgs[0] = godror.Message{Raw: append(make([]byte, 0, buf.Len()), buf.Bytes()...)}
+		if err = q.Enqueue(msgs); err != nil {
+			var ec interface{ Code() int }
+			if errors.As(err, &ec) && ec.Code() == 24444 {
+				t.Skip(err)
+			}
+			t.Fatal("enqueue:", err)
+		}
 	}
-	t.Logf("received %d messages", n)
-	for _, m := range msgs[:n] {
-		t.Logf("got: %#v (%q)", m, string(m.Raw))
+	t.Logf("enqueued %d messages", msgCount)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[int]int, msgCount)
+	defer func() {
+		PrintConnStats()
+		t.Logf("seen: %v", seen)
+		notSeen := make([]int, 0, msgCount)
+		for i := 0; i < cap(notSeen); i++ {
+			if _, ok := seen[i]; !ok {
+				notSeen = append(notSeen, i)
+			}
+		}
+		t.Logf("not seen: %v", notSeen)
+	}()
+
+	for i := 0; i < msgCount; i++ {
+		tx, err := testDb.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, err := godror.NewQueue(ctx, tx, qName, "",
+			godror.WithDeqOptions(godror.DeqOptions{
+				Mode:       godror.DeqRemove,
+				Visibility: godror.VisibleOnCommit,
+				Navigation: godror.NavNext,
+				Wait:       time.Second,
+			}))
+		if err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+		n, err := q.Dequeue(msgs)
+		if err != nil {
+			tx.Rollback()
+			q.Close()
+			t.Error("dequeue:", err)
+		}
+		t.Logf("%d. received %d message(s)", i, n)
+		for j, m := range msgs[:n] {
+			if len(m.Raw) == 0 {
+				t.Fatalf("%d/%d. received empty message: %#v", i, j, m)
+			}
+			t.Logf("%d/%d: got: %#v (%q)", i, j, m, string(m.Raw))
+			n, err := strconv.Atoi(string(m.Raw[:3]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			seen[n] = i
+		}
+		q.Close()
+		tx.Commit()
 	}
 }
+
 func TestQueueObject(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("QueueObject"), 30*time.Second)
@@ -239,56 +297,5 @@ func TestQueueObject(t *testing.T) {
 	t.Logf("received %d messages", n)
 	for _, m := range msgs[:n] {
 		t.Logf("got: %#v (%q)", m, string(m.Raw))
-	}
-}
-
-func TestQueueTx(t *testing.T) {
-	db := testDb
-	ctx, cancel := context.WithTimeout(testContext("QueueTx"), 30*time.Second)
-	defer cancel()
-
-	for i := 0; i < 2*maxSessions; i++ {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer tx.Rollback()
-			q, err := godror.NewQueue(ctx, tx, "MYQUEUE", "SYS.AQ$_JMS_TEXT_MESSAGE",
-				godror.WithDeqOptions(godror.DeqOptions{
-					Mode:       godror.DeqRemove,
-					Visibility: godror.VisibleOnCommit,
-					Navigation: godror.NavNext,
-					Wait:       10,
-				}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer q.Close()
-
-			msgs := make([]godror.Message, 10)
-			n, err := q.Dequeue(msgs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, m := range msgs[:n] {
-				textVC, _ := m.Object.Get("TEXT_VC")
-				_ = textVC
-				header, _ := m.Object.Get("HEADER")
-				props, _ := header.(*godror.Object).Get("PROPERTIES")
-				ps, _ := props.(*godror.ObjectCollection).AsSlice(nil)
-				headerMap := make(map[string]string)
-				for _, v := range ps.([]*godror.Object) {
-					name, _ := v.Get("NAME")
-					value, _ := v.Get("STR_VALUE")
-
-					headerMap[string(name.([]byte))] = string(value.([]byte))
-				}
-				// textVC and headerMap used here
-				m.Object.Close() // is this needed? the example in queue_test.go doesn't do this, I tried adding it see if it helped
-			}
-			_ = q.Close()
-			_ = tx.Commit()
-		})
 	}
 }
