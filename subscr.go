@@ -16,12 +16,12 @@ void CallbackSubscrDebug(void *context, dpiSubscrMessage *message);
 import "C"
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"unsafe"
-
-	errors "golang.org/x/xerrors"
 )
 
 // SubscriptionOption is for setting various parameters of the Subscription.
@@ -254,9 +254,9 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
 	) == C.DPI_FAILURE {
 		C.free(unsafe.Pointer(dpiSubscr))
-		err := errors.Errorf("newSubscription: %w", c.getError())
+		err := fmt.Errorf("newSubscription: %w", c.getError())
 		if strings.Contains(errors.Unwrap(err).Error(), "DPI-1065:") {
-			err = errors.Errorf("specify \"enableEvents=1\" connection parameter on connection to be able to use subscriptions: %w", err)
+			err = fmt.Errorf("specify \"enableEvents=1\" connection parameter on connection to be able to use subscriptions: %w", err)
 		}
 		return nil, err
 	}
@@ -273,18 +273,18 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 
 	var dpiStmt *C.dpiStmt
 	if C.dpiSubscr_prepareStmt(s.dpiSubscr, cQry, C.uint32_t(len(qry)), &dpiStmt) == C.DPI_FAILURE {
-		return errors.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.getError())
+		return fmt.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.getError())
 	}
 	defer func() { C.dpiStmt_release(dpiStmt) }()
 
 	mode := C.dpiExecMode(C.DPI_MODE_EXEC_DEFAULT)
 	var qCols C.uint32_t
 	if C.dpiStmt_execute(dpiStmt, mode, &qCols) == C.DPI_FAILURE {
-		return errors.Errorf("executeStmt: %w", s.getError())
+		return fmt.Errorf("executeStmt: %w", s.getError())
 	}
 	var queryID C.uint64_t
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
-		return errors.Errorf("getSubscrQueryId: %w", s.getError())
+		return fmt.Errorf("getSubscrQueryId: %w", s.getError())
 	}
 	if Log != nil {
 		Log("msg", "subscribed", "query", qry, "id", queryID)
@@ -309,7 +309,7 @@ func (s *Subscription) Close() error {
 		return nil
 	}
 	if C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) == C.DPI_FAILURE {
-		return errors.Errorf("close: %w", s.getError())
+		return fmt.Errorf("close: %w", s.getError())
 	}
 	return nil
 }

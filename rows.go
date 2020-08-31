@@ -27,8 +27,6 @@ import (
 	"strings"
 	"time"
 	"unsafe"
-
-	errors "golang.org/x/xerrors"
 )
 
 var _ = driver.Rows((*rows)(nil))
@@ -277,7 +275,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		return r.err
 	}
 	if len(dest) != len(r.columns) {
-		return errors.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
+		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
 	if r.fetched == 0 {
 		var moreRows C.int
@@ -302,7 +300,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
 				r.err = io.EOF
 			} else {
-				r.err = errors.Errorf("Next: %w", err)
+				r.err = fmt.Errorf("Next: %w", err)
 			}
 			return r.err
 		}
@@ -320,7 +318,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				var n C.uint32_t
 				var data *C.dpiData
 				if C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data) == C.DPI_FAILURE {
-					return errors.Errorf("getReturnedData[%d]: %w", i, r.getError())
+					return fmt.Errorf("getReturnedData[%d]: %w", i, r.getError())
 				}
 				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
@@ -510,7 +508,7 @@ func (r *rows) Next(dest []driver.Value) error {
 					Log("msg", "Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
 				//C.dpiStmt_release(st.dpiStmt)
-				return errors.Errorf("getNumQueryColumns: %w", err)
+				return fmt.Errorf("getNumQueryColumns: %w", err)
 			}
 			st.Lock()
 			r2, err := st.openRows(int(colCount))
@@ -545,7 +543,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			dest[i] = o
 
 		default:
-			return errors.Errorf("unsupported column type %d", typ)
+			return fmt.Errorf("unsupported column type %d", typ)
 		}
 
 		//fmt.Printf("dest[%d]=%#v\n", i, dest[i])
@@ -619,7 +617,7 @@ func (r *rows) getImplicitResult() {
 		r.origSt = st
 	}
 	if C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) == C.DPI_FAILURE {
-		r.nextRsErr = errors.Errorf("getImplicitResult: %w", r.getError())
+		r.nextRsErr = fmt.Errorf("getImplicitResult: %w", r.getError())
 	}
 	C.dpiStmt_addRef(r.nextRs)
 }
@@ -645,13 +643,13 @@ func (r *rows) NextResultSet() error {
 		if r.nextRsErr != nil {
 			return r.nextRsErr
 		}
-		return errors.Errorf("getImplicitResult: %w", io.EOF)
+		return fmt.Errorf("getImplicitResult: %w", io.EOF)
 	}
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
 	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
-		err := errors.Errorf("getNumQueryColumns: %w: %w", r.getError(), io.EOF)
+		err := fmt.Errorf("getNumQueryColumns: %+v: %w", r.getError(), io.EOF)
 		if Log != nil {
 			Log("msg", "NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}

@@ -7,11 +7,11 @@ package godror_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
-
-	errors "golang.org/x/xerrors"
 
 	godror "github.com/godror/godror"
 )
@@ -50,7 +50,7 @@ func TestQueue(t *testing.T) {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
-		t.Log(errors.Errorf("%s: %w", qry, err))
+		t.Log(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() {
 		conn.ExecContext(
@@ -137,7 +137,7 @@ func TestQueueObject(t *testing.T) {
 	} {
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
 			if strings.HasPrefix(qry, "CREATE ") || !strings.Contains(err.Error(), "not exist") {
-				t.Log(errors.Errorf("%s: %w", qry, err))
+				t.Log(fmt.Errorf("%s: %w", qry, err))
 			}
 			if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 				t.Skip(err)
@@ -169,7 +169,7 @@ func TestQueueObject(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 		if _, err = conn.ExecContext(ctx, qry); err != nil {
-			t.Logf("%v", errors.Errorf("%s: %w", qry, err))
+			t.Logf("%v", fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer func() {
