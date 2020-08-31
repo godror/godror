@@ -13,12 +13,11 @@ import "C"
 import (
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 	"unsafe"
-
-	errors "golang.org/x/xerrors"
 )
 
 // Data holds the data to/from Oracle.
@@ -34,7 +33,7 @@ var ErrNotSupported = errors.New("not supported")
 // NewData creates a new Data structure for the given type, populated with the given type.
 func NewData(v interface{}) (*Data, error) {
 	if v == nil {
-		return nil, errors.Errorf("%s: %w", "nil type", ErrNotSupported)
+		return nil, fmt.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	data := Data{dpiData: C.dpiData{isNull: 1}}
 	return &data, data.Set(v)
@@ -310,7 +309,7 @@ func (d *Data) Get() interface{} {
 // Set the data.
 func (d *Data) Set(v interface{}) error {
 	if v == nil {
-		return errors.Errorf("%s: %w", "nil type", ErrNotSupported)
+		return fmt.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -380,7 +379,7 @@ func (d *Data) Set(v interface{}) error {
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
 	//d.SetRowid(x)
 	default:
-		return errors.Errorf("%T: %w", ErrNotSupported, v)
+		return fmt.Errorf("%T: %w", ErrNotSupported, v)
 	}
 	return nil
 }
@@ -477,7 +476,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 			}
 		}
 	default:
-		return vi, errors.Errorf("unknown type %T", v)
+		return vi, fmt.Errorf("unknown type %T", v)
 	}
 
 	vi.IsPLSArray = reflect.TypeOf(baseType).Kind() == reflect.Slice

@@ -11,13 +11,11 @@ import (
 	"io"
 	"testing"
 	"time"
-
-	errors "golang.org/x/xerrors"
 )
 
 func TestMaybeBadConn(t *testing.T) {
 	want := driver.ErrBadConn
-	if got := maybeBadConn(errors.Errorf("bad: %w", want), nil); got != want {
+	if got := maybeBadConn(fmt.Errorf("bad: %w", want), nil); got != want {
 		t.Errorf("got %v, wanted %v", got, want)
 	}
 }
