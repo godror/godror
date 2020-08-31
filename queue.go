@@ -13,6 +13,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
@@ -39,13 +40,14 @@ var DefaultDeqOptions = DeqOptions{
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
+	mu sync.Mutex
+
 	PayloadObjectType ObjectType
 	props             []*C.dpiMsgProps
 	name              string
 	conn              *conn
 	dpiQueue          *C.dpiQueue
-
-	mu sync.Mutex
+	connIsOwned       bool
 }
 
 type queueOption interface{ qOption() }
@@ -65,7 +67,17 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	if err != nil {
 		return nil, err
 	}
-	Q := Queue{conn: cx.(*conn), name: name}
+	// Check whether this is a pool or a single connection.
+	cx2, err := DriverConn(ctx, execer)
+	if err != nil {
+		cx.Close()
+		return nil, err
+	}
+	owned := cx.(*conn).dpiConn == cx2.(*conn).dpiConn
+	if !owned {
+		cx2.Close()
+	}
+	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: owned}
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
@@ -84,6 +96,16 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		cx.Close()
 		return nil, err
 	}
+
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(&Q, func(Q *Queue) {
+		if Q != nil && Q.dpiQueue != nil {
+			fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+			Q.Close()
+		}
+	})
+
 	enqOpts := DefaultEnqOptions
 	deqOpts := DefaultDeqOptions
 	for _, o := range options {
@@ -116,6 +138,9 @@ func (Q *Queue) Close() error {
 	}
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
 		return fmt.Errorf("release: %w", c.getError())
+	}
+	if false && c != nil && Q.connIsOwned {
+		c.Close()
 	}
 	return nil
 }
