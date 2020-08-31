@@ -185,7 +185,8 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 
 	var ok C.int
 	num := C.uint(len(props))
-	if num == 1 {
+	deqOne := num == 1
+	if deqOne {
 		ok = C.dpiQueue_deqOne(Q.dpiQueue, &props[0])
 	} else {
 		ok = C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
@@ -193,7 +194,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	if ok == C.DPI_FAILURE {
 		err := Q.conn.getError()
 		if code := err.(interface{ Code() int }).Code(); code == 3156 {
-			return 0, context.DeadlineExceeded
+			return 0, nil
 		}
 		return 0, fmt.Errorf("dequeue: %w", err)
 	}
@@ -205,6 +206,9 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 			}
 		}
 		C.dpiMsgProps_release(p)
+		if deqOne && messages[i].IsZero() {
+			return 0, nil
+		}
 	}
 	return int(num), firstErr
 }
@@ -264,6 +268,13 @@ type Message struct {
 	Object                  *Object
 	DeliveryMode            DeliveryMode
 	State                   MessageState
+}
+
+func (M Message) IsZero() bool {
+	return M.Correlation == "" && M.ExceptionQ == "" && M.Enqueued.IsZero() &&
+		M.MsgID == zeroMsgID && M.OriginalMsgID == zeroMsgID && len(M.Raw) == 0 &&
+		M.Delay == 0 && M.Expiration == 0 && M.Priority == 0 && M.NumAttempts == 0 &&
+		M.Object == nil && M.State == 0
 }
 
 // Deadline return the message's intended deadline: enqueue time + delay + expiration.

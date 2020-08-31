@@ -89,8 +89,8 @@ func TestQueue(t *testing.T) {
 
 	// Put some messages into the queue
 	var buf bytes.Buffer
-	msgs := make([]godror.Message, 1)
-	const msgCount = maxSessions
+	msgs := make([]godror.Message, 1, 2)
+	const msgCount = 2 * maxSessions
 	for i := 0; i < msgCount; i++ {
 		buf.Reset()
 		fmt.Fprintf(&buf, "%03d. árvíztűrő tükörfúrógép", i)
@@ -107,6 +107,14 @@ func TestQueue(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	{
+		const qry = `SELECT COUNT(0) FROM ` + qTblName
+		var n int32
+		if err := testDb.QueryRowContext(ctx, qry).Scan(&n); err != nil {
+			t.Fatalf("%q: %+v", qry, err)
+		}
+		t.Logf("%d rows in %s", n, qTblName)
+	}
 
 	seen := make(map[int]int, msgCount)
 	defer func() {
@@ -121,10 +129,14 @@ func TestQueue(t *testing.T) {
 		t.Logf("not seen: %v", notSeen)
 	}()
 
+	msgs = msgs[:cap(msgs)]
 	for i := 0; i < msgCount; i++ {
 		tx, err := testDb.BeginTx(ctx, nil)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if i == msgCount/3 {
+			msgs = msgs[:1]
 		}
 		q, err := godror.NewQueue(ctx, tx, qName, "",
 			godror.WithDeqOptions(godror.DeqOptions{
@@ -144,9 +156,21 @@ func TestQueue(t *testing.T) {
 			t.Error("dequeue:", err)
 		}
 		t.Logf("%d. received %d message(s)", i, n)
+		{
+			const qry = `SELECT COUNT(0) FROM ` + qTblName
+			var n int32
+			if err := testDb.QueryRowContext(ctx, qry).Scan(&n); err != nil {
+				t.Fatalf("%q: %+v", qry, err)
+			}
+			t.Logf("%d rows in %s", n, qTblName)
+		}
+		if n == 0 {
+			break
+		}
 		for j, m := range msgs[:n] {
 			if len(m.Raw) == 0 {
-				t.Fatalf("%d/%d. received empty message: %#v", i, j, m)
+				t.Logf("%d/%d. received empty message: %#v", i, j, m)
+				continue
 			}
 			t.Logf("%d/%d: got: %#v (%q)", i, j, m, string(m.Raw))
 			n, err := strconv.Atoi(string(m.Raw[:3]))
