@@ -278,24 +278,21 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 	return int(n), nil
 }
 
-// GetFileName Return []string consisting of the directory alias and file name for a BFILE type LOB.
-func (dl *DirectLob) GetFileName() ([]string, error) {
+// GetFileName Return directory alias and file name for a BFILE type LOB.
+func (dl *DirectLob) GetFileName() (dir, file string, err error) {
 	var directoryAliasLength, fileNameLength C.uint32_t
 	var directoryAlias, fileName *C.char
-	var dir, file string
 	if C.dpiLob_getDirectoryAndFileName(dl.dpiLob,
 		&directoryAlias,
 		&directoryAliasLength,
 		&fileName,
-		&fileNameLength) == C.DPI_FAILURE {
-		err := dl.conn.getError()
+		&fileNameLength,
+		) == C.DPI_FAILURE {
+		err = dl.conn.getError()
 		// C.dpiStmt_release(st.dpiStmt)
-		return nil, errors.Errorf("GetFileName: %w", err)
+		return dir,file, errors.Errorf("GetFileName: %w", err)
 	}
 	dir = C.GoStringN(directoryAlias, C.int(directoryAliasLength))
 	file = C.GoStringN(fileName, C.int(fileNameLength))
-	if dir == "" && file == "" {
-		return nil, errors.Errorf("GetFileName error Directory or FileName is null")
-	}
-	return []string{dir, file}, nil
+	return
 }

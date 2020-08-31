@@ -26,12 +26,12 @@ import (
 	"sync"
 	"testing"
 	"time"
-
+	
 	"github.com/go-logfmt/logfmt"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
 	errors "golang.org/x/xerrors"
-
+	
 	godror "github.com/godror/godror"
 )
 
@@ -39,7 +39,7 @@ var (
 	testDb       *sql.DB
 	testSystemDb *sql.DB
 	tl           = &testLogger{}
-
+	
 	clientVersion, serverVersion godror.VersionInfo
 	testConStr                   string
 	testSystemConStr             string
@@ -54,7 +54,7 @@ func init() {
 	hsh := fnv.New32()
 	hsh.Write([]byte(runtime.Version()))
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
-
+	
 	godror.Log = func(...interface{}) error { return nil }
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
@@ -66,7 +66,7 @@ func init() {
 			panic(errors.Errorf("unknown GODROR_TIMEZONE=%q: %w", tzName, err))
 		}
 	}
-
+	
 	var configDir string
 	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
 		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
@@ -79,7 +79,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		//defer os.RemoveAll(tempDir)
+		// defer os.RemoveAll(tempDir)
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
 			var sfh *os.File
 			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
@@ -110,13 +110,13 @@ func init() {
 		); err != nil {
 			panic(err)
 		}
-
+		
 		fn := filepath.Join(wd, "env.sh")
 		fmt.Println("Using default database for tests: ", fn)
 		fmt.Printf("export TNS_ADMIN=%s\n", wd)
 		os.Setenv("TNS_ADMIN", tempDir)
 		configDir = tempDir
-
+		
 		if b, err = ioutil.ReadFile(fn); err != nil {
 			fmt.Println(err)
 		} else {
@@ -135,7 +135,7 @@ func init() {
 			}
 		}
 	}
-
+	
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
 			Username:      os.Getenv("GODROR_TEST_USERNAME"),
@@ -179,7 +179,7 @@ func init() {
 	if testDb, err = sql.Open("godror", testConStr); err != nil {
 		panic(errors.Errorf("%s: %+v", testConStr, err))
 	}
-
+	
 	fmt.Println("#", P.String())
 	fmt.Println("Version:", godror.Version)
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
@@ -198,13 +198,13 @@ func init() {
 	}); err != nil {
 		panic(err)
 	}
-
+	
 	go func() {
 		for range time.NewTicker(time.Second).C {
 			runtime.GC()
 		}
 	}()
-
+	
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
@@ -273,21 +273,21 @@ func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
 		for i := 0; i < len(keyvals); i += 2 {
 			fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
 		}
-
+		
 		tl.mu.Lock()
 		for _, t := range tl.beHelped {
 			t.Helper()
 		}
 		tl.beHelped = tl.beHelped[:0]
 		tl.mu.Unlock()
-
+		
 		tl.mu.RLock()
 		defer tl.mu.RUnlock()
 		for _, t := range tl.Ts {
 			t.Helper()
 			t.Log(buf.String())
 		}
-
+		
 		return nil
 	}
 }
@@ -296,7 +296,7 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 	tl.Ts = append(tl.Ts, t)
 	tl.beHelped = append(tl.beHelped, t)
 	tl.mu.Unlock()
-
+	
 	return func() {
 		tl.mu.Lock()
 		defer tl.mu.Unlock()
@@ -321,7 +321,7 @@ func TestDescribeQuery(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("DescribeQuery"), 10*time.Second)
 	defer cancel()
-
+	
 	const qry = "SELECT * FROM user_tab_cols"
 	cols, err := godror.DescribeQuery(ctx, testDb, qry)
 	if err != nil {
@@ -334,18 +334,18 @@ func TestParseOnly(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ParseOnly"), 10*time.Second)
 	defer cancel()
-
+	
 	tbl := "test_not_exist" + tblSuffix
 	cnt := func() int {
 		var cnt int64
 		if err := testDb.QueryRowContext(ctx,
 			"SELECT COUNT(0) FROM user_tables WHERE table_name = UPPER('"+tbl+"')").Scan(&cnt); //nolint:gas
-		err != nil {
+			err != nil {
 			t.Fatal(err)
 		}
 		return int(cnt)
 	}
-
+	
 	if cnt() != 0 {
 		if _, err := testDb.ExecContext(ctx, "DROP TABLE "+tbl); err != nil {
 			t.Error(err)
@@ -364,7 +364,7 @@ func TestInputArray(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("InputArray"), 10*time.Second)
 	defer cancel()
-
+	
 	pkg := strings.ToUpper("test_in_pkg" + tblSuffix)
 	qry := `CREATE OR REPLACE PACKAGE ` + pkg + ` AS
 TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
@@ -387,7 +387,7 @@ END;
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PACKAGE " + pkg)
-
+	
 	qry = `CREATE OR REPLACE PACKAGE BODY ` + pkg + ` AS
 FUNCTION in_int(p_int IN int_tab_typ) RETURN VARCHAR2 IS
   v_idx PLS_INTEGER;
@@ -470,7 +470,7 @@ END;
 	}); err != nil {
 		t.Fatal(err)
 	}
-
+	
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -480,7 +480,7 @@ END;
 	if _, err = tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(errors.Errorf("%s: %w", qry, err))
 	}
-
+	
 	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
 	epochPlus := epoch.AddDate(0, -6, 0)
 	const timeFmt = "2006-01-02T15:04:05"
@@ -489,12 +489,12 @@ END;
 		In   interface{}
 		Want string
 	}{
-		//"int_0":{In:[]int32{}, Want:""},
+		// "int_0":{In:[]int32{}, Want:""},
 		"num_0": {In: []godror.Number{}, Want: ""},
 		"vc_0":  {In: []string{}, Want: ""},
 		"dt_0":  {In: []time.Time{}, Want: ""},
 		"dt_00": {In: []godror.NullTime{}, Want: ""},
-
+		
 		"num_3": {
 			In:   []godror.Number{"1", "2.72", "-3.14"},
 			Want: "1:1\n2:2.72\n3:-3.14\n",
@@ -514,7 +514,7 @@ END;
 			Want: ("1:" + epoch.In(serverTZ).Format(timeFmt) + "\n" +
 				"2:" + epochPlus.In(serverTZ).Format(timeFmt) + "\n"),
 		},
-
+		
 		// "ids_1": { In:   []time.Duration{32 * time.Second}, Want: "1:32s\n", },
 	} {
 		typ := strings.SplitN(name, "_", 2)[0]
@@ -539,7 +539,7 @@ func TestDbmsOutput(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("DbmsOutput"), 10*time.Second)
 	defer cancel()
-
+	
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -548,13 +548,13 @@ func TestDbmsOutput(t *testing.T) {
 	if err := godror.EnableDbmsOutput(ctx, conn); err != nil {
 		t.Fatal(err)
 	}
-
+	
 	txt := `árvíztűrő tükörfúrógép`
 	qry := "BEGIN DBMS_OUTPUT.PUT_LINE('" + txt + "'); END;"
 	if _, err := conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err)
 	}
-
+	
 	var buf bytes.Buffer
 	if err := godror.ReadDbmsOutput(ctx, &buf, conn); err != nil {
 		t.Error(err)
@@ -568,10 +568,10 @@ func TestDbmsOutput(t *testing.T) {
 func TestInOutArray(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
-
+	
 	ctx, cancel := context.WithTimeout(testContext("InOutArray"), 20*time.Second)
 	defer cancel()
-
+	
 	pkg := strings.ToUpper("test_pkg" + tblSuffix)
 	qry := `CREATE OR REPLACE PACKAGE ` + pkg + ` AS
 TYPE int_tab_typ IS TABLE OF BINARY_INTEGER INDEX BY PLS_INTEGER;
@@ -593,7 +593,7 @@ END;
 		t.Fatal(err, qry)
 	}
 	defer testDb.Exec("DROP PACKAGE " + pkg)
-
+	
 	qry = `CREATE OR REPLACE PACKAGE BODY ` + pkg + ` AS
 PROCEDURE inout_int(p_int IN OUT int_tab_typ) IS
   v_idx PLS_INTEGER;
@@ -676,7 +676,7 @@ END;
 			}
 		}
 	}
-
+	
 	intgr := []int32{3, 1, 4, 0, 0}[:3]
 	intgrWant := []int32{3 * 2, 1 * 2, 4 * 2, 3}
 	_ = intgrWant
@@ -1308,13 +1308,15 @@ func TestReadWriteBfile(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				got, err := lobD.GetFileName()
+				dir, file, err := lobD.GetFileName()
 				if err != nil {
 					t.Error(err)
 				}
-				f := []string{tC.Dir,tC.File}
-				if !reflect.DeepEqual(f,got) {
-					t.Errorf("the got %v not equal %v",got,f)
+				if dir != tC.Dir {
+					t.Errorf("the got dir %v not equal want %v", dir, tC.Dir)
+				}
+				if file != tC.File {
+					t.Errorf("the got file %v not equal want %v", file, tC.File)
 				}
 			}
 		}
