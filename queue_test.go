@@ -108,6 +108,7 @@ func TestQueue(t *testing.T) {
 			}
 			t.Fatal("enqueue:", err)
 		}
+		// Let's test enqOne
 		if i > msgCount/3 {
 			msgs = msgs[:1]
 		}
@@ -134,6 +135,7 @@ func TestQueue(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback()
+			// Let's test deqOne
 			if i == msgCount/3 {
 				msgs = msgs[:1]
 			}
@@ -142,7 +144,7 @@ func TestQueue(t *testing.T) {
 					Mode:       godror.DeqRemove,
 					Visibility: godror.VisibleOnCommit,
 					Navigation: godror.NavNext,
-					Wait:       5 * time.Second,
+					Wait:       1 * time.Second,
 				}))
 			if err != nil {
 				t.Fatal(err)
@@ -176,6 +178,9 @@ func TestQueue(t *testing.T) {
 					t.Fatalf("%d. %q already seen in %d", i, s, k)
 				}
 				seen[s] = i
+			}
+			if err = tx.Commit(); err != nil {
+				t.Fatal(err)
 			}
 			return n
 		}(i) == 0 {
