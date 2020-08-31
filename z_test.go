@@ -79,7 +79,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		//defer os.RemoveAll(tempDir)
+		// defer os.RemoveAll(tempDir)
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
 			var sfh *os.File
 			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
@@ -212,6 +212,7 @@ func init() {
 			statTicker <- t
 		}
 	}()
+
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
@@ -503,7 +504,7 @@ END;
 		In   interface{}
 		Want string
 	}{
-		//"int_0":{In:[]int32{}, Want:""},
+		// "int_0":{In:[]int32{}, Want:""},
 		"num_0": {In: []godror.Number{}, Want: ""},
 		"vc_0":  {In: []string{}, Want: ""},
 		"dt_0":  {In: []time.Time{}, Want: ""},
@@ -716,7 +717,7 @@ END;
 			// p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
 			dtWant[i] = d.AddDate(0, 0, 1)
 		} else {
-			//p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+			// p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
 			dtWant[i] = d
 		}
 	}
@@ -743,7 +744,7 @@ END;
 		{Name: "vc", In: vc, Want: vcWant},
 		{Name: "num", In: num, Want: numWant},
 		{Name: "dt", In: dt, Want: dtWant},
-		//{Name: "int", In: intgr, Want: intgrWant},
+		// {Name: "int", In: intgr, Want: intgrWant},
 		{Name: "vc-1", In: vc[:1], Want: []string{"string +", "1"}},
 		{Name: "vc-0", In: vc[:0], Want: []string{"0"}},
 	} {
@@ -776,23 +777,23 @@ END;
 		})
 	}
 
-	//lob := []godror.Lob{godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	// lob := []godror.Lob{godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	t.Run("p2", func(t *testing.T) {
 		if _, err := conn.ExecContext(ctx,
 			"BEGIN "+pkg+".p2(:1, :2, :3); END;",
 			godror.PlSQLArrays,
-			//sql.Out{Dest: &intgr, In: true},
+			// sql.Out{Dest: &intgr, In: true},
 			sql.Out{Dest: &num, In: true},
 			sql.Out{Dest: &vc, In: true},
 			sql.Out{Dest: &dt, In: true},
-			//sql.Out{Dest: &lob, In: true},
+			// sql.Out{Dest: &lob, In: true},
 		); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
-		//if d := cmp.Diff(intgr, intgrWant); d != "" {
+		// if d := cmp.Diff(intgr, intgrWant); d != "" {
 		//	t.Errorf("int: %s", d)
-		//}
+		// }
 		if d := cmp.Diff(num, numWant); d != "" {
 			t.Errorf("num: %s", d)
 		}
@@ -897,7 +898,7 @@ func TestSelectRefCursor(t *testing.T) {
 				t.Error(err)
 				break
 			}
-			//fmt.Println(dests)
+			// fmt.Println(dests)
 			t.Log(dests)
 		}
 		sub.Close()
@@ -1253,12 +1254,89 @@ func TestReadWriteLob(t *testing.T) {
 				t.Error(err)
 				break
 			}
-			//fmt.Println(dests)
+			// fmt.Println(dests)
 			t.Log(dests)
 		}
 		sub.Close()
 	}
 
+}
+
+func TestReadWriteBfile(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ReadWritBfile"), 30*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_Bfile" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (f_id NUMBER(6), f_bf BFILE)", //nolint:gas
+	)
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (F_id, f_bf) VALUES (:1, BFILENAME(:2, :3))", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	for tN, tC := range []struct {
+		Dir  string
+		File string
+	}{
+		{"TEST", "1.txt"},
+	} {
+
+		if _, err = stmt.ExecContext(ctx, tN*2, tC.Dir, tC.File); err != nil {
+			t.Errorf("%d/1. (%s, %s): %v", tN, tC.Dir, tC.File, err)
+			continue
+		}
+
+		var rows *sql.Rows
+		rows, err = conn.QueryContext(ctx,
+			"SELECT F_id, F_bf FROM "+tbl+" WHERE F_id = :1", //nolint:gas
+			2*tN)
+		if err != nil {
+			t.Errorf("%d/2. %v", tN, err)
+			continue
+		}
+		for rows.Next() {
+			var id, bfile interface{}
+			if err = rows.Scan(&id, &bfile); err != nil {
+				rows.Close()
+				t.Errorf("%d/2. scan: %v", tN, err)
+				continue
+			}
+			t.Logf("%d. bfile=%+v", id, bfile)
+			if b, ok := bfile.(*godror.Lob); !ok {
+				t.Errorf("%d. %T is not LOB", id, b)
+			} else {
+				lobD, err := b.Hijack()
+				if err != nil {
+					t.Error(err)
+				}
+				dir, file, err := lobD.GetFileName()
+				if err != nil {
+					t.Error(err)
+				}
+				if dir != tC.Dir {
+					t.Errorf("the got dir %v not equal want %v", dir, tC.Dir)
+				}
+				if file != tC.File {
+					t.Errorf("the got file %v not equal want %v", file, tC.File)
+				}
+			}
+		}
+		rows.Close()
+	}
 }
 
 func printSlice(orig interface{}) interface{} {
@@ -2002,7 +2080,7 @@ func TestQueryTimeout(t *testing.T) {
 }
 
 func TestSDO(t *testing.T) {
-	//t.Parallel()
+	// t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SDO"), 30*time.Second)
 	defer cancel()
 	innerQry := `SELECT MDSYS.SDO_GEOMETRY(
@@ -2081,7 +2159,7 @@ func TestSDO(t *testing.T) {
 		}
 		t.Log(dmp, isNull)
 		obj := intf.(*godror.Object)
-		//t.Log("obj:", obj)
+		// t.Log("obj:", obj)
 		printObj(t, "", obj)
 	}
 	if err = rows.Err(); err != nil {
@@ -2860,31 +2938,31 @@ func TestSelectTypes(t *testing.T) {
 
 	const qry = "SELECT * FROM test_types"
 
-	//get rows
+	// get rows
 	rows, err = testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
 	defer rows.Close()
 
-	//get columns name
+	// get columns name
 	colsName, err := rows.Columns()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Log("columns:", colsName)
 
-	//get types of query columns
+	// get types of query columns
 	types, err := rows.ColumnTypes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	//total columns
+	// total columns
 	totalColumns := len(colsName)
 
 	oracleFieldParse := func(datatype string, field interface{}) interface{} {
-		//DEBUG: print the type of field and datatype returned for the driver
+		// DEBUG: print the type of field and datatype returned for the driver
 		t.Logf("%T\t%s\n", field, datatype)
 
 		if field == nil {
@@ -2968,7 +3046,7 @@ func TestSelectTypes(t *testing.T) {
 		}
 	}
 
-	//record destination
+	// record destination
 	record := make([]interface{}, totalColumns)
 	var rowCount int
 	for rows.Next() {
@@ -2979,7 +3057,7 @@ func TestSelectTypes(t *testing.T) {
 		}
 		rowCount++
 
-		//Parse each field of recordPointers for get a custom field depending the type
+		// Parse each field of recordPointers for get a custom field depending the type
 		for idxCol := range recordPointers {
 			record[idxCol] = oracleFieldParse(types[idxCol].DatabaseTypeName(), reflect.ValueOf(recordPointers[idxCol]).Elem().Interface())
 		}
