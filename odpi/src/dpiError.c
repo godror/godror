@@ -256,7 +256,7 @@ int dpiError__setFromOS(dpiError *error, const char *action)
 
     char buffer[512];
     int err = errno;
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) || defined(__CYGWIN__)
     message = strerror_r(err, buffer, sizeof(buffer));
 #else
     message = (strerror_r(err, buffer, sizeof(buffer)) == 0) ? buffer : NULL;
