@@ -321,7 +321,7 @@ func TestQueueObject(t *testing.T) {
 		for j := range msgs {
 			obj, err := oTyp.NewObject()
 			if err != nil {
-				t.Fatal(i, err)
+				t.Fatalf("%d. %+v", i, err)
 			}
 			defer obj.Close()
 			if err = obj.Set("F_DT", time.Now()); err != nil {
@@ -330,27 +330,27 @@ func TestQueueObject(t *testing.T) {
 			if err = obj.Set("F_VC20", "árvíztűrő"); err != nil {
 				t.Fatal(err)
 			}
-			data.Set(i)
-			k := data.GetInt64()
-			t.Logf("data.GetInt64()=%d (%#v)", k, data)
-			if int64(i) != k {
-				t.Fatalf("got %d, wanted %d", k, i)
+
+			if godror.Log != nil {
+				godror.Log("msg", "Set F_NUM", "i", i)
 			}
 			if err = obj.Set("F_NUM", int64(i)); err != nil {
 				t.Fatal(err)
 			}
-			if err = obj.SetAttribute("F_NUM", &data); err != nil {
-				t.Fatal(err)
+			if godror.Log != nil {
+				godror.Log("msg", "Get F_NUM", "data", data)
 			}
-
 			if err = obj.GetAttribute(&data, "F_NUM"); err != nil {
 				t.Fatal(err)
 			}
-			k = data.GetInt64()
-			if k != int64(i) {
+			k := int(data.GetFloat64())
+			if godror.Log != nil {
+				godror.Log("msg", "Get F_NUM", "data", data, "k", k)
+			}
+			if k != i {
 				t.Fatalf("got %d, wanted %d", k, i)
 			}
-			want = append(want, int(k))
+			want = append(want, k)
 			i++
 			msgs[j].Object = obj
 			msgs[j].Expiration = 10 * time.Second
@@ -413,9 +413,9 @@ func TestQueueObject(t *testing.T) {
 				if err = m.Object.GetAttribute(&data, "F_NUM"); err != nil {
 					t.Fatal(err)
 				}
-				s := int(data.GetInt64())
-				//defer m.Object.ObjectType.Close()
 				m.Object.Close()
+				s := int(data.GetFloat64())
+				//defer m.Object.ObjectType.Close()
 				t.Logf("%d/%d: got: %q", i, j, s)
 				if k, ok := seen[s]; ok {
 					t.Fatalf("%d. %q already seen in %d", i, s, k)

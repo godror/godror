@@ -61,7 +61,10 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, O.getError())
 	}
 	if Log != nil {
-		Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject), attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr), "nativeType", data.NativeTypeNum, "data", data.dpiData)
+		Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
+			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
+			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
+			"data", data.dpiData, "p", fmt.Sprintf("%p", data))
 	}
 	return nil
 }
@@ -467,22 +470,17 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 	t.mu.Lock()
-	attributes, d := t.Attributes, t.dpiObjectType
-	t.Attributes, t.dpiObjectType = nil, nil
+	attributes, cof, d := t.Attributes, t.CollectionOf, t.dpiObjectType
+	t.Attributes, t.CollectionOf, t.dpiObjectType = nil, nil, nil
 	t.mu.Unlock()
 
 	if d == nil {
 		return nil
 	}
-	var released bool
-	defer func() {
-		if !released {
-			C.dpiObjectType_release(d)
-		}
-	}()
-	if t.CollectionOf != nil {
-		if err := t.CollectionOf.Close(); err != nil {
-			return err
+
+	if cof != nil {
+		if err := cof.Close(); err != nil && Log != nil {
+			Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", t.CollectionOf.Name, "error", err)
 		}
 	}
 
@@ -491,6 +489,9 @@ func (t *ObjectType) Close() error {
 			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
+	t.mu.Lock()
+	t.conn = nil
+	t.mu.Unlock()
 
 	if Log != nil {
 		Log("msg", "ObjectType.Close", "name", t.Name)
@@ -498,7 +499,6 @@ func (t *ObjectType) Close() error {
 	if C.dpiObjectType_release(d) == C.DPI_FAILURE {
 		return fmt.Errorf("error on close object type: %w", t.getError())
 	}
-	released = true
 
 	return nil
 }

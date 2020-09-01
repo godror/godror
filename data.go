@@ -126,7 +126,7 @@ func (d *Data) GetInt64() int64 {
 	}
 	i := C.dpiData_getInt64(&d.dpiData)
 	if Log != nil {
-		Log("msg", "GetInt64", "data", d, "i", i)
+		Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
 	}
 	return int64(i)
 }
@@ -281,7 +281,7 @@ type IntervalYM struct {
 // Get returns the contents of Data.
 func (d *Data) Get() interface{} {
 	if Log != nil {
-		Log("msg", "Get", "data", d)
+		Log("msg", "Get", "data", d, "p", fmt.Sprintf("%p", d))
 	}
 	switch d.NativeTypeNum {
 	case C.DPI_NATIVE_TYPE_BOOLEAN:

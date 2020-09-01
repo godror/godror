@@ -140,6 +140,10 @@ func (Q *Queue) Close() error {
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
 		return fmt.Errorf("release: %w", c.getError())
 	}
+	if Q.PayloadObjectType.dpiObjectType != nil {
+		Q.PayloadObjectType.Close()
+		Q.PayloadObjectType = ObjectType{}
+	}
 	if c != nil && Q.connIsOwned {
 		c.Close()
 	}
