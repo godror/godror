@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
@@ -59,7 +60,9 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	if C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, O.getError())
 	}
-	//fmt.Printf("getAttributeValue(%p, %q=%p, %d, %+v)\n", O.dpiObject, attr.Name, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
+	if Log != nil {
+		Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject), attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr), "nativeType", data.NativeTypeNum, "data", data.dpiData)
+	}
 	return nil
 }
 
@@ -484,8 +487,8 @@ func (t *ObjectType) Close() error {
 	}
 
 	for _, attr := range attributes {
-		if err := attr.Close(); err != nil {
-			return err
+		if err := attr.Close(); err != nil && Log != nil {
+			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
 
@@ -579,6 +582,8 @@ func (t *ObjectType) init() error {
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
+
+	runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
 	return nil
 }
 

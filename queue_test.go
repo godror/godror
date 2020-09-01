@@ -206,14 +206,9 @@ func TestQueueObject(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("QueueObject"), 30*time.Second)
 	defer cancel()
-	conn, err := testDb.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
 
 	var user string
-	if err = conn.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
+	if err := testDb.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
 		t.Fatal(err)
 	}
 
@@ -221,8 +216,8 @@ func TestQueueObject(t *testing.T) {
 	const qTblName = qName + "_TBL"
 	const qTypName = qName + "_TYP"
 	const arrTypName = qName + "_ARR_TYP"
-	conn.ExecContext(ctx, "DROP TYPE "+qTypName)
-	conn.ExecContext(ctx, "DROP TYPE "+arrTypName)
+	testDb.ExecContext(ctx, "DROP TYPE "+qTypName)
+	testDb.ExecContext(ctx, "DROP TYPE "+arrTypName)
 
 	var plus strings.Builder
 	for _, qry := range []string{
@@ -235,7 +230,7 @@ func TestQueueObject(t *testing.T) {
 		"CREATE OR REPLACE TYPE " + user + "." + arrTypName + " IS TABLE OF VARCHAR2(1000)",
 		"CREATE OR REPLACE TYPE " + user + "." + qTypName + " IS OBJECT (f_vc20 VARCHAR2(20), f_num NUMBER, f_dt DATE/*, f_arr " + arrTypName + "*/)",
 	} {
-		if _, err = conn.ExecContext(ctx, qry); err != nil {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
 			if strings.HasPrefix(qry, "CREATE ") || !strings.Contains(err.Error(), "not exist") {
 				t.Log(fmt.Errorf("%s: %w", qry, err))
 			}
@@ -268,12 +263,12 @@ func TestQueueObject(t *testing.T) {
 		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
-		if _, err = conn.ExecContext(ctx, qry); err != nil {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
 			t.Logf("%v", fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer func() {
-		conn.ExecContext(
+		if _, err := testDb.ExecContext(
 			testContext("QueueObject-drop"),
 			`DECLARE
 			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
@@ -281,13 +276,24 @@ func TestQueueObject(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`,
 			qTblName, qName,
-		)
+		); err != nil {
+			t.Log(err)
+		}
 	}()
 
-	q, err := godror.NewQueue(ctx, conn, qName, qTypName)
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	q, err := godror.NewQueue(ctx, tx, qName, qTypName, godror.WithEnqOptions(godror.EnqOptions{
+		Visibility:   godror.VisibleOnCommit,
+		DeliveryMode: godror.DeliverPersistent,
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,45 +305,142 @@ func TestQueueObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("enqOpts: %#v", enqOpts)
-	deqOpts, err := q.DeqOptions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("deqOpts: %#v", deqOpts)
 
-	oTyp, err := godror.GetObjectType(ctx, conn, qTypName)
+	oTyp, err := godror.GetObjectType(ctx, tx, qTypName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	obj, err := oTyp.NewObject()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer obj.Close()
-	if err = obj.Set("F_DT", time.Now()); err != nil {
-		t.Error(err)
-	}
-	if err = obj.Set("F_VC20", "árvíztűrő"); err != nil {
-		t.Error(err)
-	}
-	if err = obj.Set("F_NUM", 3.14); err != nil {
-		t.Error(err)
-	}
-	t.Log("obj:", obj)
-	if err = q.Enqueue([]godror.Message{godror.Message{Object: obj}}); err != nil {
-		var ec interface{ Code() int }
-		if errors.As(err, &ec) && ec.Code() == 24444 {
-			t.Skip(err)
+	defer oTyp.Close()
+	var data godror.Data
+
+	// Put some messages into the queue
+	msgs := make([]godror.Message, 2)
+	const msgCount = 2 * maxSessions
+	want := make([]int, 0, msgCount)
+	for i := 0; i < msgCount; {
+		for j := range msgs {
+			obj, err := oTyp.NewObject()
+			if err != nil {
+				t.Fatal(i, err)
+			}
+			defer obj.Close()
+			if err = obj.Set("F_DT", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if err = obj.Set("F_VC20", "árvíztűrő"); err != nil {
+				t.Fatal(err)
+			}
+			data.Set(i)
+			k := data.GetInt64()
+			t.Logf("data.GetInt64()=%d (%#v)", k, data)
+			if int64(i) != k {
+				t.Fatalf("got %d, wanted %d", k, i)
+			}
+			if err = obj.Set("F_NUM", int64(i)); err != nil {
+				t.Fatal(err)
+			}
+			if err = obj.SetAttribute("F_NUM", &data); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = obj.GetAttribute(&data, "F_NUM"); err != nil {
+				t.Fatal(err)
+			}
+			k = data.GetInt64()
+			if k != int64(i) {
+				t.Fatalf("got %d, wanted %d", k, i)
+			}
+			want = append(want, int(k))
+			i++
+			msgs[j].Object = obj
+			msgs[j].Expiration = 10 * time.Second
 		}
-		t.Fatal("enqueue:", err)
+		if err = q.Enqueue(msgs); err != nil {
+			var ec interface{ Code() int }
+			if errors.As(err, &ec) && ec.Code() == 24444 {
+				t.Skip(err)
+			}
+			t.Fatal("enqueue:", err)
+		}
+		if i >= msgCount/3 {
+			msgs = msgs[:1]
+		}
 	}
-	msgs := make([]godror.Message, 1)
-	n, err := q.Dequeue(msgs)
-	if err != nil {
-		t.Error("dequeue:", err)
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("received %d messages", n)
-	for _, m := range msgs[:n] {
-		t.Logf("got: %#v (%q)", m, string(m.Raw))
+	q.Close()
+	oTyp.Close()
+
+	seen := make(map[int]int, msgCount)
+	msgs = msgs[:cap(msgs)]
+	for i := 0; i < msgCount; i++ {
+		if func(i int) int {
+			tx, err := testDb.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			// Let's test deqOne
+			if i == msgCount/3 {
+				msgs = msgs[:1]
+			}
+			q, err := godror.NewQueue(ctx, tx, qName, qTypName,
+				godror.WithDeqOptions(godror.DeqOptions{
+					Mode:       godror.DeqRemove,
+					Visibility: godror.VisibleOnCommit,
+					Navigation: godror.NavNext,
+					Wait:       1 * time.Second,
+				}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer q.Close()
+			//t.Logf("name=%q q=%#v", q.Name(), q)
+			n, err := q.Dequeue(msgs)
+			if err != nil {
+				t.Error("dequeue:", err)
+			}
+			t.Logf("%d. received %d message(s)", i, n)
+			if n == 0 {
+				return 0
+			}
+			for j, m := range msgs[:n] {
+				if m.Object == nil {
+					t.Logf("%d/%d. received empty message: %#v", i, j, m)
+					continue
+				}
+				if err = m.Object.GetAttribute(&data, "F_NUM"); err != nil {
+					t.Fatal(err)
+				}
+				s := int(data.GetInt64())
+				//defer m.Object.ObjectType.Close()
+				m.Object.Close()
+				t.Logf("%d/%d: got: %q", i, j, s)
+				if k, ok := seen[s]; ok {
+					t.Fatalf("%d. %q already seen in %d", i, s, k)
+				}
+				seen[s] = i
+			}
+			if err = tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}(i) == 0 {
+			break
+		}
+	}
+
+	PrintConnStats()
+
+	t.Logf("seen: %v", seen)
+	notSeen := make([]int, 0, len(want))
+	for _, s := range want {
+		if _, ok := seen[s]; !ok {
+			notSeen = append(notSeen, s)
+		}
+	}
+	if len(notSeen) != 0 {
+		t.Errorf("not seen: %v", notSeen)
 	}
 }

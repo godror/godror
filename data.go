@@ -124,7 +124,11 @@ func (d *Data) GetInt64() int64 {
 	if d.IsNull() {
 		return 0
 	}
-	return int64(C.dpiData_getInt64(&d.dpiData))
+	i := C.dpiData_getInt64(&d.dpiData)
+	if Log != nil {
+		Log("msg", "GetInt64", "data", d, "i", i)
+	}
+	return int64(i)
 }
 
 // SetInt64 sets the data as int64.
@@ -276,6 +280,9 @@ type IntervalYM struct {
 
 // Get returns the contents of Data.
 func (d *Data) Get() interface{} {
+	if Log != nil {
+		Log("msg", "Get", "data", d)
+	}
 	switch d.NativeTypeNum {
 	case C.DPI_NATIVE_TYPE_BOOLEAN:
 		return d.GetBool()
@@ -324,6 +331,9 @@ func (d *Data) Set(v interface{}) error {
 	case int64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(x)
+	case int:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+		d.SetInt64(int64(x))
 	case uint8:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
@@ -336,6 +346,9 @@ func (d *Data) Set(v interface{}) error {
 	case uint64:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(x)
+	case uint:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
+		d.SetUint64(uint64(x))
 	case float32:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
 		d.SetFloat32(x)
@@ -379,7 +392,10 @@ func (d *Data) Set(v interface{}) error {
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
 	//d.SetRowid(x)
 	default:
-		return fmt.Errorf("%T: %w", ErrNotSupported, v)
+		return fmt.Errorf("%T: %w", v, ErrNotSupported)
+	}
+	if Log != nil {
+		Log("msg", "Set", "data", d)
 	}
 	return nil
 }
