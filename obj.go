@@ -583,7 +583,9 @@ func (t *ObjectType) init() error {
 		t.Attributes[objAttr.Name] = objAttr
 	}
 
-	runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
+	if false {
+		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
+	}
 	return nil
 }
 

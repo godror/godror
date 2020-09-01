@@ -132,6 +132,9 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 // Close the queue.
 func (Q *Queue) Close() error {
+	if Q == nil {
+		return nil
+	}
 	c, q := Q.conn, Q.dpiQueue
 	Q.conn, Q.dpiQueue = nil, nil
 	if q == nil {
@@ -140,7 +143,7 @@ func (Q *Queue) Close() error {
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
 		return fmt.Errorf("release: %w", c.getError())
 	}
-	if Q.PayloadObjectType.dpiObjectType != nil {
+	if Q.PayloadObjectType.objectTypeConn != nil && Q.PayloadObjectType.dpiObjectType != nil {
 		Q.PayloadObjectType.Close()
 		Q.PayloadObjectType = ObjectType{}
 	}
