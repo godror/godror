@@ -547,10 +547,10 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		return pool, nil
 	}
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	if pool, ok = d.pools[poolKey]; ok {
 		return pool, nil
 	}
-	defer d.mu.Unlock()
 	pool, err := d.createPool(P)
 	if err != nil {
 		return nil, err
