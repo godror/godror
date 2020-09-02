@@ -365,7 +365,9 @@ type ObjectType struct {
 	Schema, Name string
 	Attributes   map[string]ObjectAttribute
 
-	*objectTypeConn
+	mu            sync.RWMutex
+	conn          *conn
+	dpiObjectType *C.dpiObjectType
 
 	DBSize, ClientSizeInBytes, CharSize int
 	CollectionOf                        *ObjectType
@@ -374,11 +376,6 @@ type ObjectType struct {
 	Precision                           int16
 	Scale                               int8
 	FsPrecision                         uint8
-}
-type objectTypeConn struct {
-	mu            sync.RWMutex
-	conn          *conn
-	dpiObjectType *C.dpiObjectType
 }
 
 func (t ObjectType) getError() error { return t.conn.getError() }
@@ -426,7 +423,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 		C.free(unsafe.Pointer(objType))
 		return ObjectType{}, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, c.getError())
 	}
-	t := ObjectType{objectTypeConn: &objectTypeConn{conn: c, dpiObjectType: objType}}
+	t := ObjectType{conn: c, dpiObjectType: objType}
 	err := t.init()
 	return t, err
 }
@@ -470,9 +467,9 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	attributes, cof, d := t.Attributes, t.CollectionOf, t.dpiObjectType
 	t.Attributes, t.CollectionOf, t.dpiObjectType = nil, nil, nil
-	t.mu.Unlock()
 
 	if d == nil {
 		return nil
@@ -489,9 +486,7 @@ func (t *ObjectType) Close() error {
 			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
-	t.mu.Lock()
 	t.conn = nil
-	t.mu.Unlock()
 
 	if Log != nil {
 		Log("msg", "ObjectType.Close", "name", t.Name)
@@ -511,7 +506,7 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		return nil, c.getError()
 	}
 	o := &Object{
-		ObjectType: ObjectType{objectTypeConn: &objectTypeConn{dpiObjectType: objectType, conn: c}},
+		ObjectType: ObjectType{dpiObjectType: objectType, conn: c},
 		dpiObject:  object,
 	}
 	return o, o.init()
@@ -540,7 +535,7 @@ func (t *ObjectType) init() error {
 
 	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
-		t.CollectionOf = &ObjectType{objectTypeConn: &objectTypeConn{conn: t.conn}}
+		t.CollectionOf = &ObjectType{conn: t.conn}
 		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo); err != nil {
 			return err
 		}
@@ -609,7 +604,7 @@ func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, 
 	if typ.oracleTypeNum == 0 {
 		panic("typ is nil")
 	}
-	t := ObjectType{objectTypeConn: &objectTypeConn{conn: conn}}
+	t := ObjectType{conn: conn}
 	err := t.fromDataTypeInfo(typ)
 	return t, err
 }
