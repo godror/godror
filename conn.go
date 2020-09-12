@@ -474,8 +474,12 @@ func (c *conn) initTZ() error {
 	if Log != nil {
 		Log("timezone", timezone, "tz", tz, "error", err)
 	}
-	if err == nil && tz.Location == nil && tz.offSecs != 0 {
-		err = fmt.Errorf("nil timezone from %q,%q", dbTZ, timezone)
+	if err == nil && tz.Location == nil {
+		if tz.offSecs != 0 {
+			err = fmt.Errorf("nil timezone from %q,%q", dbTZ, timezone)
+		} else {
+			tz.Location = time.UTC
+		}
 	}
 	if err != nil {
 		if Log != nil {
@@ -485,7 +489,7 @@ func (c *conn) initTZ() error {
 		panic(err)
 	}
 
-	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, true
+	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, tz.Location != nil
 	if Log != nil {
 		Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
@@ -505,19 +509,18 @@ func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
 		Log("dbTZ", dbTZ, "timezone", timezone)
 	}
 	var tz *time.Location
+	var off int
 	now := time.Now()
-	_, localOff := time.Now().Local().Zone()
-	off := localOff
+	_, localOff := now.Local().Zone()
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
-		if tz, err = time.LoadLocation(dbTZ); err != nil {
-			if Log != nil {
-				Log("LoadLocation", dbTZ, "error", err)
-			}
-		} else {
+		if tz, err = time.LoadLocation(dbTZ); err == nil {
 			_, off = now.In(tz).Zone()
 			return tz, off, nil
+		}
+		if Log != nil {
+			Log("LoadLocation", dbTZ, "error", err)
 		}
 	}
 	// If not, use the numbers.
@@ -813,13 +816,7 @@ func (c *conn) Shutdown(mode ShutdownMode) error {
 }
 
 // Timezone returns the connection's timezone.
-func (c *conn) Timezone() *time.Location {
-	tz := c.params.Timezone
-	if false && tz == nil {
-		return time.Local
-	}
-	return tz
-}
+func (c *conn) Timezone() *time.Location { return c.params.Timezone }
 
 var _ = driver.SessionResetter((*conn)(nil))
 
