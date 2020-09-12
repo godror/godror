@@ -25,7 +25,11 @@ type execer interface {
 const msgCount = 3 * maxSessions
 
 func TestQueue(t *testing.T) {
-	t.Parallel()
+	P, _ := godror.ParseConnString(testConStr)
+	if P.IsStandalone() {
+		// Sometimes it fails with pooled sessions.
+		t.Parallel()
+	}
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 
@@ -297,7 +301,7 @@ func testQueue(
 
 	msgs = msgs[:cap(msgs)]
 	for i := 0; i < msgCount; {
-		if func(i int) int {
+		n := func(i int) int {
 			tx, err := testDb.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -343,7 +347,9 @@ func testQueue(
 				t.Fatal(err)
 			}
 			return n
-		}(i) == 0 {
+		}(i)
+		i += n
+		if n == 0 {
 			break
 		}
 	}
