@@ -67,9 +67,9 @@ func init() {
 		}
 	}
 
+	eUsername, ePassword, eDB := os.Getenv("GODROR_TEST_USERNAME"), os.Getenv("GODROR_TEST_PASSWORD"), os.Getenv("GODROR_TEST_DB")
 	var configDir string
-	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
-		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
+	if eUsername == "" && (eDB == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
@@ -113,7 +113,7 @@ func init() {
 
 		fn := filepath.Join(wd, "env.sh")
 		fmt.Println("Using default database for tests: ", fn)
-		fmt.Printf("export TNS_ADMIN=%s\n", wd)
+		fmt.Printf("export TNS_ADMIN=%q\n", wd)
 		os.Setenv("TNS_ADMIN", tempDir)
 		configDir = tempDir
 
@@ -132,15 +132,23 @@ func init() {
 				}
 				k, v := string(line[:i]), string(line[i+1:])
 				os.Setenv("GODROR_TEST_"+k, v)
+				switch k {
+				case "USERNAME":
+					eUsername = v
+				case "PASSWORD":
+					ePassword = v
+				case "DB":
+					eDB = v
+				}
 			}
 		}
 	}
 
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
-			Username:      os.Getenv("GODROR_TEST_USERNAME"),
-			Password:      godror.NewPassword(os.Getenv("GODROR_TEST_PASSWORD")),
-			ConnectString: os.Getenv("GODROR_TEST_DB"),
+			Username:      eUsername,
+			Password:      godror.NewPassword(ePassword),
+			ConnectString: eDB,
 			EnableEvents:  true,
 			ConfigDir:     configDir,
 		},
@@ -158,7 +166,7 @@ func init() {
 	}
 	for _, k := range []string{"USERNAME", "PASSWORD", "DB", "STANDALONE"} {
 		k = "GODROR_TEST_" + k
-		fmt.Printf("export %s=%s\n", k, os.Getenv(k))
+		fmt.Printf("export %q=%q\n", k, os.Getenv(k))
 	}
 	if b, err := strconv.ParseBool(os.Getenv("GODROR_TEST_STANDALONE")); err == nil {
 		P.StandaloneConnection = b
@@ -169,10 +177,9 @@ func init() {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
-	if os.Getenv("GODROR_TEST_SYSTEM_USERNAME") != "" &&
-		(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD") != "") {
+	if eSysUsername, eSysPassword := os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"); eSysUsername != "" && eSysPassword != "" {
 		PSystem := P
-		PSystem.Username, PSystem.Password = os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), godror.NewPassword(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"))
+		PSystem.Username, PSystem.Password = eSysUsername, godror.NewPassword(eSysPassword)
 		testSystemConStr = PSystem.StringWithPassword()
 	}
 	var err error
