@@ -2443,10 +2443,8 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 }
 
 func TestTsRset(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("TsRset"), 10*time.Second)
-	defer cancel()
 	defer tl.enableLogging(t)()
+	ctx := testContext("TsRset")
 
 	const qry = `DECLARE
   v_cur SYS_REFCURSOR;
@@ -2457,24 +2455,32 @@ BEGIN
   :1 := v_cur;
 END;`
 
-	var rows1 driver.Rows
-	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &rows1}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
+	for i := 0; i < maxSessions/2; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
 
-	}
-	defer rows1.Close()
-	cols1 := rows1.(driver.Rows).Columns()
-	values := make([]driver.Value, len(cols1))
+			var rows1 driver.Rows
+			if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &rows1}); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
 
-	var rowNum int
-	for {
-		rowNum++
-		if err := rows1.Next(values); err != nil {
-			if err == io.EOF {
-				break
 			}
-		}
-		t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			defer rows1.Close()
+			cols1 := rows1.(driver.Rows).Columns()
+			values := make([]driver.Value, len(cols1))
+
+			var rowNum int
+			for {
+				rowNum++
+				if err := rows1.Next(values); err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			}
+		})
 	}
 }
 
