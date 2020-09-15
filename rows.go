@@ -448,6 +448,11 @@ func (r *rows) Next(dest []driver.Value) error {
 			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
 				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz)
 			}
+			if tz == nil {
+				if Log != nil {
+					Log("msg", "DATE", "i", i, "tz", tz, "params", r.conn.params)
+				}
+			}
 			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
 		case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
 			if isNull {

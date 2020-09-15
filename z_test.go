@@ -2442,6 +2442,54 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 	}
 }
 
+func TestDateRset(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx := testContext("DateRset")
+
+	const qry = `DECLARE
+  v_cur SYS_REFCURSOR;
+BEGIN
+  OPEN v_cur FOR
+    SELECT TO_DATE('2015/05/15 8:30:25', 'YYYY/MM/DD HH:MI:SS') as DD FROM DUAL
+    UNION ALL SELECT TO_DATE('2015/05/15 8:30:25', 'YYYY/MM/DD HH:MI:SS') as DD FROM DUAL;
+  :1 := v_cur;
+END;`
+
+	for i := 0; i < maxSessions/2; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			stmt, err := testDb.PrepareContext(ctx, qry)
+			if err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+			}
+			defer stmt.Close()
+
+			var rows1 driver.Rows
+			if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &rows1}); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+
+			}
+			defer rows1.Close()
+			cols1 := rows1.(driver.Rows).Columns()
+			values := make([]driver.Value, len(cols1))
+
+			var rowNum int
+			for {
+				rowNum++
+				if err := rows1.Next(values); err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			}
+		})
+	}
+}
+
 func TestTsRset(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx := testContext("TsRset")

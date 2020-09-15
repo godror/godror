@@ -163,9 +163,12 @@ func (c *conn) closeNotLocking() error {
 	}
 	c.currentTT = TraceTag{}
 	dpiConn := c.dpiConn
-	c.dpiConn, c.params.Timezone, c.tzOffSecs, c.tzValid = nil, nil, 0, false
 	if dpiConn == nil {
 		return nil
+	}
+	c.dpiConn = nil
+	if dpiConn.refCount <= 1 {
+		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
 
 	// dpiConn_release decrements dpiConn's reference counting,
@@ -906,9 +909,12 @@ func (c *conn) IsValid() bool {
 		return false
 	}
 	c.mu.RLock()
-	dpiConnOK, released, pooled := c.dpiConn != nil, c.released, c.poolKey != ""
+	dpiConnOK, released, pooled, tzOK := c.dpiConn != nil, c.released, c.poolKey != "", c.params.Timezone != nil
 	c.mu.RUnlock()
-	if !dpiConnOK {
+	if Log != nil {
+		Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
+	}
+	if !dpiConnOK || !tzOK {
 		return released
 	}
 	if !pooled {
