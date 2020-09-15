@@ -2442,6 +2442,48 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 	}
 }
 
+func TestTsRset(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx := testContext("TsRset")
+
+	const qry = `DECLARE
+  v_cur SYS_REFCURSOR;
+BEGIN
+  OPEN v_cur FOR
+	SELECT TO_TIMESTAMP_TZ('2019-05-01 09:39:12 01:00', 'YYYY-MM-DD HH24:MI:SS TZH:TZM') FROM DUAL
+	UNION ALL SELECT FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '01:00') FROM DUAL;
+  :1 := v_cur;
+END;`
+
+	for i := 0; i < maxSessions/2; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			var rows1 driver.Rows
+			if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &rows1}); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+
+			}
+			defer rows1.Close()
+			cols1 := rows1.(driver.Rows).Columns()
+			values := make([]driver.Value, len(cols1))
+
+			var rowNum int
+			for {
+				rowNum++
+				if err := rows1.Next(values); err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			}
+		})
+	}
+}
+
 func TestTsTZ(t *testing.T) {
 	t.Parallel()
 	fields := []string{
