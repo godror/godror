@@ -887,7 +887,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	if paramsFromCtx || newSession || !c.tzValid {
+	if paramsFromCtx || newSession || !c.tzValid || c.params.Timezone == nil {
 		c.init(P.OnInit)
 	}
 	return nil
