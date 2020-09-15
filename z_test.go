@@ -2457,7 +2457,9 @@ func TestTsTZ(t *testing.T) {
 	for _, Case := range []struct {
 		TZ, TZDec string
 	}{
+		{"00:00", "TZH:TZM"},
 		{"01:00", "TZH:TZM"},
+		{"-01:00", "TZH:TZM"},
 		{"Europe/Berlin", "TZR"},
 	} {
 		repl := strings.NewReplacer("{{.TZ}}", Case.TZ, "{{.TZDec}}", Case.TZDec)
@@ -2478,7 +2480,7 @@ func TestTsTZ(t *testing.T) {
 			if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
 				var oerr *godror.OraErr
 				if errors.As(err, &oerr) && oerr.Code() == 1805 {
-					t.Skip(err)
+					t.Skipf("%s: %s: %+v", Case.TZ, qry, err)
 					continue
 				}
 				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
