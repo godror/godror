@@ -292,7 +292,20 @@ func (st *statement) closeNotLocking() error {
 		}
 	}
 	if dpiStmt.refCount > 0 {
-		C.dpiStmt_release(dpiStmt)
+		errCh := make(chan error, 1)
+		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					Log("msg", "dpiStmt_release", "st", fmt.Sprintf("%p", dpiStmt), "error", err)
+					errCh <- driver.ErrBadConn
+				}
+			}()
+			C.dpiStmt_release(dpiStmt)
+			errCh <- nil
+		}()
+		if err := <-errCh; err != nil {
+			return err
+		}
 	}
 	if c == nil {
 		return driver.ErrBadConn
