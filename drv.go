@@ -460,22 +460,37 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// create ODPI-C connection
 	var dc *C.dpiConn
-	if C.dpiConn_create(
-		d.dpiContext,
-		cUsername, C.uint32_t(len(username)),
-		cPassword, C.uint32_t(len(password)),
-		cConnectString, C.uint32_t(len(P.ConnectString)),
-		commonCreateParamsPtr,
-		&connCreateParams, &dc,
-	) == C.DPI_FAILURE {
-		err := d.getError()
-		if pool != nil {
-			stats, _ := d.getPoolStats(pool)
-			return nil, false, fmt.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
-				username, P.ConnectString, stats, connCreateParams, err)
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- r.(error)
+			}
+		}()
+		defer close(done)
+		var err error
+		if C.dpiConn_create(
+			d.dpiContext,
+			cUsername, C.uint32_t(len(username)),
+			cPassword, C.uint32_t(len(password)),
+			cConnectString, C.uint32_t(len(P.ConnectString)),
+			commonCreateParamsPtr,
+			&connCreateParams, &dc,
+		) == C.DPI_FAILURE {
+			err = d.getError()
+			if pool != nil {
+				stats, _ := d.getPoolStats(pool)
+				err = fmt.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
+					username, P.ConnectString, stats, connCreateParams, err)
+			} else {
+				err = fmt.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
+					username, P.ConnectString, connCreateParams, err)
+			}
 		}
-		return nil, false, fmt.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
-			username, P.ConnectString, connCreateParams, err)
+		done <- err
+	}()
+	if err := <-done; err != nil {
+		return nil, false, err
 	}
 	return dc, connCreateParams.outNewSession == 1, nil
 }
