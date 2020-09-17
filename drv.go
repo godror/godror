@@ -61,6 +61,7 @@ import (
 	"io"
 	"math"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -462,7 +463,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	var dc *C.dpiConn
 	done := make(chan error, 1)
 	go func() {
+		pof := debug.SetPanicOnFault(true)
 		defer func() {
+			debug.SetPanicOnFault(pof)
 			if r := recover(); r != nil {
 				done <- r.(error)
 			}
