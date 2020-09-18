@@ -30,7 +30,6 @@ import (
 	"io"
 	"reflect"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -293,22 +292,7 @@ func (st *statement) closeNotLocking() error {
 		}
 	}
 	if dpiStmt.refCount > 0 {
-		errCh := make(chan error, 1)
-		go func() {
-			pof := debug.SetPanicOnFault(true)
-			defer func() {
-				debug.SetPanicOnFault(pof)
-				if err := recover(); err != nil {
-					Log("msg", "dpiStmt_release", "st", fmt.Sprintf("%p", dpiStmt), "error", err)
-					errCh <- driver.ErrBadConn
-				}
-			}()
-			C.dpiStmt_release(dpiStmt)
-			errCh <- nil
-		}()
-		if err := <-errCh; err != nil {
-			return err
-		}
+		C.dpiStmt_release(dpiStmt)
 	}
 	if c == nil {
 		return driver.ErrBadConn
@@ -391,13 +375,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	// execute
 	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
 	go func() {
-		pof := debug.SetPanicOnFault(true)
-		defer func() {
-			debug.SetPanicOnFault(pof)
-			if r := recover(); r != nil {
-				done <- r.(error)
-			}
-		}()
 		defer close(done)
 		var err error
 		for i := 0; i < 3; i++ {
@@ -577,13 +554,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	done := make(chan error, 1)
 	c, dpiStmt := st.conn, st.dpiStmt
 	go func() {
-		pof := debug.SetPanicOnFault(true)
-		defer func() {
-			debug.SetPanicOnFault(pof)
-			if r := recover(); r != nil {
-				done <- r.(error)
-			}
-		}()
 		defer close(done)
 		var err error
 		for i := 0; i < 3; i++ {
