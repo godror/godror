@@ -9,11 +9,12 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
-	errors "golang.org/x/xerrors"
 )
 
 func TestLOBAppend(t *testing.T) {
@@ -35,7 +36,7 @@ END;`
 
 	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer stmt.Close()
 	var tmp godror.Lob
@@ -109,27 +110,34 @@ func TestStatWithLobs(t *testing.T) {
 
 func newMetricSet(ctx context.Context, db *sql.DB) (*metricSet, error) {
 	qry := "select /* metricset: sqlstats */ inst_id, sql_fulltext, last_active_time from gv$sqlstats WHERE ROWNUM < 11"
-	stmt, err := db.PrepareContext(ctx, qry)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
 		return nil, err
 	}
 
-	return &metricSet{
-		stmt: stmt,
-	}, nil
+	return &metricSet{tx: tx, stmt: stmt}, nil
 }
 
 type metricSet struct {
+	tx   *sql.Tx
 	stmt *sql.Stmt
 }
 
 func (m *metricSet) Close() error {
-	st := m.stmt
-	m.stmt = nil
+	tx, st := m.tx, m.stmt
+	m.tx, m.stmt = nil, nil
 	if st == nil {
 		return nil
 	}
-	return st.Close()
+	st.Close()
+	if tx == nil {
+		return nil
+	}
+	return tx.Rollback()
 }
 
 // Fetch methods implements the data gathering and data conversion to the right format

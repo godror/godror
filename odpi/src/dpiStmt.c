@@ -56,8 +56,8 @@ int dpiStmt__allocate(dpiConn *conn, int scrollable, dpiStmt **stmt,
 //   Bind the variable to the statement using either a position or a name. A
 // reference to the variable will be retained.
 //-----------------------------------------------------------------------------
-static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, int addReference,
-        uint32_t pos, const char *name, uint32_t nameLength, dpiError *error)
+static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, uint32_t pos,
+        const char *name, uint32_t nameLength, dpiError *error)
 {
     dpiBindVar *bindVars, *entry = NULL;
     int found, dynamicBind, status;
@@ -148,8 +148,7 @@ static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, int addReference,
     }
 
     // perform actual bind
-    if (addReference)
-        dpiGen__setRefCount(var, error, 1);
+    dpiGen__setRefCount(var, error, 1);
     entry->var = var;
     dynamicBind = stmt->isReturning || var->isDynamic;
     if (pos > 0) {
@@ -368,6 +367,7 @@ static int dpiStmt__createBindVar(dpiStmt *stmt,
     dpiData *varData;
     dpiVar *tempVar;
     uint32_t size;
+    int status;
 
     // determine the type (and size) of bind variable to create
     size = 0;
@@ -418,13 +418,11 @@ static int dpiStmt__createBindVar(dpiStmt *stmt,
         return DPI_FAILURE;
 
     // bind variable to statement
-    if (dpiStmt__bind(stmt, tempVar, 0, pos, name, nameLength, error) < 0) {
-        dpiVar__free(tempVar, error);
-        return DPI_FAILURE;
-    }
-
-    *var = tempVar;
-    return DPI_SUCCESS;
+    status = dpiStmt__bind(stmt, tempVar,  pos, name, nameLength, error);
+    dpiGen__setRefCount(tempVar, error, -1);
+    if (status == DPI_SUCCESS)
+        *var = tempVar;
+    return status;
 }
 
 
@@ -1057,7 +1055,7 @@ static int dpiStmt__reExecute(dpiStmt *stmt, uint32_t numIters,
             continue;
         var = bindVar->var;
         bindVar->var = NULL;
-        if (dpiStmt__bind(stmt, var, 0, bindVar->pos, bindVar->name,
+        if (dpiStmt__bind(stmt, var, bindVar->pos, bindVar->name,
                 bindVar->nameLength, error) < 0) {
             dpiGen__setRefCount(var, error, -1);
             return DPI_FAILURE;
@@ -1094,7 +1092,7 @@ int dpiStmt_bindByName(dpiStmt *stmt, const char *name, uint32_t nameLength,
     DPI_CHECK_PTR_NOT_NULL(stmt, name)
     if (dpiGen__checkHandle(var, DPI_HTYPE_VAR, "bind by name", &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    status = dpiStmt__bind(stmt, var, 1, 0, name, nameLength, &error);
+    status = dpiStmt__bind(stmt, var, 0, name, nameLength, &error);
     return dpiGen__endPublicFn(stmt, status, &error);
 }
 
@@ -1112,7 +1110,7 @@ int dpiStmt_bindByPos(dpiStmt *stmt, uint32_t pos, dpiVar *var)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     if (dpiGen__checkHandle(var, DPI_HTYPE_VAR, "bind by pos", &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    status = dpiStmt__bind(stmt, var, 1, pos, NULL, 0, &error);
+    status = dpiStmt__bind(stmt, var, pos, NULL, 0, &error);
     return dpiGen__endPublicFn(stmt, status, &error);
 }
 
@@ -1132,10 +1130,8 @@ int dpiStmt_bindValueByName(dpiStmt *stmt, const char *name,
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(stmt, name)
     DPI_CHECK_PTR_NOT_NULL(stmt, data)
-    if (dpiStmt__createBindVar(stmt, nativeTypeNum, data, &var, 0, name,
-            nameLength, &error) < 0)
-        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    status = dpiStmt__bind(stmt, var, 1, 0, name, nameLength, &error);
+    status = dpiStmt__createBindVar(stmt, nativeTypeNum, data, &var, 0, name,
+            nameLength, &error);
     return dpiGen__endPublicFn(stmt, status, &error);
 }
 
@@ -1154,10 +1150,8 @@ int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
     if (dpiStmt__check(stmt, __func__, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(stmt, data)
-    if (dpiStmt__createBindVar(stmt, nativeTypeNum, data, &var, pos, NULL, 0,
-            &error) < 0)
-        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    status = dpiStmt__bind(stmt, var, 1, pos, NULL, 0, &error);
+    status = dpiStmt__createBindVar(stmt, nativeTypeNum, data, &var, pos, NULL,
+            0, &error);
     return dpiGen__endPublicFn(stmt, status, &error);
 }
 

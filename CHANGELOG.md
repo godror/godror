@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.20.0]
+### Added
+- GetFileName method to DirectLob.
+
+### Changed
+- DeqOptions.Delay, Expiration and Wait became a time.Duration
+- Use ODPI-C v4.0.2
+
+## [0.19.4]
+### Added
+- Allow specifying Enq/DeqOptions in NewQueue.
+
+### Changed
+- Changed the default Enq/Deq Queue options to the Oracle defaults.
+- Document that Go 1.13 is required (for sql.NullInt32).
+
 ## [0.19.2]
 ### Added
 - SELECT ROWID as string (no need for the ''||ROWID workaround).

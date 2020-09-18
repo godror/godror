@@ -12,11 +12,11 @@ package godror
 import "C"
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
-
-	errors "golang.org/x/xerrors"
 )
 
 const MsgIDLength = 16
@@ -25,7 +25,7 @@ var zeroMsgID [MsgIDLength]byte
 
 // DefaultEnqOptions is the default set for NewQueue.
 var DefaultEnqOptions = EnqOptions{
-	Visibility:   VisibleImmediate,
+	Visibility:   VisibleOnCommit,
 	DeliveryMode: DeliverPersistent,
 }
 
@@ -33,32 +33,52 @@ var DefaultEnqOptions = EnqOptions{
 var DefaultDeqOptions = DeqOptions{
 	Mode:         DeqRemove,
 	DeliveryMode: DeliverPersistent,
-	Navigation:   NavFirst,
-	Visibility:   VisibleImmediate,
-	Wait:         30,
+	Navigation:   NavNext,
+	Visibility:   VisibleOnCommit,
+	Wait:         0,
 }
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
+	mu sync.Mutex
+
 	PayloadObjectType ObjectType
 	props             []*C.dpiMsgProps
 	name              string
 	conn              *conn
 	dpiQueue          *C.dpiQueue
-
-	mu sync.Mutex
+	connIsOwned       bool
 }
+
+type queueOption interface{ qOption() }
+
+// WithDeqOptions returns a queueOption usable in NewQueue, applying the given DeqOptions.
+func WithDeqOptions(o DeqOptions) queueOption { return o }
+
+// WithEnqOptions returns a queueOption usable in NewQueue, applying the given EnqOptions.
+func WithEnqOptions(o EnqOptions) queueOption { return o }
 
 // NewQueue creates a new Queue.
 //
 // WARNING: the connection given to it must not be closed before the Queue is closed!
 // So use an sql.Conn for it.
-func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string) (*Queue, error) {
+func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string, options ...queueOption) (*Queue, error) {
 	cx, err := DriverConn(ctx, execer)
 	if err != nil {
 		return nil, err
 	}
-	Q := Queue{conn: cx.(*conn), name: name}
+	// Check whether this is a pool or a single connection.
+	cx2, err := DriverConn(ctx, execer)
+	if err != nil {
+		cx.Close()
+		return nil, err
+	}
+	//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
+	owned := cx.(*conn).dpiConn != cx2.(*conn).dpiConn
+	if owned {
+		cx2.Close()
+	}
+	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: owned}
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
@@ -70,19 +90,39 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	}
 	value := C.CString(name)
 	if C.dpiConn_newQueue(Q.conn.dpiConn, value, C.uint(len(name)), payloadType, &Q.dpiQueue) == C.DPI_FAILURE {
-		err = errors.Errorf("newQueue %q: %w", name, Q.conn.drv.getError())
+		err = fmt.Errorf("newQueue %q: %w", name, Q.conn.drv.getError())
 	}
 	C.free(unsafe.Pointer(value))
 	if err != nil {
 		cx.Close()
 		return nil, err
 	}
-	if err = Q.SetEnqOptions(DefaultEnqOptions); err != nil {
+
+	var a [4096]byte
+	stack := a[:runtime.Stack(a[:], false)]
+	runtime.SetFinalizer(&Q, func(Q *Queue) {
+		if Q != nil && Q.dpiQueue != nil {
+			fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+			Q.Close()
+		}
+	})
+
+	enqOpts := DefaultEnqOptions
+	deqOpts := DefaultDeqOptions
+	for _, o := range options {
+		switch x := o.(type) {
+		case DeqOptions:
+			deqOpts = x
+		case EnqOptions:
+			enqOpts = x
+		}
+	}
+	if err = Q.SetEnqOptions(enqOpts); err != nil {
 		cx.Close()
 		Q.Close()
 		return nil, err
 	}
-	if err = Q.SetDeqOptions(DefaultDeqOptions); err != nil {
+	if err = Q.SetDeqOptions(deqOpts); err != nil {
 		cx.Close()
 		Q.Close()
 		return nil, err
@@ -92,13 +132,23 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 // Close the queue.
 func (Q *Queue) Close() error {
+	if Q == nil {
+		return nil
+	}
 	c, q := Q.conn, Q.dpiQueue
 	Q.conn, Q.dpiQueue = nil, nil
 	if q == nil {
 		return nil
 	}
 	if C.dpiQueue_release(q) == C.DPI_FAILURE {
-		return errors.Errorf("release: %w", c.getError())
+		return fmt.Errorf("release: %w", c.getError())
+	}
+	if Q.PayloadObjectType.dpiObjectType != nil {
+		Q.PayloadObjectType.Close()
+		Q.PayloadObjectType = ObjectType{}
+	}
+	if c != nil && Q.connIsOwned {
+		c.Close()
 	}
 	return nil
 }
@@ -111,7 +161,7 @@ func (Q *Queue) EnqOptions() (EnqOptions, error) {
 	var E EnqOptions
 	var opts *C.dpiEnqOptions
 	if C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return E, errors.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
+		return E, fmt.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
 	}
 	err := E.fromOra(Q.conn.drv, opts)
 	return E, err
@@ -122,7 +172,7 @@ func (Q *Queue) DeqOptions() (DeqOptions, error) {
 	var D DeqOptions
 	var opts *C.dpiDeqOptions
 	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return D, errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
+		return D, fmt.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
 	}
 	err := D.fromOra(Q.conn.drv, opts)
 	return D, err
@@ -143,7 +193,8 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 
 	var ok C.int
 	num := C.uint(len(props))
-	if num == 1 {
+	deqOne := num == 1
+	if deqOne {
 		ok = C.dpiQueue_deqOne(Q.dpiQueue, &props[0])
 	} else {
 		ok = C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
@@ -151,9 +202,9 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	if ok == C.DPI_FAILURE {
 		err := Q.conn.getError()
 		if code := err.(interface{ Code() int }).Code(); code == 3156 {
-			return 0, context.DeadlineExceeded
+			return 0, nil
 		}
-		return 0, errors.Errorf("dequeue: %w", err)
+		return 0, fmt.Errorf("dequeue: %w", err)
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
@@ -163,6 +214,9 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 			}
 		}
 		C.dpiMsgProps_release(p)
+		if deqOne && messages[i].IsZero() {
+			return 0, nil
+		}
 	}
 	return int(num), firstErr
 }
@@ -191,7 +245,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 	}()
 	for i, m := range messages {
 		if C.dpiConn_newMsgProps(Q.conn.dpiConn, &props[i]) == C.DPI_FAILURE {
-			return errors.Errorf("newMsgProps: %w", Q.conn.getError())
+			return fmt.Errorf("newMsgProps: %w", Q.conn.getError())
 		}
 		if err := m.toOra(Q.conn.drv, props[i]); err != nil {
 			return err
@@ -205,7 +259,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		ok = C.dpiQueue_enqMany(Q.dpiQueue, C.uint(len(props)), &props[0])
 	}
 	if ok == C.DPI_FAILURE {
-		return errors.Errorf("enqueue %#v: %w", messages, Q.conn.getError())
+		return fmt.Errorf("enqueue %#v: %w", messages, Q.conn.getError())
 	}
 
 	return nil
@@ -217,11 +271,18 @@ type Message struct {
 	Enqueued                time.Time
 	MsgID, OriginalMsgID    [16]byte
 	Raw                     []byte
-	Delay, Expiration       int32
+	Delay, Expiration       time.Duration
 	Priority, NumAttempts   int32
 	Object                  *Object
 	DeliveryMode            DeliveryMode
 	State                   MessageState
+}
+
+func (M Message) IsZero() bool {
+	return M.Correlation == "" && M.ExceptionQ == "" && M.Enqueued.IsZero() &&
+		M.MsgID == zeroMsgID && M.OriginalMsgID == zeroMsgID && len(M.Raw) == 0 &&
+		M.Delay == 0 && M.Expiration == 0 && M.Priority == 0 && M.NumAttempts == 0 &&
+		M.Object == nil && M.State == 0
 }
 
 // Deadline return the message's intended deadline: enqueue time + delay + expiration.
@@ -229,7 +290,7 @@ func (M Message) Deadline() time.Time {
 	if M.Enqueued.IsZero() {
 		return M.Enqueued
 	}
-	return M.Enqueued.Add(time.Duration(M.Delay+M.Expiration) * time.Second)
+	return M.Enqueued.Add(M.Delay + M.Expiration)
 }
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	var firstErr error
@@ -238,7 +299,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 			return
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", name, d.getError())
+			firstErr = fmt.Errorf("%s: %w", name, d.getError())
 		}
 	}
 	if M.Correlation != "" {
@@ -247,7 +308,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay)), "setDelay")
+	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay/time.Second)), "setDelay")
 
 	if M.ExceptionQ != "" {
 		value := C.CString(M.ExceptionQ)
@@ -255,7 +316,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration)), "setExpiration")
+	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration/time.Second)), "setExpiration")
 
 	if M.OriginalMsgID != zeroMsgID {
 		OK(C.dpiMsgProps_setOriginalMsgId(props, (*C.char)(unsafe.Pointer(&M.OriginalMsgID[0])), MsgIDLength), "setMsgOriginalId")
@@ -279,7 +340,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", name, c.getError())
+			firstErr = fmt.Errorf("%s: %w", name, c.getError())
 		}
 		return false
 	}
@@ -297,7 +358,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 
 	M.Delay = 0
 	if OK(C.dpiMsgProps_getDelay(props, &cint), "getDelay") && cint > 0 {
-		M.Delay = int32(cint)
+		M.Delay = time.Duration(cint) * time.Second
 	}
 
 	M.DeliveryMode = DeliverPersistent
@@ -323,7 +384,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 
 	M.Expiration = 0
 	if OK(C.dpiMsgProps_getExpiration(props, &cint), "getExpiration") && cint > 0 {
-		M.Expiration = int32(cint)
+		M.Expiration = time.Duration(cint) * time.Second
 	}
 
 	M.MsgID = zeroMsgID
@@ -378,6 +439,8 @@ type EnqOptions struct {
 	DeliveryMode   DeliveryMode
 }
 
+func (EnqOptions) qOption() {}
+
 func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
@@ -385,7 +448,7 @@ func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+			firstErr = fmt.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}
@@ -413,7 +476,7 @@ func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+			firstErr = fmt.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}
@@ -430,7 +493,7 @@ func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
 func (Q *Queue) SetEnqOptions(E EnqOptions) error {
 	var opts *C.dpiEnqOptions
 	if C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return errors.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
+		return fmt.Errorf("getEnqOptions: %w", Q.conn.drv.getError())
 	}
 	return E.toOra(Q.conn.drv, opts)
 }
@@ -443,8 +506,10 @@ type DeqOptions struct {
 	DeliveryMode                     DeliveryMode
 	Navigation                       DeqNavigation
 	Visibility                       Visibility
-	Wait                             uint32
+	Wait                             time.Duration
 }
+
+func (DeqOptions) qOption() {}
 
 func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
@@ -453,7 +518,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+			firstErr = fmt.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}
@@ -496,7 +561,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	D.Wait = 0
 	var u32 C.uint
 	if OK(C.dpiDeqOptions_getWait(opts, &u32), "getWait") {
-		D.Wait = uint32(u32)
+		D.Wait = time.Duration(u32) * time.Second
 	}
 	return firstErr
 }
@@ -508,7 +573,7 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 			return true
 		}
 		if firstErr == nil {
-			firstErr = errors.Errorf("%s: %w", msg, d.getError())
+			firstErr = fmt.Errorf("%s: %w", msg, d.getError())
 		}
 		return false
 	}
@@ -540,7 +605,7 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 
 	OK(C.dpiDeqOptions_setVisibility(opts, C.dpiVisibility(D.Visibility)), "setVisibility")
 
-	OK(C.dpiDeqOptions_setWait(opts, C.uint(D.Wait)), "setWait")
+	OK(C.dpiDeqOptions_setWait(opts, C.uint(D.Wait/time.Second)), "setWait")
 
 	return firstErr
 }
@@ -549,7 +614,7 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 func (Q *Queue) SetDeqOptions(D DeqOptions) error {
 	var opts *C.dpiDeqOptions
 	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
+		return fmt.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
 	}
 	return D.toOra(Q.conn.drv, opts)
 }
@@ -558,21 +623,16 @@ func (Q *Queue) SetDeqOptions(D DeqOptions) error {
 func (Q *Queue) SetDeqCorrelation(correlation string) error {
 	var opts *C.dpiDeqOptions
 	if C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) == C.DPI_FAILURE {
-		return errors.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
+		return fmt.Errorf("getDeqOptions: %w", Q.conn.drv.getError())
 	}
 	cs := C.CString(correlation)
 	ok := C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(correlation))) == C.DPI_FAILURE
 	C.free(unsafe.Pointer(cs))
 	if !ok {
-		return errors.Errorf("setCorrelation: %w", Q.conn.drv.getError())
+		return fmt.Errorf("setCorrelation: %w", Q.conn.drv.getError())
 	}
 	return nil
 }
-
-const (
-	NoWait      = uint32(0)
-	WaitForever = uint32(1<<31 - 1)
-)
 
 // MessageState constants representing message's state.
 type MessageState uint32

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	godror "github.com/godror/godror"
-	errors "golang.org/x/xerrors"
 )
 
 // go install && go test -c && ./godror.v2.test -test.run=^$ -test.bench=Insert25 -test.cpuprofile=/tmp/insert25.prof && go tool pprof ./godror.v2.test /tmp/insert25.prof
@@ -81,7 +80,7 @@ END tst_bench_25;`,
 			if strings.HasPrefix(qry, "DROP TABLE ") {
 				continue
 			}
-			b.Fatal(errors.Errorf("%s: %w", qry, err))
+			b.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 
@@ -195,7 +194,7 @@ END tst_bench_inout;`,
 			if strings.HasPrefix(qry, "DROP TABLE ") {
 				continue
 			}
-			b.Fatal(errors.Errorf("%s: %w", qry, err))
+			b.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 

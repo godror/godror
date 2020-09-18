@@ -10,7 +10,7 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
-At least Go 1.11 is required!
+At least Go 1.13 is required!
 Cgo is required, so cross-compilation is hard, and you cannot set `CGO_ENABLED=0`!
 
 Although Oracle Client libraries are NOT required for compiling, they *are*
@@ -134,6 +134,48 @@ time.Now().Format("2-Jan-06 3:04:05.000000 PM")
 ```
 
 See [#121 under the old project](https://github.com/go-goracle/goracle/issues/121).
+
+
+### Stored procedure returning cursor (result set)
+```go
+var rset1, rset2 driver.Rows
+
+query := `BEGIN Package.StoredProcA(123, :1, :2); END;`
+
+if _, err := db.ExecContext(ctx, query, sql.Out{Dest: &rset1}, sql.Out{Dest: &rset2}); err != nil {
+	log.Printf("Error running %q: %+v", query, err)
+	return
+}
+defer rset1.Close()
+defer rset2.Close()
+
+cols1 := rset1.(driver.RowsColumnTypeScanType).Columns()
+dests1 := make([]driver.Value, len(cols1))
+for {
+	if err := rset1.Next(dests1); err != nil {
+		if err == io.EOF {
+			break
+		}
+		rset1.Close()
+		return err
+	}
+	fmt.Println(dests1)
+}
+
+cols2 := rset1.(driver.RowsColumnTypeScanType).Columns()
+dests2 := make([]driver.Value, len(cols2))
+for {
+	if err := rset2.Next(dests2); err != nil {
+		if err == io.EOF {
+			break
+		}
+		rset2.Close()
+		return err
+	}
+	fmt.Println(dests2)
+}
+```
+
 
 ## Contribute
 

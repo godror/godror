@@ -197,7 +197,7 @@ int dpiSodaDb_createCollection(dpiSodaDb *db, const char *name,
 //-----------------------------------------------------------------------------
 // dpiSodaDb_createDocument() [PUBLIC]
 //   Create a SODA document that can be inserted in the collection or can be
-// used to replace and existing document in the collection.
+// used to replace an existing document in the collection.
 //-----------------------------------------------------------------------------
 int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
         uint32_t keyLength, const char *content, uint32_t contentLength,

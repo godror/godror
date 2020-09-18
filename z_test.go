@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -30,7 +31,6 @@ import (
 	"github.com/go-logfmt/logfmt"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
-	errors "golang.org/x/xerrors"
 
 	godror "github.com/godror/godror"
 )
@@ -63,13 +63,13 @@ func init() {
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
 		if time.Local, err = time.LoadLocation(tzName); err != nil {
-			panic(errors.Errorf("unknown GODROR_TIMEZONE=%q: %w", tzName, err))
+			panic(fmt.Errorf("unknown GODROR_TIMEZONE=%q: %w", tzName, err))
 		}
 	}
 
+	eUsername, ePassword, eDB := os.Getenv("GODROR_TEST_USERNAME"), os.Getenv("GODROR_TEST_PASSWORD"), os.Getenv("GODROR_TEST_DB")
 	var configDir string
-	if os.Getenv("GODROR_TEST_USERNAME") == "" &&
-		(os.Getenv("GODROR_TEST_DB") == "" || os.Getenv("TNS_ADMIN") == "") {
+	if eUsername == "" && (eDB == "" || os.Getenv("TNS_ADMIN") == "") {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
@@ -79,7 +79,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		//defer os.RemoveAll(tempDir)
+		// defer os.RemoveAll(tempDir)
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
 			var sfh *os.File
 			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
@@ -113,7 +113,7 @@ func init() {
 
 		fn := filepath.Join(wd, "env.sh")
 		fmt.Println("Using default database for tests: ", fn)
-		fmt.Printf("export TNS_ADMIN=%s\n", wd)
+		fmt.Printf("export TNS_ADMIN=%q\n", wd)
 		os.Setenv("TNS_ADMIN", tempDir)
 		configDir = tempDir
 
@@ -132,15 +132,23 @@ func init() {
 				}
 				k, v := string(line[:i]), string(line[i+1:])
 				os.Setenv("GODROR_TEST_"+k, v)
+				switch k {
+				case "USERNAME":
+					eUsername = v
+				case "PASSWORD":
+					ePassword = v
+				case "DB":
+					eDB = v
+				}
 			}
 		}
 	}
 
 	P := godror.ConnectionParams{
 		CommonParams: godror.CommonParams{
-			Username:      os.Getenv("GODROR_TEST_USERNAME"),
-			Password:      godror.NewPassword(os.Getenv("GODROR_TEST_PASSWORD")),
-			ConnectString: os.Getenv("GODROR_TEST_DB"),
+			Username:      eUsername,
+			Password:      godror.NewPassword(ePassword),
+			ConnectString: eDB,
 			EnableEvents:  true,
 			ConfigDir:     configDir,
 		},
@@ -158,7 +166,7 @@ func init() {
 	}
 	for _, k := range []string{"USERNAME", "PASSWORD", "DB", "STANDALONE"} {
 		k = "GODROR_TEST_" + k
-		fmt.Printf("export %s=%s\n", k, os.Getenv(k))
+		fmt.Printf("export %q=%q\n", k, os.Getenv(k))
 	}
 	if b, err := strconv.ParseBool(os.Getenv("GODROR_TEST_STANDALONE")); err == nil {
 		P.StandaloneConnection = b
@@ -169,15 +177,14 @@ func init() {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
-	if os.Getenv("GODROR_TEST_SYSTEM_USERNAME") != "" &&
-		(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD") != "") {
+	if eSysUsername, eSysPassword := os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"); eSysUsername != "" && eSysPassword != "" {
 		PSystem := P
-		PSystem.Username, PSystem.Password = os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), godror.NewPassword(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"))
+		PSystem.Username, PSystem.Password = eSysUsername, godror.NewPassword(eSysPassword)
 		testSystemConStr = PSystem.StringWithPassword()
 	}
 	var err error
 	if testDb, err = sql.Open("godror", testConStr); err != nil {
-		panic(errors.Errorf("%s: %+v", testConStr, err))
+		panic(fmt.Errorf("%s: %+v", testConStr, err))
 	}
 
 	fmt.Println("#", P.String())
@@ -205,12 +212,20 @@ func init() {
 		}
 	}()
 
+	statTicker = make(chan time.Time)
+	ticks := time.NewTicker(30 * time.Second).C
+	go func() {
+		for t := range ticks {
+			statTicker <- t
+		}
+	}()
+
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range time.NewTicker(30 * time.Second).C {
+			for range statTicker {
 				fmt.Printf("testDb: %+v\n", testDb.Stats())
 			}
 		}()
@@ -220,7 +235,7 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range time.NewTicker(30 * time.Second).C {
+			for range statTicker {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
@@ -232,6 +247,13 @@ func init() {
 		}()
 	}
 }
+
+var statTicker chan time.Time
+
+func PrintConnStats() {
+	statTicker <- time.Now()
+}
+
 func testContext(name string) context.Context {
 	return godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
 }
@@ -325,7 +347,7 @@ func TestDescribeQuery(t *testing.T) {
 	const qry = "SELECT * FROM user_tab_cols"
 	cols, err := godror.DescribeQuery(ctx, testDb, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	t.Log(cols)
 }
@@ -478,7 +500,7 @@ END;
 	defer tx.Rollback()
 	qry = "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err = tx.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
 	epoch := time.Date(2017, 11, 20, 12, 14, 21, 0, time.UTC)
@@ -489,7 +511,7 @@ END;
 		In   interface{}
 		Want string
 	}{
-		//"int_0":{In:[]int32{}, Want:""},
+		// "int_0":{In:[]int32{}, Want:""},
 		"num_0": {In: []godror.Number{}, Want: ""},
 		"vc_0":  {In: []string{}, Want: ""},
 		"dt_0":  {In: []time.Time{}, Want: ""},
@@ -523,7 +545,7 @@ END;
 		if _, err := tx.ExecContext(ctx, qry, godror.PlSQLArrays,
 			sql.Out{Dest: &res}, tC.In,
 		); err != nil {
-			t.Error(errors.Errorf("%q. %s %+v: %w", name, qry, tC.In, err))
+			t.Error(fmt.Errorf("%q. %s %+v: %w", name, qry, tC.In, err))
 		}
 		t.Logf("%q. %q", name, res)
 		if typ == "num" {
@@ -702,7 +724,7 @@ END;
 			// p_dt(v_idx) := NVL(p_dt(v_idx) + 1, TRUNC(SYSDATE)-v_idx);
 			dtWant[i] = d.AddDate(0, 0, 1)
 		} else {
-			//p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
+			// p_dt(NVL(p_dt.LAST, 0)+1) := TRUNC(SYSDATE);
 			dtWant[i] = d
 		}
 	}
@@ -729,7 +751,7 @@ END;
 		{Name: "vc", In: vc, Want: vcWant},
 		{Name: "num", In: num, Want: numWant},
 		{Name: "dt", In: dt, Want: dtWant},
-		//{Name: "int", In: intgr, Want: intgrWant},
+		// {Name: "int", In: intgr, Want: intgrWant},
 		{Name: "vc-1", In: vc[:1], Want: []string{"string +", "1"}},
 		{Name: "vc-0", In: vc[:0], Want: []string{"0"}},
 	} {
@@ -762,23 +784,23 @@ END;
 		})
 	}
 
-	//lob := []godror.Lob{godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
+	// lob := []godror.Lob{godror.Lob{IsClob: true, Reader: strings.NewReader("abcdef")}}
 	t.Run("p2", func(t *testing.T) {
 		if _, err := conn.ExecContext(ctx,
 			"BEGIN "+pkg+".p2(:1, :2, :3); END;",
 			godror.PlSQLArrays,
-			//sql.Out{Dest: &intgr, In: true},
+			// sql.Out{Dest: &intgr, In: true},
 			sql.Out{Dest: &num, In: true},
 			sql.Out{Dest: &vc, In: true},
 			sql.Out{Dest: &dt, In: true},
-			//sql.Out{Dest: &lob, In: true},
+			// sql.Out{Dest: &lob, In: true},
 		); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
-		//if d := cmp.Diff(intgr, intgrWant); d != "" {
+		// if d := cmp.Diff(intgr, intgrWant); d != "" {
 		//	t.Errorf("int: %s", d)
-		//}
+		// }
 		if d := cmp.Diff(num, numWant); d != "" {
 			t.Errorf("num: %s", d)
 		}
@@ -824,7 +846,7 @@ END;`
 	qry = "BEGIN " + pkg + "(:1, :2, :3, :4, :5); END;"
 	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer stmt.Close()
 
@@ -840,7 +862,7 @@ END;`
 		sql.Out{Dest: &dt, In: true},
 		sql.Out{Dest: &lob, In: true},
 	); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	t.Logf("int=%#v num=%#v vc=%#v dt=%#v", intgr, num, vc, dt)
 	if intgr != 6 {
@@ -883,7 +905,7 @@ func TestSelectRefCursor(t *testing.T) {
 				t.Error(err)
 				break
 			}
-			//fmt.Println(dests)
+			// fmt.Println(dests)
 			t.Log(dests)
 		}
 		sub.Close()
@@ -1217,7 +1239,7 @@ func TestReadWriteLob(t *testing.T) {
 	qry := "SELECT CURSOR(SELECT f_id, F_blob, f_clob FROM " + tbl + " WHERE ROWNUM <= 10) FROM DUAL"
 	rows, err = testDb.QueryContext(ctx, qry, godror.ClobAsString())
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -1239,12 +1261,89 @@ func TestReadWriteLob(t *testing.T) {
 				t.Error(err)
 				break
 			}
-			//fmt.Println(dests)
+			// fmt.Println(dests)
 			t.Log(dests)
 		}
 		sub.Close()
 	}
 
+}
+
+func TestReadWriteBfile(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ReadWritBfile"), 30*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_Bfile" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (f_id NUMBER(6), f_bf BFILE)", //nolint:gas
+	)
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (F_id, f_bf) VALUES (:1, BFILENAME(:2, :3))", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	for tN, tC := range []struct {
+		Dir  string
+		File string
+	}{
+		{"TEST", "1.txt"},
+	} {
+
+		if _, err = stmt.ExecContext(ctx, tN*2, tC.Dir, tC.File); err != nil {
+			t.Errorf("%d/1. (%s, %s): %v", tN, tC.Dir, tC.File, err)
+			continue
+		}
+
+		var rows *sql.Rows
+		rows, err = conn.QueryContext(ctx,
+			"SELECT F_id, F_bf FROM "+tbl+" WHERE F_id = :1", //nolint:gas
+			2*tN)
+		if err != nil {
+			t.Errorf("%d/2. %v", tN, err)
+			continue
+		}
+		for rows.Next() {
+			var id, bfile interface{}
+			if err = rows.Scan(&id, &bfile); err != nil {
+				rows.Close()
+				t.Errorf("%d/2. scan: %v", tN, err)
+				continue
+			}
+			t.Logf("%d. bfile=%+v", id, bfile)
+			if b, ok := bfile.(*godror.Lob); !ok {
+				t.Errorf("%d. %T is not LOB", id, b)
+			} else {
+				lobD, err := b.Hijack()
+				if err != nil {
+					t.Error(err)
+				}
+				dir, file, err := lobD.GetFileName()
+				if err != nil {
+					t.Error(err)
+				}
+				if dir != tC.Dir {
+					t.Errorf("the got dir %v not equal want %v", dir, tC.Dir)
+				}
+				if file != tC.File {
+					t.Errorf("the got file %v not equal want %v", file, tC.File)
+				}
+			}
+		}
+		rows.Close()
+	}
 }
 
 func printSlice(orig interface{}) interface{} {
@@ -1403,7 +1502,7 @@ func TestSelectFloat(t *testing.T) {
 )`
 	testDb.Exec("DROP TABLE " + tbl)
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
@@ -1412,7 +1511,7 @@ func TestSelectFloat(t *testing.T) {
 		` (INT_COL, FLOAT_COL, EMPTY_INT_COL)
      VALUES (1234567, 45/10, NULL)`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
 	qry = "SELECT int_col, float_col, empty_int_col FROM " + tbl //nolint:gas
@@ -1453,7 +1552,7 @@ func TestSelectFloat(t *testing.T) {
 		F := func() error {
 			err := testDb.QueryRowContext(ctx, qry).Scan(tC.Dest[0], tC.Dest[1], tC.Dest[2])
 			if err != nil {
-				err = errors.Errorf("%s: %w", qry, err)
+				err = fmt.Errorf("%s: %w", qry, err)
 			}
 			return err
 		}
@@ -1464,7 +1563,7 @@ func TestSelectFloat(t *testing.T) {
 			}
 			noLogging := tl.enableLogging(t)
 			err = F()
-			t.Errorf("%q: %v", tName, errors.Errorf("%s: %w", qry, err))
+			t.Errorf("%q: %v", tName, fmt.Errorf("%s: %w", qry, err))
 			noLogging()
 			continue
 		}
@@ -1508,7 +1607,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	qry := "CREATE TABLE " + tableName + " (FUND_ACCOUNT VARCHAR2(18) NOT NULL, FUND_CODE VARCHAR2(6) NOT NULL, BUSINESS_FLAG NUMBER(10) NOT NULL, MONEY_TYPE VARCHAR2(3) NOT NULL)"
 	testDb.Exec("DROP TABLE " + tableName)
 	if _, err := testDb.Exec(qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	var max int
 	ctx, cancel := context.WithCancel(testContext("RanaOraIssue244-1"))
@@ -1544,7 +1643,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	fas := []string{"14900666", "1868091", "1898964", "14900397"}
 	for _, v := range fas {
@@ -1570,7 +1669,7 @@ func TestRanaOraIssue244(t *testing.T) {
 
 			stmt, err := tx.PrepareContext(grpCtx, qry)
 			if err != nil {
-				return errors.Errorf("%d.Prepare %q: %w", i, qry, err)
+				return fmt.Errorf("%d.Prepare %q: %w", i, qry, err)
 			}
 			defer stmt.Close()
 
@@ -1583,22 +1682,22 @@ func TestRanaOraIssue244(t *testing.T) {
 				index = (index + 1) % len(fas)
 				rows, err := stmt.QueryContext(grpCtx, bf, sc, fas[index])
 				if err != nil {
-					return errors.Errorf("%d.tx=%p stmt=%p %d. %q: %w", i, tx, stmt, j, qry, err)
+					return fmt.Errorf("%d.tx=%p stmt=%p %d. %q: %w", i, tx, stmt, j, qry, err)
 				}
 
 				for rows.Next() {
 					var acc, mt string
 					if err = rows.Scan(&acc, &mt); err != nil {
-						err = errors.Errorf("Scan: %w", err)
+						err = fmt.Errorf("Scan: %w", err)
 						break
 					}
 
 					if acc != fas[index] {
-						err = errors.Errorf("got acc %q, wanted %q", acc, fas[index])
+						err = fmt.Errorf("got acc %q, wanted %q", acc, fas[index])
 						break
 					}
 					if mt != "0" {
-						err = errors.Errorf("got mt %q, wanted 0", mt)
+						err = fmt.Errorf("got mt %q, wanted 0", mt)
 						break
 					}
 				}
@@ -1672,7 +1771,7 @@ func TestExecHang(t *testing.T) {
 			}
 			_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 3/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
 			if err == nil {
-				done <- errors.Errorf("%d. wanted timeout got %v", i, err)
+				done <- fmt.Errorf("%d. wanted timeout got %v", i, err)
 			}
 			t.Logf("%d. %v", i, err)
 		}()
@@ -1697,7 +1796,7 @@ func TestNumberNull(t *testing.T) {
 		normalNum NUMBER
 		)`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer testDb.Exec("DROP TABLE number_test")
 
@@ -1713,12 +1812,12 @@ func TestNumberNull(t *testing.T) {
 		INTO number_test (caseNum, precisionNum, precScaleNum, normalNum) VALUES (8, 6, 9, 7)
 		SELECT 1 FROM DUAL`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	qry = "SELECT precisionNum, precScaleNum, normalNum FROM number_test ORDER BY caseNum"
 	rows, err := testDb.Query(qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 
@@ -1740,7 +1839,7 @@ func TestNumberNull(t *testing.T) {
 
 	rows, err = testDb.Query(qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 
@@ -1869,10 +1968,10 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 			if errors.As(err, &cErr) && cErr.Code() == 942 {
 				t.Logf("%s: %+v", qry1, err)
 			} else {
-				t.Error(errors.Errorf("%s: %w", qry1, err))
+				t.Error(fmt.Errorf("%s: %w", qry1, err))
 			}
 		} else {
-			t.Log(errors.Errorf("%s: %w", qry1, err))
+			t.Log(fmt.Errorf("%s: %w", qry1, err))
 		}
 	}
 	n := int(openCursors.Int64)
@@ -1884,7 +1983,7 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 		var cnt int64
 		qry2 := "SELECT /* " + strconv.Itoa(i) + " */ 1 FROM DUAL"
 		if err = testDb.QueryRowContext(ctx, qry2).Scan(&cnt); err != nil {
-			t.Fatal(errors.Errorf("%d. %s: %w", i, qry2, err))
+			t.Fatal(fmt.Errorf("%d. %s: %w", i, qry2, err))
 		}
 	}
 }
@@ -1914,14 +2013,14 @@ func TestNullIntoNum(t *testing.T) {
 	testDb.Exec("DROP TABLE test_null_num")
 	qry := "CREATE TABLE test_null_num (i NUMBER(3))"
 	if _, err := testDb.Exec(qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer testDb.Exec("DROP TABLE test_null_num")
 
 	qry = "INSERT INTO test_null_num (i) VALUES (:1)"
 	var i *int
 	if _, err := testDb.Exec(qry, i); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 }
 
@@ -1988,7 +2087,7 @@ func TestQueryTimeout(t *testing.T) {
 }
 
 func TestSDO(t *testing.T) {
-	//t.Parallel()
+	// t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SDO"), 30*time.Second)
 	defer cancel()
 	innerQry := `SELECT MDSYS.SDO_GEOMETRY(
@@ -2005,7 +2104,7 @@ func TestSDO(t *testing.T) {
 	rows, err := testDb.QueryContext(ctx, selectQry)
 	if err != nil {
 		if !strings.Contains(err.Error(), `ORA-00904: "MDSYS"."SDO_GEOMETRY"`) {
-			t.Fatal(errors.Errorf("%s: %w", selectQry, err))
+			t.Fatal(fmt.Errorf("%s: %w", selectQry, err))
 		}
 		for _, qry := range []string{
 			`CREATE TYPE test_sdo_point_type AS OBJECT (
@@ -2035,7 +2134,7 @@ func TestSDO(t *testing.T) {
 			testDb.ExecContext(ctx, drop)
 			t.Log(drop)
 			if _, err = testDb.ExecContext(ctx, qry); err != nil {
-				err = errors.Errorf("%s: %w", qry, err)
+				err = fmt.Errorf("%s: %w", qry, err)
 				t.Log(err)
 				if !strings.Contains(err.Error(), "ORA-01031:") {
 					t.Fatal(err)
@@ -2047,7 +2146,7 @@ func TestSDO(t *testing.T) {
 
 		selectQry = strings.Replace(selectQry, "MDSYS.SDO_", "test_SDO_", -1)
 		if rows, err = testDb.QueryContext(ctx, selectQry); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", selectQry, err))
+			t.Fatal(fmt.Errorf("%s: %w", selectQry, err))
 		}
 
 	}
@@ -2063,11 +2162,11 @@ func TestSDO(t *testing.T) {
 		var dmp, isNull string
 		var intf interface{}
 		if err = rows.Scan(&intf, &dmp, &isNull); err != nil {
-			t.Error(errors.Errorf("%s: %w", "scan", err))
+			t.Error(fmt.Errorf("%s: %w", "scan", err))
 		}
 		t.Log(dmp, isNull)
 		obj := intf.(*godror.Object)
-		//t.Log("obj:", obj)
+		// t.Log("obj:", obj)
 		printObj(t, "", obj)
 	}
 	if err = rows.Err(); err != nil {
@@ -2118,7 +2217,7 @@ func (t *Custom) Scan(v interface{}) error {
 	case float64:
 		t.Num = int64(v)
 	default:
-		err = errors.Errorf("unknown type %T", v)
+		err = fmt.Errorf("unknown type %T", v)
 	}
 	return err
 }
@@ -2136,7 +2235,7 @@ func TestSelectCustomType(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (nm VARCHAR2(30), typ VARCHAR2(30), id NUMBER(6), created DATE)"
 	if _, err = conn.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
@@ -2148,7 +2247,7 @@ func TestSelectCustomType(t *testing.T) {
 	}
 	qry = "INSERT INTO " + tbl + " (nm, typ, id, created) VALUES (:1, :2, :3, :4)"
 	if _, err = conn.ExecContext(ctx, qry, nms, typs, ids, createds); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
 	const num = 10
@@ -2230,7 +2329,7 @@ func TestImplicitResults(t *testing.T) {
 		if strings.Contains(err.Error(), "PLS-00302:") {
 			t.Skip()
 		}
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	r := rows.(driver.RowsNextResultSet)
@@ -2247,7 +2346,7 @@ func TestStartupShutdown(t *testing.T) {
 	}
 	p, err := godror.ParseDSN(testConStr)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", testConStr, err))
+		t.Fatal(fmt.Errorf("%s: %w", testConStr, err))
 	}
 	if !(p.IsSysDBA || p.IsSysOper) {
 		p.IsSysDBA = true
@@ -2314,7 +2413,7 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 			qry += ";"
 		}
 		if _, err := cx.ExecContext(ctx, qry); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", qry, err))
+			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer cleanup()
@@ -2339,7 +2438,97 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 		driver.NamedValue{Value: &obj, Ordinal: 1},
 		driver.NamedValue{Value: 1, Ordinal: 3},
 	); err != nil {
-		t.Error(errors.Errorf("%s [%#v, 1]: %w", qry, obj, err))
+		t.Error(fmt.Errorf("%s [%#v, 1]: %w", qry, obj, err))
+	}
+}
+
+func TestDateRset(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx := testContext("DateRset")
+
+	const qry = `DECLARE
+  v_cur SYS_REFCURSOR;
+BEGIN
+  OPEN v_cur FOR
+    SELECT TO_DATE('2015/05/15 8:30:25', 'YYYY/MM/DD HH:MI:SS') as DD FROM DUAL
+    UNION ALL SELECT TO_DATE('2015/05/15 8:30:25', 'YYYY/MM/DD HH:MI:SS') as DD FROM DUAL;
+  :1 := v_cur;
+END;`
+
+	for i := 0; i < maxSessions/2; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			stmt, err := testDb.PrepareContext(ctx, qry)
+			if err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+			}
+			defer stmt.Close()
+
+			var rows1 driver.Rows
+			if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &rows1}); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+
+			}
+			defer rows1.Close()
+			cols1 := rows1.(driver.Rows).Columns()
+			values := make([]driver.Value, len(cols1))
+
+			var rowNum int
+			for {
+				rowNum++
+				if err := rows1.Next(values); err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			}
+		})
+	}
+}
+
+func TestTsRset(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx := testContext("TsRset")
+
+	const qry = `DECLARE
+  v_cur SYS_REFCURSOR;
+BEGIN
+  OPEN v_cur FOR
+	SELECT TO_TIMESTAMP_TZ('2019-05-01 09:39:12 01:00', 'YYYY-MM-DD HH24:MI:SS TZH:TZM') FROM DUAL
+	UNION ALL SELECT FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '01:00') FROM DUAL;
+  :1 := v_cur;
+END;`
+
+	for i := 0; i < maxSessions/2; i++ {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			var rows1 driver.Rows
+			if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &rows1}); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
+
+			}
+			defer rows1.Close()
+			cols1 := rows1.(driver.Rows).Columns()
+			values := make([]driver.Value, len(cols1))
+
+			var rowNum int
+			for {
+				rowNum++
+				if err := rows1.Next(values); err != nil {
+					if err == io.EOF {
+						break
+					}
+				}
+				t.Logf("%[1]d. %[2]T %[2]v", rowNum, values[0])
+			}
+		})
 	}
 }
 
@@ -2358,7 +2547,9 @@ func TestTsTZ(t *testing.T) {
 	for _, Case := range []struct {
 		TZ, TZDec string
 	}{
+		{"00:00", "TZH:TZM"},
 		{"01:00", "TZH:TZM"},
+		{"-01:00", "TZH:TZM"},
 		{"Europe/Berlin", "TZR"},
 	} {
 		repl := strings.NewReplacer("{{.TZ}}", Case.TZ, "{{.TZDec}}", Case.TZDec)
@@ -2379,7 +2570,7 @@ func TestTsTZ(t *testing.T) {
 			if err := testDb.QueryRowContext(ctx, qry).Scan(&ts); err != nil {
 				var oerr *godror.OraErr
 				if errors.As(err, &oerr) && oerr.Code() == 1805 {
-					t.Skip(err)
+					t.Skipf("%s: %s: %+v", Case.TZ, qry, err)
 					continue
 				}
 				t.Fatalf("%s: %s: %+v", Case.TZ, qry, err)
@@ -2419,12 +2610,12 @@ func TestGetDBTimeZone(t *testing.T) {
 	defer tx.Rollback()
 	qry := "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err := tx.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	qry = "SELECT DBTIMEZONE, SESSIONTIMEZONE, SYSTIMESTAMP||'', LOCALTIMESTAMP||'' FROM DUAL"
 	var dbTz, tz, sts, lts string
 	if err := tx.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &sts, &lts); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	t.Log("db timezone:", dbTz, "session timezone:", tz, "systimestamp:", sts, "localtimestamp:", lts)
 
@@ -2435,7 +2626,7 @@ func TestGetDBTimeZone(t *testing.T) {
 		qry = "SELECT :1 FROM DUAL"
 		var dbTime time.Time
 		if err := tx.QueryRowContext(ctx, qry, tim).Scan(&dbTime); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", qry, err))
+			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 		t.Log("db:", dbTime.Format(time.RFC3339))
 		if !dbTime.Equal(tim) {
@@ -2456,7 +2647,7 @@ func TestNumberBool(t *testing.T) {
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
 	for rows.Next() {
@@ -2497,7 +2688,7 @@ func TestCancel(t *testing.T) {
 			if strings.Contains(err.Error(), "ORA-00942:") {
 				t.Skip(err.Error())
 			} else {
-				t.Fatal(errors.Errorf("%s: %w", qryCount, err))
+				t.Fatal(fmt.Errorf("%s: %w", qryCount, err))
 			}
 		}
 		return cnt
@@ -2512,7 +2703,7 @@ func TestCancel(t *testing.T) {
 	for i := 0; i < maxConc; i++ {
 		grp.Go(func() error {
 			if _, err := db.ExecContext(grpCtx, qry); err != nil && !errors.Is(err, context.Canceled) {
-				return errors.Errorf("%s: %w", qry, err)
+				return fmt.Errorf("%s: %w", qry, err)
 			}
 			return nil
 		})
@@ -2578,7 +2769,7 @@ END;`
 		}
 		qry = "CREATE OR" + qry
 		if _, err = testDb.ExecContext(ctx, qry); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", qry, err))
+			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 
@@ -2846,31 +3037,31 @@ func TestSelectTypes(t *testing.T) {
 
 	const qry = "SELECT * FROM test_types"
 
-	//get rows
+	// get rows
 	rows, err = testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
 	defer rows.Close()
 
-	//get columns name
+	// get columns name
 	colsName, err := rows.Columns()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Log("columns:", colsName)
 
-	//get types of query columns
+	// get types of query columns
 	types, err := rows.ColumnTypes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	//total columns
+	// total columns
 	totalColumns := len(colsName)
 
 	oracleFieldParse := func(datatype string, field interface{}) interface{} {
-		//DEBUG: print the type of field and datatype returned for the driver
+		// DEBUG: print the type of field and datatype returned for the driver
 		t.Logf("%T\t%s\n", field, datatype)
 
 		if field == nil {
@@ -2954,7 +3145,7 @@ func TestSelectTypes(t *testing.T) {
 		}
 	}
 
-	//record destination
+	// record destination
 	record := make([]interface{}, totalColumns)
 	var rowCount int
 	for rows.Next() {
@@ -2965,7 +3156,7 @@ func TestSelectTypes(t *testing.T) {
 		}
 		rowCount++
 
-		//Parse each field of recordPointers for get a custom field depending the type
+		// Parse each field of recordPointers for get a custom field depending the type
 		for idxCol := range recordPointers {
 			record[idxCol] = oracleFieldParse(types[idxCol].DatabaseTypeName(), reflect.ValueOf(recordPointers[idxCol]).Elem().Interface())
 		}
@@ -2993,23 +3184,23 @@ func TestInsertIntervalDS(t *testing.T) {
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_interval_ds INTERVAL DAY TO SECOND(3))"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("InsertIntervalDS-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_interval_ds) VALUES (INTERVAL '32' SECOND)"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	qry = "INSERT INTO " + tbl + " (F_interval_ds) VALUES (:1)"
 	if _, err := testDb.ExecContext(ctx, qry, 33*time.Second); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
 	qry = "SELECT F_interval_ds FROM " + tbl + " ORDER BY 1"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	var got []time.Duration
@@ -3033,17 +3224,17 @@ func TestBool(t *testing.T) {
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_bool VARCHAR2(1))"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("Bool-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_bool) VALUES ('Y')"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	qry = "INSERT INTO " + tbl + " (F_bool) VALUES (:1)"
 	if _, err := testDb.ExecContext(ctx, qry, booler(true)); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	b2s := godror.BoolToString("t", "f")
 	if _, err := testDb.ExecContext(ctx, qry, true, b2s); err != nil {
@@ -3056,7 +3247,7 @@ func TestBool(t *testing.T) {
 	qry = "SELECT F_bool, F_bool FROM " + tbl + " A ORDER BY ASCII(A.F_bool)"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	var got []bool
@@ -3158,20 +3349,20 @@ func TestSelectROWID(t *testing.T) {
 	db.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_seq NUMBER(6))"
 	if _, err := db.ExecContext(ctx, qry); err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
 	for i := 0; i < 10; i++ {
 		if _, err := db.ExecContext(ctx, qry, i); err != nil {
-			t.Fatal(errors.Errorf("%s: %w", qry, err))
+			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	qry = "SELECT F_seq, ROWID FROM " + tbl + " ORDER BY F_seq"
 	rows, err := db.QueryContext(ctx, qry)
 	if err != nil {
-		t.Fatal(errors.Errorf("%s: %w", qry, err))
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -3252,7 +3443,7 @@ func TestPreFetchQuery(t *testing.T) {
 	}
 	var err error
 	if testSystemDb, err = sql.Open("godror", testSystemConStr); err != nil {
-		panic(errors.Errorf("%s: %+v", testConStr, err))
+		panic(fmt.Errorf("%s: %+v", testConStr, err))
 	}
 
 	ctx, cancel := context.WithTimeout(testContext("TestPreFetchQuery"), 30*time.Second)

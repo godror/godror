@@ -11,14 +11,13 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"strconv"
 	"sync"
 	"time"
-
-	errors "golang.org/x/xerrors"
 )
 
 // Number as string
@@ -57,12 +56,12 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		return int64(x), nil
 	case float32:
 		if _, f := math.Modf(float64(x)); f != 0 {
-			return int64(x), errors.Errorf("non-zero fractional part: %f", f)
+			return int64(x), fmt.Errorf("non-zero fractional part: %f", f)
 		}
 		return int64(x), nil
 	case float64:
 		if _, f := math.Modf(x); f != 0 {
-			return int64(x), errors.Errorf("non-zero fractional part: %f", f)
+			return int64(x), fmt.Errorf("non-zero fractional part: %f", f)
 		}
 		return int64(x), nil
 	case string:
@@ -76,7 +75,7 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseInt(string(x), 10, 64)
 	default:
-		return nil, errors.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("unknown type %T", v)
 	}
 }
 
@@ -117,7 +116,7 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseFloat(string(x), 64)
 	default:
-		return nil, errors.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("unknown type %T", v)
 	}
 }
 
@@ -144,7 +143,7 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 	case float32, float64:
 		return fmt.Sprintf("%f", x), nil
 	default:
-		return nil, errors.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("unknown type %T", v)
 	}
 }
 func (n Number) String() string { return string(n) }
@@ -170,7 +169,7 @@ func (n *Number) Scan(v interface{}) error {
 	case float32, float64:
 		*n = Number(fmt.Sprintf("%f", x))
 	default:
-		return errors.Errorf("unknown type %T", v)
+		return fmt.Errorf("unknown type %T", v)
 	}
 	return nil
 }
@@ -189,7 +188,7 @@ func (n *Number) UnmarshalText(p []byte) error {
 					continue
 				}
 			}
-			return errors.Errorf("unknown char %c in %q", c, p)
+			return fmt.Errorf("unknown char %c in %q", c, p)
 		}
 	}
 	*n = Number(p)
@@ -402,7 +401,7 @@ func EnableDbmsOutput(ctx context.Context, conn Execer) error {
 	qry := "BEGIN DBMS_OUTPUT.enable(NULL); END;"
 	_, err := conn.ExecContext(ctx, qry)
 	if err != nil {
-		return errors.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("%s: %w", qry, err)
 	}
 	return nil
 }
@@ -417,7 +416,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 	const qry = `BEGIN DBMS_OUTPUT.get_lines(:1, :2); END;`
 	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
-		return errors.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("%s: %w", qry, err)
 	}
 	defer stmt.Close()
 
@@ -431,7 +430,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 		numLines = int64(len(lines))
 		if _, err = stmt.ExecContext(ctx, params...); err != nil {
 			_ = bw.Flush()
-			return errors.Errorf("%s: %w", qry, err)
+			return fmt.Errorf("%s: %w", qry, err)
 		}
 		if numLines == 0 {
 			continue
@@ -500,7 +499,8 @@ func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
 	return loc, err
 }
 
-// DriverConn will acquire a separate connection to the same DB as what ex is connected to.
+// DriverConn will return the connection of ex.
+// For connection pools (*sql.DB) this may be a new connection.
 func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }
@@ -513,9 +513,53 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	defer getConnMu.Unlock()
 	var c interface{}
 	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
-		return nil, errors.Errorf("getConnection: %w", err)
+		return nil, fmt.Errorf("getConnection: %w", err)
 	} else if c == nil {
 		return nil, errors.New("nil connection")
 	}
 	return c.(*conn), nil
+}
+
+// Raw executes f on the given *sql.DB or *sql.Conn.
+func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
+	sf := func(driverConn interface{}) error { return f(driverConn.(Conn)) }
+	if rawer, ok := ex.(interface {
+		Raw(func(interface{}) error) error
+	}); ok {
+		return rawer.Raw(sf)
+	}
+	var err error
+	if conner, ok := ex.(interface {
+		Conn(context.Context) (*sql.Conn, error)
+	}); ok {
+		conn, cErr := conner.Conn(ctx)
+		if cErr != nil {
+			return cErr
+		}
+		defer conn.Close()
+		return conn.Raw(sf)
+	}
+	if txer, ok := ex.(interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}); ok {
+		tx, txErr := txer.BeginTx(ctx, nil)
+		if txErr != nil {
+			return txErr
+		}
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+			} else {
+				err = tx.Commit()
+			}
+		}()
+		ex = tx
+	}
+
+	var cx *conn
+	if cx, err = getConn(ctx, ex); err != nil {
+		return err
+	}
+	defer cx.Close()
+	return f(cx)
 }
