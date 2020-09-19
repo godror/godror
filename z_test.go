@@ -3629,3 +3629,54 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 	}
 	return c
 }
+
+func TestIssue100(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("Issue100"), 1*time.Minute)
+	defer cancel()
+	const baseName = "test_issue100"
+	{
+		const qry = `create or replace type ` + baseName + `_t as table of TIMESTAMP`
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		defer func() { testDb.ExecContext(context.Background(), "DROP TYPE "+baseName+"_t") }()
+	}
+	{
+		const qry = `create or replace FUNCTION ` + baseName + `_f (
+    ITERS IN VARCHAR2 DEFAULT 10,
+    PAUSE IN VARCHAR2 DEFAULT 1
+) RETURN ` + baseName + `_t AUTHID CURRENT_USER PIPELINED AS
+BEGIN
+    FOR i IN 1..ITERS LOOP
+        DBMS_SESSION.SLEEP(PAUSE);
+        PIPE ROW(SYSTIMESTAMP);
+    END LOOP;
+END;`
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION "+baseName+"_f") }()
+	}
+
+	const qry = `SELECT * FROM TABLE(` + baseName + `_f(iters => 15, pause => 1))`
+	ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	rows, err := testDb.QueryContext(ctx, qry)
+	t.Logf("error: %+v", err)
+	if err == nil {
+		defer rows.Close()
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Logf("Error: Timeout")
+	}
+
+	var res string
+	err = rows.Scan(&res)
+	if err != nil {
+		t.Logf("Row Fetch Error: %+v", err)
+	}
+
+	t.Logf("Result: %s", res)
+}

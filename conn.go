@@ -68,6 +68,12 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 
+// Break signals the server to stop the execution on the connection.
+//
+// The execution should fail with ORA-1013: "user requested cancel of current operation".
+// You then need to wait for the originally executing call to to complete with the error before proceeding.
+//
+// So, after the Break, the connection MUST NOT be used till the executing thread finishes!
 func (c *conn) Break() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -94,38 +100,37 @@ func (c *conn) Ping(ctx context.Context) error {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	done := make(chan error, 1)
+
+	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		dl, ok := ctx.Deadline()
-		if ok {
-			c.setCallTimeout(time.Until(dl))
-		}
-		failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
-		if ok {
-			c.setCallTimeout(0)
-		}
-		if failure {
-			done <- maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
+		select {
+		case <-done:
 			return
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+				return
+			default:
+				_ = c.Break()
+				return
+			}
 		}
-		done <- nil
 	}()
 
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		// select again to avoid race condition if both are done
-		select {
-		case err := <-done:
-			return err
-		default:
-			_ = c.Break()
-			c.closeNotLocking()
-			return driver.ErrBadConn
-		}
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		c.setCallTimeout(time.Until(dl))
 	}
+	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+	close(done)
+	if hasDeadline {
+		c.setCallTimeout(0)
+	}
+	if failure {
+		return maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
+	}
+	return nil
 }
 
 // Prepare returns a prepared statement, bound to this connection.
