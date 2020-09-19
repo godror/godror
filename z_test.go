@@ -3408,7 +3408,7 @@ func TestOpenCloseLob(t *testing.T) {
 	const qry = "DECLARE v_lob BLOB; BEGIN DBMS_LOB.CREATETEMPORARY(v_lob, TRUE); DBMS_LOB.WRITEAPPEND(v_lob, 4, HEXTORAW('DEADBEEF')); :1 := v_lob; END;"
 	for i := 0; i < 10*poolSize; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
+			shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 			defer shortCancel()
 			tx, err := db.BeginTx(shortCtx, nil)
 			if err != nil {
@@ -3670,6 +3670,9 @@ END;`
 
 	if ctx.Err() == context.DeadlineExceeded {
 		t.Logf("Error: Timeout")
+	}
+	if rows == nil {
+		return
 	}
 
 	var res string

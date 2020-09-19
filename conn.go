@@ -75,10 +75,16 @@ func (c *conn) getError() error {
 //
 // So, after the Break, the connection MUST NOT be used till the executing thread finishes!
 func (c *conn) Break() error {
+	if c == nil {
+		return nil
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if Log != nil {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
+	}
+	if c.dpiConn == nil {
+		return nil
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
