@@ -418,9 +418,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	close(done)
 	if err != nil {
-		if Log != nil {
-			Log("msg", "st.Execute", "error", err)
-		}
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
 
@@ -542,14 +539,13 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
-	// execute
-	var colCount C.uint32_t
 	done := make(chan struct{})
 	go func() {
 		select {
 		case <-done:
 			return
 		case <-ctx.Done():
+			// select again to avoid race condition if both are done
 			select {
 			case <-done:
 				return
@@ -564,6 +560,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		}
 	}()
 
+	// execute
+	var colCount C.uint32_t
 	c, dpiStmt := st.conn, st.dpiStmt
 	var err error
 	for i := 0; i < 3; i++ {

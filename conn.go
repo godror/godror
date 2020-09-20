@@ -580,11 +580,15 @@ func maybeBadConn(err error, c *conn) error {
 	if err == nil {
 		return nil
 	}
-	cl := func() {}
+	cl := func() {
+		if Log != nil {
+			Log("msg", "maybeBadConn", "error", err)
+		}
+	}
 	if c != nil {
 		cl = func() {
 			if Log != nil {
-				Log("msg", "maybeBadConn close", "conn", c)
+				Log("msg", "maybeBadConn close", "conn", c, "error", err)
 			}
 			c.closeNotLocking()
 		}
@@ -606,9 +610,8 @@ func maybeBadConn(err error, c *conn) error {
 			// ORA-12170: TNS:Connect timeout occurred
 			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 			// ORA-12545: Connect failed because target host or object does not exist
-			// ORA-24315: illegal attribute type
-		case 12170, 12528, 12545, 24315:
-
+		case 12170, 12528, 12545:
+			fallthrough
 			//cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
 		case 22, // invalid session ID; access denied
 			28,    // your session has been killed
