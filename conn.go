@@ -312,10 +312,26 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			select {
+			case <-done:
+				return
+			default:
+				_ = c.Break()
+			}
+		}
+	}()
 	st := statement{conn: c, query: query}
-	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
+	failed := C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
-	) == C.DPI_FAILURE {
+	) == C.DPI_FAILURE
+	close(done)
+	if failed {
 		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
 	if C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
