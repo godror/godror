@@ -68,11 +68,23 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 
+// Break signals the server to stop the execution on the connection.
+//
+// The execution should fail with ORA-1013: "user requested cancel of current operation".
+// You then need to wait for the originally executing call to to complete with the error before proceeding.
+//
+// So, after the Break, the connection MUST NOT be used till the executing thread finishes!
 func (c *conn) Break() error {
+	if c == nil {
+		return nil
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if Log != nil {
 		Log("msg", "Break", "dpiConn", c.dpiConn)
+	}
+	if c.dpiConn == nil {
+		return nil
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
 		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
@@ -94,38 +106,37 @@ func (c *conn) Ping(ctx context.Context) error {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	done := make(chan error, 1)
+
+	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		dl, ok := ctx.Deadline()
-		if ok {
-			c.setCallTimeout(time.Until(dl))
-		}
-		failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
-		if ok {
-			c.setCallTimeout(0)
-		}
-		if failure {
-			done <- maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
+		select {
+		case <-done:
 			return
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+				return
+			default:
+				_ = c.Break()
+				return
+			}
 		}
-		done <- nil
 	}()
 
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		// select again to avoid race condition if both are done
-		select {
-		case err := <-done:
-			return err
-		default:
-			_ = c.Break()
-			c.closeNotLocking()
-			return driver.ErrBadConn
-		}
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		c.setCallTimeout(time.Until(dl))
 	}
+	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+	close(done)
+	if hasDeadline {
+		c.setCallTimeout(0)
+	}
+	if failure {
+		return maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
+	}
+	return nil
 }
 
 // Prepare returns a prepared statement, bound to this connection.
@@ -301,10 +312,26 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			select {
+			case <-done:
+				return
+			default:
+				_ = c.Break()
+			}
+		}
+	}()
 	st := statement{conn: c, query: query}
-	if C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
+	failed := C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
-	) == C.DPI_FAILURE {
+	) == C.DPI_FAILURE
+	close(done)
+	if failed {
 		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}
 	if C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
@@ -569,11 +596,15 @@ func maybeBadConn(err error, c *conn) error {
 	if err == nil {
 		return nil
 	}
-	cl := func() {}
+	cl := func() {
+		if Log != nil {
+			Log("msg", "maybeBadConn", "error", err)
+		}
+	}
 	if c != nil {
 		cl = func() {
 			if Log != nil {
-				Log("msg", "maybeBadConn close", "conn", c)
+				Log("msg", "maybeBadConn close", "conn", c, "error", err)
 			}
 			c.closeNotLocking()
 		}
@@ -595,9 +626,8 @@ func maybeBadConn(err error, c *conn) error {
 			// ORA-12170: TNS:Connect timeout occurred
 			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 			// ORA-12545: Connect failed because target host or object does not exist
-			// ORA-24315: illegal attribute type
-		case 12170, 12528, 12545, 24315:
-
+		case 12170, 12528, 12545:
+			fallthrough
 			//cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
 		case 22, // invalid session ID; access denied
 			28,    // your session has been killed

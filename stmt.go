@@ -371,64 +371,54 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
 
-	done := make(chan error, 1)
-	// execute
-	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
+	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		var err error
-		for i := 0; i < 3; i++ {
-			if Log != nil {
-				Log("C", "dpiStmt_execute", "st", fmt.Sprintf("%p", dpiStmt), "many", many, "mode", mode, "len", arrLen)
-			}
-			var ok bool
-			if many {
-				ok = C.dpiStmt_executeMany(dpiStmt, mode, C.uint32_t(arrLen)) != C.DPI_FAILURE
-			} else {
-				ok = C.dpiStmt_execute(dpiStmt, mode, nil) != C.DPI_FAILURE
-			}
-			err = nil
-			if !ok {
-				if err = ctx.Err(); err != nil {
-					done <- err
-					return
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				err := ctx.Err()
+				if Log != nil {
+					Log("msg", "BREAK statement", "error", err)
 				}
-				err = c.getError()
-			}
-			if Log != nil {
-				Log("msg", "st.Execute", "error", err)
-			}
-			if err == nil || !isInvalidErr(err) {
-				break
+				_ = st.Break()
+				return
 			}
 		}
-		if err != nil {
-			err = fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err)
-		}
-		done <- err
 	}()
 
-	select {
-	case err := <-done:
-		if err != nil {
-			return nil, closeIfBadConn(err)
+	// execute
+	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
+	var err error
+	for i := 0; i < 3; i++ {
+		if Log != nil {
+			Log("C", "dpiStmt_execute", "st", fmt.Sprintf("%p", dpiStmt), "many", many, "mode", mode, "len", arrLen)
 		}
-	case <-ctx.Done():
-		// select again to avoid race condition if both are done
-		select {
-		case err := <-done:
-			if err != nil {
-				return nil, closeIfBadConn(err)
-			}
-		case <-ctx.Done():
-			err := ctx.Err()
-			if Log != nil {
-				Log("msg", "BREAK statement", "error", err)
-			}
-			_ = st.Break()
-			st.closeNotLocking()
-			return nil, err
+		var ok bool
+		if many {
+			ok = C.dpiStmt_executeMany(dpiStmt, mode, C.uint32_t(arrLen)) != C.DPI_FAILURE
+		} else {
+			ok = C.dpiStmt_execute(dpiStmt, mode, nil) != C.DPI_FAILURE
 		}
+		if ok {
+			err = nil
+			break
+		}
+		if err = ctx.Err(); err != nil {
+			break
+		}
+		if err = c.getError(); !isInvalidErr(err) {
+			break
+		}
+	}
+	close(done)
+	if err != nil {
+		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
 
 	if Log != nil {
@@ -443,7 +433,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			data := &st.data[i][0]
 			if C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) == C.DPI_FAILURE {
 				err := st.getError()
-				return nil, fmt.Errorf("%d.getReturnedData: %w", i, closeIfBadConn(err))
+				return nil, closeIfBadConn(fmt.Errorf("%d.getReturnedData: %w", i, err))
 			}
 			if n == 0 {
 				st.data[i] = st.data[i][:0]
@@ -457,7 +447,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				if Log != nil {
 					Log("get", i, "error", err)
 				}
-				return nil, fmt.Errorf("%d. get[%d]: %w", i, 0, closeIfBadConn(err))
+				return nil, closeIfBadConn(fmt.Errorf("%d. get[%d]: %w", i, 0, err))
 			}
 			continue
 		}
@@ -467,14 +457,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if Log != nil {
 				Log("msg", "getNumElementsInArray", "i", i, "error", err)
 			}
-			return nil, fmt.Errorf("%d.getNumElementsInArray: %w", i, closeIfBadConn(err))
+			return nil, closeIfBadConn(fmt.Errorf("%d.getNumElementsInArray: %w", i, err))
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		if err := get(dest, st.data[i][:n]); err != nil {
 			if Log != nil {
 				Log("msg", "get", "i", i, "n", n, "error", err)
 			}
-			return nil, fmt.Errorf("%d. get: %w", i, closeIfBadConn(err))
+			return nil, closeIfBadConn(fmt.Errorf("%d. get: %w", i, err))
 		}
 	}
 	var count C.uint64_t
@@ -549,53 +539,48 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
-	// execute
-	var colCount C.uint32_t
-	done := make(chan error, 1)
-	c, dpiStmt := st.conn, st.dpiStmt
+	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		var err error
-		for i := 0; i < 3; i++ {
-			if C.dpiStmt_execute(dpiStmt, mode, &colCount) != C.DPI_FAILURE {
-				err = nil
-				break
-			}
-			if err = ctx.Err(); err != nil {
-				done <- err
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				err := ctx.Err()
+				if Log != nil {
+					Log("msg", "BREAK query", "error", err)
+				}
+				_ = st.Break()
 				return
 			}
-			if err = c.getError(); !isInvalidErr(err) {
-				break
-			}
 		}
-		if err != nil {
-			err = fmt.Errorf("dpiStmt_execute: %w", err)
-		}
-		done <- err
 	}()
 
-	select {
-	case err := <-done:
-		if err != nil {
-			return nil, closeIfBadConn(err)
+	// execute
+	var colCount C.uint32_t
+	c, dpiStmt := st.conn, st.dpiStmt
+	var err error
+	for i := 0; i < 3; i++ {
+		if C.dpiStmt_execute(dpiStmt, mode, &colCount) != C.DPI_FAILURE {
+			err = nil
+			break
 		}
-	case <-ctx.Done():
-		select {
-		case err := <-done:
-			if err != nil {
-				return nil, closeIfBadConn(err)
-			}
-		case <-ctx.Done():
-			err := ctx.Err()
-			if Log != nil {
-				Log("msg", "BREAK query", "error", err)
-			}
-			_ = st.Break()
-			st.closeNotLocking()
-			return nil, err
+		if err = ctx.Err(); err != nil {
+			break
+		}
+		if err = c.getError(); !isInvalidErr(err) {
+			break
 		}
 	}
+	close(done)
+	if err != nil {
+		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute: %w", err))
+	}
+
 	rows, err := st.openRows(int(colCount))
 	return rows, closeIfBadConn(err)
 }
