@@ -78,7 +78,7 @@ func (d *Data) GetBytes() []byte {
 		return nil
 	}
 	//b := C.dpiData_getBytes(&d.dpiData)
-	b := *((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
+	b := ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
 	if b.ptr == nil || b.length == 0 {
 		return nil
 	}
@@ -517,4 +517,9 @@ func (d *Data) reset() {
 	d.implicitObj = false
 	d.SetBytes(nil)
 	d.dpiData.isNull = 1
+}
+
+func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiData) }
+func (d *Data) dpiDataGetBytesUnsafe() *C.dpiBytes {
+	return ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
 }

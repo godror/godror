@@ -1853,7 +1853,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			return nil
 		}
 		//db := C.dpiData_getBytes(&data[0])
-		db := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		db := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 		// b must be copied
 		*x = append((*x)[:0], b...)
@@ -1867,7 +1867,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				continue
 			}
 			//db := C.dpiData_getBytes(&data[i])
-			db := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
+			db := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 			// b must be copied
 			if i < len(maX) {
@@ -1883,7 +1883,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			return nil
 		}
 		//b := C.dpiData_getBytes(&data[0])
-		b := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		*x = Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
 	case *[]Number:
 		*x = (*x)[:0]
@@ -1893,7 +1893,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				continue
 			}
 			//b := C.dpiData_getBytes(&data[i])
-			b := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
+			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			*x = append(*x, Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
 		}
 
@@ -1903,7 +1903,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			return nil
 		}
 		//b := C.dpiData_getBytes(&data[0])
-		b := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		*x = string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
 	case *[]string:
 		*x = (*x)[:0]
@@ -1913,7 +1913,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				continue
 			}
 			//b := C.dpiData_getBytes(&data[i])
-			b := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
+			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			*x = append(*x, string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
 		}
 
@@ -2037,7 +2037,7 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 			return nil
 		}
 		//db := C.dpiData_getBytes(&data[0])
-		db := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		db := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 		*x = st.stmtOptions.boolString.FromString(string(b))
 
@@ -2049,7 +2049,7 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 				continue
 			}
 			//db := C.dpiData_getBytes(&data[i])
-			db := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
+			db := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 			*x = append(*x, st.stmtOptions.boolString.FromString(string(b)))
 		}
