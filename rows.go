@@ -8,12 +8,12 @@ package godror
 /*
 #include "dpiImpl.h"
 
-int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
-	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
-}
-dpiRowid *dpiData_getRowid(dpiData *data) {
-	return data->value.asRowid;
-}
+//int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
+//	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
+//}
+//dpiRowid *dpiData_getRowid(dpiData *data) {
+//	return data->value.asRowid;
+//}
 */
 import "C"
 import (
@@ -398,7 +398,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			// ROWID as returned by OCIRowidToChar
-			cRowid := C.dpiData_getRowid(d)
+			//cRowid := C.dpiData_getRowid(d)
+			cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
 			var cBuf *C.char
 			var cLen C.uint32_t
 			if C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen) == C.DPI_FAILURE {
@@ -454,7 +455,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nullTime
 				continue
 			}
-			ts := C.dpiData_getTimestamp(d)
+			//ts := C.dpiData_getTimestamp(d)
+			ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
 			tz := r.conn.Timezone()
 			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
 				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz)
@@ -478,7 +480,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			ym := C.dpiData_getIntervalYM(d)
+			//ym := C.dpiData_getIntervalYM(d)
+			ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.value)))
 			dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
 
 		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,

@@ -59,7 +59,8 @@ func (d *Data) SetNull() {
 
 // GetBool returns the bool data.
 func (d *Data) GetBool() bool {
-	return !d.IsNull() && C.dpiData_getBool(&d.dpiData) == 1
+	//return !d.IsNull() && C.dpiData_getBool(&d.dpiData) == 1
+	return !d.IsNull() && *((*C.int)(unsafe.Pointer(&d.dpiData.value))) == 1
 }
 
 // SetBool sets the data as bool.
@@ -76,7 +77,8 @@ func (d *Data) GetBytes() []byte {
 	if d.IsNull() {
 		return nil
 	}
-	b := C.dpiData_getBytes(&d.dpiData)
+	//b := C.dpiData_getBytes(&d.dpiData)
+	b := *((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
 	if b.ptr == nil || b.length == 0 {
 		return nil
 	}
@@ -97,7 +99,8 @@ func (d *Data) GetFloat32() float32 {
 	if d.IsNull() {
 		return 0
 	}
-	return float32(C.dpiData_getFloat(&d.dpiData))
+	//return float32(C.dpiData_getFloat(&d.dpiData))
+	return *((*float32)(unsafe.Pointer(&d.dpiData.value)))
 }
 
 // SetFloat32 sets the data as float32.
@@ -111,7 +114,8 @@ func (d *Data) GetFloat64() float64 {
 	if d.IsNull() {
 		return 0
 	}
-	return float64(C.dpiData_getDouble(&d.dpiData))
+	//return float64(C.dpiData_getDouble(&d.dpiData))
+	return *((*float64)(unsafe.Pointer(&d.dpiData.value)))
 }
 
 // SetFloat64 sets the data as float64.
@@ -124,7 +128,8 @@ func (d *Data) GetInt64() int64 {
 	if d.IsNull() {
 		return 0
 	}
-	i := C.dpiData_getInt64(&d.dpiData)
+	//i := C.dpiData_getInt64(&d.dpiData)
+	i := *((*int64)(unsafe.Pointer(&d.dpiData.value)))
 	if Log != nil {
 		Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
 	}
@@ -141,7 +146,8 @@ func (d *Data) GetIntervalDS() time.Duration {
 	if d.IsNull() {
 		return 0
 	}
-	ds := C.dpiData_getIntervalDS(&d.dpiData)
+	//ds := C.dpiData_getIntervalDS(&d.dpiData)
+	ds := *((*C.dpiIntervalDS)(unsafe.Pointer(&d.dpiData.value)))
 	return time.Duration(ds.days)*24*time.Hour +
 		time.Duration(ds.hours)*time.Hour +
 		time.Duration(ds.minutes)*time.Minute +
@@ -163,7 +169,8 @@ func (d *Data) GetIntervalYM() IntervalYM {
 	if d.IsNull() {
 		return IntervalYM{}
 	}
-	ym := C.dpiData_getIntervalYM(&d.dpiData)
+	//ym := C.dpiData_getIntervalYM(&d.dpiData)
+	ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.dpiData.value)))
 	return IntervalYM{Years: int(ym.years), Months: int(ym.months)}
 }
 
@@ -238,7 +245,8 @@ func (d *Data) GetTimeIn(serverTZ *time.Location) time.Time {
 	if d.IsNull() {
 		return time.Time{}
 	}
-	ts := C.dpiData_getTimestamp(&d.dpiData)
+	//ts := C.dpiData_getTimestamp(&d.dpiData)
+	ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.dpiData.value)))
 	return time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
@@ -265,7 +273,8 @@ func (d *Data) GetUint64() uint64 {
 	if d.IsNull() {
 		return 0
 	}
-	return uint64(C.dpiData_getUint64(&d.dpiData))
+	//return uint64(C.dpiData_getUint64(&d.dpiData))
+	return *((*uint64)(unsafe.Pointer(&d.dpiData.value)))
 }
 
 // SetUint64 sets data to uint64.

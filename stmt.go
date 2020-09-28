@@ -1173,7 +1173,8 @@ func dataGetBool(v interface{}, data []C.dpiData) error {
 			*b = false
 			return nil
 		}
-		*b = C.dpiData_getBool(&data[0]) == 1
+		//*b = C.dpiData_getBool(&data[0]) == 1
+		*b = *((*C.int)(unsafe.Pointer(&data[0].value))) == 1
 		return nil
 	}
 	slice := v.(*[]bool)
@@ -1187,7 +1188,8 @@ func dataGetBool(v interface{}, data []C.dpiData) error {
 			(*slice)[i] = false
 			continue
 		}
-		(*slice)[i] = C.dpiData_getBool(&data[i]) == 1
+		//(*slice)[i] = C.dpiData_getBool(&data[i]) == 1
+		(*slice)[i] = *((*C.int)(unsafe.Pointer(&data[i].value))) == 1
 	}
 	return nil
 }
@@ -1265,7 +1267,8 @@ func (c *conn) dataGetTimeC(t *time.Time, data *C.dpiData) {
 		*t = time.Time{}
 		return
 	}
-	ts := C.dpiData_getTimestamp(data)
+	//ts := C.dpiData_getTimestamp(data)
+	ts := *((*C.dpiTimestamp)(unsafe.Pointer(&data.value)))
 	*t = time.Date(
 		int(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
@@ -1355,7 +1358,8 @@ func (c *conn) dataGetIntervalDS(v interface{}, data []C.dpiData) error {
 }
 
 func dataGetIntervalDS(t *time.Duration, d *C.dpiData) {
-	ds := C.dpiData_getIntervalDS(d)
+	//ds := C.dpiData_getIntervalDS(d)
+	ds := *((*C.dpiIntervalDS)(unsafe.Pointer(&d.value)))
 	*t = time.Duration(ds.days)*24*time.Hour +
 		time.Duration(ds.hours)*time.Hour +
 		time.Duration(ds.minutes)*time.Minute +
@@ -1422,7 +1426,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int(C.dpiData_getInt64(&data[0]))
+			//*x = int(C.dpiData_getInt64(&data[0]))
+			*x = int(*((*int64)(unsafe.Pointer(&data[0].value))))
 		}
 	case *[]int:
 		*x = (*x)[:0]
@@ -1430,14 +1435,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int(C.dpiData_getInt64(&data[i])))
+				//*x = append(*x, int(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, int(*((*int64)(unsafe.Pointer(&data[i].value)))))
 			}
 		}
 	case *int8:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int8(C.dpiData_getInt64(&data[0]))
+			//*x = int8(C.dpiData_getInt64(&data[0]))
+			*x = *((*int8)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]int8:
 		*x = (*x)[:0]
@@ -1445,14 +1452,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int8(C.dpiData_getInt64(&data[i])))
+				//*x = append(*x, int8(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, *((*int8)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *int16:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int16(C.dpiData_getInt64(&data[0]))
+			//*x = int16(C.dpiData_getInt64(&data[0]))
+			*x = *((*int16)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]int16:
 		*x = (*x)[:0]
@@ -1460,14 +1469,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int16(C.dpiData_getInt64(&data[i])))
+				//*x = append(*x, int16(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, *((*int16)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *int32:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int32(C.dpiData_getInt64(&data[0]))
+			//*x = int32(C.dpiData_getInt64(&data[0]))
+			*x = *((*int32)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]int32:
 		*x = (*x)[:0]
@@ -1475,14 +1486,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+				//*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, *((*int32)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *int64:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = int64(C.dpiData_getInt64(&data[0]))
+			//*x = int64(C.dpiData_getInt64(&data[0]))
+			*x = *((*int64)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]int64:
 		*x = (*x)[:0]
@@ -1490,14 +1503,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, int64(C.dpiData_getInt64(&data[i])))
+				//*x = append(*x, int64(C.dpiData_getInt64(&data[i])))
+				*x = append(*x, *((*int64)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *sql.NullInt32:
 		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Int32 = true, int32(C.dpiData_getInt64(&data[0]))
+			//x.Valid, x.Int32 = true, int32(C.dpiData_getInt64(&data[0]))
+			x.Valid, x.Int32 = true, *((*int32)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]sql.NullInt32:
 		*x = (*x)[:0]
@@ -1506,14 +1521,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 				*x = append(*x, sql.NullInt32{Valid: false})
 			} else {
 				*x = append(*x, sql.NullInt32{Valid: true,
-					Int32: int32(C.dpiData_getInt64(&data[i]))})
+					//Int32: int32(C.dpiData_getInt64(&data[i]))})
+					Int32: *((*int32)(unsafe.Pointer(&data[i].value)))})
 			}
 		}
 	case *sql.NullInt64:
 		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(&data[0]))
+			//x.Valid, x.Int64 = true, int64(C.dpiData_getInt64(&data[0]))
+			x.Valid, x.Int64 = true, *((*int64)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]sql.NullInt64:
 		*x = (*x)[:0]
@@ -1522,14 +1539,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 				*x = append(*x, sql.NullInt64{Valid: false})
 			} else {
 				*x = append(*x, sql.NullInt64{Valid: true,
-					Int64: int64(C.dpiData_getInt64(&data[i]))})
+					//Int64: int64(C.dpiData_getInt64(&data[i]))})
+					Int64: *((*int64)(unsafe.Pointer(&data[i].value)))})
 			}
 		}
 	case *sql.NullFloat64:
 		if len(data) == 0 || data[0].isNull == 1 {
 			x.Valid = false
 		} else {
-			x.Valid, x.Float64 = true, float64(C.dpiData_getDouble(&data[0]))
+			//x.Valid, x.Float64 = true, float64(C.dpiData_getDouble(&data[0]))
+			x.Valid, x.Float64 = true, *((*float64)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]sql.NullFloat64:
 		*x = (*x)[:0]
@@ -1537,7 +1556,9 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, sql.NullFloat64{Valid: false})
 			} else {
-				*x = append(*x, sql.NullFloat64{Valid: true, Float64: float64(C.dpiData_getDouble(&data[i]))})
+				*x = append(*x, sql.NullFloat64{Valid: true,
+					//Float64: float64(C.dpiData_getDouble(&data[i]))})
+					Float64: *((*float64)(unsafe.Pointer(&data[i].value)))})
 			}
 		}
 
@@ -1545,7 +1566,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint(C.dpiData_getUint64(&data[0]))
+			//*x = uint(C.dpiData_getUint64(&data[0]))
+			*x = uint(*((*uint64)(unsafe.Pointer(&data[0].value))))
 		}
 	case *[]uint:
 		*x = (*x)[:0]
@@ -1553,7 +1575,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+				//*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, uint(*((*uint64)(unsafe.Pointer(&data[i].value)))))
 			}
 		}
 	case *[]uint8:
@@ -1562,14 +1585,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint8(C.dpiData_getUint64(&data[i])))
+				//*x = append(*x, uint8(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, *((*uint8)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *uint8:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint8(C.dpiData_getUint64(&data[0]))
+			//*x = uint8(C.dpiData_getUint64(&data[0]))
+			*x = *((*uint8)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]uint16:
 		*x = (*x)[:0]
@@ -1577,20 +1602,23 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint16(C.dpiData_getUint64(&data[i])))
+				//*x = append(*x, uint16(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, *((*uint16)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *uint16:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint16(C.dpiData_getUint64(&data[0]))
+			//*x = uint16(C.dpiData_getUint64(&data[0]))
+			*x = *((*uint16)(unsafe.Pointer(&data[0].value)))
 		}
 	case *uint32:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint32(C.dpiData_getUint64(&data[0]))
+			//*x = uint32(C.dpiData_getUint64(&data[0]))
+			*x = *((*uint32)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]uint32:
 		*x = (*x)[:0]
@@ -1598,14 +1626,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
+				//*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, *((*uint32)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *uint64:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = uint64(C.dpiData_getUint64(&data[0]))
+			//*x = uint64(C.dpiData_getUint64(&data[0]))
+			*x = *((*uint64)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]uint64:
 		*x = (*x)[:0]
@@ -1613,7 +1643,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, uint64(C.dpiData_getUint64(&data[i])))
+				//*x = append(*x, uint64(C.dpiData_getUint64(&data[i])))
+				*x = append(*x, *((*uint64)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 
@@ -1621,7 +1652,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = float32(C.dpiData_getFloat(&data[0]))
+			//*x = float32(C.dpiData_getFloat(&data[0]))
+			*x = *((*float32)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]float32:
 		*x = (*x)[:0]
@@ -1629,14 +1661,16 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, float32(C.dpiData_getFloat(&data[i])))
+				//*x = append(*x, float32(C.dpiData_getFloat(&data[i])))
+				*x = append(*x, *((*float32)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 	case *float64:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
-			*x = float64(C.dpiData_getDouble(&data[0]))
+			//*x = float64(C.dpiData_getDouble(&data[0]))
+			*x = *((*float64)(unsafe.Pointer(&data[0].value)))
 		}
 	case *[]float64:
 		*x = (*x)[:0]
@@ -1644,7 +1678,8 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, 0)
 			} else {
-				*x = append(*x, float64(C.dpiData_getDouble(&data[i])))
+				//*x = append(*x, float64(C.dpiData_getDouble(&data[i])))
+				*x = append(*x, *((*float64)(unsafe.Pointer(&data[i].value))))
 			}
 		}
 
@@ -1817,7 +1852,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = nil
 			return nil
 		}
-		db := C.dpiData_getBytes(&data[0])
+		//db := C.dpiData_getBytes(&data[0])
+		db := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 		// b must be copied
 		*x = append((*x)[:0], b...)
@@ -1830,7 +1866,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, nil)
 				continue
 			}
-			db := C.dpiData_getBytes(&data[i])
+			//db := C.dpiData_getBytes(&data[i])
+			db := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 			// b must be copied
 			if i < len(maX) {
@@ -1845,7 +1882,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = ""
 			return nil
 		}
-		b := C.dpiData_getBytes(&data[0])
+		//b := C.dpiData_getBytes(&data[0])
+		b := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		*x = Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
 	case *[]Number:
 		*x = (*x)[:0]
@@ -1854,7 +1892,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, "")
 				continue
 			}
-			b := C.dpiData_getBytes(&data[i])
+			//b := C.dpiData_getBytes(&data[i])
+			b := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			*x = append(*x, Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
 		}
 
@@ -1863,7 +1902,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = ""
 			return nil
 		}
-		b := C.dpiData_getBytes(&data[0])
+		//b := C.dpiData_getBytes(&data[0])
+		b := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		*x = string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
 	case *[]string:
 		*x = (*x)[:0]
@@ -1872,7 +1912,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, "")
 				continue
 			}
-			b := C.dpiData_getBytes(&data[i])
+			//b := C.dpiData_getBytes(&data[i])
+			b := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			*x = append(*x, string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
 		}
 
@@ -1995,7 +2036,8 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 			*x = false
 			return nil
 		}
-		db := C.dpiData_getBytes(&data[0])
+		//db := C.dpiData_getBytes(&data[0])
+		db := *((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
 		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 		*x = st.stmtOptions.boolString.FromString(string(b))
 
@@ -2006,7 +2048,8 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, false)
 				continue
 			}
-			db := C.dpiData_getBytes(&data[i])
+			//db := C.dpiData_getBytes(&data[i])
+			db := *((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 			*x = append(*x, st.stmtOptions.boolString.FromString(string(b)))
 		}
