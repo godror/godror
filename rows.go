@@ -8,12 +8,12 @@ package godror
 /*
 #include "dpiImpl.h"
 
-int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
-	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
-}
-dpiRowid *dpiData_getRowid(dpiData *data) {
-	return data->value.asRowid;
-}
+//int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
+//	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
+//}
+//dpiRowid *dpiData_getRowid(dpiData *data) {
+//	return data->value.asRowid;
+//}
 */
 import "C"
 import (
@@ -350,7 +350,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = ""
 				continue
 			}
-			b := C.dpiData_getBytes(d)
+			//b := C.dpiData_getBytes(d)
+			b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 			if b.length == 0 {
 				dest[i] = ""
 				continue
@@ -365,17 +366,22 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			switch col.NativeType {
 			case C.DPI_NATIVE_TYPE_INT64:
-				dest[i] = int64(C.dpiData_getInt64(d))
+				//dest[i] = int64(C.dpiData_getInt64(d))
+				dest[i] = *((*int64)(unsafe.Pointer(&d.value)))
 			case C.DPI_NATIVE_TYPE_UINT64:
-				dest[i] = uint64(C.dpiData_getUint64(d))
+				//dest[i] = uint64(C.dpiData_getUint64(d))
+				dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
 			case C.DPI_NATIVE_TYPE_FLOAT:
 				//dest[i] = float32(C.dpiData_getFloat(d))
-				dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
+				//dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
+				dest[i] = printFloat(float64(*((*float32)(unsafe.Pointer(&d.value)))))
 			case C.DPI_NATIVE_TYPE_DOUBLE:
 				//dest[i] = float64(C.dpiData_getDouble(d))
-				dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
+				//dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
+				dest[i] = printFloat(*((*float64)(unsafe.Pointer(&d.value))))
 			default:
-				b := C.dpiData_getBytes(d)
+				//b := C.dpiData_getBytes(d)
+				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 				s := C.GoStringN(b.ptr, C.int(b.length))
 				dest[i] = s
 				if false && Log != nil {
@@ -392,7 +398,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			// ROWID as returned by OCIRowidToChar
-			cRowid := C.dpiData_getRowid(d)
+			//cRowid := C.dpiData_getRowid(d)
+			cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
 			var cBuf *C.char
 			var cLen C.uint32_t
 			if C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen) == C.DPI_FAILURE {
@@ -405,7 +412,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			b := C.dpiData_getBytes(d)
+			//b := C.dpiData_getBytes(d)
+			b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 			if b.length == 0 {
 				dest[i] = []byte{}
 				continue
@@ -416,25 +424,29 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = float32(C.dpiData_getFloat(d))
+			//dest[i] = float32(C.dpiData_getFloat(d))
+			dest[i] = *((*float32)(unsafe.Pointer(&d.value)))
 		case C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = float64(C.dpiData_getDouble(d))
+			//dest[i] = float64(C.dpiData_getDouble(d))
+			dest[i] = *((*float64)(unsafe.Pointer(&d.value)))
 		case C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = int64(C.dpiData_getInt64(d))
+			//dest[i] = int64(C.dpiData_getInt64(d))
+			dest[i] = *((*int64)(unsafe.Pointer(&d.value)))
 		case C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = uint64(C.dpiData_getUint64(d))
+			//dest[i] = uint64(C.dpiData_getUint64(d))
+			dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
 		case C.DPI_ORACLE_TYPE_TIMESTAMP,
 			C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
 			C.DPI_NATIVE_TYPE_TIMESTAMP,
@@ -443,7 +455,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nullTime
 				continue
 			}
-			ts := C.dpiData_getTimestamp(d)
+			//ts := C.dpiData_getTimestamp(d)
+			ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
 			tz := r.conn.Timezone()
 			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
 				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz)
@@ -467,7 +480,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			ym := C.dpiData_getIntervalYM(d)
+			//ym := C.dpiData_getIntervalYM(d)
+			ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.value)))
 			dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
 
 		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
@@ -534,7 +548,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = C.dpiData_getBool(d) == 1
+			//dest[i] = C.dpiData_getBool(d) == 1
+			dest[i] = *((*C.int)(unsafe.Pointer(&d.value))) == 1
 
 		case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
 			if isNull {

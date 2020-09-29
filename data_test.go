@@ -76,3 +76,28 @@ func TestDataSetGet(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkDataGetBytes(b *testing.B) {
+	var d Data
+	d.SetBytes([]byte("árvíztűrő tükörfúrógép"))
+
+	b.Run("C", func(b *testing.B) {
+		b.ResetTimer()
+		var n uint64
+		for i := 0; i < b.N; i++ {
+			b := d.dpiDataGetBytes()
+			n += uint64(b.length)
+		}
+		b.Log("n:", n)
+	})
+
+	b.Run("unsafe", func(b *testing.B) {
+		b.ResetTimer()
+		var n uint64
+		for i := 0; i < b.N; i++ {
+			b := d.dpiDataGetBytesUnsafe()
+			n += uint64(b.length)
+		}
+		b.Log("n:", n)
+	})
+}
