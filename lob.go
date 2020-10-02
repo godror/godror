@@ -112,18 +112,18 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
-		err := fmt.Errorf("readBytes: %w", dlr.getError())
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
-		if Log != nil {
-			Log("msg", "LOB read", "error", err)
+		if err := fmt.Errorf("readBytes: %w", dlr.getError()); err != nil {
+			C.dpiLob_close(dlr.dpiLob)
+			dlr.dpiLob = nil
+			if Log != nil {
+				Log("msg", "LOB read", "error", err)
+			}
+			if dlr.finished = err.(*OraErr).Code() == 1403; dlr.finished {
+				dlr.offset += n
+				return int(n), io.EOF
+			}
+			return int(n), fmt.Errorf("lob=%p offset=%d n=%d: %w", dlr.dpiLob, dlr.offset, len(p), err)
 		}
-		var cdr interface{ Code() int }
-		if dlr.finished = errors.As(err, &cdr) && cdr.Code() == 1403; dlr.finished {
-			dlr.offset += n
-			return int(n), io.EOF
-		}
-		return int(n), fmt.Errorf("lob=%p offset=%d n=%d: %w", dlr.dpiLob, dlr.offset, len(p), err)
 	}
 	// fmt.Printf("read %d\n", n)
 	if dlr.IsClob {
@@ -167,7 +167,7 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 		if err := dlw.getError(); err != nil {
 			err = fmt.Errorf("writeBytes(%p, offset=%d, data=%d): %w", lob, dlw.offset, n, err)
 			dlw.dpiLob = nil
-			C.dpiLob_closeResource(lob)
+			closeLob(dlw, lob)
 			return 0, err
 		}
 	}
@@ -183,12 +183,20 @@ func (dlw *dpiLobWriter) Close() error {
 	}
 	lob := dlw.dpiLob
 	dlw.dpiLob = nil
-	// C.dpiLob_flushBuffer(lob)
-	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
-		if err := dlw.getError(); err != nil {
-			var cdr interface{ Code() int }
-			if !errors.As(err, &cdr) || cdr.Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
-				return fmt.Errorf("closeResource(%p): %w", lob, err)
+	return closeLob(dlw, lob)
+}
+
+func closeLob(d interface { getError() error }, lob *C.dpiLob) error {
+	if lob == nil {
+		return nil
+	}
+	var isOpen C.int
+	if C.dpiLob_getIsResourceOpen(lob, &isOpen) == C.DPI_SUCCESS && isOpen == 1 {
+		if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
+			if err := d.getError(); err != nil {
+				if err.(*OraErr).Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
+					return fmt.Errorf("closeResource(%p): %w", lob, err)
+				}
 			}
 		}
 	}
@@ -225,15 +233,7 @@ func (dl *DirectLob) Close() error {
 	}
 	lob := dl.dpiLob
 	dl.opened, dl.dpiLob = false, nil
-	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
-		if err := dl.conn.getError(); err != nil {
-			var cdr interface{ Code() int }
-			if !errors.As(err, &cdr) || cdr.Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
-				return fmt.Errorf("closeResource(%p): %w", lob, err)
-			}
-		}
-	}
-	return nil
+	return closeLob(dl.conn, lob)
 }
 
 // Size returns the size of the LOB.

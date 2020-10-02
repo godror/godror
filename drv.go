@@ -744,11 +744,24 @@ func AsOraErr(err error) (*OraErr, bool) {
 var _ error = (*OraErr)(nil)
 
 // Code returns the OraErr's error code.
-func (oe *OraErr) Code() int { return oe.code }
+func (oe *OraErr) Code() int {
+	if oe == nil {
+		return 0
+	}
+	return oe.code
+}
 
 // Message returns the OraErr's message.
-func (oe *OraErr) Message() string { return oe.message }
+func (oe *OraErr) Message() string {
+	if oe == nil {
+		return ""
+	}
+	return oe.message
+}
 func (oe *OraErr) Error() string {
+	if oe == nil {
+		return ""
+	}
 	msg := oe.Message()
 	if oe.code == 0 && msg == "" {
 		return ""
