@@ -766,6 +766,9 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
 		recoverable: errInfo.isRecoverable != 0,
 		warning:     errInfo.isWarning != 0,
 	}
+	if oe.code == 0 && oe.message == "" {
+		return nil
+	}
 	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
 		len(oe.message) > 9 && oe.message[9] == ':' {
 		if i, _ := strconv.Atoi(oe.message[4:9]); i > 0 {

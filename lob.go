@@ -164,10 +164,12 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 
 	n := C.uint64_t(len(p))
 	if C.dpiLob_writeBytes(lob, dlw.offset+1, (*C.char)(unsafe.Pointer(&p[0])), n) == C.DPI_FAILURE {
-		err := fmt.Errorf("writeBytes(%p, offset=%d, data=%d): %w", lob, dlw.offset, n, dlw.getError())
-		dlw.dpiLob = nil
-		C.dpiLob_closeResource(lob)
-		return 0, err
+		if err := dlw.getError(); err != nil {
+			err = fmt.Errorf("writeBytes(%p, offset=%d, data=%d): %w", lob, dlw.offset, n, err)
+			dlw.dpiLob = nil
+			C.dpiLob_closeResource(lob)
+			return 0, err
+		}
 	}
 	// fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)
 	dlw.offset += n
@@ -183,12 +185,12 @@ func (dlw *dpiLobWriter) Close() error {
 	dlw.dpiLob = nil
 	// C.dpiLob_flushBuffer(lob)
 	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
-		err := dlw.getError()
-		var cdr interface{ Code() int }
-		if errors.As(err, &cdr) && cdr.Code() == 22289 { // cannot perform %s operation on an unopened file or LOB
-			return nil
+		if err := dlw.getError(); err != nil {
+			var cdr interface{ Code() int }
+			if !errors.As(err, &cdr) || cdr.Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
+				return fmt.Errorf("closeResource(%p): %w", lob, err)
+			}
 		}
-		return fmt.Errorf("closeResource(%p): %w", lob, err)
 	}
 	return nil
 }
@@ -224,12 +226,12 @@ func (dl *DirectLob) Close() error {
 	lob := dl.dpiLob
 	dl.opened, dl.dpiLob = false, nil
 	if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
-		err := dl.conn.getError()
-		var cdr interface{ Code() int }
-		if errors.As(err, &cdr) && cdr.Code() == 22289 { // cannot perform %s operation on an unopened file or LOB
-			return nil
+		if err := dl.conn.getError(); err != nil {
+			var cdr interface{ Code() int }
+			if !errors.As(err, &cdr) || cdr.Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
+				return fmt.Errorf("closeResource(%p): %w", lob, err)
+			}
 		}
-		return fmt.Errorf("closeResource(%p): %w", lob, err)
 	}
 	return nil
 }
