@@ -186,7 +186,7 @@ func (dlw *dpiLobWriter) Close() error {
 	return closeLob(dlw, lob)
 }
 
-func closeLob(d interface { getError() error }, lob *C.dpiLob) error {
+func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 	if lob == nil {
 		return nil
 	}
@@ -237,6 +237,12 @@ func (dl *DirectLob) Close() error {
 }
 
 // Size returns the size of the LOB.
+//
+// WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding,
+// regardless of what encoding is otherwise in use by the database.
+// The number of characters, however, is defined by the number of UCS-2 codepoints.
+// For this reason, if a character requires more than one UCS-2 codepoint,
+// the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) Size() (int64, error) {
 	var n C.uint64_t
 	if C.dpiLob_getSize(dl.dpiLob, &n) == C.DPI_FAILURE {
