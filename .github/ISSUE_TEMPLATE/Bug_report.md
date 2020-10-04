@@ -1,6 +1,9 @@
 ---
 name: Bug report
 about: Create a report to help us improve
+title: ''
+labels: ''
+assignees: ''
 
 ---
 
@@ -8,26 +11,24 @@ about: Create a report to help us improve
 A clear and concise description of what the bug is.
 
 **To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+At least the offending source code;
+the best is a minimal test case that reproduces the error.
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Error output**
+Copy the error output (panic, stack trace),
+or the output of running with `DPI_DEBUG_LEVEL=92`.
 
 **Your oracle client version**
 e.g. 12.2.0.1.0
 
 **Your godror version**
-e.g. v0.0.1
+e.g. v0.20.4
 
 **Your go version**
-e.g. 1.12.0
+e.g. 1.15.2
 
 **Your gcc version**
 e.g. 4.8.3
