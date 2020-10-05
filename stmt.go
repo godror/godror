@@ -153,6 +153,8 @@ var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
 func FetchRowCount(rowCount int) Option { return FetchArraySize(rowCount) }
 
 // FetchArraySize returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
+//
+// For choosing FetchArraySize and PrefetchCount, see https://cx-oracle.readthedocs.io/en/latest/user_guide/tuning.html#choosing-values-for-arraysize-and-prefetchrows
 func FetchArraySize(rowCount int) Option {
 	return func(o *stmtOptions) {
 		if rowCount > 0 {
@@ -164,6 +166,10 @@ func FetchArraySize(rowCount int) Option {
 }
 
 // PrefetchCount returns an option to set the rows to be fetched, overriding DefaultPrefetchCount.
+//
+// For choosing FetchArraySize and PrefetchCount, see https://cx-oracle.readthedocs.io/en/latest/user_guide/tuning.html#choosing-values-for-arraysize-and-prefetchrows
+//
+// WARNING: If you will take a REF CURSOR, the driver will start prefetching, so if you give that cursor to a stored procedure, that won't see the prefetched rows!
 func PrefetchCount(rowCount int) Option {
 	return func(o *stmtOptions) {
 		if rowCount > 0 {
