@@ -343,6 +343,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, driver.ErrBadConn
 	}
 
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		st.conn.setCallTimeout(time.Until(dl))
+	} else {
+		st.conn.setCallTimeout(0)
+	}
+
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
 		return driver.ResultNoRows, nil
@@ -372,25 +379,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 
 	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if Log != nil {
-					Log("msg", "BREAK statement", "error", err)
-				}
-				_ = st.Break()
-				return
-			}
-		}
-	}()
+    go st.ociBreakDone(ctx, done)
 
 	// execute
 	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
@@ -489,6 +478,14 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if st.conn == nil {
 		return nil, driver.ErrBadConn
 	}
+
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		st.conn.setCallTimeout(time.Until(dl))
+	} else {
+		st.conn.setCallTimeout(0)
+	}
+
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 	return st.queryContextNotLocked(ctx, args)
@@ -498,6 +495,14 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		st.conn.setCallTimeout(time.Until(dl))
+	} else {
+		st.conn.setCallTimeout(0)
+	}
+
 
 	Log := ctxGetLog(ctx)
 	switch st.query {
@@ -540,25 +545,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
 	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if Log != nil {
-					Log("msg", "BREAK query", "error", err)
-				}
-				_ = st.Break()
-				return
-			}
-		}
-	}()
+    go st.ociBreakDone(ctx, done)
 
 	// execute
 	var colCount C.uint32_t
@@ -635,11 +622,6 @@ func (st *statement) NumInput() int {
 
 /*
 // setCallTimeout measures only the round-trips,
-// may close the underlying statement,
-// and may leave the connection in an unusable state.
-// So don't use it.
-//
-// See the ODPI-C documentation.
 func (st *statement) setCallTimeout(ctx context.Context) {
 	if st.callTimeout != 0 {
 		var cancel context.CancelFunc
