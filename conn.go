@@ -68,14 +68,35 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 
+// used before an ODPI call to force it to return within the context deadline
+// calltimeout deadline remains same for subsequent ODPI calls, unless
+// handleDeadline is called before every ODPI call
+func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
+	if err := ctx.Err(); err != nil {
+		if Log != nil {
+			Log("msg", "handleDeadline", "error", err)
+		}
+		return err
+	}
+	if c.drv.clientVersion.Version >= 18 { //18c and above
+		dl, hasDeadline := ctx.Deadline()
+		if hasDeadline {
+			// this deadline remains for rows.Next call got from QueryContext
+			c.setCallTimeout(time.Until(dl))
+		} else {
+			c.setCallTimeout(0)
+		}
+		return nil
+	} else {
+		// using OCIBreak as calltimeout setting is not supported
+		// for pre-18c releases
+		go c.ociBreakDone(ctx, done)
+	}
+	return nil
+}
+
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
 func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
-	if c.drv.clientVersion.Version >= 18 {
-		if Log != nil {
-			Log("msg", "BREAK statement Skipped for above 18c client releases")
-		}
-		return
-	}
 	select {
 	case <-done:
 		return
@@ -87,9 +108,9 @@ func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
 		default:
 			err := ctx.Err()
 			if Log != nil {
-				Log("msg", "BREAK statement", "error", err)
+				Log("msg", "BREAK context statement", "error", err)
 			}
-			c.Break()
+			_ = c.Break()
 			return
 		}
 	}

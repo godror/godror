@@ -243,6 +243,7 @@ type statement struct {
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
+	ctx      context.Context
 	query    string
 	sync.Mutex
 	arrLen int
@@ -335,6 +336,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	Log := ctxGetLog(ctx)
 
 	st.Lock()
@@ -342,13 +344,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if st.conn == nil {
 		return nil, driver.ErrBadConn
 	}
-
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		st.conn.setCallTimeout(time.Until(dl))
-	} else {
-		st.conn.setCallTimeout(0)
-	}
+	st.ctx = ctx
 
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
@@ -366,6 +362,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
+    
+    // HandleDeadline for all ODPI calls called below
+	done := make(chan struct{})
+    defer close(done)
+	if err := st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
 
 	// bind variables
 	if err := st.bindVars(args, Log); err != nil {
@@ -377,9 +380,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-
-	done := make(chan struct{})
-    go st.ociBreakDone(ctx, done)
 
 	// execute
 	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
@@ -405,7 +405,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	close(done)
 	if err != nil {
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
@@ -479,13 +478,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 		return nil, driver.ErrBadConn
 	}
 
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		st.conn.setCallTimeout(time.Until(dl))
-	} else {
-		st.conn.setCallTimeout(0)
-	}
-
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 	return st.queryContextNotLocked(ctx, args)
@@ -495,14 +487,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		st.conn.setCallTimeout(time.Until(dl))
-	} else {
-		st.conn.setCallTimeout(0)
-	}
-
+	st.ctx = ctx
 
 	Log := ctxGetLog(ctx)
 	switch st.query {
@@ -527,6 +512,13 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
+	var err error
+	done := make(chan struct{})
+	defer close(done)
+    // HandleDeadline for all ODPI calls called below
+	if err = st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
@@ -544,13 +536,10 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
-	done := make(chan struct{})
-    go st.ociBreakDone(ctx, done)
 
 	// execute
 	var colCount C.uint32_t
 	c, dpiStmt := st.conn, st.dpiStmt
-	var err error
 	for i := 0; i < 3; i++ {
 		if C.dpiStmt_execute(dpiStmt, mode, &colCount) != C.DPI_FAILURE {
 			err = nil
@@ -563,7 +552,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 			break
 		}
 	}
-	close(done)
 	if err != nil {
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute: %w", err))
 	}
@@ -2174,6 +2162,7 @@ func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
 }
 
 func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+
 	if len(data) == 0 {
 		return nil
 	}
