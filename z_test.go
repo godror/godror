@@ -3763,7 +3763,7 @@ END;`
 	var c string
 	var b []byte
 
-	for rows.Next() { // dpiStmt_fetchRows immediately returns timeout error
+	for rows.Next() { // stmtFetch wont complete and cause deadline error
 		if err := ctx.Err(); err != nil {
 			t.Fatal(err)
 		}

@@ -81,7 +81,8 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 	if c.drv.clientVersion.Version >= 18 { //18c and above
 		dl, hasDeadline := ctx.Deadline()
 		if hasDeadline {
-			// this deadline remains for rows.Next call got from QueryContext
+			// this deadline remains for query not having context as parameter,
+			// for instance rows.Next call inherits context from QueryContext
 			c.setCallTimeout(time.Until(dl))
 		} else {
 			c.setCallTimeout(0)
@@ -135,6 +136,7 @@ func (c *conn) Break() error {
 		return nil
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
+		Log("msg", "Break", "error", c.getError())
 		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
 	}
 	return nil
