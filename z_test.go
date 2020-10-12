@@ -3776,7 +3776,7 @@ END;`
 	err = rows.Err()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			t.Logf("Info: Query cant be run within the context deadline")
+			t.Logf("Info: %+v", err)
 		}
 	} else {
 		if ctx.Err() != context.DeadlineExceeded {
