@@ -283,7 +283,7 @@ func (st *statement) closeNotLocking() error {
 	st.dpiStmt = nil
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
-	st.ctx = context.Background()
+	st.ctx = nil
 
 	if Log != nil {
 		Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
