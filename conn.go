@@ -69,8 +69,6 @@ func (c *conn) getError() error {
 }
 
 // used before an ODPI call to force it to return within the context deadline
-// calltimeout deadline remains same for subsequent ODPI calls, unless
-// handleDeadline is called before every ODPI call
 func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 	if err := ctx.Err(); err != nil {
 		if Log != nil {
@@ -78,19 +76,8 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 		}
 		return err
 	}
-	if c.drv.clientVersion.Version >= 18 { //18c and above
-		dl, hasDeadline := ctx.Deadline()
-		if hasDeadline {
-			// this deadline remains for query not having context as parameter,
-			// for instance rows.Next call inherits context from QueryContext
-			c.setCallTimeout(time.Until(dl))
-		} else {
-			c.setCallTimeout(0)
-		}
-		return nil
-	} else {
-		// using OCIBreak as calltimeout setting is not supported
-		// for pre-18c releases
+	_, hasDeadline := ctx.Deadline()
+	if hasDeadline {
 		go c.ociBreakDone(ctx, done)
 	}
 	return nil
