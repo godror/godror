@@ -337,7 +337,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
 	Log := ctxGetLog(ctx)
 
 	st.Lock()
@@ -477,7 +476,6 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if st.conn == nil {
 		return nil, driver.ErrBadConn
 	}
-
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 	return st.queryContextNotLocked(ctx, args)
@@ -2160,7 +2158,6 @@ func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
 }
 
 func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-
 	if len(data) == 0 {
 		return nil
 	}
