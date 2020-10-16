@@ -68,6 +68,42 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 
+// used before an ODPI call to force it to return within the context deadline
+func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
+	if err := ctx.Err(); err != nil {
+		if Log != nil {
+			Log("msg", "handleDeadline", "error", err)
+		}
+		return err
+	}
+	_, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		go c.ociBreakDone(ctx, done)
+	}
+	return nil
+}
+
+// ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
+func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
+	select {
+	case <-done:
+		return
+	case <-ctx.Done():
+		// select again to avoid race condition if both are done
+		select {
+		case <-done:
+			return
+		default:
+			err := ctx.Err()
+			if Log != nil {
+				Log("msg", "BREAK context statement", "error", err)
+			}
+			_ = c.Break()
+			return
+		}
+	}
+}
+
 // Break signals the server to stop the execution on the connection.
 //
 // The execution should fail with ORA-1013: "user requested cancel of current operation".
@@ -87,6 +123,9 @@ func (c *conn) Break() error {
 		return nil
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
+		if Log != nil {
+			Log("msg", "Break", "error", c.getError())
+		}
 		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
 	}
 	return nil
@@ -108,21 +147,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	defer c.mu.RUnlock()
 
 	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				return
-			default:
-				_ = c.Break()
-				return
-			}
-		}
-	}()
+	go c.ociBreakDone(ctx, done)
 
 	dl, hasDeadline := ctx.Deadline()
 	if hasDeadline {
@@ -312,25 +337,10 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			select {
-			case <-done:
-				return
-			default:
-				_ = c.Break()
-			}
-		}
-	}()
 	st := statement{conn: c, query: query}
 	failed := C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
 	) == C.DPI_FAILURE
-	close(done)
 	if failed {
 		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, c.getError()), c)
 	}

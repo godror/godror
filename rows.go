@@ -277,6 +277,17 @@ func (r *rows) Next(dest []driver.Value) error {
 	if len(dest) != len(r.columns) {
 		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
+	stmtctx := r.statement.ctx
+	if stmtctx != nil {
+		// nil can be present when Next is issued on cursor returned from DB
+		done := make(chan struct{})
+		defer close(done)
+		//  handle deadline for dpiStmt_fetchRows. context reused from stmt
+		if err := r.statement.handleDeadline(stmtctx, done); err != nil {
+			return err
+		}
+	}
+
 	if r.fetched == 0 {
 		var moreRows C.int
 		var start time.Time

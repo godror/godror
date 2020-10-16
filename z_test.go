@@ -3683,3 +3683,104 @@ END;`
 
 	t.Logf("Result: %s", res)
 }
+
+func TestStmtFetchDeadlineForLOB(t *testing.T) {
+
+	ctx, cancel := context.WithTimeout(testContext("TestStmtFetchDeadline"), 30*time.Second)
+	defer cancel()
+
+	// Create a table used for fetching clob, blob data
+
+	tbl := "t_lob_fetch" + tblSuffix
+	const basename = "test_stmtfetchdeadline"
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+
+	conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (k number, c clob, b blob)")
+	defer testDb.Exec("DROP TABLE " + tbl)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (k, c, b) VALUES (:1, :2, :3)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	for tN, tC := range []struct {
+		Bytes  []byte
+		String string
+	}{
+		{[]byte{0, 1, 2, 3, 4}, "abcdef"},
+		{[]byte{5, 6, 7, 8, 9}, "ghijkl"},
+	} {
+
+		// Straight bind
+		if _, err := stmt.ExecContext(ctx, tN*2, tC.String, tC.Bytes); err != nil {
+			t.Errorf("%d. %v", tN, err)
+		}
+
+		if _, err := stmt.ExecContext(ctx, tN*2+1, tC.String, tC.Bytes); err != nil {
+			t.Errorf("%d. %v", tN, err)
+		}
+	}
+
+	const qryf = `create or replace FUNCTION ` + basename + `_f (
+    ITERS IN VARCHAR2 DEFAULT 10,
+    PAUSE IN VARCHAR2 DEFAULT 1
+) RETURN number
+IS
+cnt number;
+
+BEGIN
+    FOR i IN 1..ITERS LOOP
+        DBMS_SESSION.SLEEP(PAUSE);
+    END LOOP;
+    cnt :=2;
+    RETURN cnt;
+END;`
+	if _, err := testDb.ExecContext(context.Background(), qryf); err != nil {
+		t.Fatal(fmt.Errorf("%s: %+v", qryf, err))
+	}
+	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION "+tbl+"_f") }()
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+
+	defer cancel()
+
+	qry := `select k, c, b from ` + tbl + ` where k <= ` + basename + `_f(iters => 2, pause => 1)`
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(fmt.Errorf("%s: %v", qry, err))
+	}
+	defer rows.Close()
+
+	var k int
+	var c string
+	var b []byte
+
+	for rows.Next() { // stmtFetch wont complete and cause deadline error
+		if err := ctx.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Scan(&k, &c, &b); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("key=%v, CLOB=%q BLOB=%q\n", k, c, b)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			t.Logf("Info: %+v", err)
+		}
+	} else {
+		if ctx.Err() != context.DeadlineExceeded {
+			t.Fatal("Error:Deadline Not Exceeded")
+		}
+	}
+}

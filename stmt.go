@@ -249,6 +249,7 @@ type statement struct {
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
+	ctx      context.Context
 	query    string
 	sync.Mutex
 	arrLen int
@@ -288,6 +289,7 @@ func (st *statement) closeNotLocking() error {
 	st.dpiStmt = nil
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
+	st.ctx = nil
 
 	if Log != nil {
 		Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
@@ -348,6 +350,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if st.conn == nil {
 		return nil, driver.ErrBadConn
 	}
+	st.ctx = ctx
 
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
@@ -366,6 +369,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return maybeBadConn(err, c)
 	}
 
+	// HandleDeadline for all ODPI calls called below
+	done := make(chan struct{})
+	defer close(done)
+	if err := st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
+
 	// bind variables
 	if err := st.bindVars(args, Log); err != nil {
 		return nil, closeIfBadConn(err)
@@ -376,28 +386,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if Log != nil {
-					Log("msg", "BREAK statement", "error", err)
-				}
-				_ = st.Break()
-				return
-			}
-		}
-	}()
-
 	// execute
 	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
 	var err error
@@ -422,7 +410,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	close(done)
 	if err != nil {
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
@@ -504,6 +491,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	st.ctx = ctx
 
 	Log := ctxGetLog(ctx)
 	switch st.query {
@@ -528,6 +516,13 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
+	var err error
+	done := make(chan struct{})
+	defer close(done)
+	// HandleDeadline for all ODPI calls called below
+	if err = st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
@@ -540,36 +535,13 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-
 	// set Prefetch Parameters before execute
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
 
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				return
-			case <-ctx.Done():
-				err := ctx.Err()
-				if Log != nil {
-					Log("msg", "BREAK query", "error", err)
-				}
-				_ = st.Break()
-				return
-			}
-		}
-	}()
-
 	// execute
 	var colCount C.uint32_t
 	c, dpiStmt := st.conn, st.dpiStmt
-	var err error
 	for i := 0; i < 3; i++ {
 		if C.dpiStmt_execute(dpiStmt, mode, &colCount) != C.DPI_FAILURE {
 			err = nil
@@ -582,7 +554,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 			break
 		}
 	}
-	close(done)
 	if err != nil {
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute: %w", err))
 	}
@@ -641,11 +612,6 @@ func (st *statement) NumInput() int {
 
 /*
 // setCallTimeout measures only the round-trips,
-// may close the underlying statement,
-// and may leave the connection in an unusable state.
-// So don't use it.
-//
-// See the ODPI-C documentation.
 func (st *statement) setCallTimeout(ctx context.Context) {
 	if st.callTimeout != 0 {
 		var cancel context.CancelFunc
