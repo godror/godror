@@ -123,7 +123,9 @@ func (c *conn) Break() error {
 		return nil
 	}
 	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
-		Log("msg", "Break", "error", c.getError())
+		if Log != nil {
+			Log("msg", "Break", "error", c.getError())
+		}
 		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
 	}
 	return nil

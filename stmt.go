@@ -363,10 +363,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
-    
-    // HandleDeadline for all ODPI calls called below
+
+	// HandleDeadline for all ODPI calls called below
 	done := make(chan struct{})
-    defer close(done)
+	defer close(done)
 	if err := st.handleDeadline(ctx, done); err != nil {
 		return nil, err
 	}
@@ -381,7 +381,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-
 	// execute
 	c, dpiStmt, arrLen, many := st.conn, st.dpiStmt, st.arrLen, !st.PlSQLArrays() && st.arrLen > 0
 	var err error
@@ -516,7 +515,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	var err error
 	done := make(chan struct{})
 	defer close(done)
-    // HandleDeadline for all ODPI calls called below
+	// HandleDeadline for all ODPI calls called below
 	if err = st.handleDeadline(ctx, done); err != nil {
 		return nil, err
 	}
@@ -532,11 +531,9 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-
 	// set Prefetch Parameters before execute
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
-
 
 	// execute
 	var colCount C.uint32_t
