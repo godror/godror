@@ -28,14 +28,22 @@ func (N Number) Decompose(buf []byte) (form byte, negative bool, coefficient []b
 	case -1:
 		negative = true
 	}
+	c := (i.BitLen() + 7) >> 3
+	if c <= cap(buf) {
+		buf = buf[:c]
+	} else {
+		buf = make([]byte, c)
+	}
 	return 0, negative, i.FillBytes(buf), exponent
 }
 func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent int32) error {
 	var i big.Int
 	var start int
 	length := 1 + len(coefficient)*3
-	if exponent < 0 {
+	if negative {
 		start = 1
+	}
+	if exponent < 0 {
 		length++
 	} else if exponent > 0 {
 		length += int(exponent)
@@ -50,14 +58,21 @@ func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent 
 		p = append(p, '0')
 	}
 	if exponent < 0 {
-		exp := int(exponent)
-		length = len(p) - start
-		for ; exp < -length; exp++ {
-			p = append(p[start:], '0')
+		exp := int(-exponent)
+		if plus := exp - len(p) + start + 1; plus > 0 {
+			olen := len(p)
+			p = append(p, make([]byte, plus+1)...)
+			copy(p[start+1+plus:], p[start:olen])
+			for i := 0; i < plus; i++ {
+				p[start+1+i] = '0'
+			}
+			p[start] = '0'
+			p[start+1] = '.'
+		} else {
+			p = append(p, p[len(p)-1])
+			copy(p[len(p)-1-exp:len(p)-1], p[len(p)-1-exp-1:len(p)-1-1])
+			p[len(p)-1-exp] = '.'
 		}
-		p = append(p, p[len(p)-1])
-		copy(p[len(p)-exp:len(p)-1], p[len(p)-exp-1:len(p)-2])
-		p[len(p)-exp] = '.'
 	}
 	*N = Number(string(p))
 	return nil
