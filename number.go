@@ -1,4 +1,5 @@
 // Copyright 2020 The Godror Authors
+// Copyright 2016 Tamás Gulácsi
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -54,8 +55,8 @@ func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent 
 		for ; exp < -length; exp++ {
 			p = append(p[start:], '0')
 		}
-		p = append(p, ' ')
-		copy(p[len(p)-exp:], p[len(p)-exp-1:len(p)-1])
+		p = append(p, p[len(p)-1])
+		copy(p[len(p)-exp:len(p)-1], p[len(p)-exp-1:len(p)-2])
 		p[len(p)-exp] = '.'
 	}
 	*N = Number(string(p))
