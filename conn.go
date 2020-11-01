@@ -632,14 +632,18 @@ func maybeBadConn(err error, c *conn) error {
 				cl()
 				return driver.ErrBadConn
 			}
-			// cases by experience:
-			// ORA-12170: TNS:Connect timeout occurred
-			// ORA-12528: TNS:listener: all appropriate instances are blocking new connections
-			// ORA-12545: Connect failed because target host or object does not exist
-		case 12170, 12528, 12545:
+
+		case // cases by experience:
+			12170, // TNS:Connect timeout occurred
+			12528, // TNS:listener: all appropriate instances are blocking new connections
+			12545: // Connect failed because target host or object does not exist
 			fallthrough
-			//cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
-		case 22, // invalid session ID; access denied
+		case // cases from go-oci8
+			1033, // ORACLE initialization or shutdown in progress
+			1034: // ORACLE not available
+			fallthrough
+		case //cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
+			22,    // invalid session ID; access denied
 			28,    // your session has been killed
 			31,    // your session has been marked for kill
 			45,    // your session has been terminated with no replay

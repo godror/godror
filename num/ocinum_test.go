@@ -4,6 +4,8 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
+//lint:file-ignore ST1018 Already generated, hard to convert.
+
 package num
 
 import (
