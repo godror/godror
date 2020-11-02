@@ -152,9 +152,49 @@ func TestOCINumSetString(t *testing.T) {
 	}
 }
 
+func TestDeCompose(t *testing.T) {
+	p := make([]byte, 38)
+	var n OCINum
+	for i, s := range []string{
+		"0",
+		"1",
+		"-2",
+		"3.14",
+		"-3.14",
+		"1000",
+		"3.456789",
+		"0.01",
+		"-0.09",
+		"-0.89",
+		"0.0000000001",
+		"1.0000000002",
+		"12345678901234567890123456789012345678",
+		"120056789012005678901200567890100456780",
+	} {
+		if err := n.SetString(s); err != nil {
+			t.Fatalf("%d. %q: %+v", i, s, err)
+		}
+
+		form, negative, coefficient, exponent := n.Decompose(p[:0])
+		if want := s[0] == '-'; want != negative {
+			t.Errorf("%d. Decompose(%q) got negative=%t, wanted %t", i, s, negative, want)
+		}
+		t.Logf("%d. %q: form=%d negative=%t exponent=%d coefficient=%v orig=%v", i, s, form, negative, exponent, coefficient, []byte(n))
+		var m OCINum
+		if err := m.Compose(form, negative, coefficient, exponent); err != nil {
+			t.Errorf("%d. cannot compose %c/%t/% x/%d from %q", i, form, negative, coefficient, exponent, s)
+		}
+		t.Logf("%d. m=%v", i, []byte(m))
+		if got := m.String(); got != s {
+			t.Errorf("%d. got %q wanted %q", i, got, s)
+		}
+	}
+}
+
 func TestPrintCorpus(t *testing.T) {
 	hsh := sha1.New()
 	var h []byte
+	os.MkdirAll("corpus", 0750)
 	for _, ss := range [][]string{setStringCasesGood, setStringCasesBad} {
 		for _, s := range ss {
 			hsh.Reset()

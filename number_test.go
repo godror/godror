@@ -33,10 +33,11 @@ func TestNumberDeCompose(t *testing.T) {
 		if want := s[0] == '-'; want != negative {
 			t.Errorf("%d. Decompose(%q) got negative=%t, wanted %t", i, s, negative, want)
 		}
-		if err := n.Compose(form, negative, coefficient, exponent); err != nil {
+		var m godror.Number
+		if err := m.Compose(form, negative, coefficient, exponent); err != nil {
 			t.Errorf("%d. cannot compose %c/%t/% x/%d from %q", i, form, negative, coefficient, exponent, s)
 		}
-		if string(n) != s {
+		if string(m) != s {
 			t.Errorf("%d. got %q wanted %q", i, n, s)
 		}
 	}

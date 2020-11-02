@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// Decompose returns the internal decimal state in parts.
+// If the provided buf has sufficient capacity, buf may be returned as the coefficient with
+// the value set and length set as appropriate.
 func (N Number) Decompose(buf []byte) (form byte, negative bool, coefficient []byte, exponent int32) {
 	s := string(N)
 	mexp := strings.IndexByte(s, '.')
@@ -36,6 +39,9 @@ func (N Number) Decompose(buf []byte) (form byte, negative bool, coefficient []b
 	}
 	return 0, negative, i.FillBytes(buf), exponent
 }
+
+// Compose sets the internal decimal value from parts. If the value cannot be
+// represented then an error should be returned.
 func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent int32) error {
 	var i big.Int
 	var start int
