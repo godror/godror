@@ -319,7 +319,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
 		uSid := strings.ToUpper(dataSourceName)
-		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
+		fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
 		if strings.Contains(uSid, " AS ") {
 			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
 				dataSourceName = dataSourceName[:len(dataSourceName)-10]
@@ -685,20 +685,27 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 		return "", "", dataSourceName
 	}
 	ups := splitQuoted(dataSourceName, '@')
-	//if len(ups) == 1 {  // user/pass, no '@'
+	var extra string
+	if len(ups) == 1 { // user/pass, no '@'
+		if i := strings.Index(strings.ToUpper(ups[0]), " AS SYS"); i >= 0 {
+			ups[0], extra = ups[0][:i], ups[0][i:]
+		}
+	}
+	//fmt.Printf("ups=%v extra=%q\n", ups, extra)
 	userpass := splitQuoted(ups[0], '/')
 	//fmt.Printf("ups=%q\nuserpass=%q\n", ups, userpass)
 	if len(ups) == 1 && len(userpass) == 1 {
-		return "", "", dataSourceName
+		return "", "", dataSourceName + unquote(extra)
 	}
+
 	user = unquote(userpass[0])
 	if len(userpass) > 1 {
 		passw = unquote(userpass[1])
 	}
 	if len(ups) == 1 {
-		return user, passw, ""
+		return user, passw, unquote(extra)
 	}
-	return user, passw, unquote(ups[1])
+	return user, passw, unquote(ups[1] + extra)
 }
 
 // ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.
