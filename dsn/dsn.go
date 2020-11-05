@@ -319,7 +319,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
 		uSid := strings.ToUpper(dataSourceName)
-		fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
+		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
 		if strings.Contains(uSid, " AS ") {
 			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
 				dataSourceName = dataSourceName[:len(dataSourceName)-10]
