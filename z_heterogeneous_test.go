@@ -29,6 +29,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.Heterogeneous = true
+	cs.EnableEvents = false
 	username := cs.Username
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testHeterogeneousConStr)
@@ -70,8 +71,9 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		In   context.Context
 		Want string
 	}{
-		"noContext": {In: ctx, Want: username},
-		"proxyUser": {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword, ""), Want: proxyUser},
+		"noContext":       {In: ctx, Want: username},
+		"proxyUser":       {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword, ""), Want: proxyUser},
+		"proxyUserNoPass": {In: godror.ContextWithUserPassw(ctx, proxyUser, "", ""), Want: proxyUser},
 	} {
 		t.Run(tName, func(t *testing.T) {
 			var result string
