@@ -523,13 +523,13 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		return nil, err
 	}
 
-	if P.Heterogeneous {
-		P.Username = ""
-		P.Password.Reset()
+	var usernameKey string
+	if !P.Heterogeneous {
+		usernameKey = P.Username
 	}
 	// determine key to use for pool
 	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
-		P.Username, P.ConnectString, P.MinSessions, P.MaxSessions,
+		usernameKey, P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth)
 	if Log != nil {
