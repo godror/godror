@@ -141,15 +141,15 @@ func (cd *DescriptionList) Parse(ss []Statement) error {
 }
 
 type Description struct {
-	TCPKeepAlive  bool
-	SDU           int
-	Bufs          BufSizes
-	Options       ListOptions
-	Addresses     []Address
-	AddressList   AddressList
 	ConnectData   ConnectData
+	AddressList   AddressList
+	Addresses     []Address
 	TypeOfService string
+	Bufs          BufSizes
 	Security      Security
+	SDU           int
+	Options       ListOptions
+	TCPKeepAlive  bool
 }
 
 func (d Description) Print(w io.Writer, prefix, indent string) {
