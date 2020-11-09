@@ -35,7 +35,7 @@ e.g. 4.8.3
 
 **Machine (please complete the following information):**
  - OS: [e.g. win]
- - Architecture [e.g. x86_64]
+ - Architecture: [e.g. x86_64]
  - Version: [e.g. 10]
 
 **Additional context**
