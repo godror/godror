@@ -1,4 +1,4 @@
-// +build !go1.14
+// +build !go1.15
 
 // Copyright 2020 The Godror Authors
 // Copyright 2016 Tamás Gulácsi
