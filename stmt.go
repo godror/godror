@@ -1889,6 +1889,59 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = append(*x, string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
 		}
 
+	case *sql.NullInt32:
+		if len(data) == 0 || data[0].isNull == 1 {
+			x.Int32, x.Valid = 0, false
+			return nil
+		}
+		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 32)
+		if err != nil {
+			return err
+		}
+		x.Int32, x.Valid = int32(v), true
+		return err
+	case *[]sql.NullInt32:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, sql.NullInt32{})
+				continue
+			}
+			b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+			v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 32)
+			if err != nil {
+				return err
+			}
+			*x = append(*x, sql.NullInt32{Valid: true, Int32: int32(v)})
+		}
+	case *sql.NullInt64:
+		if len(data) == 0 || data[0].isNull == 1 {
+			x.Int64, x.Valid = 0, false
+			return nil
+		}
+		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 64)
+		if err != nil {
+			return err
+		}
+		x.Int64, x.Valid = v, true
+		return nil
+	case *[]sql.NullInt64:
+		*x = (*x)[:0]
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, sql.NullInt64{})
+				continue
+			}
+			b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+			v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 64)
+			if err != nil {
+				return err
+			}
+			*x = append(*x, sql.NullInt64{Valid: true, Int64: v})
+		}
+
 	case *interface{}:
 		switch y := (*x).(type) {
 		case []byte:
@@ -1914,6 +1967,23 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = y
 			return err
 		case []string:
+			err := dataGetBytes(&y, data)
+			*x = y
+			return err
+
+		case sql.NullInt32:
+			err := dataGetBytes(&y, data[:1])
+			*x = y
+			return err
+		case []sql.NullInt32:
+			err := dataGetBytes(&y, data)
+			*x = y
+			return err
+		case sql.NullInt64:
+			err := dataGetBytes(&y, data[:1])
+			*x = y
+			return err
+		case []sql.NullInt64:
 			err := dataGetBytes(&y, data)
 			*x = y
 			return err
