@@ -482,7 +482,7 @@ func (c *conn) initTZ() error {
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
-	const qry = "SELECT DBTIMEZONE, LTRIM(REGEXP_SUBSTR(TO_CHAR(SYSTIMESTAMP), ' [^ ]+$')) FROM DUAL"
+	const qry = "SELECT DBTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESSTAMP, 'TZH:TZM')) FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)

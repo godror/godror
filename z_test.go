@@ -2612,7 +2612,7 @@ func TestGetDBTimeZone(t *testing.T) {
 	if _, err := tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	qry = "SELECT DBTIMEZONE, SESSIONTIMEZONE, SYSTIMESTAMP||'', LOCALTIMESTAMP||'' FROM DUAL"
+	qry = `SELECT DBTIMEZONE, SESSIONTIMEZONE, TO_CHAR(SYSTIMESTAMP, '"TZR="TZR "TZD="TZD "TZH:TZM="TZH:TZM'), LOCALTIMESTAMP||'' FROM DUAL`
 	var dbTz, tz, sts, lts string
 	if err := tx.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &sts, &lts); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
