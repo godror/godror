@@ -197,12 +197,7 @@ func (n *Number) UnmarshalText(p []byte) error {
 
 // MarshalJSON marshals a Number into a JSON string.
 func (n Number) MarshalJSON() ([]byte, error) {
-	b, err := n.MarshalText()
-	b2 := make([]byte, 1, 1+len(b)+1)
-	b2[0] = '"'
-	b2 = append(b2, b...)
-	b2 = append(b2, '"')
-	return b2, err
+	return append(append(append(make([]byte, 1, 1+len(n)+1), '"'), []byte(n)...), '"'), nil
 }
 
 // UnmarshalJSON parses a JSON string into the Number.
