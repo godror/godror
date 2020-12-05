@@ -74,6 +74,11 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 			return 0, nil
 		}
 		return strconv.ParseInt(string(x), 10, 64)
+	case *Number:
+		if x == nil || *x == "" {
+			return 0, nil
+		}
+		return strconv.ParseInt(string(*x), 10, 64)
 	default:
 		return nil, fmt.Errorf("unknown type %T", v)
 	}
@@ -115,6 +120,11 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 			return 0, nil
 		}
 		return strconv.ParseFloat(string(x), 64)
+	case *Number:
+		if x == nil || *x == "" {
+			return 0, nil
+		}
+		return strconv.ParseFloat(string(*x), 64)
 	default:
 		return nil, fmt.Errorf("unknown type %T", v)
 	}
@@ -138,6 +148,11 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 			return 0, nil
 		}
 		return string(x), nil
+	case *Number:
+		if x == nil || *x == "" {
+			return 0, nil
+		}
+		return string(*x), nil
 	case int8, int16, int32, int64, uint16, uint32, uint64:
 		return fmt.Sprintf("%d", x), nil
 	case float32, float64:
@@ -164,6 +179,12 @@ func (n *Number) Scan(v interface{}) error {
 		*n = Number(x)
 	case Number:
 		*n = x
+	case *Number:
+		if x == nil {
+			*n = ""
+		} else {
+			*n = *x
+		}
 	case int8, int16, int32, int64, uint16, uint32, uint64:
 		*n = Number(fmt.Sprintf("%d", x))
 	case float32, float64:
