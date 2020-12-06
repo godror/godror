@@ -66,7 +66,7 @@ func BenchmarkSelect113(b *testing.B) {
 		}
 	})
 
-	for i := 2; i < 8192; i *= 8 {
+	for _, i := range []int{1, 2, 16, 128, 256, 512, 1024, 2048, 8192} {
 		arraySize := i
 		b.Run("prefetch-"+strconv.Itoa(i), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -87,6 +87,7 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 	}
 	defer rows.Close()
 	var n uint64
+	var bytes int64
 	var t time.Time
 	if first {
 		t = time.Now()
@@ -103,11 +104,12 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 			t = time.Time{}
 		}
 		n++
+		bytes += 8 + int64(len(email)) + 8
 		if n == uint64(maxRows) {
 			break
 		}
 	}
 	rows.Close()
-	b.ReportMetric(float64(n), "record")
+	b.SetBytes(bytes)
 	//b.Logf("Selected %d records in %s.", n, time.Since(t))
 }
