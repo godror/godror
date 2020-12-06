@@ -212,11 +212,11 @@ func init() {
 		}
 	}()
 
-	statTicker = make(chan time.Time)
-	ticks := time.NewTicker(30 * time.Second).C
+	statTicks = make(chan time.Time)
+	statTicker = time.NewTicker(30 * time.Second)
 	go func() {
-		for t := range ticks {
-			statTicker <- t
+		for t := range statTicker.C {
+			statTicks <- t
 		}
 	}()
 
@@ -225,8 +225,8 @@ func init() {
 		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range statTicker {
-				fmt.Printf("testDb: %+v\n", testDb.Stats())
+			for range statTicks {
+				fmt.Fprintf(os.Stderr, "testDb: %+v\n", testDb.Stats())
 			}
 		}()
 	} else {
@@ -235,11 +235,11 @@ func init() {
 		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range statTicker {
+			for range statTicks {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
-					fmt.Printf("testDb: %s %v\n", poolStats, err)
+					fmt.Fprintf(os.Stderr, "testDb: %s %v\n", poolStats, err)
 					return err
 				})
 				cancel()
@@ -248,10 +248,14 @@ func init() {
 	}
 }
 
-var statTicker chan time.Time
+var statTicker *time.Ticker
+var statTicks chan time.Time
 
 func PrintConnStats() {
-	statTicker <- time.Now()
+	statTicks <- time.Now()
+}
+func stopConnStats() {
+	statTicker.Stop()
 }
 
 func testContext(name string) context.Context {

@@ -16,6 +16,7 @@ import (
 )
 
 func BenchmarkSelect113(b *testing.B) {
+	stopConnStats()
 	b.StopTimer()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -66,7 +67,7 @@ func BenchmarkSelect113(b *testing.B) {
 		}
 	})
 
-	for _, i := range []int{1, 2, 16, 128, 256, 512, 1024, 2048, 8192} {
+	for i := 1; i <= 8192; i *= 2 {
 		arraySize := i
 		b.Run("prefetch-"+strconv.Itoa(i), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
