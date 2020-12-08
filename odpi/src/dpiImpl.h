@@ -169,6 +169,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DTYPE_ROW_CHDES                     79
 #define DPI_OCI_DTYPE_CQDES                         80
 #define DPI_OCI_DTYPE_SHARDING_KEY                  83
+#define DPI_OCI_DTYPE_JSON                          85
 
 // define values used for getting/setting OCI attributes
 #define DPI_OCI_ATTR_DATA_SIZE                      1
@@ -321,6 +322,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_LIMIT                     578
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
 #define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
+#define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -351,6 +353,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_SQLT_BLOB                               113
 #define DPI_SQLT_BFILE                              114
 #define DPI_SQLT_RSET                               116
+#define DPI_SQLT_JSON                               119
 #define DPI_SQLT_NCO                                122
 #define DPI_SQLT_ODT                                156
 #define DPI_SQLT_DATE                               184
@@ -415,6 +418,34 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SUBSCR_CQ_QOS_QUERY                 0x01
 #define DPI_OCI_SUBSCR_CQ_QOS_BEST_EFFORT           0x02
 
+// define XDK node type constants
+#define DPI_JZNDOM_SCALAR                           1
+#define DPI_JZNDOM_OBJECT                           2
+#define DPI_JZNDOM_ARRAY                            3
+
+// define XDK scalar type constants
+#define DPI_JZNVAL_NULL                             2
+#define DPI_JZNVAL_STRING                           3
+#define DPI_JZNVAL_FALSE                            5
+#define DPI_JZNVAL_TRUE                             6
+#define DPI_JZNVAL_FLOAT                            11
+#define DPI_JZNVAL_DOUBLE                           12
+#define DPI_JZNVAL_BINARY                           13
+#define DPI_JZNVAL_ORA_NUMBER                       17
+#define DPI_JZNVAL_ORA_DATE                         18
+#define DPI_JZNVAL_ORA_TIMESTAMP                    19
+#define DPI_JZNVAL_ORA_TIMESTAMPTZ                  20
+#define DPI_JZNVAL_ORA_YEARMONTH_DUR                21
+#define DPI_JZNVAL_ORA_DAYSECOND_DUR                22
+#define DPI_JZNVAL_OCI_NUMBER                       32
+#define DPI_JZNVAL_OCI_DATE                         33
+#define DPI_JZNVAL_OCI_DATETIME                     34
+#define DPI_JZNVAL_OCI_INTERVAL                     40
+
+// define XDK miscellaneous constants
+#define DPI_JZN_ALLOW_SCALAR_DOCUMENTS              0x00000080
+#define DPI_JZN_INPUT_UTF8                          1
+
 // define miscellaneous OCI constants
 #define DPI_OCI_CONTINUE                            -24200
 #define DPI_OCI_INVALID_HANDLE                      -2
@@ -448,6 +479,8 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_AUTH                                8
 #define DPI_OCI_DURATION_SESSION                    10
 #define DPI_OCI_NUMBER_SIZE                         22
+#define DPI_OCI_MAX_VAL_SIZE                        22
+#define DPI_OCI_NEED_DATA                           99
 #define DPI_OCI_NO_DATA                             100
 #define DPI_OCI_SRVRELEASE2_CACHED                  0x0001
 #define DPI_OCI_STRLS_CACHE_DELETE                  0x0010
@@ -559,6 +592,9 @@ typedef enum {
     DPI_ERR_MISSING_SHARDING_KEY,
     DPI_ERR_CONTEXT_NOT_CREATED,
     DPI_ERR_OS,
+    DPI_ERR_UNHANDLED_JSON_NODE_TYPE,
+    DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE,
+    DPI_ERR_UNHANDLED_CONVERSION_TO_JSON,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -585,6 +621,7 @@ typedef enum {
     DPI_HTYPE_SODA_DOC,
     DPI_HTYPE_SODA_DOC_CURSOR,
     DPI_HTYPE_QUEUE,
+    DPI_HTYPE_JSON,
     DPI_HTYPE_MAX
 } dpiHandleTypeNum;
 
@@ -626,6 +663,93 @@ typedef struct {
 
 
 //-----------------------------------------------------------------------------
+// forward declarations for recursive OCI JSON type definitions
+//-----------------------------------------------------------------------------
+typedef union dpiJsonOciVal dpiJsonOciVal;
+typedef struct dpiJznDomDoc dpiJznDomDoc;
+typedef struct dpiJznDomNameValuePair dpiJznDomNameValuePair;
+typedef struct dpiJznDomScalar dpiJznDomScalar;
+
+
+//-----------------------------------------------------------------------------
+// OCI JSON function definitions
+//-----------------------------------------------------------------------------
+typedef void* (*dpiJznDom__loadFromInputEventSrc)(dpiJznDomDoc *jdoc,
+        void *evtsrc);
+typedef void* (*dpiJznDom__loadFromInputOSON)(dpiJznDomDoc *jdoc,
+        void *octbsrc);
+typedef int (*dpiJznDom__getNodeType)(dpiJznDomDoc *jdoc, void *node);
+typedef void (*dpiJznDom__getScalarInfo)(dpiJznDomDoc *jdoc, void *nd,
+        dpiJznDomScalar *val);
+typedef void* (*dpiJznDom__getRootNode)(dpiJznDomDoc *jdoc);
+typedef uint32_t (*dpiJznDom__getNumObjField)(dpiJznDomDoc *jdoc, void *obj);
+typedef void* (*dpiJznDom__getFieldVal)(dpiJznDomDoc *jdoc, void *obj,
+        void *nmkey);
+typedef void* (*dpiJznDom__getFieldByName)(dpiJznDomDoc *jdoc, void *obj,
+        const char *nm, uint16_t nmlen);
+typedef void (*dpiJznDom__getAllFieldNamesAndVals)(dpiJznDomDoc *jdoc,
+        void *obj, void **nvps);
+typedef uint32_t (*dpiJznDom__getFieldNamesAndValsBatch)(dpiJznDomDoc *jdoc,
+        void *obj, uint32_t startPos, uint32_t fetchSz,
+        dpiJznDomNameValuePair *nvps);
+typedef uint32_t (*dpiJznDom__getArraySize)(dpiJznDomDoc *jdoc, void *ary);
+typedef void* (*dpiJznDom__getArrayElem)(dpiJznDomDoc *jdoc, void *ary,
+        uint32_t index);
+typedef uint32_t (*dpiJznDom__getArrayElemBatch)(dpiJznDomDoc *jdoc, void *ary,
+        uint32_t startPos, uint32_t fetchSz, void **ndary);
+typedef void (*dpiJznDom__setRootNode)(dpiJznDomDoc *jdoc, void *root);
+typedef void (*dpiJznDom__putFieldValue)(dpiJznDomDoc *jdoc, void *obj,
+        const char *name, uint16_t namelen, void *node);
+typedef int (*dpiJznDom__putItem)(dpiJznDomDoc *jdoc, void *arr, void *node,
+        uint32_t pos);
+typedef int (*dpiJznDom__appendItem)(dpiJznDomDoc *jdoc, void *arr,
+        void *node);
+typedef int (*dpiJznDom__replaceItem)(dpiJznDomDoc *jdoc, void *arr,
+        void *node, uint32_t pos);
+typedef void (*dpiJznDom__deleteField)(dpiJznDomDoc *jdoc, void *obj,
+        void *nmkey);
+typedef void* (*dpiJznDom__unlinkField)(dpiJznDomDoc *jdoc, void *obj,
+        void *nmkey);
+typedef int (*dpiJznDom__renameField)(dpiJznDomDoc *jdoc, void *obj,
+        const char *oldName, uint16_t oldNameLen, const char *newName,
+        uint16_t newNameLen);
+typedef int (*dpiJznDom__deleteItem)(dpiJznDomDoc *jdoc, void *arr,
+        uint32_t idx);
+typedef void* (*dpiJznDom__unlinkItem)(dpiJznDomDoc *jdoc, void *arr,
+        uint32_t idx);
+typedef uint32_t (*dpiJznDom__deleteItemBatch)(dpiJznDomDoc *jdoc, void *arr,
+        uint32_t start, uint32_t deleteSz);
+typedef void* (*dpiJznDom__newObject)(dpiJznDomDoc *jdoc, uint32_t sz);
+typedef void* (*dpiJznDom__newArray)(dpiJznDomDoc *jdoc, uint32_t sz);
+typedef void* (*dpiJznDom__newScalar)(dpiJznDomDoc *jdoc,
+        dpiJznDomScalar *val);
+typedef void (*dpiJznDom__reset)(dpiJznDomDoc *jdoc);
+typedef void (*dpiJznDom__free)(dpiJznDomDoc *jdoc);
+typedef void* (*dpiJznDom__getOutputEventSrc)(dpiJznDomDoc *jdoc);
+typedef int (*dpiJznDom__equals)(dpiJznDomDoc *jdoc1, void *nd1,
+        dpiJznDomDoc *jdoc2, void *nd2);
+typedef void* (*dpiJznDom__copy)(dpiJznDomDoc *srcdoc, void *srcnode,
+        dpiJznDomDoc *destdoc);
+typedef void (*dpiJznDom__validFid)(dpiJznDomDoc *jdoc, void *fnms,
+        uint16_t fnmsn);
+typedef int (*dpiJznDom__storeField)(dpiJznDomDoc *jdoc, const char *fname,
+        uint32_t fnlen, void *name);
+typedef int (*dpiJznDom__printNode)(dpiJznDomDoc *jdoc, void *node,
+        void *writer);
+typedef void (*dpiJznDom__visitorFunc)(void *vinfo, void *appctx);
+typedef void (*dpiJznDom__nodeVisitor)(dpiJznDomDoc *jdoc, void *node,
+        dpiJznDom__visitorFunc func, void *ctx);
+typedef void* (*dpiJznDom__newScalarVal)(dpiJznDomDoc *jdoc, int typ, ...);
+typedef void (*dpiJznDom__deleteFieldByName)(dpiJznDomDoc *jdoc, void *obj,
+        const char *name, uint16_t namelen);
+typedef void *(*dpiJznDom__unlinkFieldByName)(dpiJznDomDoc *jdoc, void *obj,
+        const char *name, uint16_t namelen);
+typedef int (*dpiJznDom__freeNode)(dpiJznDomDoc *jdoc, void *node);
+typedef void (*dpiJznDom__getScalarInfoOci)(dpiJznDomDoc *jdoc, void *nd,
+        dpiJznDomScalar *val, dpiJsonOciVal *aux);
+
+
+//-----------------------------------------------------------------------------
 // OCI type definitions
 //-----------------------------------------------------------------------------
 
@@ -662,6 +786,122 @@ typedef struct {
     long bqual_length;
     char data[DPI_XA_XIDDATASIZE];
 } dpiOciXID;
+
+// representation of JSON OCI values
+union dpiJsonOciVal {
+    struct {
+        int16_t year;
+        uint8_t month;
+        uint8_t day;
+        uint8_t hour;
+        uint8_t minute;
+        uint8_t second;
+        uint32_t fsecond;
+        int8_t tzHourOffset;
+        int8_t tzMinuteOffset;
+    } asJsonDateTime;
+    struct {
+        int32_t  days;
+        int32_t  hours;
+        int32_t  minutes;
+        int32_t  seconds;
+        int32_t  fseconds;
+    } asJsonDayInterval;
+    struct {
+        int32_t  years;
+        int32_t  months;
+    } asJsonYearInterval;
+    uint8_t asJsonNumber[DPI_OCI_NUMBER_SIZE];
+};
+
+// representation of JSON DOM API
+typedef struct {
+    dpiJznDom__loadFromInputEventSrc fnLoadFromInputEventSrc;
+    dpiJznDom__loadFromInputOSON fnLoadFromInputOSON;
+    dpiJznDom__getNodeType fnGetNodeType;
+    dpiJznDom__getScalarInfo fnGetScalarInfo;
+    dpiJznDom__getRootNode fnGetRootNode;
+    dpiJznDom__getNumObjField fnGetNumObjField;
+    dpiJznDom__getFieldVal fnGetFieldVal;
+    dpiJznDom__getFieldByName fnGetFieldByName;
+    dpiJznDom__getAllFieldNamesAndVals fnGetAllFieldNamesAndVals;
+    dpiJznDom__getFieldNamesAndValsBatch fnGetFieldNamesAndValsBatch;
+    dpiJznDom__getArraySize fnGetArraySize;
+    dpiJznDom__getArrayElem fnGetArrayElem;
+    dpiJznDom__getArrayElemBatch fnGetArrayElemBatch;
+    dpiJznDom__setRootNode fnSetRootNode;
+    dpiJznDom__putFieldValue fnPutFieldValue;
+    dpiJznDom__putItem fnPutItem;
+    dpiJznDom__appendItem fnAppendItem;
+    dpiJznDom__replaceItem fnReplaceItem;
+    dpiJznDom__deleteField fnDeleteField;
+    dpiJznDom__unlinkField fnUnlinkField;
+    dpiJznDom__renameField fnRenameField;
+    dpiJznDom__deleteItem fnDeleteItem;
+    dpiJznDom__unlinkItem fnUnlinkItem;
+    dpiJznDom__deleteItemBatch fnDeleteItemBatch;
+    dpiJznDom__newObject fnNewObject;
+    dpiJznDom__newArray fnNewArray;
+    dpiJznDom__newScalar fnNewScalar;
+    dpiJznDom__reset fnReset;
+    dpiJznDom__free fnFree;
+    dpiJznDom__getOutputEventSrc fnGetOutputEventSrc;
+    dpiJznDom__equals fnEquals;
+    dpiJznDom__copy fnCopy;
+    dpiJznDom__validFid fnValidFid;
+    dpiJznDom__storeField fnStoreField;
+    dpiJznDom__printNode fnPrintNode;
+    dpiJznDom__nodeVisitor fnNodeVisitor;
+    dpiJznDom__newScalarVal fnNewScalarVal;
+    dpiJznDom__deleteFieldByName fnDeleteFieldByName;
+    dpiJznDom__unlinkFieldByName fnUnlinkFieldByName;
+    dpiJznDom__freeNode fnFreeNode;
+    dpiJznDom__getScalarInfoOci fnGetScalarInfoOci;
+} dpiJznDomMethods;
+
+// representation of JSON DOM
+struct dpiJznDomDoc {
+    dpiJznDomMethods *methods;
+    void *xmlContext;
+    int errCode;
+    uint32_t modCount;
+};
+
+// representation of JSON name/value pair
+struct dpiJznDomNameValuePair {
+    struct {
+        char *ptr;
+        uint32_t length;
+        uint32_t hashId;
+        uint16_t shortId;
+        uint16_t osonId;
+        uint8_t flags;
+        uint8_t hash;
+        uint32_t id;
+    } name;
+    void *value;
+};
+
+// representation of JSON DOM Scalar Node
+struct dpiJznDomScalar {
+    int valueType;
+    union {
+        struct {
+            char *value;
+            uint32_t valueLength;
+        } asBytes;
+        struct {
+            float value;
+        } asFloat;
+        struct {
+            double value;
+        } asDouble;
+        struct {
+            uint8_t *value;
+            uint32_t valueLength;
+        } asOciVal;
+    } value;
+};
 
 
 //-----------------------------------------------------------------------------
@@ -833,6 +1073,7 @@ typedef union {
     dpiStmt *asStmt;
     dpiLob *asLOB;
     dpiRowid *asRowid;
+    dpiJson *asJson;
 } dpiReferenceBuffer;
 
 // intended to avoid the need for casts; contains the actual values that are
@@ -850,6 +1091,7 @@ typedef union {
     dpiOciDate *asDate;
     void **asTimestamp;
     void **asInterval;
+    void **asJsonDescriptor;
     void **asLobLocator;
     void **asString;
     void **asRawData;
@@ -858,6 +1100,7 @@ typedef union {
     int *asBoolean;
     void **asObject;
     void **asCollection;
+    void **asJson;
 } dpiOracleData;
 
 // intended to avoid the need for casts; contains the memory needed to supply
@@ -869,13 +1112,16 @@ typedef union {
     uint64_t asUint64;
     float asFloat;
     double asDouble;
+    uint8_t asOciVal[DPI_OCI_MAX_VAL_SIZE];
     dpiOciNumber asNumber;
     dpiOciDate asDate;
     int asBoolean;
     void *asString;
     void *asRawData;
     void *asTimestamp;
+    void *asJsonDescriptor;
     void *asLobLocator;
+    void *asJson;
     void *asRaw;
 } dpiOracleDataBuffer;
 
@@ -1020,6 +1266,23 @@ struct dpiVar {
     dpiVarBuffer buffer;                // main buffer for data
     dpiVarBuffer *dynBindBuffers;       // array of buffers (DML returning)
     dpiError *error;                    // error (only for dynamic bind/define)
+};
+
+// represents JSON values and is exposed publicly as a handle of type
+// DPI_HTYPE_JSON; the implementation for this is found in the file dpiJson.c
+struct dpiJson {
+    dpiType_HEAD
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI JSON descriptor
+    dpiJsonNode topNode;                // top level node
+    dpiDataBuffer topNodeBuffer;        // top level node data buffer
+    char **tempBuffers;                 // array of temp buffers
+    uint32_t allocatedTempBuffers;      // allocated number of temp buffers
+    uint32_t numTempBuffers;            // used number of temp buffers
+    uint32_t tempBufferUsed;            // used size of current temp buffer
+    void *convTimestamp;                // timestamp (for conversions)
+    void *convIntervalDS;               // interval DS (for conversions)
+    void *convIntervalYM;               // interval YM (for conversions)
 };
 
 // represents large objects (CLOB, BLOB, NCLOB and BFILE) and is exposed
@@ -1378,6 +1641,13 @@ int32_t dpiVar__outBindCallback(dpiVar *var, void *bindp, uint32_t iter,
 
 
 //-----------------------------------------------------------------------------
+// definition of internal dpiJson methods
+//-----------------------------------------------------------------------------
+int dpiJson__allocate(dpiConn *conn, dpiJson **json, dpiError *error);
+void dpiJson__free(dpiJson *json, dpiError *error);
+
+
+//-----------------------------------------------------------------------------
 // definition of internal dpiLob methods
 //-----------------------------------------------------------------------------
 int dpiLob__allocate(dpiConn *conn, const dpiOracleType *type, dpiLob **lob,
@@ -1590,6 +1860,10 @@ int dpiOci__intervalSetDaySecond(void *envHandle, int32_t day, int32_t hour,
         dpiError *error);
 int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
         void *interval, dpiError *error);
+int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
+        dpiError *error);
+int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
+        uint64_t valueLength, dpiError *error);
 int dpiOci__loadLib(dpiContextCreateParams *params,
         dpiVersionInfo **clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);

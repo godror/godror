@@ -1799,6 +1799,45 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_getOciAttr() [PUBLIC]
+//   Get the OCI attribute directly. This is intended for testing of attributes
+// not currently exposed by ODPI-C and should only be used for that purpose.
+//-----------------------------------------------------------------------------
+int dpiConn_getOciAttr(dpiConn *conn, uint32_t handleType,
+        uint32_t attribute, dpiDataBuffer *value, uint32_t *valueLength)
+{
+    const void *handle;
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value)
+    DPI_CHECK_PTR_NOT_NULL(conn, valueLength)
+    switch (handleType) {
+        case DPI_OCI_HTYPE_SVCCTX:
+            handle = conn->handle;
+            break;
+        case DPI_OCI_HTYPE_SERVER:
+            handle = conn->serverHandle;
+            break;
+        case DPI_OCI_HTYPE_SESSION:
+            handle = conn->sessionHandle;
+            break;
+        default:
+            dpiError__set(&error, "check handle type", DPI_ERR_NOT_SUPPORTED);
+            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+
+    // get attribute value
+    status = dpiOci__attrGet(handle, handleType, &value->asRaw, valueLength,
+            attribute, "generic get OCI attribute", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_getServerVersion() [PUBLIC]
 //   Get the server version string from the database.
 //-----------------------------------------------------------------------------
@@ -2196,6 +2235,44 @@ int dpiConn_setModule(dpiConn *conn, const char *value, uint32_t valueLength)
 {
     return dpiConn__setAttributeText(conn, DPI_OCI_ATTR_MODULE, value,
             valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_setOciAttr() [PUBLIC]
+//   Set the OCI attribute directly. This is intended for testing of attributes
+// not currently exposed by ODPI-C and should only be used for that purpose.
+//-----------------------------------------------------------------------------
+int dpiConn_setOciAttr(dpiConn *conn, uint32_t handleType,
+        uint32_t attribute, void *value, uint32_t valueLength)
+{
+    dpiError error;
+    void *handle;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value)
+    switch (handleType) {
+        case DPI_OCI_HTYPE_SVCCTX:
+            handle = conn->handle;
+            break;
+        case DPI_OCI_HTYPE_SERVER:
+            handle = conn->serverHandle;
+            break;
+        case DPI_OCI_HTYPE_SESSION:
+            handle = conn->sessionHandle;
+            break;
+        default:
+            dpiError__set(&error, "check handle type", DPI_ERR_NOT_SUPPORTED);
+            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+
+    // set attribute value
+    status = dpiOci__attrSet(handle, handleType, value, valueLength,
+            attribute, "generic set OCI attribute", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 

@@ -194,6 +194,11 @@ typedef int (*dpiOciFnType__intervalSetDaySecond)(void *hndl, void *err,
         void *result);
 typedef int (*dpiOciFnType__intervalSetYearMonth)(void *hndl, void *err,
         int32_t yr, int32_t mnth, void *result);
+typedef int (*dpiOciFnType__jsonDomDocGet)(void *svchp, void *jsond,
+        dpiJznDomDoc **jDomDoc, void *errhp, uint32_t mode);
+typedef int (*dpiOciFnType__jsonTextBufferParse)(void *hndlp, void *jsond,
+        void *bufp, uint64_t buf_sz, uint32_t validation, uint16_t encoding,
+        void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__lobClose)(void *svchp, void *errhp, void *locp);
 typedef int (*dpiOciFnType__lobCreateTemporary)(void *svchp, void *errhp,
         void *locp, uint16_t csid, uint8_t csfrm, uint8_t lobtype, int cache,
@@ -462,6 +467,7 @@ static const char *dpiOciLibNames[] = {
     "libclntsh.dylib.12.1",
     "libclntsh.dylib.11.1",
     "libclntsh.dylib.20.1",
+    "libclntsh.dylib.21.1",
 #else
     "libclntsh.so",
     "libclntsh.so.19.1",
@@ -469,6 +475,7 @@ static const char *dpiOciLibNames[] = {
     "libclntsh.so.12.1",
     "libclntsh.so.11.1",
     "libclntsh.so.20.1",
+    "libclntsh.so.21.1",
 #endif
     NULL
 };
@@ -525,6 +532,8 @@ static struct {
     dpiOciFnType__intervalGetYearMonth fnIntervalGetYearMonth;
     dpiOciFnType__intervalSetDaySecond fnIntervalSetDaySecond;
     dpiOciFnType__intervalSetYearMonth fnIntervalSetYearMonth;
+    dpiOciFnType__jsonDomDocGet fnJsonDomDocGet;
+    dpiOciFnType__jsonTextBufferParse fnJsonTextBufferParse;
     dpiOciFnType__lobClose fnLobClose;
     dpiOciFnType__lobCreateTemporary fnLobCreateTemporary;
     dpiOciFnType__lobFileExists fnLobFileExists;
@@ -1576,6 +1585,43 @@ int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
 }
 
 
+//-----------------------------------------------------------------------------
+// dpiOci__jsonDomDocGet() [INTERNAL]
+//   Wrapper for OCIJsonDomDocGet().
+//-----------------------------------------------------------------------------
+int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
+        dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCIJsonDomDocGet", dpiOciSymbols.fnJsonDomDocGet)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnJsonDomDocGet)(json->conn->handle, json->handle,
+            domDoc, error->handle, DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "get JSON DOM doc");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__jsonTextBufferParse() [INTERNAL]
+//   Wrapper for OCIJsonTextBufferParse().
+//-----------------------------------------------------------------------------
+int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
+        uint64_t valueLength, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCIJsonTextBufferParse",
+            dpiOciSymbols.fnJsonTextBufferParse)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnJsonTextBufferParse)(json->conn->handle,
+            json->handle, (void*) value, valueLength,
+            DPI_JZN_ALLOW_SCALAR_DOCUMENTS, DPI_JZN_INPUT_UTF8, error->handle,
+            DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
+}
+
+
 #ifdef _WIN32
 
 //-----------------------------------------------------------------------------
@@ -2405,6 +2451,11 @@ int dpiOci__lobRead2(dpiLob *lob, uint64_t offset, uint64_t *amountInBytes,
             lob->locator, amountInBytes, amountInChars, offset, buffer,
             bufferLength, DPI_OCI_ONE_PIECE, NULL, NULL, charsetId,
             lob->type->charsetForm);
+    if (status == DPI_OCI_NEED_DATA) {
+        *amountInChars = 0;
+        *amountInBytes = 0;
+        return DPI_SUCCESS;
+    }
     DPI_OCI_CHECK_AND_RETURN(error, status, lob->conn, "read from LOB");
 }
 

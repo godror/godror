@@ -1648,6 +1648,27 @@ int dpiStmt_getNumQueryColumns(dpiStmt *stmt, uint32_t *numQueryColumns)
 
 
 //-----------------------------------------------------------------------------
+// dpiStmt_getOciAttr() [PUBLIC]
+//   Get the OCI attribute directly. This is intended for testing of attributes
+// not currently exposed by ODPI-C and should only be used for that purpose.
+//-----------------------------------------------------------------------------
+int dpiStmt_getOciAttr(dpiStmt *stmt, uint32_t attribute, dpiDataBuffer *value,
+        uint32_t *valueLength)
+{
+    dpiError error;
+    int status;
+
+    if (dpiStmt__check(stmt, __func__, &error) < 0)
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(stmt, value)
+    DPI_CHECK_PTR_NOT_NULL(stmt, valueLength)
+    status = dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &value->asRaw,
+            valueLength, attribute, "generic get OCI attribute", &error);
+    return dpiGen__endPublicFn(stmt, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiStmt_getPrefetchRows() [PUBLIC]
 //   Returns the number of rows that will be prefetched when a query is
 // executed.
@@ -1919,6 +1940,27 @@ int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize)
     }
     stmt->fetchArraySize = arraySize;
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiStmt_setOciAttr() [PUBLIC]
+//   Set the OCI attribute directly. This is intended for testing of attributes
+// not currently exposed by ODPI-C and should only be used for that purpose.
+//-----------------------------------------------------------------------------
+int dpiStmt_setOciAttr(dpiStmt *stmt, uint32_t attribute, void *value,
+        uint32_t valueLength)
+{
+    dpiError error;
+    int status;
+
+    if (dpiStmt__check(stmt, __func__, &error) < 0)
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(stmt, value)
+
+    status = dpiOci__attrSet(stmt->handle, DPI_OCI_HTYPE_STMT, value,
+            valueLength, attribute, "generic set OCI attribute", &error);
+    return dpiGen__endPublicFn(stmt, status, &error);
 }
 
 

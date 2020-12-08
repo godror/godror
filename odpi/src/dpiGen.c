@@ -139,6 +139,12 @@ static const dpiTypeDef dpiAllTypeDefs[DPI_HTYPE_MAX - DPI_HTYPE_NONE - 1] = {
         sizeof(dpiQueue),               // size of structure
         0x54904ba2,                     // check integer
         (dpiTypeFreeProc) dpiQueue__free
+    },
+    {
+        "dpiJson",                      // name
+        sizeof(dpiJson),                // size of structure
+        0xf6712bec,                     // check integer
+        (dpiTypeFreeProc) dpiJson__free
     }
 };
 

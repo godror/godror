@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -280,6 +280,16 @@ static const dpiOracleType
         0,                                  // is character data
         1,                                  // can be in array
         0                                   // requires pre-fetch
+    },
+    {
+        DPI_ORACLE_TYPE_JSON,               // public Oracle type
+        DPI_NATIVE_TYPE_JSON,               // default native type
+        DPI_SQLT_JSON,                      // internal Oracle type
+        DPI_SQLCS_IMPLICIT,                 // charset form
+        sizeof(void*),                      // buffer size
+        0,                                  // is character data
+        0,                                  // can be in array
+        1                                   // requires pre-fetch
     }
 };
 
@@ -360,6 +370,8 @@ static dpiOracleTypeNum dpiOracleType__convertFromOracle(uint16_t typeCode,
         case DPI_SQLT_LBI:
         case DPI_OCI_TYPECODE_LONG_RAW:
             return DPI_ORACLE_TYPE_LONG_RAW;
+        case DPI_SQLT_JSON:
+            return DPI_ORACLE_TYPE_JSON;
     }
     return (dpiOracleTypeNum) 0;
 }

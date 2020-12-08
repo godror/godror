@@ -89,4 +89,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1073: sharding key is required when specifying a super sharding key", // DPI_ERR_MISSING_SHARDING_KEY
     "DPI-1074: ODPI-C context not created", // DPI_ERR_CONTEXT_NOT_CREATED
     "DPI-1075: OS error: %s", // DPI_ERR_OS
+    "DPI-1076: JSON node type %d is not supported", // DPI_ERR_UNHANDLED_JSON_NODE_TYPE
+    "DPI-1077: JSON scalar type %d is not supported", // DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE
+    "DPI-1078: native type %d with Oracle type %d is not supported by JSON", // DPI_ERR_UNHANDLED_CONVERSION_TO_JSON
 };

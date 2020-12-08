@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -29,6 +29,7 @@
 #include "../src/dpiGlobal.c"
 #include "../src/dpiHandleList.c"
 #include "../src/dpiHandlePool.c"
+#include "../src/dpiJson.c"
 #include "../src/dpiLob.c"
 #include "../src/dpiMsgProps.c"
 #include "../src/dpiObjectAttr.c"

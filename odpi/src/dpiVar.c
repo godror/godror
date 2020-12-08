@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -25,6 +25,8 @@ static int dpiVar__setBytesFromLob(dpiBytes *bytes, dpiDynamicBytes *dynBytes,
         dpiLob *lob, dpiError *error);
 static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
         uint32_t valueLength, dpiError *error);
+static int dpiVar__setFromJson(dpiVar *var, uint32_t pos, dpiJson *json,
+        dpiError *error);
 static int dpiVar__setFromLob(dpiVar *var, uint32_t pos, dpiLob *lob,
         dpiError *error);
 static int dpiVar__setFromObject(dpiVar *var, uint32_t pos, dpiObject *obj,
@@ -211,6 +213,9 @@ static void dpiVar__assignCallbackBuffer(dpiVar *var, dpiVarBuffer *buffer,
         case DPI_ORACLE_TYPE_ROWID:
             *bufpp = buffer->data.asRowid[index];
             break;
+        case DPI_ORACLE_TYPE_JSON:
+            *bufpp = buffer->data.asJsonDescriptor[index];
+            break;
         case DPI_ORACLE_TYPE_STMT:
             *bufpp = buffer->data.asStmt[index];
             break;
@@ -303,6 +308,9 @@ int dpiVar__copyData(dpiVar *var, uint32_t pos, dpiData *sourceData,
             return dpiVar__setFromBytes(var, pos,
                     sourceData->value.asBytes.ptr,
                     sourceData->value.asBytes.length, error);
+        case DPI_NATIVE_TYPE_JSON:
+            return dpiVar__setFromJson(var, pos, sourceData->value.asJson,
+                    error);
         case DPI_NATIVE_TYPE_LOB:
             return dpiVar__setFromLob(var, pos, sourceData->value.asLOB,
                     error);
@@ -374,6 +382,7 @@ int dpiVar__extendedPreFetch(dpiVar *var, dpiVarBuffer *buffer,
     dpiRowid *rowid;
     dpiData *data;
     dpiStmt *stmt;
+    dpiJson *json;
     dpiLob *lob;
     uint32_t i;
 
@@ -465,6 +474,23 @@ int dpiVar__extendedPreFetch(dpiVar *var, dpiVarBuffer *buffer,
                 buffer->data.asObject[i] = NULL;
                 buffer->objectIndicator[i] = NULL;
                 data->value.asObject = NULL;
+            }
+            break;
+        case DPI_ORACLE_TYPE_JSON:
+            for (i = 0; i < buffer->maxArraySize; i++) {
+                data = &buffer->externalData[i];
+                if (buffer->references[i].asJson) {
+                    dpiGen__setRefCount(buffer->references[i].asJson,
+                            error, -1);
+                    buffer->references[i].asJson = NULL;
+                }
+                buffer->data.asJsonDescriptor[i] = NULL;
+                data->value.asJson = NULL;
+                if (dpiJson__allocate(var->conn, &json, error) < 0)
+                    return DPI_FAILURE;
+                buffer->references[i].asJson = json;
+                buffer->data.asJsonDescriptor[i] = json->handle;
+                data->value.asJson = json;
             }
             break;
         default:
@@ -960,13 +986,13 @@ static int dpiVar__initBuffer(dpiVar *var, dpiVarBuffer *buffer,
             return dpiOci__arrayDescriptorAlloc(var->env->handle,
                     &buffer->data.asInterval[0], DPI_OCI_DTYPE_INTERVAL_YM,
                     buffer->maxArraySize, error);
-            break;
         case DPI_ORACLE_TYPE_CLOB:
         case DPI_ORACLE_TYPE_BLOB:
         case DPI_ORACLE_TYPE_NCLOB:
         case DPI_ORACLE_TYPE_BFILE:
         case DPI_ORACLE_TYPE_STMT:
         case DPI_ORACLE_TYPE_ROWID:
+        case DPI_ORACLE_TYPE_JSON:
             return dpiVar__extendedPreFetch(var, buffer, error);
         case DPI_ORACLE_TYPE_OBJECT:
             if (!var->objectType)
@@ -1246,6 +1272,43 @@ static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
 
 
 //-----------------------------------------------------------------------------
+// dpiVar__setFromJson() [PRIVATE]
+//   Set the value of the variable at the given array position from a JSON
+// value. A reference to the JSON value is retained by the variable.
+//-----------------------------------------------------------------------------
+static int dpiVar__setFromJson(dpiVar *var, uint32_t pos, dpiJson *json,
+        dpiError *error)
+{
+    dpiData *data;
+
+    // validate the JSON value
+    if (dpiGen__checkHandle(json, DPI_HTYPE_JSON, "check JSON", error) < 0)
+        return DPI_FAILURE;
+
+    // mark the value as not null
+    data = &var->buffer.externalData[pos];
+    data->isNull = 0;
+
+    // if values are the same, nothing to do
+    if (var->buffer.references[pos].asJson == json)
+        return DPI_SUCCESS;
+
+    // clear original value, if needed
+    if (var->buffer.references[pos].asJson) {
+        dpiGen__setRefCount(var->buffer.references[pos].asJson, error, -1);
+        var->buffer.references[pos].asJson = NULL;
+    }
+
+    // add reference to passed object
+    dpiGen__setRefCount(json, error, 1);
+    var->buffer.references[pos].asJson = json;
+    var->buffer.data.asJsonDescriptor[pos] = json->handle;
+    data->value.asJson = json;
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiVar__setFromLob() [PRIVATE]
 //   Set the value of the variable at the given array position from a LOB.
 // A reference to the LOB is retained by the variable.
@@ -1519,6 +1582,12 @@ int dpiVar__setValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
         case DPI_NATIVE_TYPE_BOOLEAN:
             buffer->data.asBoolean[pos] = data->value.asBoolean;
             return DPI_SUCCESS;
+        case DPI_NATIVE_TYPE_STMT:
+            return dpiOci__attrSet(data->value.asStmt->handle,
+                    DPI_OCI_HTYPE_STMT, &data->value.asStmt->prefetchRows,
+                    sizeof(data->value.asStmt->prefetchRows),
+                    DPI_OCI_ATTR_PREFETCH_ROWS,
+                    "set prefetch rows for REF cursor", error);
         default:
             break;
     }

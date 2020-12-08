@@ -56,8 +56,8 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   4
-#define DPI_MINOR_VERSION   0
-#define DPI_PATCH_LEVEL     2
+#define DPI_MINOR_VERSION   1
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -111,6 +111,7 @@ extern "C" {
 // 0x0008: reports on all errors
 // 0x0010: reports on all SQL statements
 // 0x0020: reports on all memory allocations/frees
+// 0x0040: reports on all attempts to load the Oracle Client library
 #define DPI_DEBUG_LEVEL_UNREPORTED_ERRORS           0x0001
 #define DPI_DEBUG_LEVEL_REFS                        0x0002
 #define DPI_DEBUG_LEVEL_FNS                         0x0004
@@ -173,6 +174,11 @@ typedef uint32_t dpiEventType;
 #define DPI_EVENT_QUERYCHANGE                       7
 #define DPI_EVENT_AQ                                100
 
+// JSON conversion options
+#define DPI_JSON_OPT_DEFAULT                        0x00
+#define DPI_JSON_OPT_NUMBER_AS_STRING               0x01
+#define DPI_JSON_OPT_DATE_AS_DOUBLE                 0x02
+
 // statement execution modes
 typedef uint32_t dpiExecMode;
 #define DPI_MODE_EXEC_DEFAULT                       0x00000000
@@ -219,6 +225,10 @@ typedef uint32_t dpiNativeTypeNum;
 #define DPI_NATIVE_TYPE_STMT                        3010
 #define DPI_NATIVE_TYPE_BOOLEAN                     3011
 #define DPI_NATIVE_TYPE_ROWID                       3012
+#define DPI_NATIVE_TYPE_JSON                        3013
+#define DPI_NATIVE_TYPE_JSON_OBJECT                 3014
+#define DPI_NATIVE_TYPE_JSON_ARRAY                  3015
+#define DPI_NATIVE_TYPE_NULL                        3016
 
 // operation codes (database change and continuous query notification)
 typedef uint32_t dpiOpCode;
@@ -260,7 +270,10 @@ typedef uint32_t dpiOracleTypeNum;
 #define DPI_ORACLE_TYPE_LONG_VARCHAR                2024
 #define DPI_ORACLE_TYPE_LONG_RAW                    2025
 #define DPI_ORACLE_TYPE_NATIVE_UINT                 2026
-#define DPI_ORACLE_TYPE_MAX                         2027
+#define DPI_ORACLE_TYPE_JSON                        2027
+#define DPI_ORACLE_TYPE_JSON_OBJECT                 2028
+#define DPI_ORACLE_TYPE_JSON_ARRAY                  2029
+#define DPI_ORACLE_TYPE_MAX                         2030
 
 // session pool close modes
 typedef uint32_t dpiPoolCloseMode;
@@ -290,10 +303,10 @@ typedef uint32_t dpiShutdownMode;
 #define DPI_MODE_SHUTDOWN_FINAL                     5
 
 // SODA flags
-#define DPI_SODA_FLAGS_DEFAULT                  0x00
-#define DPI_SODA_FLAGS_ATOMIC_COMMIT            0x01
-#define DPI_SODA_FLAGS_CREATE_COLL_MAP          0x02
-#define DPI_SODA_FLAGS_INDEX_DROP_FORCE         0x04
+#define DPI_SODA_FLAGS_DEFAULT                      0x00
+#define DPI_SODA_FLAGS_ATOMIC_COMMIT                0x01
+#define DPI_SODA_FLAGS_CREATE_COLL_MAP              0x02
+#define DPI_SODA_FLAGS_INDEX_DROP_FORCE             0x04
 
 // database startup modes
 typedef uint32_t dpiStartupMode;
@@ -361,6 +374,7 @@ typedef struct dpiConn dpiConn;
 typedef struct dpiPool dpiPool;
 typedef struct dpiStmt dpiStmt;
 typedef struct dpiVar dpiVar;
+typedef struct dpiJson dpiJson;
 typedef struct dpiLob dpiLob;
 typedef struct dpiObject dpiObject;
 typedef struct dpiObjectAttr dpiObjectAttr;
@@ -370,6 +384,42 @@ typedef struct dpiSubscr dpiSubscr;
 typedef struct dpiDeqOptions dpiDeqOptions;
 typedef struct dpiEnqOptions dpiEnqOptions;
 typedef struct dpiMsgProps dpiMsgProps;
+
+
+//-----------------------------------------------------------------------------
+// Forward Declarations of Other Types
+//-----------------------------------------------------------------------------
+typedef struct dpiAppContext dpiAppContext;
+typedef struct dpiCommonCreateParams dpiCommonCreateParams;
+typedef struct dpiConnCreateParams dpiConnCreateParams;
+typedef struct dpiContext dpiContext;
+typedef struct dpiContextCreateParams dpiContextCreateParams;
+typedef struct dpiData dpiData;
+typedef union dpiDataBuffer dpiDataBuffer;
+typedef struct dpiDataTypeInfo dpiDataTypeInfo;
+typedef struct dpiEncodingInfo dpiEncodingInfo;
+typedef struct dpiErrorInfo dpiErrorInfo;
+typedef struct dpiJsonNode dpiJsonNode;
+typedef struct dpiObjectAttrInfo dpiObjectAttrInfo;
+typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
+typedef struct dpiPoolCreateParams dpiPoolCreateParams;
+typedef struct dpiQueryInfo dpiQueryInfo;
+typedef struct dpiQueue dpiQueue;
+typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
+typedef struct dpiSodaColl dpiSodaColl;
+typedef struct dpiSodaCollNames dpiSodaCollNames;
+typedef struct dpiSodaCollCursor dpiSodaCollCursor;
+typedef struct dpiSodaDb dpiSodaDb;
+typedef struct dpiSodaDoc dpiSodaDoc;
+typedef struct dpiSodaDocCursor dpiSodaDocCursor;
+typedef struct dpiSodaOperOptions dpiSodaOperOptions;
+typedef struct dpiStmtInfo dpiStmtInfo;
+typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
+typedef struct dpiSubscrMessage dpiSubscrMessage;
+typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
+typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
+typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
+typedef struct dpiVersionInfo dpiVersionInfo;
 
 
 //-----------------------------------------------------------------------------
@@ -398,6 +448,29 @@ typedef struct {
     int32_t months;
 } dpiIntervalYM;
 
+// structure used for transferring JSON nodes to/from ODPI-C
+struct dpiJsonNode {
+    dpiOracleTypeNum oracleTypeNum;
+    dpiNativeTypeNum nativeTypeNum;
+    dpiDataBuffer *value;
+};
+
+// structure used for transferring JSON object values to/from ODPI-C
+typedef struct {
+    uint32_t numFields;
+    char **fieldNames;
+    uint32_t *fieldNameLengths;
+    dpiJsonNode *fields;
+    dpiDataBuffer *fieldValues;
+} dpiJsonObject;
+
+// structure used for transferring JSON array values to/from ODPI-C
+typedef struct {
+    uint32_t numElements;
+    dpiJsonNode *elements;
+    dpiDataBuffer *elementValues;
+} dpiJsonArray;
+
 // structure used for transferring dates to/from ODPI-C
 typedef struct {
     int16_t year;
@@ -416,53 +489,30 @@ typedef struct {
 // Other Types
 //-----------------------------------------------------------------------------
 
-// forward declarations
-typedef struct dpiAppContext dpiAppContext;
-typedef struct dpiCommonCreateParams dpiCommonCreateParams;
-typedef struct dpiConnCreateParams dpiConnCreateParams;
-typedef struct dpiContext dpiContext;
-typedef struct dpiContextCreateParams dpiContextCreateParams;
-typedef struct dpiData dpiData;
-typedef struct dpiDataTypeInfo dpiDataTypeInfo;
-typedef struct dpiEncodingInfo dpiEncodingInfo;
-typedef struct dpiErrorInfo dpiErrorInfo;
-typedef struct dpiObjectAttrInfo dpiObjectAttrInfo;
-typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
-typedef struct dpiPoolCreateParams dpiPoolCreateParams;
-typedef struct dpiQueryInfo dpiQueryInfo;
-typedef struct dpiQueue dpiQueue;
-typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
-typedef struct dpiSodaColl dpiSodaColl;
-typedef struct dpiSodaCollNames dpiSodaCollNames;
-typedef struct dpiSodaCollCursor dpiSodaCollCursor;
-typedef struct dpiSodaDb dpiSodaDb;
-typedef struct dpiSodaDoc dpiSodaDoc;
-typedef struct dpiSodaDocCursor dpiSodaDocCursor;
-typedef struct dpiSodaOperOptions dpiSodaOperOptions;
-typedef struct dpiStmtInfo dpiStmtInfo;
-typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
-typedef struct dpiSubscrMessage dpiSubscrMessage;
-typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
-typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
-typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
-typedef struct dpiVersionInfo dpiVersionInfo;
-
 // union used for providing a buffer of any data type
-typedef union {
+union dpiDataBuffer {
     int asBoolean;
+    uint8_t asUint8;
+    uint16_t asUint16;
+    uint32_t asUint32;
     int64_t asInt64;
     uint64_t asUint64;
     float asFloat;
     double asDouble;
+    char *asString;
+    void *asRaw;
     dpiBytes asBytes;
     dpiTimestamp asTimestamp;
     dpiIntervalDS asIntervalDS;
     dpiIntervalYM asIntervalYM;
+    dpiJson *asJson;
+    dpiJsonObject asJsonObject;
+    dpiJsonArray asJsonArray;
     dpiLob *asLOB;
     dpiObject *asObject;
     dpiStmt *asStmt;
     dpiRowid *asRowid;
-} dpiDataBuffer;
+};
 
 // structure used for application context
 struct dpiAppContext {
@@ -857,6 +907,11 @@ DPI_EXPORT int dpiConn_getLTXID(dpiConn *conn, const char **value,
 DPI_EXPORT int dpiConn_getObjectType(dpiConn *conn, const char *name,
         uint32_t nameLength, dpiObjectType **objType);
 
+// generic method for getting an OCI connection attribute
+// WARNING: use only as directed by Oracle
+DPI_EXPORT int dpiConn_getOciAttr(dpiConn *conn, uint32_t handleType,
+        uint32_t attribute, dpiDataBuffer *value, uint32_t *valueLength);
+
 // return information about the server version in use
 DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
         const char **releaseString, uint32_t *releaseStringLength,
@@ -942,6 +997,11 @@ DPI_EXPORT int dpiConn_setInternalName(dpiConn *conn, const char *value,
 // set module associated with the connection
 DPI_EXPORT int dpiConn_setModule(dpiConn *conn, const char *value,
         uint32_t valueLength);
+
+// generic method for setting an OCI connection attribute
+// WARNING: use only as directed by Oracle
+DPI_EXPORT int dpiConn_setOciAttr(dpiConn *conn, uint32_t handleType,
+        uint32_t attribute, void *value, uint32_t valueLength);
 
 // set the statement cache size
 DPI_EXPORT int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize);
@@ -1165,6 +1225,24 @@ DPI_EXPORT int dpiEnqOptions_setTransformation(dpiEnqOptions *options,
 // set visibility associated with enqueue options
 DPI_EXPORT int dpiEnqOptions_setVisibility(dpiEnqOptions *options,
         dpiVisibility value);
+
+
+//-----------------------------------------------------------------------------
+// JSON Methods (dpiJson)
+//-----------------------------------------------------------------------------
+
+// add a reference to the JSON
+DPI_EXPORT int dpiJson_addRef(dpiJson *json);
+
+// return the value of the JSON object, as a hierarchy of nodes
+DPI_EXPORT int dpiJson_getValue(dpiJson *json, uint32_t options,
+        dpiJsonNode **topNode);
+
+// release a reference to the JSON
+DPI_EXPORT int dpiJson_release(dpiJson *json);
+
+// set the value of the JSON object, given a hierarchy of nodes
+DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
 
 //-----------------------------------------------------------------------------
@@ -1675,7 +1753,7 @@ DPI_EXPORT int dpiSodaDoc_getVersion(dpiSodaDoc *doc, const char **value,
         uint32_t *valueLength);
 
 // release a reference to the SODA document
-DPI_EXPORT int dpiSodaDoc_release(dpiSodaDoc *cursor);
+DPI_EXPORT int dpiSodaDoc_release(dpiSodaDoc *doc);
 
 
 //-----------------------------------------------------------------------------
@@ -1785,6 +1863,11 @@ DPI_EXPORT int dpiStmt_getLastRowid(dpiStmt *stmt, dpiRowid **rowid);
 DPI_EXPORT int dpiStmt_getNumQueryColumns(dpiStmt *stmt,
         uint32_t *numQueryColumns);
 
+// generic method for getting an OCI statement attribute
+// WARNING: use only as directed by Oracle
+DPI_EXPORT int dpiStmt_getOciAttr(dpiStmt *stmt, uint32_t attribute,
+        dpiDataBuffer *value, uint32_t *valueLength);
+
 // return the number of rows that are prefetched by the Oracle Client library
 DPI_EXPORT int dpiStmt_getPrefetchRows(dpiStmt *stmt, uint32_t *numRows);
 
@@ -1819,6 +1902,11 @@ DPI_EXPORT int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
 
 // set the number of rows to (internally) fetch at one time
 DPI_EXPORT int dpiStmt_setFetchArraySize(dpiStmt *stmt, uint32_t arraySize);
+
+// generic method for setting an OCI statement attribute
+// WARNING: use only as directed by Oracle
+DPI_EXPORT int dpiStmt_setOciAttr(dpiStmt *stmt, uint32_t attribute,
+        void *value, uint32_t valueLength);
 
 // set the number of rows that are prefetched by the Oracle Client library
 DPI_EXPORT int dpiStmt_setPrefetchRows(dpiStmt *stmt,
