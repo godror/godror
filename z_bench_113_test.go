@@ -1,4 +1,4 @@
-// Copyright 2021 Tamás Gulácsi
+// Copyright 2020 Tamás Gulácsi
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -54,7 +54,7 @@ func BenchmarkSelect113(b *testing.B) {
 		b.Logf("Inserted %d records into %s in %s.", n, tbl, time.Since(t))
 	}
 
-	const qry = "SELECT F_cust_id, F_email, F_email_id FROM " + tbl + " ORDER BY DBMS_RANDOM.RANDOM"
+	const qry = "SELECT /*+ FIRST_ROWS(1) */ F_cust_id, F_email, F_email_id FROM " + tbl
 	b.Log(qry)
 	b.StartTimer()
 	b.Run("simple", func(b *testing.B) {

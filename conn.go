@@ -76,8 +76,7 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 		}
 		return err
 	}
-	_, hasDeadline := ctx.Deadline()
-	if hasDeadline {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
 		go c.ociBreakDone(ctx, done)
 	}
 	return nil
