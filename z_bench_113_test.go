@@ -18,7 +18,7 @@ import (
 func BenchmarkSelect113(b *testing.B) {
 	stopConnStats()
 	b.StopTimer()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 	const tbl = "test_bench_113"
 	{
