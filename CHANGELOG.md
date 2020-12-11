@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Changed
 - Use ODPI-C v4.1.0
+- Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
 
 ## [0.20.6]
 ### Added
