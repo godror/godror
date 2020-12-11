@@ -55,15 +55,34 @@ func BenchmarkSelect113(b *testing.B) {
 	}
 
 	const qry = "SELECT /*+ FIRST_ROWS(1) */ F_cust_id, F_email, F_email_id FROM " + tbl
+	const qry1 = "SELECT F_cust_id, F_email, F_email_id FROM " + tbl + " FETCH FIRST 1 ROW ONLY"
 	b.Log(qry)
+	F := func(b *testing.B, qry string, i int, params ...interface{}) {
+		rows, err := testDb.QueryContext(ctx, qry, params...)
+		if err != nil {
+			b.Fatalf("%s: %+v", qry, err)
+		}
+		fetchRows(b, rows, (i+1)*100, i == 0)
+	}
+
 	b.StartTimer()
-	b.Run("simple", func(b *testing.B) {
+	b.Run("simple-default", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			rows, err := testDb.QueryContext(ctx, qry)
-			if err != nil {
-				b.Fatalf("%s: %+v", qry, err)
-			}
-			fetchRows(b, rows, (i+1)*100, i == 0)
+			F(b, qry, i)
+			F(b, qry1, i)
+		}
+	})
+	b.Run("simple-prefetch-2", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			F(b, qry, i, godror.PrefetchCount(2))
+			F(b, qry1, i, godror.PrefetchCount(2))
+		}
+	})
+
+	b.Run("simple-prefetch-128", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			F(b, qry, i, godror.PrefetchCount(128))
+			F(b, qry1, i, godror.PrefetchCount(128))
 		}
 	})
 
@@ -71,11 +90,8 @@ func BenchmarkSelect113(b *testing.B) {
 		arraySize := i
 		b.Run("prefetch-"+strconv.Itoa(i), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				rows, err := testDb.QueryContext(ctx, qry, godror.FetchArraySize(arraySize), godror.PrefetchCount(arraySize+1))
-				if err != nil {
-					b.Fatalf("%s: %+v", qry, err)
-				}
-				fetchRows(b, rows, (i+1)*100, i == 0)
+				F(b, qry, i, godror.FetchArraySize(arraySize), godror.PrefetchCount(arraySize+1))
+				F(b, qry1, i, godror.FetchArraySize(arraySize), godror.PrefetchCount(arraySize+1))
 			}
 		})
 	}
@@ -90,6 +106,7 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 	var n uint64
 	var bytes int64
 	var t time.Time
+	var d1 time.Duration
 	if first {
 		t = time.Now()
 	}
@@ -101,16 +118,22 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 			b.Fatalf("%+v", err)
 		}
 		if first && !t.IsZero() {
-			b.ReportMetric(float64(time.Since(t)/time.Microsecond), "firstRecordMicros")
+			d1 = time.Since(t)
 			t = time.Time{}
 		}
 		n++
 		bytes += 8 + int64(len(email)) + 8
 		if n == uint64(maxRows) {
+			if first && d1 != 0 {
+				b.ReportMetric(float64(d1/time.Microsecond), "firstRecMs")
+			}
+			b.SetBytes(bytes)
 			break
 		}
 	}
+	if first && n == 1 && d1 != 0 {
+		b.ReportMetric(float64(d1/time.Microsecond), "first1RecMs")
+	}
 	rows.Close()
-	b.SetBytes(bytes)
 	//b.Logf("Selected %d records in %s.", n, time.Since(t))
 }
