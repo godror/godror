@@ -289,10 +289,12 @@ func (r *rows) Next(dest []driver.Value) error {
 				if r.err = ctx.Err(); r.err != nil {
 					return r.err
 				}
-				r.done = make(chan struct{})
-				// handle deadline for dpiStmt_fetchRows. context reused from stmt
-				if err := r.statement.handleDeadline(ctx, r.done); err != nil {
-					return err
+				if _, hasDeadline := r.statement.ctx.Deadline(); hasDeadline {
+					r.done = make(chan struct{})
+					// handle deadline for dpiStmt_fetchRows. context reused from stmt
+					if err := r.statement.handleDeadline(ctx, r.done); err != nil {
+						return err
+					}
 				}
 			}
 		}
