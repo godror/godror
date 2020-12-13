@@ -176,6 +176,17 @@ for {
 }
 ```
 
+### Context with Deadline/Timeout
+TL;DR; *always close *sql.Rows ASAP!*
+
+Creating a watchdog goroutine, done channel for each call of `rows.Next` kills performance,
+so we create only one watchdog goroutine, at the first `rows.Next` call.
+It is defused after `rows.Close` (or the cursor is exhausted).
+
+If it is not defused, it will `Break` the currently executing OCI call on the connection,
+when the Context is canceled/timeouted. You should always call `rows.Close` ASAP, but if you 
+experience random `Break`s, remember this warning!
+
 
 ## Contribute
 
