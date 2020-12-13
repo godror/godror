@@ -8,6 +8,7 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -66,20 +67,20 @@ func BenchmarkSelect113(b *testing.B) {
 	}
 
 	b.StartTimer()
-	b.Run("simple-default", func(b *testing.B) {
+	b.Run("a=?,p=?", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			F(b, qry, i)
 			F(b, qry1, i)
 		}
 	})
-	b.Run("simple-prefetch-2", func(b *testing.B) {
+	b.Run("a=?,p=2", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			F(b, qry, i, godror.PrefetchCount(2))
 			F(b, qry1, i, godror.PrefetchCount(2))
 		}
 	})
 
-	b.Run("simple-prefetch-128", func(b *testing.B) {
+	b.Run("a=?,p=128", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			F(b, qry, i, godror.PrefetchCount(128))
 			F(b, qry1, i, godror.PrefetchCount(128))
@@ -88,7 +89,7 @@ func BenchmarkSelect113(b *testing.B) {
 
 	for i := 1; i <= 8192; i *= 2 {
 		arraySize := i
-		b.Run("prefetch-"+strconv.Itoa(i), func(b *testing.B) {
+		b.Run(fmt.Sprintf("a=%d,p=%d", i, i+1), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				F(b, qry, i, godror.FetchArraySize(arraySize), godror.PrefetchCount(arraySize+1))
 				F(b, qry1, i, godror.FetchArraySize(arraySize), godror.PrefetchCount(arraySize+1))
@@ -117,9 +118,8 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 			rows.Close()
 			b.Fatalf("%+v", err)
 		}
-		if first && !t.IsZero() {
+		if first && d1 == 0 {
 			d1 = time.Since(t)
-			t = time.Time{}
 		}
 		n++
 		bytes += 8 + int64(len(email)) + 8
@@ -132,7 +132,7 @@ func fetchRows(b *testing.B, rows *sql.Rows, maxRows int, first bool) {
 		}
 	}
 	if first && n == 1 && d1 != 0 {
-		b.ReportMetric(float64(d1/time.Microsecond), "first1RecMs")
+		b.ReportMetric(float64(time.Since(t)/time.Microsecond), "oneRowMs")
 	}
 	rows.Close()
 	//b.Logf("Selected %d records in %s.", n, time.Since(t))
