@@ -1,7 +1,9 @@
 #!/bin/sh
+set -eu
 sed -e '/^END OF TERMS AND CONDITIONS$/,$d' LICENSE.md
 echo 'END OF TERMS AND CONDITIONS'
 echo ''
+go mod tidy
 go mod download -json $(awk '/	/{print $1}' go.mod) | jq -r .Zip | while read -r z; do
 	echo ''
 	echo "============================================================";
