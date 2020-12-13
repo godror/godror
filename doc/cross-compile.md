@@ -29,3 +29,16 @@ produces
 	godror-darwin-10.6-amd64
 
 For details, see https://github.com/karalabe/xgo !
+
+### Podman
+`xgo` uses docker, but you can make it use podman with this little shim:
+
+	#!/bin/sh
+	# $HOME/bin/docker
+	#  or anything that's on your PATH
+	exec podman "$@"
+
+and add "docker.io" to unqualified-search-registries in `/etc/containers/registries.conf`:
+
+    unqualified-search-registries = ["docker.io"]
+	
