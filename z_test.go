@@ -2651,6 +2651,44 @@ func TestGetDBTimezone(t *testing.T) {
 	}
 }
 
+func TestConnParamsTZ(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ConnParamsTZ"), 30*time.Second)
+	defer cancel()
+
+	getServerTZ := func(db *sql.DB) *time.Location {
+		var serverTZ *time.Location
+		if err := godror.Raw(ctx, testDb, func(cx godror.Conn) error {
+			serverTZ = cx.Timezone()
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return serverTZ
+	}
+
+	orig := getServerTZ(testDb)
+	_, off := time.Now().In(orig).Zone()
+	diff := 7200
+	if off > 12*3600-diff {
+		diff = -diff
+	}
+	off += diff
+
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.FixedZone(fmt.Sprintf("%d=%s%+d", off, orig, diff), off)
+	P.Timezone = want
+	t.Logf("Set Timezone from %s to %s", orig, want)
+	db := sql.OpenDB(godror.NewConnector(P))
+	got := getServerTZ(db)
+	if got != want {
+		t.Errorf("got %s, wanted %s", got, want)
+	}
+}
+
 func TestNumberBool(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)

@@ -459,6 +459,9 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 }
 
 func (c *conn) initTZ() error {
+	if Log != nil {
+		Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
+	}
 	if c.tzValid {
 		return nil
 	}
