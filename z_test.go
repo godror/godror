@@ -2658,7 +2658,7 @@ func TestConnParamsTZ(t *testing.T) {
 
 	getServerTZ := func(db *sql.DB) *time.Location {
 		var serverTZ *time.Location
-		if err := godror.Raw(ctx, testDb, func(cx godror.Conn) error {
+		if err := godror.Raw(ctx, db, func(cx godror.Conn) error {
 			serverTZ = cx.Timezone()
 			return nil
 		}); err != nil {

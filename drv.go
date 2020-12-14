@@ -528,12 +528,14 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		usernameKey = P.Username
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t",
+	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s",
 		usernameKey, P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-		P.Heterogeneous, P.EnableEvents, P.ExternalAuth)
+		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
+		P.Timezone,
+	)
 	if Log != nil {
-		Log("pool key:", poolKey)
+		Log("msg", "getPool", "key", poolKey)
 	}
 
 	// if pool already exists, return it immediately; otherwise, create a new
@@ -940,10 +942,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 		return nil, err
 	}
 
-	if Log != nil {
-		Log("msg", "OpenConnector", "name", name, "P", P)
-	}
-	return connector{drv: d, ConnectionParams: P}, nil
+	return NewConnector(P), nil
 }
 
 // Connect returns a connection to the database.
