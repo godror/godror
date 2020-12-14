@@ -5,9 +5,16 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- doc/timezone.md for documentation about time zones
+
+### Changed
+- Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
+- Use SESSIONTIMEZONE instead of DBTIMEZONE. 
+
+## [0.21.0]
 ### Changed
 - Use ODPI-C v4.1.0
-- Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
 
 ## [0.20.6]
 ### Added

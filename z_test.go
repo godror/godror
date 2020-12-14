@@ -2612,12 +2612,12 @@ func TestGetDBTimezone(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	qry := `SELECT TO_CHAR(SYSDATE, 'YYYY-MM-DD"T"HH24:MI:SS'), TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD"T"hH24:MI:SS'), DBTIMEZONE, TO_CHAR(SYSTIMESTAMP, 'TZR'), SYSTIMESTAMP FROM DUAL`
-	var sysdate, currentDate, dbTz, tzr, sts, ts string
-	if err := tx.QueryRowContext(ctx, qry).Scan(&sysdate, &currentDate, &dbTz, &tzr, &ts); err != nil {
+	qry := `SELECT TO_CHAR(SYSDATE, 'YYYY-MM-DD"T"HH24:MI:SS'), TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD"T"hH24:MI:SS'), DBTIMEZONE, SESSIONTIMEZONE, TO_CHAR(SYSTIMESTAMP, 'TZR') AS dbOSTZ, SYSTIMESTAMP FROM DUAL`
+	var sysdate, currentDate, dbTz, tzr, sts, dbOSTZ, ts string
+	if err := tx.QueryRowContext(ctx, qry).Scan(&sysdate, &currentDate, &dbTz, &tzr, &dbOSTZ, &ts); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	t.Logf("sysdate=%q currentDate=%q dbTZ=%q TZR=%q ts=%q", sysdate, currentDate, dbTz, tzr, ts)
+	t.Logf("sysdate=%q currentDate=%q dbTZ=%q TZR=%q dbOSTZ=%q ts=%q", sysdate, currentDate, dbTz, tzr, dbOSTZ, ts)
 
 	qry = "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err := tx.ExecContext(ctx, qry); err != nil {
