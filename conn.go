@@ -483,7 +483,7 @@ func (c *conn) initTZ() error {
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
-	const qry = "SELECT SESSIONTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS ostimezone FROM DUAL"
+	const qry = "SELECT SESSIONTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS ostimezone, (SYSDATE-CURRENT_DATE) * 24*3600 FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
@@ -501,16 +501,20 @@ func (c *conn) initTZ() error {
 		return err
 	}
 	defer rows.Close()
-	var sessionTZ, dbOSTZ string
-	vals := []driver.Value{sessionTZ, dbOSTZ}
+	var sessionTZ, dbOSTZ, dateDiff string
+	vals := []driver.Value{sessionTZ, dbOSTZ, dateDiff}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return fmt.Errorf("%s: %w", qry, err)
 	}
 	sessionTZ = vals[0].(string)
 	dbOSTZ = vals[1].(string)
+	dateDiff = vals[2].(string)
+	if Log != nil {
+		Log("msg", "calculateTZ", "sessionTZ", sessionTZ, "dbOSTZ", dbOSTZ, "dateDiff", dateDiff)
+	}
 
-	tz.Location, tz.offSecs, err = calculateTZ(sessionTZ, dbOSTZ)
+	tz.Location, tz.offSecs, err = calculateTZ(sessionTZ, dbOSTZ, dateDiff != "0")
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if Log != nil {
 		Log("timezone", dbOSTZ, "tz", tz, "error", err)
@@ -542,7 +546,14 @@ func (c *conn) initTZ() error {
 	return nil
 }
 
-func calculateTZ(sessionTZ, dbOSTZ string) (*time.Location, int, error) {
+func calculateTZ(sessionTZ, dbOSTZ string, dateDiffers bool) (*time.Location, int, error) {
+	if !dateDiffers {
+		if sessionTZ != "" {
+			dbOSTZ = sessionTZ
+		} else if dbOSTZ != "" {
+			sessionTZ = dbOSTZ
+		}
+	}
 	if sessionTZ != dbOSTZ {
 		atoi := func(s string) (int, error) {
 			var i int
