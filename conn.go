@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -541,7 +543,39 @@ func (c *conn) initTZ() error {
 }
 
 func calculateTZ(dbTZ, timezone string) (*time.Location, int, error) {
-	if dbTZ == "+00:00" && timezone == "+00:00" {
+	if dbTZ != timezone {
+		atoi := func(s string) (int, error) {
+			var i int
+			s = strings.Map(
+				func(r rune) rune {
+					if r == '+' || r == '-' {
+						i++
+						if i == 1 {
+							return r
+						}
+						return -1
+					} else if '0' <= r && r <= '9' {
+						i++
+						return r
+					}
+					return -1
+				},
+				s,
+			)
+			if s == "" {
+				return 0, errors.New("NaN")
+			}
+			return strconv.Atoi(s)
+		}
+
+		if dbI, err := atoi(dbTZ); err == nil {
+			if tzI, err := atoi(timezone); err == nil && dbI != tzI &&
+				dbI+100 != tzI && tzI+100 != dbI { // Compensate for Daylight Savings
+				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/issues/118\n", dbTZ, dbI, timezone, tzI)
+			}
+		}
+	}
+	if (dbTZ == "+00:00" || dbTZ == "UTC") && (timezone == "+00:00" || timezone == "UTC") {
 		return time.UTC, 0, nil
 	}
 	if Log != nil {

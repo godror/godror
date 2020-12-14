@@ -2601,7 +2601,7 @@ func TestTsTZ(t *testing.T) {
 	t.Skip("wanted non-zero time")
 }
 
-func TestGetDBTimeZone(t *testing.T) {
+func TestGetDBTimezone(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()
 
@@ -2612,12 +2612,19 @@ func TestGetDBTimeZone(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	qry := "ALTER SESSION SET time_zone = 'UTC'"
+	qry := `SELECT TO_CHAR(SYSDATE, 'YYYY-MM-DD"T"HH24:MI:SS'), TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD"T"hH24:MI:SS'), DBTIMEZONE, TO_CHAR(SYSTIMESTAMP, 'TZR'), SYSTIMESTAMP FROM DUAL`
+	var sysdate, currentDate, dbTz, tzr, sts, ts string
+	if err := tx.QueryRowContext(ctx, qry).Scan(&sysdate, &currentDate, &dbTz, &tzr, &ts); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+	}
+	t.Logf("sysdate=%q currentDate=%q dbTZ=%q TZR=%q ts=%q", sysdate, currentDate, dbTz, tzr, ts)
+
+	qry = "ALTER SESSION SET time_zone = 'UTC'"
 	if _, err := tx.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	qry = `SELECT DBTIMEZONE, SESSIONTIMEZONE, TO_CHAR(SYSTIMESTAMP, '"TZR="TZR "TZD="TZD "TZH:TZM="TZH:TZM'), LOCALTIMESTAMP||'' FROM DUAL`
-	var dbTz, tz, sts, lts string
+	var tz, lts string
 	if err := tx.QueryRowContext(ctx, qry).Scan(&dbTz, &tz, &sts, &lts); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
