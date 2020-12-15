@@ -12,3 +12,5 @@ So, how do we determine what time zone should be set on a value returned by a `S
 
 If you insert SYSDATE into that column, then the OS' time zone is the relevant.
 If you insert CURRENT_DATE, then SESSIONTIMEZONE is the relevant.
+
+As I don't use CURRENT_DATE, I pick the OS' time zone.
