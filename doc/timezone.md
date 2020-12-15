@@ -14,3 +14,13 @@ If you insert SYSDATE into that column, then the OS' time zone is the relevant.
 If you insert CURRENT_DATE, then SESSIONTIMEZONE is the relevant.
 
 As I don't use CURRENT_DATE, I pick the OS' time zone.
+
+## Why do we need to handle time zones for DATE ?
+DATEs should use something else than time.Time, as the don't have a time zone.
+Only TIMESTAMP WITH TIME (LOCAL) TIMEZONE data types should use time.Time.
+
+That'd mean we push the burden of choosing the right time zone to the developer, 
+and the std lib (database/sql/driver.Value) mandates the management of time.Time, 
+thus either we error out at runtime when we get a time.Time, or manage it somehow.
+
+That's why we have to use time.Time, and deal with time zones.
