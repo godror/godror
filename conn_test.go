@@ -45,7 +45,6 @@ func TestCalculateTZ(t *testing.T) {
 	for _, tC := range []struct {
 		sessionTZ, dbOSTZ string
 		off               int
-		differs           bool
 		err               error
 	}{
 		{sessionTZ: bdpstName, dbOSTZ: bdpstZone, off: bdpstOff},
@@ -56,7 +55,7 @@ func TestCalculateTZ(t *testing.T) {
 		{sessionTZ: "+00:00", dbOSTZ: "-07:00"},
 	} {
 		prefix := fmt.Sprintf("%q/%q", tC.sessionTZ, tC.dbOSTZ)
-		_, off, err := calculateTZ(tC.sessionTZ, tC.dbOSTZ, tC.differs)
+		_, off, err := calculateTZ(tC.sessionTZ, tC.dbOSTZ)
 		t.Logf("tz=%s => off=%d error=%+v", prefix, off, err)
 		if (err == nil) != (tC.err == nil) {
 			t.Errorf("ERR %s: wanted %v, got %v", prefix, tC.err, err)

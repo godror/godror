@@ -490,7 +490,7 @@ func (c *conn) initTZ() error {
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	// https://stackoverflow.com/questions/29271224/how-to-handle-day-light-saving-in-oracle-database/29272926#29272926
-	const qry = "SELECT DBTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS ostimezone FROM DUAL"
+	const qry = "SELECT DBTIMEZONE as dbTZ, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS dbOSTZ FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
@@ -509,7 +509,7 @@ func (c *conn) initTZ() error {
 	}
 	defer rows.Close()
 	var dbTZ, dbOSTZ string
-	vals := []driver.Value{dbTZ, dbOSTZ, dateDiff}
+	vals := []driver.Value{dbTZ, dbOSTZ}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return fmt.Errorf("%s: %w", qry, err)
@@ -553,10 +553,10 @@ func (c *conn) initTZ() error {
 }
 
 func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
-	if dbOSTZ == "" && dbTZ != "" {
-		dbOSTZ = dbTZ
-	} else if dbOSTZ != "" && dbTZ == "" {
+	if dbTZ == "" && dbOSTZ != "" {
 		dbTZ = dbOSTZ
+	} else if dbTZ != "" && dbOSTZ == "" {
+		dbOSTZ = dbTZ
 	}
 	if dbTZ != dbOSTZ {
 		atoi := func(s string) (int, error) {
@@ -595,8 +595,11 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 		return time.UTC, 0, nil
 	}
 	if Log != nil {
-		Log("dbTZ", dbTZ, "timezone", dbOSTZ)
+		Log("dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
+	// dbOSTZ rules
+	dbTZ, dbOSTZ = dbOSTZ, dbTZ
+
 	var tz *time.Location
 	var off int
 	now := time.Now()
