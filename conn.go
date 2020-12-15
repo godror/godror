@@ -489,7 +489,8 @@ func (c *conn) initTZ() error {
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
-	const qry = "SELECT SESSIONTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS ostimezone, (SYSDATE-CURRENT_DATE) * 24*3600 FROM DUAL"
+	// https://stackoverflow.com/questions/29271224/how-to-handle-day-light-saving-in-oracle-database/29272926#29272926
+	const qry = "SELECT DBTIMEZONE, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS ostimezone FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
@@ -507,27 +508,26 @@ func (c *conn) initTZ() error {
 		return err
 	}
 	defer rows.Close()
-	var sessionTZ, dbOSTZ, dateDiff string
-	vals := []driver.Value{sessionTZ, dbOSTZ, dateDiff}
+	var dbTZ, dbOSTZ string
+	vals := []driver.Value{dbTZ, dbOSTZ, dateDiff}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return fmt.Errorf("%s: %w", qry, err)
 	}
-	sessionTZ = vals[0].(string)
+	dbTZ = vals[0].(string)
 	dbOSTZ = vals[1].(string)
-	dateDiff = vals[2].(string)
 	if Log != nil {
-		Log("msg", "calculateTZ", "sessionTZ", sessionTZ, "dbOSTZ", dbOSTZ, "dateDiff", dateDiff)
+		Log("msg", "calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
-	tz.Location, tz.offSecs, err = calculateTZ(sessionTZ, dbOSTZ, dateDiff != "0")
+	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, dbOSTZ)
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if Log != nil {
 		Log("timezone", dbOSTZ, "tz", tz, "error", err)
 	}
 	if err == nil && tz.Location == nil {
 		if tz.offSecs != 0 {
-			err = fmt.Errorf("nil timezone from %q,%q", sessionTZ, dbOSTZ)
+			err = fmt.Errorf("nil timezone from %q,%q", dbTZ, dbOSTZ)
 		} else {
 			tz.Location = time.UTC
 		}
@@ -552,15 +552,13 @@ func (c *conn) initTZ() error {
 	return nil
 }
 
-func calculateTZ(sessionTZ, dbOSTZ string, dateDiffers bool) (*time.Location, int, error) {
-	if !dateDiffers {
-		if sessionTZ != "" {
-			dbOSTZ = sessionTZ
-		} else if dbOSTZ != "" {
-			sessionTZ = dbOSTZ
-		}
+func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
+	if dbOSTZ == "" && dbTZ != "" {
+		dbOSTZ = dbTZ
+	} else if dbOSTZ != "" && dbTZ == "" {
+		dbTZ = dbOSTZ
 	}
-	if sessionTZ != dbOSTZ {
+	if dbTZ != dbOSTZ {
 		atoi := func(s string) (int, error) {
 			var i int
 			s = strings.Map(
@@ -586,32 +584,32 @@ func calculateTZ(sessionTZ, dbOSTZ string, dateDiffers bool) (*time.Location, in
 		}
 
 		// Oracle DB has three time zones: SESSIONTIMEZONE, DBTIMEZONE, and OS time zone (SYSDATE, SYSTIMESTAMP): https://stackoverflow.com/a/29272926
-		if dbI, err := atoi(sessionTZ); err == nil {
+		if dbI, err := atoi(dbTZ); err == nil {
 			if tzI, err := atoi(dbOSTZ); err == nil && dbI != tzI &&
 				dbI+100 != tzI && tzI+100 != dbI { // Compensate for Daylight Savings
-				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between SESSIONTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/issues/118\n", sessionTZ, dbI, dbOSTZ, tzI)
+				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/issues/118\n", dbTZ, dbI, dbOSTZ, tzI)
 			}
 		}
 	}
-	if (sessionTZ == "+00:00" || sessionTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
+	if (dbTZ == "+00:00" || dbTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
 		return time.UTC, 0, nil
 	}
 	if Log != nil {
-		Log("dbTZ", sessionTZ, "timezone", dbOSTZ)
+		Log("dbTZ", dbTZ, "timezone", dbOSTZ)
 	}
 	var tz *time.Location
 	var off int
 	now := time.Now()
 	_, localOff := now.Local().Zone()
 	// If it's a name, try to use it.
-	if sessionTZ != "" && strings.Contains(sessionTZ, "/") {
+	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
-		if tz, err = time.LoadLocation(sessionTZ); err == nil {
+		if tz, err = time.LoadLocation(dbTZ); err == nil {
 			_, off = now.In(tz).Zone()
 			return tz, off, nil
 		}
 		if Log != nil {
-			Log("LoadLocation", sessionTZ, "error", err)
+			Log("LoadLocation", dbTZ, "error", err)
 		}
 	}
 	// If not, use the numbers.
@@ -620,8 +618,8 @@ func calculateTZ(sessionTZ, dbOSTZ string, dateDiffers bool) (*time.Location, in
 		if off, err = dsn.ParseTZ(dbOSTZ); err != nil {
 			return tz, off, fmt.Errorf("%s: %w", dbOSTZ, err)
 		}
-	} else if off, err = dsn.ParseTZ(sessionTZ); err != nil {
-		return tz, off, fmt.Errorf("%s: %w", sessionTZ, err)
+	} else if off, err = dsn.ParseTZ(dbTZ); err != nil {
+		return tz, off, fmt.Errorf("%s: %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
