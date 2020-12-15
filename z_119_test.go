@@ -9,7 +9,7 @@ import (
 	godror "github.com/godror/godror"
 )
 
-func Test117GetTables(t *testing.T) {
+func Test119GetTables(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	const qry = "SELECT ALL_TABLES.TABLE_NAME,COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DECODE(NULLABLE,'Y','Yes','N','No','X') AS NULLALOWED,'X' AS X FROM ALL_TABLES JOIN ALL_TAB_COLUMNS ON (ALL_TABLES.TABLE_NAME=ALL_TAB_COLUMNS.TABLE_NAME) ORDER BY TABLE_NAME,COLUMN_ID"
