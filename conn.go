@@ -587,7 +587,7 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 		if dbI, err := atoi(dbTZ); err == nil {
 			if tzI, err := atoi(dbOSTZ); err == nil && dbI != tzI &&
 				dbI+100 != tzI && tzI+100 != dbI { // Compensate for Daylight Savings
-				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/issues/118\n", dbTZ, dbI, dbOSTZ, tzI)
+				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/blob/master/doc/timezone.md\n", dbTZ, dbI, dbOSTZ, tzI)
 			}
 		}
 	}
@@ -597,8 +597,6 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 	if Log != nil {
 		Log("dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
-	// dbOSTZ rules
-	dbTZ, dbOSTZ = dbOSTZ, dbTZ
 
 	var tz *time.Location
 	var off int

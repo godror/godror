@@ -42,20 +42,21 @@ func TestCalculateTZ(t *testing.T) {
 		}
 		bdpstZone = fmt.Sprintf("%+02d:%02d", bdpstOff/3600, secs)
 	}
+	const Hour = 3600
 	for _, tC := range []struct {
-		sessionTZ, dbOSTZ string
-		off               int
-		err               error
+		dbTZ, dbOSTZ string
+		off          int
+		err          error
 	}{
-		{sessionTZ: bdpstName, dbOSTZ: bdpstZone, off: bdpstOff},
-		{sessionTZ: "+01:00", dbOSTZ: "", off: +3600},
-		{sessionTZ: "", dbOSTZ: "", off: 1800, err: io.EOF},
-		{sessionTZ: "", dbOSTZ: "+00:30", off: 1800},
-		{sessionTZ: "+02:00", dbOSTZ: "+02:00", off: 7200},
-		{sessionTZ: "+00:00", dbOSTZ: "-07:00"},
+		{dbTZ: bdpstName, dbOSTZ: bdpstZone, off: bdpstOff},
+		{dbTZ: "+01:00", dbOSTZ: "", off: +Hour},
+		{dbTZ: "", dbOSTZ: "", off: 1800, err: io.EOF},
+		{dbTZ: "", dbOSTZ: "+00:30", off: +Hour / 2},
+		{dbTZ: "+02:00", dbOSTZ: "+02:00", off: +2 * Hour},
+		{dbTZ: "+00:00", dbOSTZ: "-07:00", off: -7 * Hour},
 	} {
-		prefix := fmt.Sprintf("%q/%q", tC.sessionTZ, tC.dbOSTZ)
-		_, off, err := calculateTZ(tC.sessionTZ, tC.dbOSTZ)
+		prefix := fmt.Sprintf("%q/%q", tC.dbTZ, tC.dbOSTZ)
+		_, off, err := calculateTZ(tC.dbTZ, tC.dbOSTZ)
 		t.Logf("tz=%s => off=%d error=%+v", prefix, off, err)
 		if (err == nil) != (tC.err == nil) {
 			t.Errorf("ERR %s: wanted %v, got %v", prefix, tC.err, err)
