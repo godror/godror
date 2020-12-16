@@ -488,7 +488,9 @@ func (r *rows) Next(dest []driver.Value) error {
 			ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
 			tz := r.conn.Timezone()
 			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
-				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz)
+				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset,
+					nil, // just obey to what's included in the data
+				)
 			}
 			if tz == nil {
 				if Log != nil {
