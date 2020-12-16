@@ -462,10 +462,11 @@ func (c *conn) initTZ() error {
 	if Log != nil {
 		Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
 	}
-	if !c.tzValid && c.params.Timezone != nil && c.params.Timezone != time.Local {
-		c.tzValid = true
-	}
 	if c.tzValid {
+		return nil
+	}
+	if c.params.Timezone != nil && c.params.Timezone != time.Local {
+		c.tzValid = true
 		return nil
 	}
 	c.params.Timezone = time.Local

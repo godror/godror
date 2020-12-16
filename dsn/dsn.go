@@ -264,9 +264,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 func Parse(dataSourceName string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
-		CommonParams: CommonParams{
-			Timezone: time.Local,
-		},
+		//CommonParams: CommonParams{ Timezone: time.Local, },
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
 		},
@@ -396,13 +394,17 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	if tz := q.Get("timezone"); tz != "" {
 		var err error
 		if strings.EqualFold(tz, "local") {
-			// P.Timezone = time.Local // already set
+			P.Timezone = time.Local
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
 				return P, errors.Errorf("%s: %w", tz, err)
 			}
 		} else if off, err := ParseTZ(tz); err == nil {
-			P.Timezone = time.FixedZone(tz, off)
+			if off == 0 {
+				P.Timezone = time.UTC
+			} else {
+				P.Timezone = time.FixedZone(tz, off)
+			}
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
 		}

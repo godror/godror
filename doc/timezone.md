@@ -15,6 +15,13 @@ If you insert CURRENT_DATE, then SESSIONTIMEZONE is the relevant.
 
 As I don't use CURRENT_DATE, I pick the OS' time zone.
 
+Godror will print a
+
+    godor WARNING: discrepancy between DBTIMEZONE and SYSTIMESTAMP
+
+warning that it chosen the DB's OS' time zone (`TO_CHAR(SYSTIMESTAMP, 'TZR')`),
+- as that's what SYSDATE is in - but that differs from DBTIMEZONE.
+
 ## Why do we need to handle time zones for DATE ?
 DATEs should use something else than time.Time, as the don't have a time zone.
 Only TIMESTAMP WITH TIME (LOCAL) TIMEZONE data types should use time.Time.
