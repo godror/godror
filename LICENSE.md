@@ -1,7 +1,7 @@
 godror
 =======
 
-Copyright 2017, 2018, 2019 Tamás Gulácsi
+Copyright 2017, 2020 Tamás Gulácsi
 
 You can use either the
   Apache License, Version 2.0 (APL-2.0),

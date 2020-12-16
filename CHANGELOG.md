@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.22.0]
+### Added
+- doc/timezone.md for documentation about time zones
+
+### Changed
+- Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
+- Use SESSIONTIMEZONE instead of DBTIMEZONE. 
+
+## [0.21.0]
+### Changed
+- Use ODPI-C v4.1.0
+
+## [0.20.6]
+### Added
+- Compose/Decompose implementation for Number and num.OCINum.
+
 ## [0.20.5]
 ### Changed
 - Obey context deadlines everyewhere by calling OCIBreak on timeout/cancelation.

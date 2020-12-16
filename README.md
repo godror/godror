@@ -135,6 +135,10 @@ time.Now().Format("2-Jan-06 3:04:05.000000 PM")
 
 See [#121 under the old project](https://github.com/go-goracle/goracle/issues/121).
 
+### Timezone
+See the [documentation](./doc/timezone.md) - but for short, the database's OS' time zone is used,
+as that's what SYSDATE/SYSTIMESTAMP uses. If you want something different (because you fill DATE columns differently),
+then set the "location" in  the connection string, or the `Timezone` in the `ConnectionParams` accord to your chosen timezone.
 
 ### Stored procedure returning cursor (result set)
 ```go
@@ -175,6 +179,17 @@ for {
 	fmt.Println(dests2)
 }
 ```
+
+### Context with Deadline/Timeout
+TL;DR; *always close *sql.Rows ASAP!*
+
+Creating a watchdog goroutine, done channel for each call of `rows.Next` kills performance,
+so we create only one watchdog goroutine, at the first `rows.Next` call.
+It is defused after `rows.Close` (or the cursor is exhausted).
+
+If it is not defused, it will `Break` the currently executing OCI call on the connection,
+when the Context is canceled/timeouted. You should always call `rows.Close` ASAP, but if you 
+experience random `Break`s, remember this warning!
 
 
 ## Contribute
