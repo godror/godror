@@ -135,10 +135,6 @@ time.Now().Format("2-Jan-06 3:04:05.000000 PM")
 
 See [#121 under the old project](https://github.com/go-goracle/goracle/issues/121).
 
-### Timezone
-See the [documentation](./doc/timezone.md) - but for short, the database's OS' time zone is used,
-as that's what SYSDATE/SYSTIMESTAMP uses. If you want something different (because you fill DATE columns differently),
-then set the "location" in  the connection string, or the `Timezone` in the `ConnectionParams` accord to your chosen timezone.
 
 ### Stored procedure returning cursor (result set)
 ```go

@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Use ODPI-C v4.1.0
+- Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
+
+## [0.20.6]
+### Added
+- Compose/Decompose implementation for Number and num.OCINum.
+
+## [0.20.5]
+### Changed
+- Obey context deadlines everyewhere by calling OCIBreak on timeout/cancelation.
+
+## [0.20.1]
+### Changed
+- Fix Break (context cancelation/timeout) handling for good.
 
 ## [v0.22.0]
 ### Added
