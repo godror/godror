@@ -7,15 +7,17 @@ package godror
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
 func TestFromErrorInfo(t *testing.T) {
 	errInfo := newErrorInfo(0, "ORA-24315: érvénytelen attribútumtípus\n")
 	t.Logf("errInfo: %#v", errInfo)
-	oe := fromErrorInfo(errInfo)
-	t.Log("OraErr", oe)
-	if oe.Code() != 24315 {
+	err := fromErrorInfo(errInfo)
+	t.Log("OraErr", err)
+	var oe interface{ Code() int }
+	if !errors.As(err, &oe) || oe.Code() != 24315 {
 		t.Errorf("got %d, wanted 24315", oe.Code())
 	}
 }

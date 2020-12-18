@@ -523,3 +523,6 @@ func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiD
 func (d *Data) dpiDataGetBytesUnsafe() *C.dpiBytes {
 	return ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
 }
+
+// For tests
+var _, _ = ((*Data)(nil)).dpiDataGetBytes, ((*Data)(nil)).dpiDataGetBytesUnsafe

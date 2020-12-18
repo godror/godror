@@ -404,14 +404,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 		if err = ctx.Err(); err != nil {
-			break
+			return nil, err
 		}
 		if err = c.getError(); !isInvalidErr(err) {
 			break
 		}
 	}
 	if err != nil {
-		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
+		return nil, closeIfBadConn(err) //fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
 
 	if Log != nil {
@@ -2555,7 +2555,7 @@ func (sb *stringBuilderPool) Put(b *strings.Builder) {
 
 func isInvalidErr(err error) bool {
 	var cdr interface{ Code() int }
-	if !errors.As(err, &cdr) {
+	if err == nil || !errors.As(err, &cdr) {
 		return false
 	}
 	code := cdr.Code()

@@ -770,7 +770,7 @@ func (oe *OraErr) Error() string {
 	}
 	return fmt.Sprintf("ORA-%05d: %s", oe.code, oe.message)
 }
-func fromErrorInfo(errInfo C.dpiErrorInfo) *OraErr {
+func fromErrorInfo(errInfo C.dpiErrorInfo) error {
 	oe := OraErr{
 		code:        int(errInfo.code),
 		message:     strings.TrimSpace(C.GoStringN(errInfo.message, C.int(errInfo.messageLength))),
@@ -819,10 +819,12 @@ func newErrorInfo(code int, message string) C.dpiErrorInfo {
 // against deadcode
 var _ = newErrorInfo
 
-func (d *drv) getError() *OraErr {
+func (d *drv) getError() error {
 	if d == nil || d.dpiContext == nil {
 		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
 	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(d.dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)

@@ -674,6 +674,9 @@ func maybeBadConn(err error, c *conn) error {
 		cl()
 		return driver.ErrBadConn
 	}
+	if Log != nil {
+		Log("msg", "maybeBadConn", "err", err, "errS", fmt.Sprintf("%q", err.Error()), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
+	}
 	var cd interface{ Code() int }
 	if errors.As(err, &cd) {
 		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
