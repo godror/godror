@@ -1134,6 +1134,25 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.dataGetObject
 		}
 
+	case JSONNode:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
+		info.set = st.conn.dataSetJSONNode
+		if info.isOut {
+			*get = st.conn.dataGetJSONNode
+		}
+	case JSONObject:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
+		info.set = st.conn.dataSetJSONObject
+		if info.isOut {
+			*get = st.conn.dataGetJSONObject
+		}
+	case JSONArray:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
+		info.set = st.conn.dataSetJSONArray
+		if info.isOut {
+			*get = st.conn.dataGetJSONArray
+		}
+
 	default:
 		if !isValuer {
 			return value, fmt.Errorf("unknown type %T", value)
@@ -2421,6 +2440,27 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 
 	return nil
 }
+
+func (c *conn) dataGetJSONNode(v interface{}, data []C.dpiData) error {
+	return ErrNotImplemented
+}
+func (c *conn) dataSetJSONNode(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	return ErrNotImplemented
+}
+func (c *conn) dataGetJSONObject(v interface{}, data []C.dpiData) error {
+	return ErrNotImplemented
+}
+func (c *conn) dataSetJSONObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	return ErrNotImplemented
+}
+func (c *conn) dataGetJSONArray(v interface{}, data []C.dpiData) error {
+	return ErrNotImplemented
+}
+func (c *conn) dataSetJSONArray(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	return ErrNotImplemented
+}
+
+var ErrNotImplemented = errors.New("not implemented")
 
 // CheckNamedValue is called before passing arguments to the driver
 // and is called in place of any ColumnConverter. CheckNamedValue must do type
