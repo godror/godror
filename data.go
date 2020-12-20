@@ -527,5 +527,15 @@ func (d *Data) dpiDataGetBytesUnsafe() *C.dpiBytes {
 	return ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
 }
 
+func (d *Data) GetJSON() JSON {
+	return JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONObject() JSONObject {
+	return JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONArray() JSONArray {
+	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
+}
+
 // For tests
 var _, _ = ((*Data)(nil)).dpiDataGetBytes, ((*Data)(nil)).dpiDataGetBytesUnsafe

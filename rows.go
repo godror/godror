@@ -266,7 +266,7 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
 		return reflect.TypeOf(false)
 	case C.DPI_ORACLE_TYPE_JSON:
-		return reflect.TypeOf(JSONNode{})
+		return reflect.TypeOf(JSON{})
 	case C.DPI_ORACLE_TYPE_JSON_OBJECT:
 		return reflect.TypeOf(JSONObject{})
 	case C.DPI_ORACLE_TYPE_JSON_ARRAY:
@@ -613,19 +613,19 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSONNode{dpiJsonNode: *((*C.dpiJsonNode)(unsafe.Pointer(&d.value)))}
+			dest[i] = JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&d.value)))}
 		case C.DPI_NATIVE_TYPE_JSON_OBJECT:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSONObject{dpiJsonObject: *((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
+			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
 		case C.DPI_NATIVE_TYPE_JSON_ARRAY:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSONArray{dpiJsonArray: *((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
+			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
 
 		default:
 			return fmt.Errorf("unsupported column type %d", typ)
