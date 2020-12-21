@@ -477,7 +477,7 @@ func (t *ObjectType) Close() error {
 
 	if cof != nil {
 		if err := cof.Close(); err != nil && Log != nil {
-			Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", t.CollectionOf.Name, "error", err)
+			Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
 		}
 	}
 
