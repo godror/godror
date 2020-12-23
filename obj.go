@@ -543,6 +543,9 @@ func (t *ObjectType) init() error {
 			t.CollectionOf.Schema = t.Schema
 			t.CollectionOf.Name = t.Name
 		}
+		if t.CollectionOf.dpiObjectType != nil {
+			C.dpiObjectType_addRef(t.CollectionOf.dpiObjectType)
+		}
 	}
 	if numAttributes == 0 {
 		t.Attributes = map[string]ObjectAttribute{}
