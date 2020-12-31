@@ -692,19 +692,19 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 	stats.Max = uint32(p.params.PoolParams.MaxSessions)
 
 	var u C.uint32_t
-	if C.dpiPool_getBusyCount(p.dpiPool, &u) == C.DPI_SUCCESS {
+	if C.dpiPool_getBusyCount(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.Busy = uint32(u)
 	}
-	if C.dpiPool_getOpenCount(p.dpiPool, &u) == C.DPI_SUCCESS {
+	if C.dpiPool_getOpenCount(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.Open = uint32(u)
 	}
-	if C.dpiPool_getMaxLifetimeSession(p.dpiPool, &u) == C.DPI_SUCCESS {
+	if C.dpiPool_getMaxLifetimeSession(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.MaxLifetime = time.Duration(u) * time.Second
 	}
-	if C.dpiPool_getTimeout(p.dpiPool, &u) == C.DPI_SUCCESS {
+	if C.dpiPool_getTimeout(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.Timeout = time.Duration(u) * time.Second
 	}
-	if C.dpiPool_getWaitTimeout(p.dpiPool, &u) == C.DPI_SUCCESS {
+	if C.dpiPool_getWaitTimeout(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.WaitTimeout = time.Duration(u) * time.Millisecond
 		return stats, nil
 	}

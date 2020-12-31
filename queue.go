@@ -295,7 +295,7 @@ func (M Message) Deadline() time.Time {
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	var firstErr error
 	OK := func(ok C.int, name string) {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return
 		}
 		if firstErr == nil {
@@ -336,7 +336,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) error {
 	var firstErr error
 	OK := func(ok C.int, name string) bool {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return true
 		}
 		if firstErr == nil {
@@ -444,7 +444,7 @@ func (EnqOptions) qOption() {}
 func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return true
 		}
 		if firstErr == nil {
@@ -472,7 +472,7 @@ func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return true
 		}
 		if firstErr == nil {
@@ -514,7 +514,7 @@ func (DeqOptions) qOption() {}
 func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return true
 		}
 		if firstErr == nil {
@@ -569,7 +569,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 	var firstErr error
 	OK := func(ok C.int, msg string) bool {
-		if ok == C.DPI_SUCCESS {
+		if ok != C.DPI_FAILURE {
 			return true
 		}
 		if firstErr == nil {

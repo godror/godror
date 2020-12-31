@@ -191,7 +191,7 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 		return nil
 	}
 	var isOpen C.int
-	if C.dpiLob_getIsResourceOpen(lob, &isOpen) == C.DPI_SUCCESS && isOpen == 1 {
+	if C.dpiLob_getIsResourceOpen(lob, &isOpen) != C.DPI_FAILURE && isOpen == 1 {
 		if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
 			if err := d.getError(); err != nil {
 				if err.(*OraErr).Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
