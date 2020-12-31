@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.23.0]
+### Changed
+- All OCI/ODPI calls encapsulated in runtime.LockOSThread / runtime.UnlockOSThread
+to force the error retrieving be on the same OS thread - it seems that OCI stores
+the last error on some kind of thead-local-storage.
+
 ## [v0.22.0]
 ### Added
 - doc/timezone.md for documentation about time zones

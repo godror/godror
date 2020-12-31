@@ -8,4 +8,4 @@ package godror
 //go:generate git apply odpi-structslop.patch
 
 // Version of this driver
-const Version = "v0.22.4"
+const Version = "v0.23.0"
