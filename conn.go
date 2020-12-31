@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +69,14 @@ func (c *conn) getError() error {
 		return driver.ErrBadConn
 	}
 	return c.drv.getError()
+}
+func (c *conn) checkExec(f func() C.int) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if f() != C.DPI_FAILURE {
+		return nil
+	}
+	return c.getError()
 }
 
 // used before an ODPI call to force it to return within the context deadline
@@ -123,11 +132,11 @@ func (c *conn) Break() error {
 	if c.dpiConn == nil {
 		return nil
 	}
-	if C.dpiConn_breakExecution(c.dpiConn) == C.DPI_FAILURE {
+	if err := c.checkExec(func() C.int { return C.dpiConn_breakExecution(c.dpiConn) }); err != nil {
 		if Log != nil {
-			Log("msg", "Break", "error", c.getError())
+			Log("msg", "Break", "error", err)
 		}
-		return maybeBadConn(fmt.Errorf("Break: %w", c.getError()), c)
+		return maybeBadConn(fmt.Errorf("Break: %w", err), c)
 	}
 	return nil
 }
@@ -154,13 +163,13 @@ func (c *conn) Ping(ctx context.Context) error {
 	if hasDeadline {
 		c.setCallTimeout(time.Until(dl))
 	}
-	failure := C.dpiConn_ping(c.dpiConn) == C.DPI_FAILURE
+	err := c.checkExec(func() C.int { return C.dpiConn_ping(c.dpiConn) })
 	close(done)
 	if hasDeadline {
 		c.setCallTimeout(0)
 	}
-	if failure {
-		return maybeBadConn(fmt.Errorf("Ping: %w", c.getError()), c)
+	if err != nil {
+		return maybeBadConn(fmt.Errorf("Ping: %w", err), c)
 	}
 	return nil
 }
@@ -339,14 +348,15 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 		C.free(unsafe.Pointer(cSQL))
 	}()
 	st := statement{conn: c, query: query}
-	failed := C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
-		(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)),
-	) == C.DPI_FAILURE
-	if failed {
-		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, c.getError()), c)
+	err := c.checkExec(func() C.int {
+		return C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
+			(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)))
+	})
+	if err != nil {
+		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, err), c)
 	}
-	if C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) == C.DPI_FAILURE {
-		err := maybeBadConn(fmt.Errorf("getStmtInfo: %w", c.getError()), c)
+	if err := c.checkExec(func() C.int { return C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) }); err != nil {
+		err := maybeBadConn(fmt.Errorf("getStmtInfo: %w", err), c)
 		st.Close()
 		return nil, err
 	}
@@ -368,13 +378,13 @@ func (c *conn) endTran(isCommit bool) error {
 	var err error
 	//msg := "Commit"
 	if isCommit {
-		if C.dpiConn_commit(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(fmt.Errorf("Commit: %w", c.getError()), c)
+		if err = c.checkExec(func() C.int { return C.dpiConn_commit(c.dpiConn) }); err != nil {
+			err = maybeBadConn(fmt.Errorf("Commit: %w", err), c)
 		}
 	} else {
 		//msg = "Rollback"
-		if C.dpiConn_rollback(c.dpiConn) == C.DPI_FAILURE {
-			err = maybeBadConn(fmt.Errorf("Rollback: %w", c.getError()), c)
+		if err = c.checkExec(func() C.int { return C.dpiConn_rollback(c.dpiConn) }); err != nil {
+			err = maybeBadConn(fmt.Errorf("Rollback: %w", err), c)
 		}
 	}
 	//fmt.Printf("%p.%s\n", c, msg)
@@ -405,13 +415,15 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	if Log != nil {
 		Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
 	}
-	if C.dpiConn_newVar(
-		c.dpiConn, vi.Typ, vi.NatTyp, C.uint32_t(vi.SliceLen),
-		C.uint32_t(vi.BufSize), 1,
-		isArray, vi.ObjectType,
-		&v, &dataArr,
-	) == C.DPI_FAILURE {
-		return nil, nil, fmt.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, c.getError())
+	if err := c.checkExec(func() C.int {
+		return C.dpiConn_newVar(
+			c.dpiConn, vi.Typ, vi.NatTyp, C.uint32_t(vi.SliceLen),
+			C.uint32_t(vi.BufSize), 1,
+			isArray, vi.ObjectType,
+			&v, &dataArr,
+		)
+	}); err != nil {
+		return nil, nil, fmt.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, err)
 	}
 	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
 	/*
@@ -432,11 +444,11 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	var v C.dpiVersionInfo
 	var release *C.char
 	var releaseLen C.uint32_t
-	if C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) == C.DPI_FAILURE {
+	if err := c.checkExec(func() C.int { return C.dpiConn_getServerVersion(c.dpiConn, &release, &releaseLen, &v) }); err != nil {
 		if c.params.IsPrelim {
 			return c.Server, nil
 		}
-		return c.Server, fmt.Errorf("getServerVersion: %w", c.getError())
+		return c.Server, fmt.Errorf("getServerVersion: %w", err)
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = string(bytes.Replace(
@@ -751,24 +763,24 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		if v != "" {
 			s = C.CString(v)
 		}
-		var rc C.int
+		var err error
 		switch nm {
 		case "action":
-			rc = C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(v)))
+			err = c.checkExec(func() C.int { return C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(v))) })
 		case "module":
-			rc = C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(v)))
+			err = c.checkExec(func() C.int { return C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(v))) })
 		case "info":
-			rc = C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(v)))
+			err = c.checkExec(func() C.int { return C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(v))) })
 		case "identifier":
-			rc = C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(v)))
+			err = c.checkExec(func() C.int { return C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(v))) })
 		case "op":
-			rc = C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v)))
+			err = c.checkExec(func() C.int { return C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v))) })
 		}
 		if s != nil {
 			C.free(unsafe.Pointer(s))
 		}
-		if rc == C.DPI_FAILURE {
-			return fmt.Errorf("%s: %w", nm, c.getError())
+		if err != nil {
+			return fmt.Errorf("%s: %w", nm, err)
 		}
 	}
 	c.currentTT = tt
@@ -881,8 +893,8 @@ const (
 //
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Startup(mode StartupMode) error {
-	if C.dpiConn_startupDatabase(c.dpiConn, C.dpiStartupMode(mode)) == C.DPI_FAILURE {
-		return fmt.Errorf("startup(%v): %w", mode, c.getError())
+	if err := c.checkExec(func() C.int { return C.dpiConn_startupDatabase(c.dpiConn, C.dpiStartupMode(mode)) }); err != nil {
+		return fmt.Errorf("startup(%v): %w", mode, err)
 	}
 	return nil
 }
@@ -910,8 +922,8 @@ const (
 //
 // See https://docs.oracle.com/en/database/oracle/oracle-database/18/lnoci/database-startup-and-shutdown.html#GUID-44B24F65-8C24-4DF3-8FBF-B896A4D6F3F3
 func (c *conn) Shutdown(mode ShutdownMode) error {
-	if C.dpiConn_shutdownDatabase(c.dpiConn, C.dpiShutdownMode(mode)) == C.DPI_FAILURE {
-		return fmt.Errorf("shutdown(%v): %w", mode, c.getError())
+	if err := c.checkExec(func() C.int { return C.dpiConn_shutdownDatabase(c.dpiConn, C.dpiShutdownMode(mode)) }); err != nil {
+		return fmt.Errorf("shutdown(%v): %w", mode, err)
 	}
 	return nil
 }

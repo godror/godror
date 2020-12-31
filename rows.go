@@ -23,6 +23,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -281,6 +282,10 @@ func (r *rows) Next(dest []driver.Value) error {
 	if len(dest) != len(r.columns) {
 		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if r.fetched == 0 {
 		// Start the watchdog only once See issue #113 (https://github.com/godror/godror/issues/113)
 		if r.done == nil {
@@ -667,8 +672,8 @@ func (r *rows) getImplicitResult() {
 		st = r.statement
 		r.origSt = st
 	}
-	if C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) == C.DPI_FAILURE {
-		r.nextRsErr = fmt.Errorf("getImplicitResult: %w", r.getError())
+	if err := r.checkExec(func() C.int { return C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) }); err != nil {
+		r.nextRsErr = fmt.Errorf("getImplicitResult: %w", err)
 	}
 	C.dpiStmt_addRef(r.nextRs)
 }
@@ -699,8 +704,8 @@ func (r *rows) NextResultSet() error {
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
-	if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) == C.DPI_FAILURE {
-		err := fmt.Errorf("getNumQueryColumns: %+v: %w", r.getError(), io.EOF)
+	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
+		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
 		if Log != nil {
 			Log("msg", "NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}

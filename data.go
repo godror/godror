@@ -208,8 +208,8 @@ func (d *Data) GetObject() *Object {
 		return nil
 	}
 	if !d.implicitObj {
-		if C.dpiObject_addRef(o) == C.DPI_FAILURE {
-			panic(d.ObjectType.getError())
+		if err := d.ObjectType.conn.checkExec(func() C.int { return C.dpiObject_addRef(o) }); err != nil {
+			panic(err)
 		}
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}

@@ -13,6 +13,7 @@ import (
 	//"fmt"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 	"unicode/utf8"
 	"unsafe"
@@ -77,6 +78,9 @@ type dpiLobReader struct {
 }
 
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
@@ -153,6 +157,9 @@ type dpiLobWriter struct {
 }
 
 func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	lob := dlw.dpiLob
 	if !dlw.opened {
 		// fmt.Printf("open %p\n", lob)
@@ -190,6 +197,10 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 	if lob == nil {
 		return nil
 	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	var isOpen C.int
 	if C.dpiLob_getIsResourceOpen(lob, &isOpen) != C.DPI_FAILURE && isOpen == 1 {
 		if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
@@ -220,8 +231,8 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 		typ = C.DPI_ORACLE_TYPE_CLOB
 	}
 	lob := DirectLob{conn: c}
-	if C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) == C.DPI_FAILURE {
-		return nil, fmt.Errorf("newTempLob: %w", c.getError())
+	if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) }); err != nil {
+		return nil, fmt.Errorf("newTempLob: %w", err)
 	}
 	return &lob, nil
 }
@@ -245,16 +256,16 @@ func (dl *DirectLob) Close() error {
 // the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) Size() (int64, error) {
 	var n C.uint64_t
-	if C.dpiLob_getSize(dl.dpiLob, &n) == C.DPI_FAILURE {
-		return int64(n), fmt.Errorf("getSize: %w", dl.conn.getError())
+	if err := dl.conn.checkExec(func() C.int { return C.dpiLob_getSize(dl.dpiLob, &n) }); err != nil {
+		return int64(n), fmt.Errorf("getSize: %w", err)
 	}
 	return int64(n), nil
 }
 
 // Trim the LOB to the given size.
 func (dl *DirectLob) Trim(size int64) error {
-	if C.dpiLob_trim(dl.dpiLob, C.uint64_t(size)) == C.DPI_FAILURE {
-		return fmt.Errorf("trim: %w", dl.conn.getError())
+	if err := dl.conn.checkExec(func() C.int { return C.dpiLob_trim(dl.dpiLob, C.uint64_t(size)) }); err != nil {
+		return fmt.Errorf("trim: %w", err)
 	}
 	return nil
 }
@@ -262,8 +273,10 @@ func (dl *DirectLob) Trim(size int64) error {
 // Set the contents of the LOB to the given byte slice.
 // The LOB is cleared first.
 func (dl *DirectLob) Set(p []byte) error {
-	if C.dpiLob_setFromBytes(dl.dpiLob, (*C.char)(unsafe.Pointer(&p[0])), C.uint64_t(len(p))) == C.DPI_FAILURE {
-		return fmt.Errorf("setFromBytes: %w", dl.conn.getError())
+	if err := dl.conn.checkExec(func() C.int {
+		return C.dpiLob_setFromBytes(dl.dpiLob, (*C.char)(unsafe.Pointer(&p[0])), C.uint64_t(len(p)))
+	}); err != nil {
+		return fmt.Errorf("setFromBytes: %w", err)
 	}
 	return nil
 }
@@ -271,14 +284,19 @@ func (dl *DirectLob) Set(p []byte) error {
 // ReadAt reads at most len(p) bytes into p at offset.
 func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 	n := C.uint64_t(len(p))
-	if C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
-		return int(n), fmt.Errorf("readBytes: %w", dl.conn.getError())
+	if err := dl.conn.checkExec(func() C.int {
+		return C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n)
+	}); err != nil {
+		return int(n), fmt.Errorf("readBytes: %w", err)
 	}
 	return int(n), nil
 }
 
 // WriteAt writes p starting at offset.
 func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if !dl.opened {
 		// fmt.Printf("open %p\n", lob)
 		if C.dpiLob_openResource(dl.dpiLob) == C.DPI_FAILURE {
@@ -298,13 +316,14 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 func (dl *DirectLob) GetFileName() (dir, file string, err error) {
 	var directoryAliasLength, fileNameLength C.uint32_t
 	var directoryAlias, fileName *C.char
-	if C.dpiLob_getDirectoryAndFileName(dl.dpiLob,
-		&directoryAlias,
-		&directoryAliasLength,
-		&fileName,
-		&fileNameLength,
-	) == C.DPI_FAILURE {
-		err = dl.conn.getError()
+	if err := dl.conn.checkExec(func() C.int {
+		return C.dpiLob_getDirectoryAndFileName(dl.dpiLob,
+			&directoryAlias,
+			&directoryAliasLength,
+			&fileName,
+			&fileNameLength,
+		)
+	}); err != nil {
 		return dir, file, errors.Errorf("GetFileName: %w", err)
 	}
 	dir = C.GoStringN(directoryAlias, C.int(directoryAliasLength))

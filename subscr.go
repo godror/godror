@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
@@ -188,8 +189,6 @@ type Subscription struct {
 	ID        uint64
 }
 
-func (s *Subscription) getError() error { return s.conn.getError() }
-
 // NewSubscription creates a new Subscription in the DB.
 //
 // Make sure your user has CHANGE NOTIFICATION privilege!
@@ -249,12 +248,11 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
 
-	if C.dpiConn_subscribe(c.dpiConn,
-		params,
-		(**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)),
-	) == C.DPI_FAILURE {
+	if err := c.checkExec(func() C.int {
+		return C.dpiConn_subscribe(c.dpiConn, params, (**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)))
+	}); err != nil {
 		C.free(unsafe.Pointer(dpiSubscr))
-		err := fmt.Errorf("newSubscription: %w", c.getError())
+		err = fmt.Errorf("newSubscription: %w", err)
 		if strings.Contains(errors.Unwrap(err).Error(), "DPI-1065:") {
 			err = fmt.Errorf("specify \"enableEvents=1\" connection parameter on connection to be able to use subscriptions: %w", err)
 		}
@@ -268,23 +266,26 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 //
 // This code is EXPERIMENTAL yet!
 func (s *Subscription) Register(qry string, params ...interface{}) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	cQry := C.CString(qry)
 	defer func() { C.free(unsafe.Pointer(cQry)) }()
 
 	var dpiStmt *C.dpiStmt
 	if C.dpiSubscr_prepareStmt(s.dpiSubscr, cQry, C.uint32_t(len(qry)), &dpiStmt) == C.DPI_FAILURE {
-		return fmt.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.getError())
+		return fmt.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.conn.getError())
 	}
 	defer func() { C.dpiStmt_release(dpiStmt) }()
 
 	mode := C.dpiExecMode(C.DPI_MODE_EXEC_DEFAULT)
 	var qCols C.uint32_t
 	if C.dpiStmt_execute(dpiStmt, mode, &qCols) == C.DPI_FAILURE {
-		return fmt.Errorf("executeStmt: %w", s.getError())
+		return fmt.Errorf("executeStmt: %w", s.conn.getError())
 	}
 	var queryID C.uint64_t
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
-		return fmt.Errorf("getSubscrQueryId: %w", s.getError())
+		return fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
 	}
 	if Log != nil {
 		Log("msg", "subscribed", "query", qry, "id", queryID)
@@ -308,8 +309,8 @@ func (s *Subscription) Close() error {
 	if dpiSubscr == nil || conn == nil || conn.dpiConn == nil {
 		return nil
 	}
-	if C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) == C.DPI_FAILURE {
-		return fmt.Errorf("close: %w", s.getError())
+	if err := conn.checkExec(func() C.int { return C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) }); err != nil {
+		return fmt.Errorf("close: %w", err)
 	}
 	return nil
 }
