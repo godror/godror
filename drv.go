@@ -183,6 +183,15 @@ type connPool struct {
 	key     string
 }
 
+func (d *drv) checkExec(f func() C.int) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if f() != C.DPI_FAILURE {
+		return nil
+	}
+	return d.getError()
+}
+
 func (d *drv) init(configDir, libDir string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -220,8 +229,8 @@ func (d *drv) init(configDir, libDir string) error {
 	d.dpiContext = dpiCtx
 
 	var v C.dpiVersionInfo
-	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
-		return fmt.Errorf("%s: %w", "getClientVersion", d.getError())
+	if err := d.checkExec(func() C.int { return C.dpiContext_getClientVersion(d.dpiContext, &v) }); err != nil {
+		return fmt.Errorf("%s: %w", "getClientVersion", err)
 	}
 	d.clientVersion.set(&v)
 	return nil
@@ -251,8 +260,8 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool) error {
 
 	// initialize ODPI-C structure for common creation parameters
-	if C.dpiContext_initCommonCreateParams(d.dpiContext, P) == C.DPI_FAILURE {
-		return fmt.Errorf("initCommonCreateParams: %w", d.getError())
+	if err := d.checkExec(func() C.int { return C.dpiContext_initCommonCreateParams(d.dpiContext, P) }); err != nil {
+		return fmt.Errorf("initCommonCreateParams: %w", err)
 	}
 
 	// assign encoding and national encoding (always use UTF-8)
@@ -355,9 +364,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// initialize ODPI-C structure for connection creation parameters
 	var connCreateParams C.dpiConnCreateParams
-	if C.dpiContext_initConnCreateParams(d.dpiContext,
-		&connCreateParams) == C.DPI_FAILURE {
-		return nil, false, fmt.Errorf("initConnCreateParams: %w", d.getError())
+	if err := d.checkExec(func() C.int { return C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) }); err != nil {
+		return nil, false, fmt.Errorf("initConnCreateParams: %w", err)
 	}
 
 	// assign connection class
@@ -460,15 +468,16 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// create ODPI-C connection
 	var dc *C.dpiConn
-	if C.dpiConn_create(
-		d.dpiContext,
-		cUsername, C.uint32_t(len(username)),
-		cPassword, C.uint32_t(len(password)),
-		cConnectString, C.uint32_t(len(P.ConnectString)),
-		commonCreateParamsPtr,
-		&connCreateParams, &dc,
-	) == C.DPI_FAILURE {
-		err := d.getError()
+	if err := d.checkExec(func() C.int {
+		return C.dpiConn_create(
+			d.dpiContext,
+			cUsername, C.uint32_t(len(username)),
+			cPassword, C.uint32_t(len(password)),
+			cConnectString, C.uint32_t(len(P.ConnectString)),
+			commonCreateParamsPtr,
+			&connCreateParams, &dc,
+		)
+	}); err != nil {
 		if pool != nil {
 			stats, _ := d.getPoolStats(pool)
 			return nil, false, fmt.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
@@ -576,9 +585,10 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// initialize ODPI-C structure for pool creation parameters
 	var poolCreateParams C.dpiPoolCreateParams
-	if C.dpiContext_initPoolCreateParams(d.dpiContext,
-		&poolCreateParams) == C.DPI_FAILURE {
-		return nil, fmt.Errorf("initPoolCreateParams: %w", d.getError())
+	if err := d.checkExec(func() C.int {
+		return C.dpiContext_initPoolCreateParams(d.dpiContext, &poolCreateParams)
+	}); err != nil {
+		return nil, fmt.Errorf("initPoolCreateParams: %w", err)
 	}
 
 	// assign minimum number of sessions permitted in the pool
@@ -653,17 +663,18 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 			"common", commonCreateParams, "pool",
 			fmt.Sprintf("%#v", poolCreateParams))
 	}
-	if C.dpiPool_create(
-		d.dpiContext,
-		cUsername, C.uint32_t(len(P.Username)),
-		cPassword, C.uint32_t(P.Password.Len()),
-		cConnectString, C.uint32_t(len(P.ConnectString)),
-		&commonCreateParams,
-		&poolCreateParams,
-		(**C.dpiPool)(unsafe.Pointer(&dp)),
-	) == C.DPI_FAILURE {
-		return nil, fmt.Errorf("params=%s extAuth=%v: %w",
-			P, poolCreateParams.externalAuth, d.getError())
+	if err := d.checkExec(func() C.int {
+		return C.dpiPool_create(
+			d.dpiContext,
+			cUsername, C.uint32_t(len(P.Username)),
+			cPassword, C.uint32_t(P.Password.Len()),
+			cConnectString, C.uint32_t(len(P.ConnectString)),
+			&commonCreateParams,
+			&poolCreateParams,
+			(**C.dpiPool)(unsafe.Pointer(&dp)),
+		)
+	}); err != nil {
+		return nil, fmt.Errorf("params=%s extAuth=%v: %w", P, poolCreateParams.externalAuth, err)
 	}
 
 	// set statement cache
@@ -691,6 +702,8 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 
 	stats.Max = uint32(p.params.PoolParams.MaxSessions)
 
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	var u C.uint32_t
 	if C.dpiPool_getBusyCount(p.dpiPool, &u) != C.DPI_FAILURE {
 		stats.Busy = uint32(u)
