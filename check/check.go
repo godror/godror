@@ -8,19 +8,23 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+	//"github.com/kortschak/utter"
 )
 
 func main() {
 	if err := Main(); err != nil {
+		log.SetOutput(os.Stderr)
 		log.Fatalf("%+v", err)
 	}
 }
@@ -30,6 +34,12 @@ type goList struct {
 }
 
 func Main() error {
+	flagVerbose := flag.Bool("v", false, "verbose logging")
+	flag.Parse()
+	if !*flagVerbose {
+		log.SetOutput(ioutil.Discard)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	b, err := exec.CommandContext(ctx, "go", "list", "-json").Output()
@@ -63,24 +73,27 @@ func Main() error {
 func checkFile(fset *token.FileSet, f *ast.File) error {
 	var errs []error
 	for _, fun := range funcs(f.Decls) {
+		//utter.Dump(fun.Body.List)
+		fpos := fset.Position(fun.Pos())
+		prefix := fmt.Sprintf("%s[%s line %d]: ", fun.Name, fpos.Filename, fpos.Line)
 		ce := calls(fun.Body.List)
 		cgoc := cgoCalls(ce)
 		if len(cgoc) == 0 {
 			continue
 		}
 		getErrors := filterCalls(ce, func(se *ast.SelectorExpr) bool { return se.Sel.Name == "getError" })
-		log.Println(fset.Position(fun.Pos()).Filename, fun.Name, getErrors)
 		if len(getErrors) == 0 {
+			log.Println(prefix, "no getError call")
 			continue
 		}
 		flot := firstLockOSThread(ce)
 		if flot >= 0 && flot < cgoc[0].Pos() {
+			log.Printf(prefix+" the first runtime.LockOSThread() call is on line %d, before the first cgo call (line %d)", fset.Position(flot).Line, fset.Position(cgoc[0].Pos()).Line)
 			continue
 		}
-		fpos := fset.Position(fun.Pos())
 		errs = append(errs, fmt.Errorf(
-			"%s[%s line %d] has cgo calls (line %d), which is not protected with runtime.LockOSThread",
-			fpos.Filename, fun.Name, fpos.Line, fset.Position(cgoc[0].Pos()).Line,
+			prefix+" has cgo calls (line %d), which is not protected with runtime.LockOSThread",
+			fset.Position(cgoc[0].Pos()).Line,
 		))
 		log.Println(errs[len(errs)-1])
 	}
@@ -124,12 +137,13 @@ func (v *callExprVisitor) Visit(node ast.Node) ast.Visitor {
 	if node == nil {
 		return nil
 	}
-	if e, ok := node.(*ast.ExprStmt); ok {
-		if c, ok := e.X.(*ast.CallExpr); ok {
-			if _, ok = c.Fun.(*ast.SelectorExpr); ok {
-				v.CallExprs = append(v.CallExprs, c)
-			}
+	switch x := node.(type) {
+	case *ast.ExprStmt:
+		if c, ok := x.X.(*ast.CallExpr); ok {
+			v.CallExprs = append(v.CallExprs, c)
 		}
+	case *ast.CallExpr:
+		v.CallExprs = append(v.CallExprs, x)
 	}
 	return v
 }
