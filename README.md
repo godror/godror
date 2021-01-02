@@ -242,6 +242,14 @@ fi
 exec staticcheck
 ```
 
+### Guidelines
+As ODPI stores the error buffer in a thread-local-storage, we must ensure that the 
+error is retrieved on the same thread as the prvious function executed on.
+
+This means we have to encapsulate each execute-then-retrieve-error sequence in
+`runtime.LockOSThread()` and `runtime.UnlockOSThread()`.
+For details, see [#120](https://github.com/godror/godror/issues/120).
+
 # Third-party
 
 * [oracall](https://github.com/tgulacsi/oracall) generates a server for calling stored procedures.
