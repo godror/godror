@@ -200,7 +200,7 @@ func TestQueue(t *testing.T) {
 				s := int(data.GetFloat64())
 				//defer m.Object.ObjectType.Close()
 				t.Logf("%d: got: %q", i, s)
-				return strconv.Itoa(int(s)), nil
+				return strconv.Itoa(s), nil
 			},
 		)
 	})

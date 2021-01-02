@@ -14,7 +14,7 @@ func TestDataSetGet(t *testing.T) {
 	var d Data
 	for _, want := range []time.Time{time.Now(), time.Time{}} {
 		d.SetTime(want)
-		if got := d.GetTime(); got != want && got.Format(time.RFC3339) != want.Format(time.RFC3339) {
+		if got := d.GetTime(); !got.Equal(want) && got.Format(time.RFC3339) != want.Format(time.RFC3339) {
 			t.Errorf("set %v, got %v", want, got)
 		}
 	}

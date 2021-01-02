@@ -133,7 +133,7 @@ func (d *Data) GetInt64() int64 {
 	if Log != nil {
 		Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
 	}
-	return int64(i)
+	return i
 }
 
 // SetInt64 sets the data as int64.
