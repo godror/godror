@@ -158,7 +158,7 @@ func NewLogfmtLog(w io.Writer) func(...interface{}) error {
 	}
 }
 
-var defaultDrv = &drv{}
+var defaultDrv = NewDriver()
 
 func init() {
 	sql.Register("godror", defaultDrv)
@@ -173,6 +173,25 @@ type drv struct {
 	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
 }
+
+func NewDriver() *drv { return &drv{} }
+func (d *drv) Close() error {
+	if d == nil {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	dpiCtx, pools := d.dpiContext, d.pools
+	d.dpiContext, d.pools, d.timezones = nil, nil, nil
+	for _, pool := range pools {
+		pool.Close()
+	}
+	if dpiCtx != nil {
+		C.dpiContext_destroy(dpiCtx)
+	}
+	return nil
+}
+
 type locationWithOffSecs struct {
 	*time.Location
 	offSecs int
@@ -181,6 +200,15 @@ type connPool struct {
 	dpiPool *C.dpiPool
 	params  commonAndPoolParams
 	key     string
+}
+
+func (p *connPool) Close() error {
+	dpiPool := p.dpiPool
+	p.dpiPool = nil
+	if dpiPool != nil {
+		C.dpiPool_release(dpiPool)
+	}
+	return nil
 }
 
 func (d *drv) checkExec(f func() C.int) error {
@@ -204,12 +232,9 @@ func (d *drv) init(configDir, libDir string) error {
 	if d.dpiContext != nil {
 		return nil
 	}
-	var errInfo C.dpiErrorInfo
-	var dpiCtx *C.dpiContext
-	var ctxParams *C.dpiContextCreateParams
+	ctxParams := new(C.dpiContextCreateParams)
+	ctxParams.defaultDriverName, ctxParams.defaultEncoding = cDriverName, cUTF8
 	if !(configDir == "" && libDir == "") {
-		ctxParams = new(C.dpiContextCreateParams)
-		ctxParams.defaultDriverName, ctxParams.defaultEncoding = cDriverName, cUTF8
 		if configDir != "" {
 			ctxParams.oracleClientConfigDir = C.CString(configDir)
 		}
@@ -220,17 +245,21 @@ func (d *drv) init(configDir, libDir string) error {
 	if Log != nil {
 		Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	var errInfo C.dpiErrorInfo
 	if C.dpiContext_createWithParams(C.uint(DpiMajorVersion), C.uint(DpiMinorVersion),
 		ctxParams,
-		(**C.dpiContext)(unsafe.Pointer(&dpiCtx)), &errInfo,
+		(**C.dpiContext)(unsafe.Pointer(&d.dpiContext)), &errInfo,
 	) == C.DPI_FAILURE {
 		return fromErrorInfo(errInfo)
 	}
-	d.dpiContext = dpiCtx
 
 	var v C.dpiVersionInfo
-	if err := d.checkExec(func() C.int { return C.dpiContext_getClientVersion(d.dpiContext, &v) }); err != nil {
-		return fmt.Errorf("%s: %w", "getClientVersion", err)
+	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
+		return fmt.Errorf("%s: %w", "getClientVersion", d.getError())
 	}
 	d.clientVersion.set(&v)
 	return nil
@@ -258,9 +287,10 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 // standalone connections. The C strings for the encoding and driver name are
 // defined at the package level for convenience.
 func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool) error {
-
 	// initialize ODPI-C structure for common creation parameters
-	if err := d.checkExec(func() C.int { return C.dpiContext_initCommonCreateParams(d.dpiContext, P) }); err != nil {
+	if err := d.checkExec(func() C.int {
+		return C.dpiContext_initCommonCreateParams(d.dpiContext, P)
+	}); err != nil {
 		return fmt.Errorf("initCommonCreateParams: %w", err)
 	}
 
@@ -364,7 +394,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// initialize ODPI-C structure for connection creation parameters
 	var connCreateParams C.dpiConnCreateParams
-	if err := d.checkExec(func() C.int { return C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams) }); err != nil {
+	if err := d.checkExec(func() C.int {
+		return C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams)
+	}); err != nil {
 		return nil, false, fmt.Errorf("initConnCreateParams: %w", err)
 	}
 
@@ -526,7 +558,6 @@ func (d *drv) createConnFromParams(P dsn.ConnectionParams) (*conn, error) {
 // Pools are stored in a map keyed by a string representation of the pool parameters.
 // If no pool exists, a pool is created and stored in the map.
 func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
-
 	// initialize driver, if necessary
 	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
 		return nil, err
@@ -937,12 +968,19 @@ type connector struct {
 	dsn.ConnectionParams
 }
 
+// NewConnector returns a driver.Connector to be used with sql.OpenDB
+//
+// ConnectionParams must be complete, so start with what ParseDSN returns!
+func (d *drv) NewConnector(params dsn.ConnectionParams) driver.Connector {
+	return connector{drv: d, ConnectionParams: params}
+}
+
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
 // (for the default Driver registered with godror)
 //
 // ConnectionParams must be complete, so start with what ParseDSN returns!
 func NewConnector(params dsn.ConnectionParams) driver.Connector {
-	return connector{drv: defaultDrv, ConnectionParams: params}
+	return defaultDrv.NewConnector(params)
 }
 
 // OpenConnector must parse the name in the same format that Driver.Open

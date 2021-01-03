@@ -11,6 +11,16 @@ import (
 	"testing"
 )
 
+func TestNewDriver(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		drv := NewDriver()
+		if cx, err := drv.Open("tiger/scott"); err == nil {
+			cx.Close()
+		}
+		defer drv.Close()
+	}
+}
+
 func TestFromErrorInfo(t *testing.T) {
 	errInfo := newErrorInfo(0, "ORA-24315: érvénytelen attribútumtípus\n")
 	t.Logf("errInfo: %#v", errInfo)
