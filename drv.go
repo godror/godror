@@ -272,8 +272,7 @@ func (d *drv) Open(s string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	cx := c.(connector)
-	return d.createConnFromParams(dsn.ConnectionParams{CommonParams: cx.CommonParams, ConnParams: cx.ConnParams, PoolParams: cx.PoolParams})
+	return d.createConnFromParams(c.(connector).ConnectionParams)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
