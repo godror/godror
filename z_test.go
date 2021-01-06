@@ -2910,7 +2910,11 @@ func TestNewPassword(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = db.Ping()
 		db.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	P.Password = P.NewPassword
@@ -2920,7 +2924,11 @@ func TestNewPassword(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = db.Ping()
 		db.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

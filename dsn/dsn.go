@@ -152,8 +152,7 @@ type ConnectionParams struct {
 	CommonParams
 	ConnParams
 	PoolParams
-	// NewPassword is used iff StandaloneConnection is true!
-	NewPassword          Password
+	// ConnParams.NewPassword is used iff StandaloneConnection is true!
 	StandaloneConnection bool
 }
 

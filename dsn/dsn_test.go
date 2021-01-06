@@ -79,6 +79,9 @@ func TestParse(t *testing.T) {
 			if a == b {
 				return true
 			}
+			if a == nil || b == nil {
+				return false
+			}
 			now := time.Now()
 			const tzFmt = "2006-01-02T15:04:05"
 			return now.In(a).Format(tzFmt) == now.In(b).Format(tzFmt)
