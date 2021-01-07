@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.23.1]
+### Added
+- NewDriver() to return a new driver - and drv.Close() method.
+
+### Changed
+- Fix NewPassword handling to allow password change.
+
 ## [v0.23.0]
 ### Changed
 - All OCI/ODPI calls encapsulated in runtime.LockOSThread / runtime.UnlockOSThread

@@ -239,8 +239,20 @@ if [ -n "$output" ]; then
     exit 1
 fi
 
+go run ./check
 exec staticcheck
 ```
+
+### Guidelines
+As ODPI stores the error buffer in a thread-local-storage, we must ensure that the 
+error is retrieved on the same thread as the prvious function executed on.
+
+This means we have to encapsulate each execute-then-retrieve-error sequence in
+`runtime.LockOSThread()` and `runtime.UnlockOSThread()`.
+For details, see [#120](https://github.com/godror/godror/issues/120).
+
+This is automatically detected by [go run ./check](./check/check.go) which should be called 
+in the pre-commit hook.
 
 # Third-party
 
