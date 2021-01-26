@@ -1,0 +1,2 @@
+#!/bin/sh
+exec env ZIG_LOCAL_CACHE_DIR=$TMPDIR $(cd $(dirname $0); pwd)/zig/*/zig cc "$@"
