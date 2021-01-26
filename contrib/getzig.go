@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/mholt/archiver/v3"
+	"golang.org/x/mod/semver"
 )
 
 func main() {
@@ -51,8 +52,15 @@ func Main() error {
 	if err != nil {
 		return err
 	}
-	master := configs["master"]
-	log.Println(master)
+	var max string
+	for k := range configs {
+		if k != "master" && k != "" && '0' <= k[0] && k[0] <= '9' {
+			if max == "" || semver.Compare("v"+k, "v"+max) > 0 {
+				max = k
+			}
+		}
+	}
+	master := configs[max]
 	fn, err := master.Archives[zigKey(runtime.GOOS, runtime.GOARCH)].Download()
 	if err != nil {
 		return err
@@ -73,10 +81,14 @@ func Main() error {
 	return nil
 }
 func zigKey(goos, goarch string) string {
-	if goarch == "amd64" {
-		goarch = "x86_64"
+	arch := goarch
+	switch arch {
+	case "amd64":
+		arch = "x86_64"
+	case "386":
+		arch = "i386"
 	}
-	return goarch + "-" + goos
+	return arch + "-" + goos
 }
 
 func getDownloadConfigs() (map[string]dlConfig, error) {
@@ -193,6 +205,9 @@ func findZig(root string) (string, error) {
 	err := filepath.Walk(
 		root,
 		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 			if zig != "" {
 				return filepath.SkipDir
 			}
