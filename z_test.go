@@ -2348,9 +2348,9 @@ func TestStartupShutdown(t *testing.T) {
 	if os.Getenv("GODROR_DB_SHUTDOWN") != "1" {
 		t.Skip("GODROR_DB_SHUTDOWN != 1, skipping shutdown/startup test")
 	}
-	p, err := godror.ParseDSN(testConStr)
+	p, err := godror.ParseDSN(testSystemConStr)
 	if err != nil {
-		t.Fatal(fmt.Errorf("%s: %w", testConStr, err))
+		t.Fatal(fmt.Errorf("%s: %w", testSystemConStr, err))
 	}
 	if !(p.IsSysDBA || p.IsSysOper) {
 		p.IsSysDBA = true
@@ -2358,13 +2358,14 @@ func TestStartupShutdown(t *testing.T) {
 	if !p.IsPrelim {
 		p.IsPrelim = true
 	}
-	db, err := sql.Open("godror", p.StringWithPassword())
-	if err != nil {
+	db := sql.OpenDB(godror.NewConnector(p))
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(testContext("StartupShutdown"), time.Minute)
+	defer cancel()
+
+	if err = db.PingContext(ctx); err != nil {
 		t.Fatal(err, p.StringWithPassword())
 	}
-	defer db.Close()
-	ctx, cancel := context.WithCancel(testContext("StartupShutdown"))
-	defer cancel()
 
 	if err = godror.Raw(ctx, db, func(conn godror.Conn) error {
 		if err = conn.Shutdown(godror.ShutdownTransactionalLocal); err != nil {
