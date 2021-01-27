@@ -1029,6 +1029,9 @@ func (c *conn) IsValid() bool {
 	if Log != nil {
 		Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
 	}
+	if c.params.IsPrelim {
+		return dpiConnOK
+	}
 	if !dpiConnOK || !tzOK {
 		return released
 	}
