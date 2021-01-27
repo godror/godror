@@ -2371,12 +2371,19 @@ func TestStartupShutdown(t *testing.T) {
 		if err = conn.Shutdown(godror.ShutdownTransactionalLocal); err != nil {
 			return err
 		}
-		if err = conn.Shutdown(godror.ShutdownFinal); err != nil {
-			return err
-		}
+		return conn.Shutdown(godror.ShutdownFinal)
+	}); err != nil {
+		t.Errorf("SHUTDOWN: %+v", err)
+	}
+	db.Close()
+
+	db = sql.OpenDB(godror.NewConnector(p))
+	defer db.Close()
+	if err = godror.Raw(ctx, db, func(conn godror.Conn) error {
 		return conn.Startup(godror.StartupDefault)
 	}); err != nil {
-		t.Error(err)
+		t.Log("Couldn't start up database. run 'echo startup | sqlplus / as sysdba'")
+		t.Errorf("STARTUP: %+v", err)
 	}
 }
 
