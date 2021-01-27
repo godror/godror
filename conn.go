@@ -496,6 +496,11 @@ func (c *conn) initTZ() error {
 		c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
 		return nil
 	}
+	// Prelim connections cannot be used for querying
+	if c.params.IsPrelim {
+		c.tzValid = true
+		return nil
+	}
 	if Log != nil {
 		Log("msg", "initTZ", "key", key)
 	}
