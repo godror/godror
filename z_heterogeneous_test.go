@@ -66,15 +66,18 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		testHeterogeneousDB.ExecContext(testContext("HeterogeneousPoolIntegration-drop"), "DROP USER "+proxyUser)
 	}()
 
-	for tName, tCase := range map[string]struct {
+	testCases := map[string]struct {
 		In   context.Context
 		Want string
 	}{
-		"noContext": {In: ctx, Want: username},
-		"proxyUser": {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword, ""), Want: proxyUser},
-		// This results in ORA-01005: null password given
-		//"proxyUserNoPass": {In: godror.ContextWithUserPassw(ctx, proxyUser, "", ""), Want: proxyUser},
-	} {
+		"noContext":       {In: ctx, Want: username},
+		"proxyUser":       {In: godror.ContextWithUserPassw(ctx, proxyUser, proxyPassword, ""), Want: proxyUser},
+		"proxyUserNoPass": {In: godror.ContextWithUserPassw(ctx, proxyUser, "", ""), Want: proxyUser},
+	}
+	if cs.IsStandalone() {
+		delete(testCases, "proxyUserNoPass")
+	}
+	for tName, tCase := range testCases {
 		t.Run(tName, func(t *testing.T) {
 			var result string
 			if err = testHeterogeneousDB.QueryRowContext(tCase.In, "SELECT user FROM dual").Scan(&result); err != nil {
