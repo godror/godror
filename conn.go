@@ -863,7 +863,7 @@ type (
 	// and ConnectionClass values that can be set with ContextWithUserPassw
 	UserPasswdConnClassTag struct {
 		Username  string
-		Password  string
+		Password  dsn.Password
 		ConnClass string
 	}
 )
@@ -893,7 +893,9 @@ func ContextWithParams(ctx context.Context, commonParams dsn.CommonParams, connP
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
 	return context.WithValue(ctx, userPasswCtxKey{},
-		UserPasswdConnClassTag{user, password, connClass})
+		UserPasswdConnClassTag{
+			Username: user, Password: dsn.NewPassword(password),
+			ConnClass: connClass})
 }
 
 // StartupMode for the database.
@@ -1000,14 +1002,16 @@ func (c *conn) ResetSession(ctx context.Context) error {
 			P.ConnParams.ConnClass = cc.ConnParams.ConnClass
 		}
 	}
-	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
-		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
-			// ContextWithUserPassw does not fill ConnParam.ConnectString
-			if P.ConnectString == "" {
-				P.ConnectString = params.ConnectString
-			}
-			if Log != nil {
-				Log("msg", "paramsFromContext", "params", P)
+	if !paramsFromCtx {
+		if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
+			if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
+				// ContextWithUserPassw does not fill ConnParam.ConnectString
+				if P.ConnectString == "" {
+					P.ConnectString = params.ConnectString
+				}
+				if Log != nil {
+					Log("msg", "paramsFromContext", "params", P)
+				}
 			}
 		}
 	}

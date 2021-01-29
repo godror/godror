@@ -1011,13 +1011,6 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	params := c.ConnectionParams
-	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
-		if cc, ok := ctxValue.(commonAndConnParams); ok {
-			params.CommonParams.Username = cc.CommonParams.Username
-			params.CommonParams.Password = cc.CommonParams.Password
-			params.ConnParams.ConnClass = cc.ConnParams.ConnClass
-		}
-	}
 	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
@@ -1035,20 +1028,10 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 
 	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
-		if usrpwdclass, ok := ctxValue.(UserPasswdConnClassTag); ok {
-			// Handle setting of Key/Value pairs
-			var params commonAndConnParams
-			// restore connection parameters before overwrite
-			params.CommonParams = c.CommonParams
-			params.ConnParams = c.ConnParams
-			params.CommonParams.Username = usrpwdclass.Username
-			params.CommonParams.Password = dsn.NewPassword(usrpwdclass.Password)
-			params.ConnParams.ConnClass = usrpwdclass.ConnClass
-			if Log != nil {
-				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
-			}
-			return c.drv.createConnFromParams(dsn.ConnectionParams{
-				CommonParams: params.CommonParams, ConnParams: params.ConnParams, PoolParams: c.PoolParams, StandaloneConnection: c.StandaloneConnection})
+		if up, ok := ctxValue.(UserPasswdConnClassTag); ok {
+			params.CommonParams.Username = up.Username
+			params.CommonParams.Password = up.Password
+			params.ConnParams.ConnClass = up.ConnClass
 		}
 	}
 
