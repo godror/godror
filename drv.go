@@ -939,16 +939,12 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 	return tz
 }
 
-type ctxKey string
-
-func (s ctxKey) String() string { return string(s) }
-
-const logCtxKey = ctxKey("godror.Log")
+type logCtxKey struct{}
 
 type logFunc func(...interface{}) error
 
 func ctxGetLog(ctx context.Context) logFunc {
-	if lgr, ok := ctx.Value(logCtxKey).(func(...interface{}) error); ok {
+	if lgr, ok := ctx.Value(logCtxKey{}).(func(...interface{}) error); ok {
 		return lgr
 	}
 	return Log
@@ -956,7 +952,7 @@ func ctxGetLog(ctx context.Context) logFunc {
 
 // ContextWithLog returns a context with the given log function.
 func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
-	return context.WithValue(ctx, logCtxKey, logF)
+	return context.WithValue(ctx, logCtxKey{}, logF)
 }
 
 var _ driver.DriverContext = (*drv)(nil)
@@ -1007,25 +1003,34 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
-	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
-		if params, ok := ctxValue.(commonAndConnParams); ok {
+	params := c.ConnectionParams
+	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
+		if cc, ok := ctxValue.(commonAndConnParams); ok {
+			params.CommonParams.Username = cc.CommonParams.Username
+			params.CommonParams.Password = cc.CommonParams.Password
+			params.ConnParams.ConnClass = cc.ConnParams.ConnClass
+		}
+	}
+	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
+		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
-			if params.ConnectString == "" {
-				params.ConnectString = c.ConnectString
+			if cc.ConnectString == "" {
+				cc.ConnectString = params.ConnectString
 			}
 			if Log != nil {
-				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params, "common", params.CommonParams)
+				Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
 			}
 			return c.drv.createConnFromParams(dsn.ConnectionParams{
-				CommonParams: params.CommonParams, ConnParams: params.ConnParams, PoolParams: c.PoolParams,
+				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
+				PoolParams: params.PoolParams,
 			})
 		}
 	}
 
 	if Log != nil {
-		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams, "common", c.CommonParams)
+		Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
-	return c.drv.createConnFromParams(c.ConnectionParams)
+	return c.drv.createConnFromParams(params)
 }
 
 // Driver returns the underlying Driver of the Connector,
