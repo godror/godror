@@ -158,7 +158,7 @@ func NewLogfmtLog(w io.Writer) func(...interface{}) error {
 	}
 }
 
-var defaultDrv = NewDriver()
+var defaultDrv = &drv{}
 
 func init() {
 	sql.Register("godror", defaultDrv)
@@ -174,7 +174,13 @@ type drv struct {
 	clientVersion VersionInfo
 }
 
-func NewDriver() *drv { return &drv{} }
+func NewDriver() *drv {
+	if defaultDrv == nil {
+		return &drv{}
+	}
+	// Use one global dpiContext - see https://github.com/golang/go/issues/43977
+	return &drv{dpiContext: defaultDrv.dpiContext}
+}
 func (d *drv) Close() error {
 	if d == nil {
 		return nil
@@ -186,7 +192,8 @@ func (d *drv) Close() error {
 	for _, pool := range pools {
 		pool.Close()
 	}
-	if dpiCtx != nil {
+	// As we use one global dpiContext, don't destroy it
+	if dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx) {
 		C.dpiContext_destroy(dpiCtx)
 	}
 	return nil
@@ -939,16 +946,12 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 	return tz
 }
 
-type ctxKey string
-
-func (s ctxKey) String() string { return string(s) }
-
-const logCtxKey = ctxKey("godror.Log")
+type logCtxKey struct{}
 
 type logFunc func(...interface{}) error
 
 func ctxGetLog(ctx context.Context) logFunc {
-	if lgr, ok := ctx.Value(logCtxKey).(func(...interface{}) error); ok {
+	if lgr, ok := ctx.Value(logCtxKey{}).(func(...interface{}) error); ok {
 		return lgr
 	}
 	return Log
@@ -956,7 +959,7 @@ func ctxGetLog(ctx context.Context) logFunc {
 
 // ContextWithLog returns a context with the given log function.
 func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
-	return context.WithValue(ctx, logCtxKey, logF)
+	return context.WithValue(ctx, logCtxKey{}, logF)
 }
 
 var _ driver.DriverContext = (*drv)(nil)
@@ -1007,22 +1010,31 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
-	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
-		if params, ok := ctxValue.(commonAndConnParams); ok {
+	params := c.ConnectionParams
+	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
+		if cc, ok := ctxValue.(commonAndConnParams); ok {
+			params.CommonParams.Username = cc.CommonParams.Username
+			params.CommonParams.Password = cc.CommonParams.Password
+			params.ConnParams.ConnClass = cc.ConnParams.ConnClass
+		}
+	}
+	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
+		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
-			if params.ConnectString == "" {
-				params.ConnectString = c.ConnectString
+			if cc.ConnectString == "" {
+				cc.ConnectString = params.ConnectString
 			}
 			if Log != nil {
-				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params, "common", params.CommonParams)
+				Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
 			}
 			return c.drv.createConnFromParams(dsn.ConnectionParams{
-				CommonParams: params.CommonParams, ConnParams: params.ConnParams, PoolParams: c.PoolParams,
+				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
+				PoolParams: params.PoolParams,
 			})
 		}
 	}
 
-	if ctxValue := ctx.Value(userPasswdConnClassCtxKey); ctxValue != nil {
+	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
 		if usrpwdclass, ok := ctxValue.(UserPasswdConnClassTag); ok {
 			// Handle setting of Key/Value pairs
 			var params commonAndConnParams
@@ -1041,9 +1053,9 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 
 	if Log != nil {
-		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams, "common", c.CommonParams)
+		Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
-	return c.drv.createConnFromParams(c.ConnectionParams)
+	return c.drv.createConnFromParams(params)
 }
 
 // Driver returns the underlying Driver of the Connector,

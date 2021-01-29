@@ -303,7 +303,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.inTransaction = true
-	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
 		c.setTraceTag(tt)
 	}
 	return c, nil
@@ -321,7 +321,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, err
 	}
 
-	if tt, ok := ctx.Value(traceTagCtxKey).(TraceTag); ok {
+	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
 		c.mu.Lock()
 		c.setTraceTag(tt)
 		c.mu.Unlock()
@@ -812,12 +812,12 @@ func (c *conn) GetPoolStats() (stats PoolStats, err error) {
 	return drv.getPoolStats(pool)
 }
 
-const traceTagCtxKey = ctxKey("tracetag")
+type traceTagCtxKey struct{}
 
 // ContextWithTraceTag returns a context with the specified TraceTag, which will
 // be set on the session used.
 func ContextWithTraceTag(ctx context.Context, tt TraceTag) context.Context {
-	return context.WithValue(ctx, traceTagCtxKey, tt)
+	return context.WithValue(ctx, traceTagCtxKey{}, tt)
 }
 
 // TraceTag holds tracing information for the session. It can be set on the session
@@ -855,35 +855,45 @@ func (tt TraceTag) String() string {
 	return q.Encode()
 }
 
-const paramsCtxKey              = ctxKey("params")
-const userPasswdConnClassCtxKey = ctxKey("userPasswdConnClass")
+type (
+	paramsCtxKey    struct{}
+	userPasswCtxKey struct{}
 
-// UserPasswdConnClassTag consists of Username, Password 
-// and ConnectionClass values that can be set with ContextWithUserPassw
-type UserPasswdConnClassTag struct {
-	Username string
-	Password string
-	ConnClass string
-}
+	// UserPasswdConnClassTag consists of Username, Password
+	// and ConnectionClass values that can be set with ContextWithUserPassw
+	UserPasswdConnClassTag struct {
+		Username  string
+		Password  string
+		ConnClass string
+	}
+)
+
 // ContextWithParams returns a context with the specified parameters. These parameters are used
 // to modify the session acquired from the pool.
+//
+// WARNING: set ALL the parameters you don't want as default (Timezone, for example), as it won't
+// inherit the pool's params!
+// Start from an already parsed ConnectionParams for example.
 //
 // If a standalone connection is being used this will have no effect.
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithParams(ctx context.Context, commonParams dsn.CommonParams, connParams dsn.ConnParams) context.Context {
-	return context.WithValue(ctx, paramsCtxKey,
+	return context.WithValue(ctx, paramsCtxKey{},
 		commonAndConnParams{CommonParams: commonParams, ConnParams: connParams})
 }
 
 // ContextWithUserPassw returns a context with the specified user and password,
 // to be used with heterogeneous pools.
 //
+// WARNING: this will NOT set other elements of the parameter hierarchy, they will be inherited.
+//
 // If a standalone connection is being used this will have no effect.
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
-    return context.WithValue(ctx, userPasswdConnClassCtxKey, UserPasswdConnClassTag{user, password, connClass})
+	return context.WithValue(ctx, userPasswCtxKey{},
+		UserPasswdConnClassTag{user, password, connClass})
 }
 
 // StartupMode for the database.
@@ -983,7 +993,14 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	}
 	P := commonAndConnParams{CommonParams: params.CommonParams, ConnParams: params.ConnParams}
 	var paramsFromCtx bool
-	if ctxValue := ctx.Value(paramsCtxKey); ctxValue != nil {
+	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
+		if cc, ok := ctxValue.(commonAndConnParams); ok {
+			P.CommonParams.Username = cc.CommonParams.Username
+			P.CommonParams.Password = cc.CommonParams.Password
+			P.ConnParams.ConnClass = cc.ConnParams.ConnClass
+		}
+	}
+	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
 			if P.ConnectString == "" {
