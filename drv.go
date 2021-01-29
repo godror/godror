@@ -1022,6 +1022,24 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 		}
 	}
 
+	if ctxValue := ctx.Value(userPasswdConnClassCtxKey); ctxValue != nil {
+		if usrpwdclass, ok := ctxValue.(UserPasswdConnClassTag); ok {
+			// Handle setting of Key/Value pairs
+			var params commonAndConnParams
+			// restore connection parameters before overwrite
+			params.CommonParams = c.CommonParams
+			params.ConnParams = c.ConnParams
+			params.CommonParams.Username = usrpwdclass.Username
+			params.CommonParams.Password = dsn.NewPassword(usrpwdclass.Password)
+			params.ConnParams.ConnClass = usrpwdclass.ConnClass
+			if Log != nil {
+				Log("msg", "connect with params from context", "poolParams", c.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
+			}
+			return c.drv.createConnFromParams(dsn.ConnectionParams{
+				CommonParams: params.CommonParams, ConnParams: params.ConnParams, PoolParams: c.PoolParams, StandaloneConnection: c.StandaloneConnection})
+		}
+	}
+
 	if Log != nil {
 		Log("msg", "connect with default params", "poolParams", c.PoolParams, "connParams", c.ConnParams, "common", c.CommonParams)
 	}

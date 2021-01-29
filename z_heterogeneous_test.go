@@ -29,7 +29,6 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.Heterogeneous = true
-	cs.EnableEvents = false
 	username := cs.Username
 	testHeterogeneousConStr := cs.StringWithPassword()
 	t.Log(testHeterogeneousConStr)

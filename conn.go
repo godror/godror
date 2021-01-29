@@ -855,8 +855,16 @@ func (tt TraceTag) String() string {
 	return q.Encode()
 }
 
-const paramsCtxKey = ctxKey("params")
+const paramsCtxKey              = ctxKey("params")
+const userPasswdConnClassCtxKey = ctxKey("userPasswdConnClass")
 
+// UserPasswdConnClassTag consists of Username, Password 
+// and ConnectionClass values that can be set with ContextWithUserPassw
+type UserPasswdConnClassTag struct {
+	Username string
+	Password string
+	ConnClass string
+}
 // ContextWithParams returns a context with the specified parameters. These parameters are used
 // to modify the session acquired from the pool.
 //
@@ -875,10 +883,7 @@ func ContextWithParams(ctx context.Context, commonParams dsn.CommonParams, connP
 //
 // Also, you should disable the Go connection pool with DB.SetMaxIdleConns(0).
 func ContextWithUserPassw(ctx context.Context, user, password, connClass string) context.Context {
-	return ContextWithParams(ctx,
-		dsn.CommonParams{Username: user, Password: dsn.NewPassword(password)},
-		dsn.ConnParams{ConnClass: connClass},
-	)
+    return context.WithValue(ctx, userPasswdConnClassCtxKey, UserPasswdConnClassTag{user, password, connClass})
 }
 
 // StartupMode for the database.
