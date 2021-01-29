@@ -158,7 +158,7 @@ func NewLogfmtLog(w io.Writer) func(...interface{}) error {
 	}
 }
 
-var defaultDrv = NewDriver()
+var defaultDrv = &drv{}
 
 func init() {
 	sql.Register("godror", defaultDrv)
@@ -174,7 +174,13 @@ type drv struct {
 	clientVersion VersionInfo
 }
 
-func NewDriver() *drv { return &drv{} }
+func NewDriver() *drv {
+	if defaultDrv == nil {
+		return &drv{}
+	}
+	// Use one global dpiContext - see https://github.com/golang/go/issues/43977
+	return &drv{dpiContext: defaultDrv.dpiContext}
+}
 func (d *drv) Close() error {
 	if d == nil {
 		return nil
@@ -186,7 +192,8 @@ func (d *drv) Close() error {
 	for _, pool := range pools {
 		pool.Close()
 	}
-	if dpiCtx != nil {
+	// As we use one global dpiContext, don't destroy it
+	if dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx) {
 		C.dpiContext_destroy(dpiCtx)
 	}
 	return nil
