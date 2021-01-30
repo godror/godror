@@ -8,8 +8,24 @@ package godror
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"strconv"
 	"testing"
 )
+
+func TestNewDriverSepContext(t *testing.T) {
+	if ok, _ := strconv.ParseBool(os.Getenv("GODROR_SEPARATE_CONTEXT")); !ok {
+		t.Skip("GODROR_SEPARATE_CONTEXT is not set, skipping TestNewDriverSepContext")
+	}
+	for i := 0; i < 10; i++ {
+		t.Log("i:", i)
+		d := &drv{}
+		if cx, err := d.Open("tiger/scott"); err == nil {
+			cx.Close()
+		}
+		defer d.Close()
+	}
+}
 
 func TestNewDriver(t *testing.T) {
 	for i := 0; i < 10; i++ {
