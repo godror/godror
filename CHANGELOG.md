@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.24.0]
+### Changed
+- GetCompileErrors requires context.Context.
+
 ## [v0.23.1]
 ### Added
 - NewDriver() to return a new driver - and drv.Close() method.

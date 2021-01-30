@@ -125,7 +125,7 @@ END tst_bench_25;`,
 			dates, keys, ips, zones, plans, banners, referrers, countries, regions,
 		); err != nil {
 			if strings.Contains(err.Error(), "PLS-00905") || strings.Contains(err.Error(), "ORA-06508") {
-				b.Log(godror.GetCompileErrors(testDb, false))
+				b.Log(godror.GetCompileErrors(ctx, testDb, false))
 			}
 			//b.Log(dates, keys, ips, zones, plans, banners, referrers, countries, regions)
 			b.Fatal(err)
@@ -249,7 +249,7 @@ END tst_bench_inout;`,
 	for i := 0; i < b.N; i += n {
 		if _, err := tx.ExecContext(ctx, qry, params...); err != nil {
 			if strings.Contains(err.Error(), "PLS-00905") || strings.Contains(err.Error(), "ORA-06508") {
-				b.Log(godror.GetCompileErrors(testDb, false))
+				b.Log(godror.GetCompileErrors(ctx, testDb, false))
 			}
 			//b.Log(dates, keys, ips, zones, plans, banners, referrers, countries, regions)
 			b.Fatal(err)

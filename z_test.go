@@ -477,7 +477,7 @@ END;
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
-	compileErrors, err := godror.GetCompileErrors(testDb, false)
+	compileErrors, err := godror.GetCompileErrors(ctx, testDb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -690,7 +690,7 @@ END;
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(err, qry)
 	}
-	compileErrors, err := godror.GetCompileErrors(testDb, false)
+	compileErrors, err := godror.GetCompileErrors(ctx, testDb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2390,15 +2390,23 @@ func TestStartupShutdown(t *testing.T) {
 func TestIssue134(t *testing.T) {
 	cleanup := func() {
 		for _, qry := range []string{
-			`DROP TYPE test_prj_task_tab_type`,
-			`DROP TYPE test_prj_task_obj_type`,
+			`DROP TYPE test_prj_task_tt`,
+			`DROP TYPE test_prj_task_ot`,
 			`DROP PROCEDURE test_create_task_activity`,
 		} {
 			testDb.Exec(qry)
 		}
 	}
 	cleanup()
-	const crea = `CREATE OR REPLACE TYPE test_PRJ_TASK_OBJ_TYPE AS OBJECT (
+	ctx, cancel := context.WithTimeout(testContext("Issue134"), 10*time.Second)
+	defer cancel()
+	cx, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cx.Close()
+	for _, qry := range []string{
+		`CREATE OR REPLACE TYPE test_PRJ_TASK_ot AS OBJECT (
 	PROJECT_NUMBER VARCHAR2(100)
 	,SOURCE_ID VARCHAR2(100)
 	,TASK_NAME VARCHAR2(300)
@@ -2408,34 +2416,48 @@ func TestIssue134(t *testing.T) {
 	,TASK_COST NUMBER
 	,SOURCE_PARENT_ID NUMBER
 	,TASK_TYPE VARCHAR2(100)
-	,QUANTITY NUMBER );
-CREATE OR REPLACE TYPE test_PRJ_TASK_TAB_TYPE IS TABLE OF test_PRJ_TASK_OBJ_TYPE;
-CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
-    p_create_task_i IN test_PRJ_TASK_TAB_TYPE,
-	p_project_id_i IN NUMBER) IS BEGIN NULL; END;`
-	ctx, cancel := context.WithTimeout(testContext("Issue134"), 10*time.Second)
-	defer cancel()
-	cx, err := testDb.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cx.Close()
-	for _, qry := range strings.Split(crea, ";\n") {
-		if strings.HasSuffix(qry, " END") {
-			qry += ";"
-		}
+	,QUANTITY NUMBER 
+	,data BLOB
+)`,
+		`CREATE OR REPLACE TYPE test_PRJ_TASK_tt IS TABLE OF test_PRJ_TASK_ot`,
+		`CREATE OR REPLACE FUNCTION test_CREATE_TASK_ACTIVITY (
+    p_create_task_i IN test_PRJ_TASK_tt,
+	p_project_id_i IN NUMBER) RETURN test_prj_task_ot 
+IS 
+  v_obj test_prj_task_ot;
+BEGIN 
+  IF p_create_task_i.COUNT = 0 THEN
+    v_obj := test_prj_task_ot();
+  ELSE
+    v_obj := p_create_task_i(p_create_task_i.FIRST);
+  END IF;
+  DBMS_LOB.createtemporary(v_obj.data, TRUE, 31);
+  DBMS_LOB.writeAppend(v_obj.data, 10, 
+    UTL_RAW.cast_to_raw(TO_CHAR(SYSDATE, 'YYYY-MM-DD')));
+END;`,
+	} {
 		if _, err := cx.ExecContext(ctx, qry); err != nil {
 			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	defer cleanup()
+	compileErrors, err := godror.GetCompileErrors(ctx, cx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ce := range compileErrors {
+		t.Error(ce)
+	}
+	if len(compileErrors) != 0 {
+		t.Fatal("compile failed")
+	}
 
 	conn, err := godror.DriverConn(ctx, cx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	ot, err := conn.GetObjectType("TEST_PRJ_TASK_TAB_TYPE")
+	ot, err := conn.GetObjectType("TEST_PRJ_TASK_tt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2445,13 +2467,25 @@ CREATE OR REPLACE PROCEDURE test_CREATE_TASK_ACTIVITY (
 	}
 	defer obj.Close()
 	t.Logf("obj=%#v", obj)
-	qry := "BEGIN test_create_task_activity(:1, :2); END;"
+	rt, err := conn.GetObjectType("TEST_PRJ_TASK_ot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ret, err := rt.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ret.Close()
+
+	qry := "BEGIN :1 := test_create_task_activity(:2, :3); END;"
 	if err := prepExec(ctx, conn, qry,
-		driver.NamedValue{Value: &obj, Ordinal: 1},
+		driver.NamedValue{Value: &ret, Ordinal: 1},
+		driver.NamedValue{Value: &obj, Ordinal: 2},
 		driver.NamedValue{Value: 1, Ordinal: 3},
 	); err != nil {
-		t.Error(fmt.Errorf("%s [%#v, 1]: %w", qry, obj, err))
+		t.Fatalf("%s [%#v, 1]: %+v", qry, obj, err)
 	}
+	t.Logf("ret: %#v", ret)
 }
 
 func TestDateRset(t *testing.T) {

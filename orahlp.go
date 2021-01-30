@@ -316,21 +316,18 @@ func (ce CompileError) Error() string {
 		prefix, ce.Owner, ce.Name, ce.Type, ce.Line, ce.Position, ce.Code, ce.Text)
 }
 
-type queryer interface {
-	Query(string, ...interface{}) (*sql.Rows, error)
-}
-
 // GetCompileErrors returns the slice of the errors in user_errors.
 //
 // If all is false, only errors are returned; otherwise, warnings, too.
-func GetCompileErrors(queryer queryer, all bool) ([]CompileError, error) {
-	rows, err := queryer.Query(`
+func GetCompileErrors(ctx context.Context, queryer Querier, all bool) ([]CompileError, error) {
+	rows, err := queryer.QueryContext(ctx, `
 	SELECT USER owner, name, type, line, position, message_number, text, attribute
 		FROM user_errors
 		ORDER BY name, sequence`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	var errors []CompileError
 	var warn string
 	for rows.Next() {
