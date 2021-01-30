@@ -2427,13 +2427,25 @@ IS
   v_obj test_prj_task_ot;
 BEGIN 
   IF p_create_task_i.COUNT = 0 THEN
-    v_obj := test_prj_task_ot();
+    v_obj := test_prj_task_ot(
+	PROJECT_NUMBER=>NULL
+	,SOURCE_ID=>NULL
+	,TASK_NAME=>NULL
+	,TASK_DESCRIPTION=>NULL
+	,TASK_START_DATE=>NULL
+	,TASK_END_DATE=>NULL
+	,TASK_COST=>NULL
+	,SOURCE_PARENT_ID=>NULL
+	,TASK_TYPE=>NULL
+	,QUANTITY=>NULL
+	,data=>NULL);
   ELSE
     v_obj := p_create_task_i(p_create_task_i.FIRST);
   END IF;
   DBMS_LOB.createtemporary(v_obj.data, TRUE, 31);
   DBMS_LOB.writeAppend(v_obj.data, 10, 
     UTL_RAW.cast_to_raw(TO_CHAR(SYSDATE, 'YYYY-MM-DD')));
+  RETURN(v_obj);
 END;`,
 	} {
 		if _, err := cx.ExecContext(ctx, qry); err != nil {
@@ -2486,6 +2498,15 @@ END;`,
 		t.Fatalf("%s [%#v, 1]: %+v", qry, obj, err)
 	}
 	t.Logf("ret: %#v", ret)
+	var data godror.Data
+	if err := ret.GetAttribute(&data, "DATA"); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := ioutil.ReadAll(data.GetLob()); err != nil {
+		t.Fatal(err)
+	} else {
+		t.Logf("DATA: %q", b)
+	}
 }
 
 func TestDateRset(t *testing.T) {
