@@ -11,6 +11,7 @@ package godror
 import "C"
 import (
 	//"fmt"
+	"bufio"
 	"fmt"
 	"io"
 	"runtime"
@@ -43,6 +44,25 @@ func (lob *Lob) Hijack() (*DirectLob, error) {
 	return &DirectLob{conn: lr.conn, dpiLob: lr.dpiLob}, nil
 }
 
+// WriteTo writes data to w until there's no more data to write or when an error occurs.
+// The return value n is the number of bytes written. Any error encountered during the write is also returned.
+//
+// Will use Lob.Reader.WriteTo, if Lob.Reader implements io.WriterTo.
+func (lob *Lob) WriteTo(w io.Writer) (n int64, err error) {
+	if wt, ok := lob.Reader.(io.WriterTo); ok {
+		return wt.WriteTo(w)
+	}
+	return io.CopyBuffer(w, lob.Reader, make([]byte, 1<<20))
+}
+
+// NewBufferedReader returns a new bufio.Reader with the given size (or 1M if 0).
+func (lob *Lob) NewBufferedReader(size int) *bufio.Reader {
+	if size <= 0 {
+		size = 1 << 20
+	}
+	return bufio.NewReaderSize(lob.Reader, size)
+}
+
 // Scan assigns a value from a database driver.
 //
 // The src value will be of one of the following types:
@@ -73,8 +93,38 @@ type dpiLobReader struct {
 	*conn
 	dpiLob              *C.dpiLob
 	offset, sizePlusOne C.uint64_t
+	chunkSize           C.uint32_t
 	finished            bool
 	IsClob              bool
+}
+
+var freeBufs = make(chan []byte, 4)
+
+// WriteTo writes data to w until there's no more data to write or when an error occurs.
+// The return value n is the number of bytes written. Any error encountered during the write is also returned.
+//
+// Uses efficient, multiple-of-LOB-chunk-size buffered reads.
+func (dlr *dpiLobReader) WriteTo(w io.Writer) (n int64, err error) {
+	size := dlr.ChunkSize()
+	for size < 1<<19 { // at most 1M
+		size *= 2
+	}
+	return io.CopyBuffer(w, io.Reader(dlr), make([]byte, size))
+}
+
+// ChunkSize returns the LOB's native chunk size. Reads/writes with a multiply of this size is the most performant.
+func (dlr *dpiLobReader) ChunkSize() int {
+	if dlr.chunkSize != 0 {
+		return int(dlr.chunkSize)
+	}
+	runtime.LockOSThread()
+	ok := C.dpiLob_getChunkSize(dlr.dpiLob, &dlr.chunkSize) != C.DPI_FAILURE
+	defer runtime.UnlockOSThread()
+	if !ok {
+		dlr.chunkSize = 0
+		return -1
+	}
+	return int(dlr.chunkSize)
 }
 
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
