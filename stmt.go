@@ -199,6 +199,7 @@ func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 // ClobAsString returns an option to force fetching CLOB columns as strings.
 //
 // Deprecated: CLOBs are returned as string by default - for CLOB, use LobAsReader.
+// EXCEPT for Object attributes, those are returned as-is - as lobReader.
 func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false } }
 
 // LobAsReader is an option to set query columns of CLOB/BLOB to be returned as a Lob.
@@ -220,6 +221,8 @@ func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false
 // string/[]bytes directly means only one round trip. So you can see that
 // if your database is remote with high latency you can have a significant
 // performance penalty!
+//
+// EXCEPT for Object attributes, those are returned as-is - as lobReader.
 func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true } }
 
 // CallTimeout sets the round-trip timeout (OCI_ATTR_CALL_TIMEOUT).
