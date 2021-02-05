@@ -5,7 +5,7 @@ Go has native crosscompilation - you can
 
 from a linux/amd64 host, and everything works, you get a windows/386 `x.exe`!
 
-But godror has to use cgo to capitalize OCI, the Oracle supported connection library.
+**But** godror has to use cgo to capitalize OCI, the Oracle supported connection library.
 
 And cgo is not go.
 
@@ -41,4 +41,11 @@ For details, see https://github.com/karalabe/xgo !
 and add "docker.io" to unqualified-search-registries in `/etc/containers/registries.conf`:
 
     unqualified-search-registries = ["docker.io"]
+
+
+## zig
+[Zig](https://ziglang.org) is an interesting project with an interesting tool: a clang C compiler
+with a lot of target host std libs included!
+
+For example, see [contrib/cross-compile.sh](../contrib/cross-compile.sh)!
 	
