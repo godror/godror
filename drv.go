@@ -20,6 +20,7 @@
 //     standaloneConnection=0
 //     enableEvents=0
 //     heterogeneousPool=0
+//     externalAuth=0
 //     prelim=0
 //     poolWaitTimeout=5m
 //     poolSessionMaxLifetime=1h
@@ -30,9 +31,21 @@
 //     configDir=
 //     libDir=
 //
-// These are the defaults. Many advocate that a static session pool (min=max, incr=0)
+// These are the defaults.
+// For external authentication, user and password should be empty
+// with default value(0) for heterogeneousPool parameter.
+// heterogeneousPool(valid for standaloneConnection=0)
+// and externalAuth parameters are internally set. For Proxy
+// support , sessionuser is enclosed in brackets [sessionuser].
+//
+// To use a heterogeneous Pool with Proxy Support ,user and password
+// parameters should be non-empty and parameter heterogeneousPool should be 1.
+// If user,password are empty and heterogeneousPool is set to 1,
+// different user and password can be passed in subsequent queries.
+//
+// Many advocate that a static session pool (min=max, incr=0)
 // is better, with 1-10 sessions per CPU thread.
-// See http://docs.oracle.com/cd/E82638_01/JJUCP/optimizing-real-world-performance.htm#JJUCP-GUID-BC09F045-5D80-4AF5-93F5-FEF0531E0E1D
+// See https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-7DFBA826-7CC0-4D16-B19C-31D168069B54
 // You may also use ConnectionParams to configure a connection.
 //
 // If you specify connectionClass, that'll reuse the same session pool
@@ -491,7 +504,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// setup credentials
 	username, password := P.Username, P.Password.Secret()
-	if pool != nil && !pool.params.Heterogeneous {
+	if pool != nil && !pool.params.Heterogeneous && !pool.params.ExternalAuth {
+		// Only for homogeneous pool force user, password as empty.
 		username, password = "", ""
 	}
 	if username != "" {
@@ -570,7 +584,8 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	var usernameKey string
-	if !P.Heterogeneous {
+	if !P.Heterogeneous && !P.ExternalAuth {
+		// skip username being part of key in heterogeneous pools
 		usernameKey = P.Username
 	}
 	// determine key to use for pool

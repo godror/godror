@@ -241,6 +241,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("standaloneConnection", B(P.StandaloneConnection))
 	q.Add("enableEvents", B(P.EnableEvents))
 	q.Add("heterogeneousPool", B(P.Heterogeneous))
+	q.Add("externalAuth", B(P.ExternalAuth))
 	q.Add("prelim", B(P.IsPrelim))
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
@@ -375,6 +376,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 
 		{&P.EnableEvents, "enableEvents"},
 		{&P.Heterogeneous, "heterogeneousPool"},
+		{&P.ExternalAuth, "externalAuth"},
 		{&P.StandaloneConnection, "standaloneConnection"},
 	} {
 		s := q.Get(task.Key)

@@ -3904,3 +3904,150 @@ END;`
 		}
 	}
 }
+
+// This covers following externalAuthentication test cases:
+// - standalone=0
+//    - user as [sessonusername], during creation or first Query causes DPI-1032
+//    - empty user/passwd ,taking credentials from external source.
+//    - Proxy Authentication by giving sessionuser , [sessionuser]
+//    - error DPI-1069, if sessionuser is passed without brackets
+// - standalone=1
+//    - user as [sessonusername], during creation return success
+//    - empty user/passwd ,taking credentials from external source.
+//
+// connectstring alias for example is defined in env GODROR_TEST_DB
+// example: export GODROR_TEST_DB=db10g
+// db_alias,db10g should match in tnsnames.ora and credential entry in wallet
+// this test case will skip if external wallet is not defined but wont fail
+func TestExternalAuthIntegration(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(testContext("TestExternalAuth"), 1*time.Minute)
+	defer cancel()
+
+	cs, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	username := cs.Username
+
+	// make username/passwd empty
+	cs.Username = ""
+	cs.Password.Reset()
+
+	// setting ExternalAuth is optional as
+	// with empty username/passwd , homeogeneous mode
+	// ExternalAuth and heterogeneous are internally set
+	//cs.ExternalAuth = true
+
+	sessionUserPassword := getRandomString()
+	const sessionUser = "test_sessionUser"
+
+	testExternalAuthConStr := cs.StringWithPassword()
+	t.Log("testExternalAuthConStr", testExternalAuthConStr)
+
+	var testExternalAuthDB *sql.DB
+	if testExternalAuthDB, err = sql.Open("godror", testExternalAuthConStr); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", testExternalAuthConStr, err))
+	}
+	defer testExternalAuthDB.Close()
+	testExternalAuthDB.SetMaxIdleConns(0)
+
+	// It also causes heterogeneous pool to be created
+	// for external authentication with username, password as empty parameters
+	testExternalAuthDB.ExecContext(ctx, fmt.Sprintf("DROP USER %s", sessionUser))
+	// set up connectstring with sessionuser in pool creation
+	cs.Username = "[" + sessionUser + "]"
+	cs.Password.Reset()
+	cs.ExternalAuth = true
+	if !cs.IsStandalone() {
+		cs.Heterogeneous = true
+	}
+	testExternalAuthProxyConStr := cs.StringWithPassword()
+	t.Log("testExternalAuthProxyConStr", testExternalAuthProxyConStr)
+
+	var testExternalAuthProxyDB *sql.DB
+	if testExternalAuthProxyDB, err = sql.Open("godror", testExternalAuthProxyConStr); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", testExternalAuthProxyConStr, err))
+	}
+	defer testExternalAuthProxyDB.Close()
+	testExternalAuthProxyDB.SetMaxIdleConns(0)
+
+	for _, qry := range []string{
+		fmt.Sprintf("CREATE USER %s IDENTIFIED BY "+sessionUserPassword, sessionUser),
+		fmt.Sprintf("GRANT CREATE SESSION TO %s", sessionUser),
+		fmt.Sprintf("ALTER USER %s GRANT CONNECT THROUGH %s", sessionUser, username),
+	} {
+		if _, err = testExternalAuthDB.ExecContext(ctx, qry); err != nil {
+			if strings.Contains(err.Error(), "ORA-01031:") {
+				t.Log("Please issue this:\nGRANT CREATE USER, DROP USER, ALTER USER TO " + username + ";\n" +
+					"GRANT CREATE SESSION TO " + username + " WITH ADMIN OPTION;\n")
+			}
+			t.Skip(fmt.Errorf(" %s: %w", qry, err))
+		}
+	}
+	defer func() {
+		testExternalAuthDB.ExecContext(testContext("ExternalAuthentication-drop"), "DROP USER "+sessionUser)
+	}()
+
+	// test Proxyuser getsession with pool created with external credentials
+	var result string
+	if err := testExternalAuthProxyDB.QueryRowContext(ctx, "SELECT user FROM dual").Scan(&result); err != nil {
+
+		if !cs.IsStandalone() {
+			if !strings.Contains(err.Error(), "DPI-1032:") {
+				t.Errorf("testExternalAuthProxyDB: unexpected Error %s", err.Error())
+			}
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if cs.IsStandalone() && !strings.EqualFold(sessionUser, result) {
+		t.Errorf("testExternalAuthProxyDB: currentUser got %s, wanted %s", result, sessionUser)
+	}
+
+	for tName, tCase := range map[string]struct {
+		In   context.Context
+		Want string
+	}{
+		"noContext":                  {In: ctx, Want: username},
+		"sessionUser":                {In: godror.ContextWithUserPassw(ctx, "["+sessionUser+"]", "", ""), Want: sessionUser},
+		"sessionUserwithOutbrackets": {In: godror.ContextWithUserPassw(ctx, sessionUser, "", ""), Want: sessionUser},
+	} {
+		if cs.StandaloneConnection && tName != "noContext" {
+			// for standalone changing connection params not allowed
+			continue
+		}
+		t.Run(tName, func(t *testing.T) {
+			var result string
+			if err = testExternalAuthDB.QueryRowContext(tCase.In, "SELECT user FROM dual").Scan(&result); err != nil {
+				if tName == "sessionUserwithOutbrackets" {
+					if !strings.Contains(err.Error(), "DPI-1069:") {
+						t.Errorf("%s: unexpected Error %s", tName, err.Error())
+					}
+				} else {
+					t.Fatal(err)
+				}
+			}
+			if tName != "sessionUserwithOutbrackets" {
+				if !strings.EqualFold(tCase.Want, result) {
+					t.Errorf("%s: currentUser got %s, wanted %s", tName, result, tCase.Want)
+				}
+			}
+		})
+	}
+}
+
+func getRandomString() string {
+	rand.Seed(time.Now().UnixNano())
+	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+		"abcdefghijklmnopqrstuvwxyz" +
+		"0123456789")
+	length := 8
+	var b strings.Builder
+	for i := 0; i < length; i++ {
+		b.WriteRune(chars[rand.Intn(len(chars))])
+	}
+	// fix starting letter as alphabet
+	return "A" + b.String() // E.g. "ExcbsVQs"
+}
