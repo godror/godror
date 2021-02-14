@@ -186,9 +186,9 @@ func TestConnCut(t *testing.T) {
 }
 
 type tcpProxy struct {
-	upstream net.TCPAddr
-	lsnr     *net.TCPListener
+	lsnr *net.TCPListener
 	*testing.T
+	upstream net.TCPAddr
 }
 
 func (px tcpProxy) ListenAddr() string { return px.lsnr.Addr().String() }

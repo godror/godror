@@ -244,7 +244,10 @@ var _ driver.StmtExecContext = (*statement)(nil)
 var _ driver.NamedValueChecker = (*statement)(nil)
 
 type statement struct {
-	stmtOptions
+	ctx context.Context
+	*conn
+	dpiStmt  *C.dpiStmt
+	query    string
 	columns  []Column
 	isSlice  []bool
 	gets     []dataGetter
@@ -252,13 +255,10 @@ type statement struct {
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
-	ctx      context.Context
-	query    string
-	sync.Mutex
-	arrLen int
-	*conn
-	dpiStmt     *C.dpiStmt
+	stmtOptions
+	arrLen      int
 	dpiStmtInfo C.dpiStmtInfo
+	sync.Mutex
 }
 type dataGetter func(v interface{}, data []C.dpiData) error
 
@@ -2527,8 +2527,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 // Column holds the info from a column.
 type Column struct {
-	Name                      string
 	ObjectType                *C.dpiObjectType
+	Name                      string
 	OracleType                C.dpiOracleTypeNum
 	NativeType                C.dpiNativeTypeNum
 	Size, SizeInChars, DBSize C.uint32_t

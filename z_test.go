@@ -265,10 +265,10 @@ func testContext(name string) context.Context {
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
 
 type testLogger struct {
-	mu       sync.RWMutex
 	enc      *logfmt.Encoder
 	Ts       []*testing.T
 	beHelped []*testing.T
+	mu       sync.RWMutex
 }
 
 func (tl *testLogger) Log(args ...interface{}) error {
@@ -749,8 +749,8 @@ END;
 	}
 
 	for _, tC := range []struct {
-		Name     string
 		In, Want interface{}
+		Name     string
 	}{
 		{Name: "vc", In: vc, Want: vcWant},
 		{Name: "num", In: num, Want: numWant},
@@ -1039,15 +1039,15 @@ func TestExecuteMany(t *testing.T) {
 		dates[i] = now.Add(-time.Duration(i) * time.Hour)
 	}
 	for i, tc := range []struct {
-		Name  string
 		Value interface{}
+		Name  string
 	}{
-		{"f_int", ints},
-		{"f_num", nums},
-		{"f_num_6", int32s},
-		{"f_num_5_2", floats},
-		{"f_vc", strs},
-		{"f_dt", dates},
+		{Name: "f_int", Value: ints},
+		{Name: "f_num", Value: nums},
+		{Name: "f_num_6", Value: int32s},
+		{Name: "f_num_5_2", Value: floats},
+		{Name: "f_vc", Value: strs},
+		{Name: "f_dt", Value: dates},
 	} {
 		res, execErr := tx.ExecContext(ctx,
 			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
@@ -1164,10 +1164,10 @@ func TestReadWriteLob(t *testing.T) {
 	defer stmt.Close()
 
 	for tN, tC := range []struct {
-		Bytes  []byte
 		String string
+		Bytes  []byte
 	}{
-		{[]byte{0, 1, 2, 3, 4, 5}, "12345"},
+		{Bytes: []byte{0, 1, 2, 3, 4, 5}, String: "12345"},
 	} {
 
 		if _, err = stmt.ExecContext(ctx, tN*2, tC.Bytes, tC.String); err != nil {
@@ -1520,13 +1520,13 @@ func TestSelectFloat(t *testing.T) {
 
 	qry = "SELECT int_col, float_col, empty_int_col FROM " + tbl //nolint:gas
 	type numbers struct {
-		Int     int
-		Int64   int64
-		Float   float64
-		NInt    sql.NullInt64
+		Number  godror.Number
 		String  string
 		NString sql.NullString
-		Number  godror.Number
+		NInt    sql.NullInt64
+		Int64   int64
+		Float   float64
+		Int     int
 	}
 	var n numbers
 	var i1, i2, i3 interface{}
@@ -3181,7 +3181,7 @@ func TestSelectTypes(t *testing.T) {
 	totalColumns := len(colsName)
 
 	oracleFieldParse := func(datatype string, field interface{}) interface{} {
-		// DEBUG: print the type of field and datatype returned for the driver
+		// DEBUG: print the type of field and datatype returned for the drivers
 		t.Logf("%T\t%s\n", field, datatype)
 
 		if field == nil {
@@ -3270,7 +3270,7 @@ func TestSelectTypes(t *testing.T) {
 	var rowCount int
 	for rows.Next() {
 		// Scan the result into the record pointers...
-		if err := rows.Scan(recordPointers...); err != nil {
+		if err = rows.Scan(recordPointers...); err != nil {
 			dumpRows()
 			t.Fatal(err)
 		}
@@ -3468,14 +3468,14 @@ func TestSelectROWID(t *testing.T) {
 	const tbl = "test_rowid_t"
 	db.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_seq NUMBER(6))"
-	if _, err := db.ExecContext(ctx, qry); err != nil {
+	if _, err = db.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
 	for i := 0; i < 10; i++ {
-		if _, err := db.ExecContext(ctx, qry, i); err != nil {
+		if _, err = db.ExecContext(ctx, qry, i); err != nil {
 			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
@@ -3841,11 +3841,11 @@ func TestStmtFetchDeadlineForLOB(t *testing.T) {
 	} {
 
 		// Straight bind
-		if _, err := stmt.ExecContext(ctx, tN*2, tC.String, tC.Bytes); err != nil {
+		if _, err = stmt.ExecContext(ctx, tN*2, tC.String, tC.Bytes); err != nil {
 			t.Errorf("%d. %v", tN, err)
 		}
 
-		if _, err := stmt.ExecContext(ctx, tN*2+1, tC.String, tC.Bytes); err != nil {
+		if _, err = stmt.ExecContext(ctx, tN*2+1, tC.String, tC.Bytes); err != nil {
 			t.Errorf("%d. %v", tN, err)
 		}
 	}
@@ -3864,7 +3864,7 @@ BEGIN
     cnt :=2;
     RETURN cnt;
 END;`
-	if _, err := testDb.ExecContext(context.Background(), qryf); err != nil {
+	if _, err = testDb.ExecContext(context.Background(), qryf); err != nil {
 		t.Fatal(fmt.Errorf("%s: %+v", qryf, err))
 	}
 	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION "+tbl+"_f") }()
@@ -3884,10 +3884,10 @@ END;`
 	var b []byte
 
 	for rows.Next() { // stmtFetch wont complete and cause deadline error
-		if err := ctx.Err(); err != nil {
+		if err = ctx.Err(); err != nil {
 			t.Fatal(err)
 		}
-		if err := rows.Scan(&k, &c, &b); err != nil {
+		if err = rows.Scan(&k, &c, &b); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("key=%v, CLOB=%q BLOB=%q\n", k, c, b)
@@ -3992,7 +3992,7 @@ func TestExternalAuthIntegration(t *testing.T) {
 
 	// test Proxyuser getsession with pool created with external credentials
 	var result string
-	if err := testExternalAuthProxyDB.QueryRowContext(ctx, "SELECT user FROM dual").Scan(&result); err != nil {
+	if err = testExternalAuthProxyDB.QueryRowContext(ctx, "SELECT user FROM dual").Scan(&result); err != nil {
 
 		if !cs.IsStandalone() {
 			if !strings.Contains(err.Error(), "DPI-1032:") {

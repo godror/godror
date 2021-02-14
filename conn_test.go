@@ -44,9 +44,9 @@ func TestCalculateTZ(t *testing.T) {
 	}
 	const Hour = 3600
 	for _, tC := range []struct {
+		err          error
 		dbTZ, dbOSTZ string
 		off          int
-		err          error
 	}{
 		{dbTZ: bdpstName, dbOSTZ: bdpstZone, off: bdpstOff},
 		{dbTZ: "+01:00", dbOSTZ: "", off: +Hour},

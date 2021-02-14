@@ -377,15 +377,13 @@ func (O ObjectCollection) Trim(n int) error {
 
 // ObjectType holds type info of an Object.
 type ObjectType struct {
-	Schema, Name string
-	Attributes   map[string]ObjectAttribute
-
-	mu            sync.RWMutex
-	conn          *conn
-	dpiObjectType *C.dpiObjectType
-
-	DBSize, ClientSizeInBytes, CharSize int
 	CollectionOf                        *ObjectType
+	Attributes                          map[string]ObjectAttribute
+	conn                                *conn
+	dpiObjectType                       *C.dpiObjectType
+	Schema, Name                        string
+	DBSize, ClientSizeInBytes, CharSize int
+	mu                                  sync.RWMutex
 	OracleTypeNum                       C.dpiOracleTypeNum
 	NativeTypeNum                       C.dpiNativeTypeNum
 	Precision                           int16
@@ -633,9 +631,9 @@ func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (*ObjectType,
 
 // ObjectAttribute is an attribute of an Object.
 type ObjectAttribute struct {
-	Name          string
-	dpiObjectAttr *C.dpiObjectAttr
 	*ObjectType
+	dpiObjectAttr *C.dpiObjectAttr
+	Name          string
 }
 
 // Close the ObjectAttribute.

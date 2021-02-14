@@ -28,8 +28,8 @@ var _ godror.ObjectScanner = new(MyTable)
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
 	*godror.Object
-	ID  int64
 	Txt string
+	ID  int64
 }
 
 type coder interface{ Code() int }
@@ -321,12 +321,12 @@ func TestPLSQLTypes(t *testing.T) {
 		defer obj.Close()
 
 		for tName, tCase := range map[string]struct {
-			ID   int64
 			txt  string
 			want MyRecord
+			ID   int64
 		}{
-			"default":    {ID: 1, txt: "test", want: MyRecord{obj, 1, "test"}},
-			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{obj, 2, ""}},
+			"default":    {ID: 1, txt: "test", want: MyRecord{Object: obj, ID: 1, Txt: "test"}},
+			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{Object: obj, ID: 2}},
 			"zeroValues": {want: MyRecord{Object: obj}},
 		} {
 			rec := MyRecord{Object: obj}
@@ -358,9 +358,9 @@ func TestPLSQLTypes(t *testing.T) {
 		}
 
 		for tName, tCase := range map[string]struct {
+			wantTxt string
 			in      MyRecord
 			wantID  int64
-			wantTxt string
 		}{
 			"zeroValues": {in: MyRecord{}, wantID: 1, wantTxt: " changed"},
 			"default":    {in: MyRecord{ID: 1, Txt: "test"}, wantID: 2, wantTxt: "test changed"},
@@ -405,8 +405,8 @@ func TestPLSQLTypes(t *testing.T) {
 		items := []*MyRecord{{ID: 1, Txt: "test - 2"}, {ID: 2, Txt: "test - 4"}}
 
 		for tName, tCase := range map[string]struct {
-			in   int64
 			want MyTable
+			in   int64
 		}{
 			"one": {in: 1, want: MyTable{Items: items[:1]}},
 			"two": {in: 2, want: MyTable{Items: items}},

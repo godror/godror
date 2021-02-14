@@ -49,15 +49,15 @@ var _ driver.Pinger = (*conn)(nil)
 //var _ driver.NamedValueChecker = (*conn)(nil)
 
 type conn struct {
-	currentTT     TraceTag
-	params        dsn.ConnectionParams
-	Server        VersionInfo
-	tranParams    tranParams
-	mu            sync.RWMutex
-	poolKey       string
 	drv           *drv
 	dpiConn       *C.dpiConn
+	currentTT     TraceTag
+	tranParams    tranParams
+	poolKey       string
+	Server        VersionInfo
+	params        dsn.ConnectionParams
 	tzOffSecs     int
+	mu            sync.RWMutex
 	inTransaction bool
 	newSession    bool
 	released      bool
@@ -392,8 +392,8 @@ func (c *conn) endTran(isCommit bool) error {
 }
 
 type varInfo struct {
-	SliceLen, BufSize int
 	ObjectType        *C.dpiObjectType
+	SliceLen, BufSize int
 	NatTyp            C.dpiNativeTypeNum
 	Typ               C.dpiOracleTypeNum
 	IsPLSArray        bool

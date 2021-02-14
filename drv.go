@@ -180,11 +180,11 @@ func init() {
 var _ driver.Driver = (*drv)(nil)
 
 type drv struct {
-	mu            sync.RWMutex
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
 	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
+	mu            sync.RWMutex
 }
 
 func NewDriver() *drv {
@@ -218,8 +218,8 @@ type locationWithOffSecs struct {
 }
 type connPool struct {
 	dpiPool *C.dpiPool
-	params  commonAndPoolParams
 	key     string
+	params  commonAndPoolParams
 }
 
 func (p *connPool) Close() error {

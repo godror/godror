@@ -39,17 +39,17 @@ var _ = driver.RowsColumnTypeScanType((*rows)(nil))
 var _ = driver.RowsNextResultSet((*rows)(nil))
 
 type rows struct {
-	columns   []Column
-	vars      []*C.dpiVar
-	data      [][]C.dpiData
 	err       error
 	nextRsErr error
+	done      chan struct{}
 	*statement
 	origSt         *statement
 	nextRs         *C.dpiStmt
+	data           [][]C.dpiData
+	columns        []Column
+	vars           []*C.dpiVar
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
-	done           chan struct{}
 	fromData       bool
 }
 
@@ -620,10 +620,10 @@ func (r *rows) Next(dest []driver.Value) error {
 var _ = driver.Rows((*directRow)(nil))
 
 type directRow struct {
-	args   []string
-	result []interface{}
-	query  string
 	conn   *conn
+	query  string
+	result []interface{}
+	args   []string
 }
 
 func (dr *directRow) Columns() []string {

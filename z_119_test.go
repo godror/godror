@@ -22,9 +22,9 @@ func Test119GetTables(t *testing.T) {
 	type Column struct {
 		ColumnName    string
 		DataType      string
+		NullAllowed   string
 		DataLength    sql.NullInt64
 		DataPrecision sql.NullInt64
-		NullAllowed   string
 	}
 	type Table struct {
 		Name    string

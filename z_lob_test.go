@@ -165,7 +165,7 @@ func (m *metricSet) Fetch(ctx context.Context) ([]event, error) {
 }
 
 type event struct {
-	ID         int64
-	Text       string
 	LastActive time.Time
+	Text       string
+	ID         int64
 }

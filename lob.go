@@ -89,10 +89,10 @@ func (dlr *dpiLobReader) Scan(src interface{}) error {
 var _ = io.Reader((*dpiLobReader)(nil))
 
 type dpiLobReader struct {
-	mu sync.Mutex
 	*conn
 	dpiLob              *C.dpiLob
 	offset, sizePlusOne C.uint64_t
+	mu                  sync.Mutex
 	chunkSize           C.uint32_t
 	finished            bool
 	IsClob              bool
