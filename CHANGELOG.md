@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v0.24.0]
 ### Changed
 - GetCompileErrors requires context.Context.
+- ObjectType became a pointer (uses a mutex, must be a pointer)
 
 ## [v0.23.1]
 ### Added

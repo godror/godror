@@ -27,7 +27,7 @@ var _ = fmt.Printf
 // Object represents a dpiObject.
 type Object struct {
 	dpiObject *C.dpiObject
-	ObjectType
+	*ObjectType
 }
 
 // ErrNoSuchKey is the error for missing key in lookup.
@@ -197,7 +197,7 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	defer scratch.Put(d)
 	for i, err := O.First(); err == nil; i, err = O.Next(i) {
 		if O.CollectionOf.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT {
-			d.ObjectType = *O.CollectionOf
+			d.ObjectType = O.CollectionOf
 		}
 		if err = O.GetItem(d, i); err != nil {
 			return dest, err
@@ -278,7 +278,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	}
 	data.reset()
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
-	data.ObjectType = *O.CollectionOf
+	data.ObjectType = O.CollectionOf
 	data.implicitObj = true
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.conn.getError())
@@ -394,11 +394,11 @@ type ObjectType struct {
 }
 
 // NewData returns Data for input parameters on Object/ObjectCollection.
-func (t ObjectType) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
+func (t *ObjectType) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
 	return t.conn.NewData(baseType, sliceLen, bufSize)
 }
 
-func (t ObjectType) String() string {
+func (t *ObjectType) String() string {
 	if t.Schema == "" {
 		return t.Name
 	}
@@ -406,7 +406,7 @@ func (t ObjectType) String() string {
 }
 
 // FullName returns the object's name with the schame prepended.
-func (t ObjectType) FullName() string {
+func (t *ObjectType) FullName() string {
 	if t.Schema == "" {
 		return t.Name
 	}
@@ -417,7 +417,7 @@ func (t ObjectType) FullName() string {
 //
 // The name is uppercased! Because here Oracle seems to be case-sensitive.
 // To leave it as is, enclose it in "-s!
-func (c *conn) GetObjectType(name string) (ObjectType, error) {
+func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
@@ -430,15 +430,15 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.dpiConn == nil {
-		return ObjectType{}, driver.ErrBadConn
+		return nil, driver.ErrBadConn
 	}
 	if err := c.checkExec(func() C.int {
 		return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
 	}); err != nil {
 		C.free(unsafe.Pointer(objType))
-		return ObjectType{}, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
+		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
 	}
-	t := ObjectType{conn: c, dpiObjectType: objType}
+	t := &ObjectType{conn: c, dpiObjectType: objType}
 	err := t.init()
 	return t, err
 }
@@ -446,7 +446,7 @@ func (c *conn) GetObjectType(name string) (ObjectType, error) {
 // NewObject returns a new Object with ObjectType type.
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
-func (t ObjectType) NewObject() (*Object, error) {
+func (t *ObjectType) NewObject() (*Object, error) {
 	if Log != nil {
 		Log("msg", "NewObject", "name", t.Name)
 	}
@@ -465,7 +465,7 @@ func (t ObjectType) NewObject() (*Object, error) {
 
 // NewCollection returns a new Collection object with ObjectType type.
 // If the ObjectType is not a Collection, it returns ErrNotCollection error.
-func (t ObjectType) NewCollection() (ObjectCollection, error) {
+func (t *ObjectType) NewCollection() (ObjectCollection, error) {
 	if t.CollectionOf == nil {
 		return ObjectCollection{}, ErrNotCollection
 	}
@@ -521,7 +521,7 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		return nil, err
 	}
 	o := &Object{
-		ObjectType: ObjectType{dpiObjectType: objectType, conn: c},
+		ObjectType: &ObjectType{dpiObjectType: objectType, conn: c},
 		dpiObject:  object,
 	}
 	return o, o.init()
@@ -619,14 +619,14 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	t.FsPrecision = uint8(typ.fsPrecision)
 	return t.init()
 }
-func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, error) {
+func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (*ObjectType, error) {
 	if conn == nil {
 		panic("conn is nil")
 	}
 	if typ.oracleTypeNum == 0 {
 		panic("typ is nil")
 	}
-	t := ObjectType{conn: conn}
+	t := &ObjectType{conn: conn}
 	err := t.fromDataTypeInfo(typ)
 	return t, err
 }
@@ -635,7 +635,7 @@ func objectTypeFromDataTypeInfo(conn *conn, typ C.dpiDataTypeInfo) (ObjectType, 
 type ObjectAttribute struct {
 	Name          string
 	dpiObjectAttr *C.dpiObjectAttr
-	ObjectType
+	*ObjectType
 }
 
 // Close the ObjectAttribute.
@@ -656,10 +656,10 @@ func (A ObjectAttribute) Close() error {
 }
 
 // GetObjectType returns the ObjectType for the name.
-func GetObjectType(ctx context.Context, ex Execer, typeName string) (ObjectType, error) {
+func GetObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType, error) {
 	c, err := getConn(ctx, ex)
 	if err != nil {
-		return ObjectType{}, fmt.Errorf("getConn for %s: %w", typeName, err)
+		return nil, fmt.Errorf("getConn for %s: %w", typeName, err)
 	}
 	return c.GetObjectType(typeName)
 }

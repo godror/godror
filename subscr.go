@@ -156,8 +156,8 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 type Event struct {
 	Tables  []TableEvent
 	Queries []QueryEvent
-	DB      string
 	Err     error
+	DB      string
 	Type    EventType
 }
 

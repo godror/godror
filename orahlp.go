@@ -268,8 +268,9 @@ type Querier interface {
 //
 // This can help using unknown-at-compile-time, a.k.a.
 // dynamic queries.
-func DescribeQuery(ctx context.Context, db Execer, qry string) (cols []QueryColumn, err error) {
-	err = Raw(ctx, db, func(c Conn) error {
+func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, error) {
+	var cols []QueryColumn
+	err := Raw(ctx, db, func(c Conn) error {
 		stmt, err := c.PrepareContext(ctx, qry)
 		if err != nil {
 			return err
@@ -503,7 +504,7 @@ type Conn interface {
 	Rollback() error
 	ClientVersion() (VersionInfo, error)
 	ServerVersion() (VersionInfo, error)
-	GetObjectType(name string) (ObjectType, error)
+	GetObjectType(name string) (*ObjectType, error)
 	NewSubscription(string, func(Event), ...SubscriptionOption) (*Subscription, error)
 	Startup(StartupMode) error
 	Shutdown(ShutdownMode) error

@@ -22,7 +22,7 @@ import (
 
 // Data holds the data to/from Oracle.
 type Data struct {
-	ObjectType    ObjectType
+	ObjectType    *ObjectType
 	dpiData       C.dpiData
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
@@ -513,7 +513,7 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 
 func (d *Data) reset() {
 	d.NativeTypeNum = 0
-	d.ObjectType = ObjectType{}
+	d.ObjectType = nil
 	d.implicitObj = false
 	d.SetBytes(nil)
 	d.dpiData.isNull = 1

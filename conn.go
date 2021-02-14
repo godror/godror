@@ -356,7 +356,7 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, err), c)
 	}
 	if err := c.checkExec(func() C.int { return C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) }); err != nil {
-		err := maybeBadConn(fmt.Errorf("getStmtInfo: %w", err), c)
+		err = maybeBadConn(fmt.Errorf("getStmtInfo: %w", err), c)
 		st.Close()
 		return nil, err
 	}

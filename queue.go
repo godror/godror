@@ -42,7 +42,7 @@ var DefaultDeqOptions = DeqOptions{
 type Queue struct {
 	mu sync.Mutex
 
-	PayloadObjectType ObjectType
+	PayloadObjectType *ObjectType
 	props             []*C.dpiMsgProps
 	name              string
 	conn              *conn
@@ -143,9 +143,9 @@ func (Q *Queue) Close() error {
 	if err := c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
 		return fmt.Errorf("release: %w", err)
 	}
-	if Q.PayloadObjectType.dpiObjectType != nil {
+	if Q.PayloadObjectType != nil && Q.PayloadObjectType.dpiObjectType != nil {
 		Q.PayloadObjectType.Close()
-		Q.PayloadObjectType = ObjectType{}
+		Q.PayloadObjectType = nil
 	}
 	if c != nil && Q.connIsOwned {
 		c.Close()
@@ -211,7 +211,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	var firstErr error
 	for i, p := range props[:int(num)] {
-		if err := messages[i].fromOra(Q.conn, p, &Q.PayloadObjectType); err != nil {
+		if err := messages[i].fromOra(Q.conn, p, Q.PayloadObjectType); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -438,7 +438,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 			if C.dpiObject_addRef(obj) == C.DPI_FAILURE {
 				return objType.conn.getError()
 			}
-			M.Object = &Object{dpiObject: obj, ObjectType: *objType}
+			M.Object = &Object{dpiObject: obj, ObjectType: objType}
 		}
 	}
 	return nil

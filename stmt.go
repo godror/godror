@@ -527,7 +527,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables
-	if err := st.bindVars(args, Log); err != nil {
+	if err = st.bindVars(args, Log); err != nil {
 		return nil, closeIfBadConn(err)
 	}
 
@@ -846,7 +846,7 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		return nil
 	}
 	for i, a := range args {
-		i, name := i, a.Name
+		name := a.Name
 		if name == "" {
 			name = strconv.Itoa(a.Ordinal)
 		}

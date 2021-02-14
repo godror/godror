@@ -362,7 +362,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	//fmt.Printf("data=%#v\n", r.data)
 
-	nullTime := r.statement.NullDate()
+	nullDate := r.statement.NullDate()
 
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
@@ -486,7 +486,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			C.DPI_NATIVE_TYPE_TIMESTAMP,
 			C.DPI_ORACLE_TYPE_DATE:
 			if isNull {
-				dest[i] = nullTime
+				dest[i] = nullDate
 				continue
 			}
 			//ts := C.dpiData_getTimestamp(d)

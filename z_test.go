@@ -3590,10 +3590,10 @@ func TestPreFetchQuery(t *testing.T) {
 	}
 	defer tx.Rollback()
 	for i, tc := range []struct {
-		Name  string
 		Value interface{}
+		Name  string
 	}{
-		{"employee_id", nums},
+		{Name: "employee_id", Value: nums},
 	} {
 		res, execErr := tx.ExecContext(ctx,
 			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
@@ -3833,11 +3833,11 @@ func TestStmtFetchDeadlineForLOB(t *testing.T) {
 	defer stmt.Close()
 
 	for tN, tC := range []struct {
-		Bytes  []byte
 		String string
+		Bytes  []byte
 	}{
-		{[]byte{0, 1, 2, 3, 4}, "abcdef"},
-		{[]byte{5, 6, 7, 8, 9}, "ghijkl"},
+		{Bytes: []byte{0, 1, 2, 3, 4}, String: "abcdef"},
+		{Bytes: []byte{5, 6, 7, 8, 9}, String: "ghijkl"},
 	} {
 
 		// Straight bind
