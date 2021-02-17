@@ -21,6 +21,10 @@ func TestMergeMemory133(t *testing.T) {
 	if firstRowBytes <= 0 {
 		firstRowBytes = 20000
 	}
+	rowsToInsert, _ := strconv.Atoi(os.Getenv("ROWS_TO_INSERT"))
+	if rowsToInsert <= 0 {
+		rowsToInsert = 1000
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -41,7 +45,6 @@ func TestMergeMemory133(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	const rowsToInsert = 10000
 	t.Logf("first row bytes len: %d", firstRowBytes)
 
 	var m runtime.MemStats
@@ -74,8 +77,8 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 	defer tx.Rollback()
 
 	const qry = `MERGE /*+ INDEX(x)*/ INTO test_many_rows x 
-			USING (select  :ID ID, :text text from dual) y 
-			ON (x.id = y.id ) 
+			USING (select :ID ID, :text text from dual) y 
+			ON (x.id = y.id) 
 			WHEN MATCHED 
 			THEN UPDATE SET  x.text = y.text 
 			WHEN NOT MATCHED 
@@ -88,7 +91,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 
 	mergeIds := make([]sql.NullInt64, 0, rowsToInsert)
 	mergeStrings := make([]string, 0, rowsToInsert)
-	totalBytes := 0
+	var totalBytes uint64
 	notFirst := strings.Repeat("a", 75)
 	for i := 0; i < rowsToInsert; i++ {
 		str := notFirst
@@ -96,7 +99,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 			str = strings.Repeat("a", firstRowBytes)
 		}
 		mergeStrings = append(mergeStrings, str)
-		totalBytes += len(str)
+		totalBytes += uint64(len(str))
 		mergeIds = append(mergeIds, sql.NullInt64{Int64: int64(i), Valid: true})
 	}
 	t.Logf("Total size of clob strings: %d\n", totalBytes)
@@ -131,7 +134,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			fmt.Errorf("%s: %w", qry, err)
+			return fmt.Errorf("%s: %w", qry, err)
 		}
 		totalRowsMerged += int(rowsAffected)
 	}
