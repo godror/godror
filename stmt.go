@@ -22,6 +22,7 @@ void godror_setFromString(dpiVar *dv, uint32_t pos, const _GoString_ value) {
 */
 import "C"
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -2249,6 +2250,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		lobs = vv.([]Lob)
 	}
 	var firstErr error
+	var a [1 << 20]byte
 	for i, L := range lobs {
 		//fmt.Printf("dataSetLob[%d]=(%T) %#v\n", i, L, L)
 		if L.Reader == nil {
@@ -2261,10 +2263,19 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 			continue
 		}
 
+		// For small reads it is faster to set it as byte slice
+		n, _ := io.ReadFull(L.Reader, a[:])
+		if n < cap(a) {
+			C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(n))
+			continue
+		}
+
+		L.Reader = io.MultiReader(bytes.NewReader(a[:n]), L.Reader)
 		typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
 		if L.IsClob {
 			typ = C.DPI_ORACLE_TYPE_CLOB
 		}
+
 		var lob *C.dpiLob
 		if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob) }); err != nil {
 			return fmt.Errorf("newTempLob(typ=%d): %w", typ, err)

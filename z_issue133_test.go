@@ -6,13 +6,14 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	godror "github.com/godror/godror"
 )
 
 func TestMergeMemory133(t *testing.T) {
@@ -25,6 +26,7 @@ func TestMergeMemory133(t *testing.T) {
 	if rowsToInsert <= 0 {
 		rowsToInsert = 1000
 	}
+	useLobs, _ := strconv.ParseBool(os.Getenv("USE_LOBS"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -50,7 +52,7 @@ func TestMergeMemory133(t *testing.T) {
 	var m runtime.MemStats
 	for loopCnt := 0; loopCnt < 64; loopCnt++ {
 		t.Logf("Start merge loopCnt: %d\n", loopCnt)
-		if err := issue133Inner(ctx, t, conn, rowsToInsert, firstRowBytes); err != nil {
+		if err := issue133Inner(ctx, t, conn, rowsToInsert, firstRowBytes, useLobs); err != nil {
 			t.Fatal(err)
 		}
 		runtime.ReadMemStats(&m)
@@ -66,7 +68,7 @@ func TestMergeMemory133(t *testing.T) {
 	}
 }
 
-func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInsert, firstRowBytes int) error {
+func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInsert, firstRowBytes int, useLobs bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
@@ -89,44 +91,44 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 	}
 	defer stmt.Close()
 
-	mergeIds := make([]sql.NullInt64, 0, rowsToInsert)
-	mergeStrings := make([]string, 0, rowsToInsert)
-	var totalBytes uint64
-	notFirst := strings.Repeat("a", 75)
-	for i := 0; i < rowsToInsert; i++ {
-		str := notFirst
-		if i == 0 {
-			str = strings.Repeat("a", firstRowBytes)
-		}
-		mergeStrings = append(mergeStrings, str)
-		totalBytes += uint64(len(str))
-		mergeIds = append(mergeIds, sql.NullInt64{Int64: int64(i), Valid: true})
-	}
-	t.Logf("Total size of clob strings: %d\n", totalBytes)
+	const batchSize = 100
+	const nextRowBytes = 75
+	firstRow := strings.Repeat("a", firstRowBytes)
+	nextRow := strings.Repeat("b", nextRowBytes)
 
-	var maxValuesPerOp int = 10000
-	maxLoopCount := int(math.Ceil(float64(rowsToInsert) / float64(maxValuesPerOp)))
+	t.Logf("Total size of clob strings: %d\n", firstRowBytes+(rowsToInsert-1)*nextRowBytes)
+
+	mergeIds := make([]sql.NullInt64, 0, batchSize)
+	mergeLobs := make([]godror.Lob, 0, batchSize)
+	mergeStrings := make([]string, 0, batchSize)
+
 	var dur time.Duration
 	totalRowsMerged := 0
-	for loopIdx := 0; loopIdx < maxLoopCount; loopIdx++ {
-		sliceStartIdx := loopIdx * maxValuesPerOp
-		sliceEndIdx := int(rowsToInsert)
-		if sliceStartIdx+maxValuesPerOp < int(rowsToInsert) {
-			sliceEndIdx = sliceStartIdx + maxValuesPerOp
+	for rowsToInsert > 0 {
+		mergeIds, mergeStrings, mergeLobs = mergeIds[:0], mergeStrings[:0], mergeLobs[:0]
+		for i := 0; i < batchSize; i++ {
+			mergeIds = append(mergeIds, sql.NullInt64{Int64: int64(i), Valid: true})
+			row := nextRow
+			if i == 0 {
+				row = firstRow
+			}
+			if useLobs {
+				mergeLobs = append(mergeLobs, godror.Lob{Reader: strings.NewReader(row), IsClob: true})
+			} else {
+				mergeStrings = append(mergeStrings, row)
+			}
+		}
+		var mergeSth interface{} = mergeStrings
+		if useLobs {
+			mergeSth = mergeLobs
 		}
 
-		binds := make([]interface{}, 0, 2)
-
-		int64Elements := make([]sql.NullInt64, sliceEndIdx-sliceStartIdx)
-		copy(int64Elements, mergeIds[sliceStartIdx:sliceEndIdx])
-		binds = append(binds, sql.Named("id", int64Elements))
-		stringElements := make([]string, sliceEndIdx-sliceStartIdx)
-		copy(stringElements, mergeStrings[sliceStartIdx:sliceEndIdx])
-		binds = append(binds, sql.Named("text", stringElements))
-
-		var res sql.Result
 		start := time.Now()
-		if res, err = stmt.ExecContext(ctx, binds...); err != nil {
+		res, err := stmt.ExecContext(ctx,
+			sql.Named("id", mergeIds),
+			sql.Named("text", mergeSth),
+		)
+		if err != nil {
 			return fmt.Errorf("%s: %w", qry, err)
 		}
 
@@ -137,6 +139,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 			return fmt.Errorf("%s: %w", qry, err)
 		}
 		totalRowsMerged += int(rowsAffected)
+		rowsToInsert -= int(rowsAffected)
 	}
 	tx.Commit()
 	t.Logf("Merge done, number of rows merged: %d, merge timing: %s\n", totalRowsMerged, dur)
