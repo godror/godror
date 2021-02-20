@@ -56,7 +56,7 @@ func TestCalculateTZ(t *testing.T) {
 		{dbTZ: "+00:00", dbOSTZ: "-07:00", off: -7 * Hour},
 	} {
 		prefix := fmt.Sprintf("%q/%q", tC.dbTZ, tC.dbOSTZ)
-		_, off, err := calculateTZ(tC.dbTZ, tC.dbOSTZ)
+		_, off, err := calculateTZ(tC.dbTZ, tC.dbOSTZ, false)
 		t.Logf("tz=%s => off=%d error=%+v", prefix, off, err)
 		if (err == nil) != (tC.err == nil) {
 			t.Errorf("ERR %s: wanted %v, got %v", prefix, tC.err, err)

@@ -55,9 +55,9 @@ type CommonParams struct {
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
-	AlterSession [][2]string
-	Timezone     *time.Location
-	EnableEvents bool
+	AlterSession            [][2]string
+	Timezone                *time.Location
+	EnableEvents, NoTZCheck bool
 }
 
 // String returns the string representation of CommonParams.
@@ -72,14 +72,21 @@ func (P CommonParams) String() string {
 	if P.LibDir != "" {
 		q.Add("libDir", P.LibDir)
 	}
-	s := "local"
+	var s string
 	tz := P.Timezone
-	if tz != nil && tz != time.Local {
-		s = tz.String()
+	if tz != nil {
+		if tz == time.Local {
+			s = "local"
+		} else {
+			s = tz.String()
+		}
 	}
 	q.Add("timezone", s)
 	if P.EnableEvents {
 		q.Add("enableEvents", "1")
+	}
+	if P.NoTZCheck {
+		q.Add("noTimezoneCheck", "1")
 	}
 
 	return q.String()
@@ -220,10 +227,13 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			q.Add("newPassword", P.NewPassword.String())
 		}
 	}
-	s = "local"
-	tz := P.Timezone
-	if tz != nil && tz != time.Local {
-		s = tz.String()
+	s = ""
+	if tz := P.Timezone; tz != nil {
+		if tz == time.Local {
+			s = "local"
+		} else {
+			s = tz.String()
+		}
 	}
 	q.Add("timezone", s)
 	B := func(b bool) string {
@@ -232,6 +242,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		}
 		return "0"
 	}
+	q.Add("noTimezoneCheck", B(P.NoTZCheck))
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
@@ -378,6 +389,8 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.Heterogeneous, "heterogeneousPool"},
 		{&P.ExternalAuth, "externalAuth"},
 		{&P.StandaloneConnection, "standaloneConnection"},
+
+		{&P.NoTZCheck, "noTimezoneCheck"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -408,6 +421,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			}
 		} else {
 			return P, errors.Errorf("%s: %w", tz, err)
+		}
+		if P.Timezone == nil {
+			P.Timezone = time.UTC
 		}
 	}
 
@@ -736,6 +752,9 @@ func ParseTZ(s string) (int, error) {
 			targetLoc, err := time.LoadLocation(s)
 			if err != nil {
 				return tz, errors.Errorf("%s: %w", s, err)
+			}
+			if targetLoc == nil {
+				targetLoc = time.UTC
 			}
 
 			_, localOffset := time.Now().In(targetLoc).Zone()

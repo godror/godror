@@ -33,6 +33,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	godror "github.com/godror/godror"
+	"github.com/godror/godror/dsn"
 )
 
 var (
@@ -67,9 +68,9 @@ func init() {
 		}
 	}
 
-	eUsername, ePassword, eDB := os.Getenv("GODROR_TEST_USERNAME"), os.Getenv("GODROR_TEST_PASSWORD"), os.Getenv("GODROR_TEST_DB")
+	eDSN := os.Getenv("GODROR_TEST_DSN")
 	var configDir string
-	if eUsername == "" && (eDB == "" || os.Getenv("TNS_ADMIN") == "") {
+	if eDSN == "" {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
@@ -133,64 +134,55 @@ func init() {
 				k, v := string(line[:i]), string(line[i+1:])
 				os.Setenv("GODROR_TEST_"+k, v)
 				switch k {
-				case "USERNAME":
-					eUsername = v
-				case "PASSWORD":
-					ePassword = v
-				case "DB":
-					eDB = v
+				case "DSN":
+					eDSN = v
 				}
 			}
 		}
 	}
 
-	P := godror.ConnectionParams{
-		CommonParams: godror.CommonParams{
-			Username:      eUsername,
-			Password:      godror.NewPassword(ePassword),
-			ConnectString: eDB,
-			EnableEvents:  true,
-			ConfigDir:     configDir,
-		},
-		ConnParams: godror.ConnParams{
-			ConnClass:   "TestClassName",
-			ShardingKey: []interface{}{"gold", []byte("silver"), int(42)},
-		},
-		PoolParams: godror.PoolParams{
-			MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
-			WaitTimeout:    5 * time.Second,
-			MaxLifeTime:    5 * time.Minute,
-			SessionTimeout: 1 * time.Minute,
-		},
-		StandaloneConnection: godror.DefaultStandaloneConnection,
+	P, err := dsn.Parse(eDSN)
+	if err != nil {
+		panic(fmt.Errorf("parse %q: %w", eDSN, err))
 	}
-	for _, k := range []string{"USERNAME", "PASSWORD", "DB", "STANDALONE"} {
-		k = "GODROR_TEST_" + k
-		fmt.Printf("export %q=%q\n", k, os.Getenv(k))
+	P.CommonParams.EnableEvents = true
+	P.CommonParams.ConfigDir = configDir
+	if P.ConnParams.ConnClass == "" {
+		P.ConnParams.ConnClass = "TestClassName"
 	}
-	if b, err := strconv.ParseBool(os.Getenv("GODROR_TEST_STANDALONE")); err == nil {
-		P.StandaloneConnection = b
-	} else {
-		fmt.Printf("# GODROR_TEST_STANDALONE is not set, using default %t\n", godror.DefaultStandaloneConnection)
+	P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
+	P.PoolParams = godror.PoolParams{
+		MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
+		WaitTimeout:    5 * time.Second,
+		MaxLifeTime:    5 * time.Minute,
+		SessionTimeout: 1 * time.Minute,
 	}
+	fmt.Printf("export GODROR_TEST_DSN=%q\n", eDSN)
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
-	if eSysUsername, eSysPassword := os.Getenv("GODROR_TEST_SYSTEM_USERNAME"), os.Getenv("GODROR_TEST_SYSTEM_PASSWORD"); eSysUsername != "" && eSysPassword != "" {
-		PSystem := P
-		PSystem.Username, PSystem.Password = eSysUsername, godror.NewPassword(eSysPassword)
-		testSystemConStr = PSystem.StringWithPassword()
-	}
-	var err error
 	if testDb, err = sql.Open("godror", testConStr); err != nil {
-		panic(fmt.Errorf("%s: %+v", testConStr, err))
+		panic(fmt.Errorf("connect to %s: %w", testConStr, err))
+	}
+	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
+	defer cancel()
+	if err = testDb.PingContext(ctx); err != nil {
+		panic(fmt.Errorf("ping %s: %q: %w", testConStr, eDSN, err))
+	}
+
+	if eSysDSN := os.Getenv("GODROR_TEST_SYSTEM_DSN"); eSysDSN != "" {
+		PSystem := P
+		if ps, err := dsn.Parse(eSysDSN); err != nil {
+			panic(fmt.Errorf("sysdsn: %q: %w", eSysDSN, err))
+		} else {
+			PSystem.Username, PSystem.Password = ps.Username, ps.Password
+		}
+		testSystemConStr = PSystem.StringWithPassword()
 	}
 
 	fmt.Println("#", P.String())
 	fmt.Println("Version:", godror.Version)
-	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
-	defer cancel()
 	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
 		if clientVersion, err = cx.ClientVersion(); err != nil {
 			return err
@@ -3454,33 +3446,24 @@ func TestSelectNullTime(t *testing.T) {
 }
 func TestSelectROWID(t *testing.T) {
 	t.Parallel()
-	P, err := godror.ParseConnString("user=system password=oracle connectString=\"(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.56.65)(PORT=1521)))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=orcl)))\"\nconfigDir= connectionClass=godror enableEvents=0 heterogeneousPool=0 libDir=\nnewPassword= poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s\npoolSessionTimeout=0s poolWaitTimeout=0s prelim=0 standaloneConnection=0 sysasm=0\nsysdba=0 sysoper=0 timezone=local")
-	if err != nil {
-		t.Fatal(err)
-	}
-	Q, _ := godror.ParseConnString(testConStr)
-	P.Username, P.ConnectString = Q.Username, Q.ConnectString
-	P.Password.CopyFrom(Q.Password)
-	t.Log(P)
-	db := sql.OpenDB(godror.NewConnector(P))
 	ctx, cancel := context.WithTimeout(testContext("ROWID"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_rowid_t"
-	db.ExecContext(ctx, "DROP TABLE "+tbl)
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_seq NUMBER(6))"
-	if _, err = db.ExecContext(ctx, qry); err != nil {
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
 	for i := 0; i < 10; i++ {
-		if _, err = db.ExecContext(ctx, qry, i); err != nil {
+		if _, err := testDb.ExecContext(ctx, qry, i); err != nil {
 			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
 	}
 	qry = "SELECT F_seq, ROWID FROM " + tbl + " ORDER BY F_seq"
-	rows, err := db.QueryContext(ctx, qry)
+	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}

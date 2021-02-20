@@ -477,6 +477,7 @@ func (c *conn) initTZ() error {
 	if c.tzValid {
 		return nil
 	}
+	noTZCheck := c.params.NoTZCheck || c.params.Timezone != nil
 	if c.params.Timezone != nil && c.params.Timezone != time.Local {
 		c.tzValid = true
 		return nil
@@ -494,6 +495,9 @@ func (c *conn) initTZ() error {
 	}
 	if ok {
 		c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
+		if c.params.Timezone == nil {
+			c.params.Timezone = time.UTC
+		}
 		return nil
 	}
 	// Prelim connections cannot be used for querying
@@ -538,7 +542,7 @@ func (c *conn) initTZ() error {
 		Log("msg", "calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
-	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, dbOSTZ)
+	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, dbOSTZ, noTZCheck)
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if Log != nil {
 		Log("timezone", dbOSTZ, "tz", tz, "error", err)
@@ -570,7 +574,7 @@ func (c *conn) initTZ() error {
 	return nil
 }
 
-func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
+func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, error) {
 	if dbTZ == "" && dbOSTZ != "" {
 		dbTZ = dbOSTZ
 	} else if dbTZ != "" && dbOSTZ == "" {
@@ -602,10 +606,12 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 		}
 
 		// Oracle DB has three time zones: SESSIONTIMEZONE, DBTIMEZONE, and OS time zone (SYSDATE, SYSTIMESTAMP): https://stackoverflow.com/a/29272926
-		if dbI, err := atoi(dbTZ); err == nil {
-			if tzI, err := atoi(dbOSTZ); err == nil && dbI != tzI &&
-				dbI+100 != tzI && tzI+100 != dbI { // Compensate for Daylight Savings
-				fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/blob/master/doc/timezone.md\n", dbTZ, dbI, dbOSTZ, tzI)
+		if !noTZCheck {
+			if dbI, err := atoi(dbTZ); err == nil {
+				if tzI, err := atoi(dbOSTZ); err == nil && dbI != tzI &&
+					dbI+100 != tzI && tzI+100 != dbI { // Compensate for Daylight Savings
+					fmt.Fprintf(os.Stderr, "godror WARNING: discrepancy between DBTIMEZONE (%q=%d) and SYSTIMESTAMP (%q=%d) - set connection timezone, see https://github.com/godror/godror/blob/master/doc/timezone.md\n", dbTZ, dbI, dbOSTZ, tzI)
+				}
 			}
 		}
 	}
@@ -624,6 +630,9 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
 		if tz, err = time.LoadLocation(dbTZ); err == nil {
+			if tz == nil {
+				tz = time.UTC
+			}
 			_, off = now.In(tz).Zone()
 			return tz, off, nil
 		}
@@ -652,7 +661,9 @@ func calculateTZ(dbTZ, dbOSTZ string) (*time.Location, int, error) {
 	if off == 0 {
 		tz = time.UTC
 	} else {
-		tz = time.FixedZone(dbOSTZ, off)
+		if tz = time.FixedZone(dbOSTZ, off); tz == nil {
+			tz = time.UTC
+		}
 	}
 	return tz, off, nil
 }

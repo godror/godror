@@ -25,7 +25,8 @@
 //     poolWaitTimeout=5m
 //     poolSessionMaxLifetime=1h
 //     poolSessionTimeout=30s
-//     timezone=local
+//     timezone=
+//     noTimezoneCheck=
 //     newPassword=
 //     onInit="ALTER SESSION SET current_schema=my_schema"
 //     configDir=

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ## [v0.24.0]
+### Added
+- noTimezoneCheck flag in connection string to suppress the WARNING printout
+- tests use GODROR_TEST_DSN env var
+
 ### Changed
 - GetCompileErrors requires context.Context.
 - ObjectType became a pointer (uses a mutex, must be a pointer)
