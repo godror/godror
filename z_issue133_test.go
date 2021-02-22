@@ -1,12 +1,16 @@
 package godror_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,6 +20,108 @@ import (
 	godror "github.com/godror/godror"
 )
 
+func TestMemoryAlloc133(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-run=^TestMergeMemory133$", "-count=1")
+	cmd.Env = append(os.Environ(), "DPI_DEBUG_LEVEL=32", "RUNS=1")
+	cmd.Stderr = os.Stderr
+	rc, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	t.Logf("Start separate test process of env DPI_DEBUG_LEVEL=32 RUNS=1 %v", cmd.Args)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	startPss, err := readSmaps(cmd.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var endPss uint64
+	allocs := make(map[uintptr]string)
+	prefix := []byte("ODPI [")
+
+	br := bufio.NewScanner(rc)
+	for br.Scan() {
+		line := br.Bytes()
+		if !bytes.HasPrefix(line, prefix) {
+			continue
+		}
+		line = line[len(prefix):]
+		i := bytes.Index(line, []byte(": "))
+		if i < 0 {
+			continue
+		}
+		line = line[i+2:]
+		t.Log(string(line))
+		if bytes.HasPrefix(line, []byte("OCI allocated ")) || bytes.HasPrefix(line, []byte("allocated ")) {
+			ptr, err := getptr(line[8:])
+			if err != nil {
+				t.Fatalf("%s: %+v", string(line), err)
+			}
+			allocs[ptr] = string(line)
+		} else if bytes.Contains(line, []byte("freed ptr at ")) {
+			ptr, err := getptr(line[12:])
+			if err != nil {
+				t.Fatalf("%s: %+v", string(line), err)
+			}
+			delete(allocs, ptr)
+		}
+		pss, err := readSmaps(cmd.Process.Pid)
+		if err != nil {
+			if endPss == 0 {
+				t.Error(err)
+			}
+		} else if pss != 0 {
+			endPss = pss
+		}
+	}
+	t.Logf("start: %d end: %d", startPss, endPss)
+	if len(allocs) != 0 {
+		t.Error("Remaining allocations:", allocs)
+	}
+}
+
+func getptr(line []byte) (uintptr, error) {
+	i := bytes.Index(line, []byte(" 0x"))
+	if i < 0 {
+		return 0, fmt.Errorf("no 0x")
+	}
+	line = line[i+3:]
+	var a [16]byte
+	for i, c := range line {
+		if '0' <= c && c <= '9' ||
+			'a' <= c && c <= 'f' ||
+			'A' <= c && c <= 'F' {
+			a[cap(a)-1-i] = c
+		} else {
+			break
+		}
+	}
+	src, dst := a[:], a[:]
+	for i, c := range src {
+		if c != 0 {
+			if (cap(a)-i)%2 == 0 {
+				src = src[i:]
+			} else {
+				src = src[i-1:]
+				src[0] = '0'
+			}
+			break
+		}
+	}
+	n, err := hex.Decode(dst, src)
+	if err != nil {
+		return 0, err
+	}
+	for i := n; i < 8; i++ {
+		dst[i] = 0
+	}
+	return uintptr(binary.LittleEndian.Uint64(dst[:8])), nil
+}
+
 func TestMergeMemory133(t *testing.T) {
 	testDb.Exec("DROP PACKAGE tst_bench_25")
 	firstRowBytes, _ := strconv.Atoi(os.Getenv("FIRST_ROW_BYTES"))
@@ -24,9 +130,13 @@ func TestMergeMemory133(t *testing.T) {
 	}
 	rowsToInsert, _ := strconv.Atoi(os.Getenv("ROWS_TO_INSERT"))
 	if rowsToInsert <= 0 {
-		rowsToInsert = 1000
+		rowsToInsert = 200000
 	}
 	useLobs, _ := strconv.ParseBool(os.Getenv("USE_LOBS"))
+	runs, _ := strconv.Atoi(os.Getenv("RUNS"))
+	if runs <= 0 {
+		runs = 64
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -50,17 +160,18 @@ func TestMergeMemory133(t *testing.T) {
 	t.Logf("first row bytes len: %d", firstRowBytes)
 
 	var m runtime.MemStats
-	for loopCnt := 0; loopCnt < 64; loopCnt++ {
+	pid := os.Getpid()
+	for loopCnt := 0; loopCnt < runs; loopCnt++ {
 		t.Logf("Start merge loopCnt: %d\n", loopCnt)
 		if err := issue133Inner(ctx, t, conn, rowsToInsert, firstRowBytes, useLobs); err != nil {
 			t.Fatal(err)
 		}
 		runtime.ReadMemStats(&m)
 		t.Logf("Alloc: %.3f, totalAlloc: %.3f, Heap: %.3f, Sys: %.3f , NumGC: %d\n",
-			float64(m.Alloc)/1024/1024, float64(m.TotalAlloc)/1024/1024,
+			float64(m.Alloc)/1024/1024, float64(m.TotalAlloc)/1025/1024,
 			float64(m.HeapInuse)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
 
-		pss, err := readSmaps()
+		pss, err := readSmaps(pid)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +189,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 	}
 	defer tx.Rollback()
 
-	const qry = `MERGE /*+ INDEX(x)*/ INTO test_many_rows x 
+	const qry = `MERGE /*+ INDEX(x) */ INTO test_many_rows x 
 			USING (select :ID ID, :text text from dual) y 
 			ON (x.id = y.id) 
 			WHEN MATCHED 
@@ -91,7 +202,7 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 	}
 	defer stmt.Close()
 
-	const batchSize = 100
+	const batchSize = 10000
 	const nextRowBytes = 75
 	firstRow := strings.Repeat("a", firstRowBytes)
 	nextRow := strings.Repeat("b", nextRowBytes)
@@ -151,8 +262,8 @@ func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInse
 	return nil
 }
 
-func readSmaps() (uint64, error) {
-	b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", os.Getpid()))
+func readSmaps(pid int) (uint64, error) {
+	b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", pid))
 	if err != nil {
 		return 0, err
 	}
