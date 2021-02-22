@@ -47,25 +47,24 @@ func TestMemoryAlloc133(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	allocs := make(map[uintptr]string)
+	type alloc struct {
+		Line string
+		Size uint32
+	}
+	allocs := make(map[uintptr]alloc)
 	prefix := []byte("ODPI [")
-
+	var dealloc uint64
 	countRemaining := func() uint64 {
 		var remainder uint64
 		for _, v := range allocs {
-			i := strings.Index(v, " bytes ")
-			v = v[:i]
-			n, err := strconv.ParseUint(v[strings.LastIndexByte(v, ' ')+1:], 10, 64)
-			if err != nil {
-				t.Fatalf("%q: %+v", v, err)
-			}
-			remainder += n
+			remainder += uint64(v.Size)
 		}
 		if remainder > 1<<20 {
-			t.Errorf("Remained %d bytes in %d allocations.", remainder, len(allocs))
+			t.Errorf("Remained %d bytes from %d in %d allocations.", remainder, dealloc+remainder, len(allocs))
 		} else {
-			t.Logf("Remained %d bytes in %d allocations.", remainder, len(allocs))
+			t.Logf("Remained %d bytes from %d in %d allocations.", remainder, dealloc+remainder, len(allocs))
 		}
+		dealloc = 0
 		return remainder
 	}
 
@@ -110,15 +109,27 @@ func TestMemoryAlloc133(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %+v", string(line), err)
 			}
-			allocs[ptr] = string(line)
+			size, err := getsize(line)
+			if err != nil {
+				t.Fatalf("%s: %+v", string(line), err)
+			}
+			allocs[ptr] = alloc{Line: string(line), Size: size}
 		} else if bytes.Contains(line, []byte("freed ptr at ")) {
 			ptr, err := getptr(line[12:])
 			if err != nil {
 				t.Fatalf("%s: %+v", string(line), err)
 			}
+			dealloc += uint64(allocs[ptr].Size)
 			delete(allocs, ptr)
 		}
 	}
+}
+
+func getsize(line []byte) (uint32, error) {
+	i := bytes.Index(line, []byte(" bytes "))
+	line = line[:i]
+	n, err := strconv.ParseUint(string(line[bytes.LastIndexByte(line, ' ')+1:]), 10, 32)
+	return uint32(n), err
 }
 
 func getptr(line []byte) (uintptr, error) {
@@ -215,11 +226,15 @@ func TestMergeMemory133(t *testing.T) {
 		t.Logf("Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n",
 			float64(m.Alloc)/1024/1024, float64(m.HeapInuse)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
 
-		pss, err := readSmaps(pid)
+		rss, err := readSmaps(pid)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf(endMergeLoopCnt+"%d; process memory (Pss): %.3f MiB\n", loopCnt, float64(pss)/1024)
+		t.Logf(endMergeLoopCnt+"%d; process memory (rss): %.3f MiB\n", loopCnt, float64(rss)/1024)
+	}
+	if runs < 64 {
+		t.Log("SLEEP a minute")
+		time.Sleep(time.Minute)
 	}
 }
 
@@ -311,8 +326,10 @@ func readSmaps(pid int) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var pss uint64
-	pfx := []byte("Pss:")
+	var rss uint64
+	m := make(map[string]uint64)
+	pfx := []byte("Rss:")
+	var key string
 	for _, line := range bytes.Split(b, []byte("\n")) {
 		if bytes.HasPrefix(line, pfx) {
 			line = bytes.TrimSpace(line[len(pfx):])
@@ -324,8 +341,15 @@ func readSmaps(pid int) (uint64, error) {
 			if err != nil {
 				return 0, err
 			}
-			pss += size
+			rss += size
+			m[key] += size
+		} else if bytes.IndexByte(line, '-') > 0 {
+			f := bytes.Fields(line)
+			if len(f) > 5 {
+				key = string(f[5])
+			}
 		}
 	}
-	return pss, nil
+	fmt.Println(m)
+	return rss, nil
 }
