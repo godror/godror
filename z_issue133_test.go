@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -20,42 +22,89 @@ import (
 	godror "github.com/godror/godror"
 )
 
+var flagAlloc133 = flag.String("alloc133", "alloc133.txt", "file to write alloc info")
+
+const beginMergeLoopCnt = "---BEGIN merge loopCnt: "
+const endMergeLoopCnt = "---END merge loopCnt: "
+
 func TestMemoryAlloc133(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "test", "-run=^TestMergeMemory133$", "-count=1")
-	cmd.Env = append(os.Environ(), "DPI_DEBUG_LEVEL=32", "RUNS=1")
-	cmd.Stderr = os.Stderr
+	if err := exec.CommandContext(ctx, "go", "test", "-c").Run(); err != nil {
+		t.Fatalf("compiling: %+v", err)
+	}
+	stopConnStats()
+	const runs = "3"
+	cmd := exec.CommandContext(ctx, "./godror.test", "-test.run=^TestMergeMemory133$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), "DPI_DEBUG_LEVEL=32", "RUNS="+runs)
 	rc, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rc.Close()
-	t.Logf("Start separate test process of env DPI_DEBUG_LEVEL=32 RUNS=1 %v", cmd.Args)
+	cmd.Stderr = cmd.Stdout
+	t.Logf("Start separate test process of env DPI_DEBUG_LEVEL=32 RUNS="+runs+" %v", cmd.Args)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	startPss, err := readSmaps(cmd.Process.Pid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var endPss uint64
 	allocs := make(map[uintptr]string)
 	prefix := []byte("ODPI [")
 
-	br := bufio.NewScanner(rc)
+	countRemaining := func() uint64 {
+		var remainder uint64
+		for _, v := range allocs {
+			i := strings.Index(v, " bytes ")
+			v = v[:i]
+			n, err := strconv.ParseUint(v[strings.LastIndexByte(v, ' ')+1:], 10, 64)
+			if err != nil {
+				t.Fatalf("%q: %+v", v, err)
+			}
+			remainder += n
+		}
+		if remainder > 1<<20 {
+			t.Errorf("Remained %d bytes in %d allocations.", remainder, len(allocs))
+		} else {
+			t.Logf("Remained %d bytes in %d allocations.", remainder, len(allocs))
+		}
+		return remainder
+	}
+
+	fh, err := os.Create(*flagAlloc133)
+	if err != nil {
+		t.Fatalf("%q: %+v", *flagAlloc133, err)
+	}
+	defer fh.Close()
+
+	var inLoop bool
+	br := bufio.NewScanner(io.TeeReader(rc, fh))
 	for br.Scan() {
 		line := br.Bytes()
-		if !bytes.HasPrefix(line, prefix) {
+		if !inLoop {
+			if bytes.Contains(line, []byte(": "+beginMergeLoopCnt)) {
+				inLoop = true
+			} else {
+				continue
+			}
+		} else if bytes.Contains(line, []byte(": "+endMergeLoopCnt)) {
+			t.Log(string(line))
+			inLoop = false
+			countRemaining()
 			continue
 		}
+
+		if !bytes.HasPrefix(line, prefix) {
+			if bytes.Contains(line, []byte("z_issue133_test.go:")) {
+				t.Log(string(line))
+			}
+			continue
+		}
+
 		line = line[len(prefix):]
 		i := bytes.Index(line, []byte(": "))
 		if i < 0 {
 			continue
 		}
 		line = line[i+2:]
-		t.Log(string(line))
 		if bytes.HasPrefix(line, []byte("OCI allocated ")) || bytes.HasPrefix(line, []byte("allocated ")) {
 			ptr, err := getptr(line[8:])
 			if err != nil {
@@ -69,18 +118,6 @@ func TestMemoryAlloc133(t *testing.T) {
 			}
 			delete(allocs, ptr)
 		}
-		pss, err := readSmaps(cmd.Process.Pid)
-		if err != nil {
-			if endPss == 0 {
-				t.Error(err)
-			}
-		} else if pss != 0 {
-			endPss = pss
-		}
-	}
-	t.Logf("start: %d end: %d", startPss, endPss)
-	if len(allocs) != 0 {
-		t.Error("Remaining allocations:", allocs)
 	}
 }
 
@@ -123,14 +160,13 @@ func getptr(line []byte) (uintptr, error) {
 }
 
 func TestMergeMemory133(t *testing.T) {
-	testDb.Exec("DROP PACKAGE tst_bench_25")
 	firstRowBytes, _ := strconv.Atoi(os.Getenv("FIRST_ROW_BYTES"))
 	if firstRowBytes <= 0 {
 		firstRowBytes = 20000
 	}
 	rowsToInsert, _ := strconv.Atoi(os.Getenv("ROWS_TO_INSERT"))
 	if rowsToInsert <= 0 {
-		rowsToInsert = 200000
+		rowsToInsert = 100000
 	}
 	useLobs, _ := strconv.ParseBool(os.Getenv("USE_LOBS"))
 	runs, _ := strconv.Atoi(os.Getenv("RUNS"))
@@ -141,20 +177,23 @@ func TestMergeMemory133(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	conn, err := testDb.Conn(ctx)
+	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%q: %+v", testConStr, err)
 	}
-	defer conn.Close()
+	P.StandaloneConnection = true
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
+	db.SetMaxIdleConns(0)
 
-	conn.ExecContext(ctx, "DROP TABLE test_many_rows")
+	db.ExecContext(ctx, "DROP TABLE test_many_rows")
 	qry := "CREATE TABLE test_many_rows (id number(10), text clob)"
-	if _, err := conn.ExecContext(ctx, qry); err != nil {
+	if _, err := db.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	defer conn.ExecContext(ctx, "DROP TABLE test_many_rows")
+	defer db.ExecContext(ctx, "DROP TABLE test_many_rows")
 	qry = "CREATE index test_many_rows_id_idx on test_many_rows(id)"
-	if _, err := conn.ExecContext(ctx, qry); err != nil {
+	if _, err := db.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	t.Logf("first row bytes len: %d", firstRowBytes)
@@ -162,20 +201,25 @@ func TestMergeMemory133(t *testing.T) {
 	var m runtime.MemStats
 	pid := os.Getpid()
 	for loopCnt := 0; loopCnt < runs; loopCnt++ {
-		t.Logf("Start merge loopCnt: %d\n", loopCnt)
-		if err := issue133Inner(ctx, t, conn, rowsToInsert, firstRowBytes, useLobs); err != nil {
+		t.Logf(beginMergeLoopCnt+"%d\n", loopCnt)
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = issue133Inner(ctx, t, conn, rowsToInsert, firstRowBytes, useLobs)
+		conn.Close()
+		if err != nil {
 			t.Fatal(err)
 		}
 		runtime.ReadMemStats(&m)
-		t.Logf("Alloc: %.3f, totalAlloc: %.3f, Heap: %.3f, Sys: %.3f , NumGC: %d\n",
-			float64(m.Alloc)/1024/1024, float64(m.TotalAlloc)/1025/1024,
-			float64(m.HeapInuse)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
+		t.Logf("Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n",
+			float64(m.Alloc)/1024/1024, float64(m.HeapInuse)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
 
 		pss, err := readSmaps(pid)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("Current process memory (Pss): %.3f MiB\n", float64(pss)/1024)
+		t.Logf(endMergeLoopCnt+"%d; process memory (Pss): %.3f MiB\n", loopCnt, float64(pss)/1024)
 	}
 }
 
