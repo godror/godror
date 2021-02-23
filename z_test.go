@@ -69,6 +69,7 @@ func init() {
 	}
 
 	eDSN := os.Getenv("GODROR_TEST_DSN")
+	fmt.Println("eDSN:", eDSN)
 	var configDir string
 	if eDSN == "" {
 		wd, err := os.Getwd()
@@ -157,7 +158,7 @@ func init() {
 		MaxLifeTime:    5 * time.Minute,
 		SessionTimeout: 1 * time.Minute,
 	}
-	fmt.Printf("export GODROR_TEST_DSN=%q\n", eDSN)
+	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.StringWithPassword())
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}

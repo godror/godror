@@ -27,7 +27,7 @@ var flagAlloc133 = flag.String("alloc133", "alloc133.txt", "file to write alloc 
 const beginMergeLoopCnt = "---BEGIN merge loopCnt: "
 const endMergeLoopCnt = "---END merge loopCnt: "
 
-func TestMemoryAlloc133(t *testing.T) {
+func BenchmarkMemoryAlloc133(t *testing.B) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	if err := exec.CommandContext(ctx, "go", "test", "-c").Run(); err != nil {
@@ -170,7 +170,7 @@ func getptr(line []byte) (uintptr, error) {
 	return uintptr(binary.LittleEndian.Uint64(dst[:8])), nil
 }
 
-func TestMergeMemory133(t *testing.T) {
+func BenchmarkMergeMemory133(t *testing.B) {
 	firstRowBytes, _ := strconv.Atoi(os.Getenv("FIRST_ROW_BYTES"))
 	if firstRowBytes <= 0 {
 		firstRowBytes = 20000
@@ -181,9 +181,6 @@ func TestMergeMemory133(t *testing.T) {
 	}
 	useLobs, _ := strconv.ParseBool(os.Getenv("USE_LOBS"))
 	runs, _ := strconv.Atoi(os.Getenv("RUNS"))
-	if runs <= 0 {
-		runs = 64
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -211,7 +208,10 @@ func TestMergeMemory133(t *testing.T) {
 
 	var m runtime.MemStats
 	pid := os.Getpid()
-	for loopCnt := 0; loopCnt < runs; loopCnt++ {
+	for loopCnt := 0; loopCnt < t.N; loopCnt++ {
+		if runs != 0 && loopCnt == runs {
+			break
+		}
 		t.Logf(beginMergeLoopCnt+"%d\n", loopCnt)
 		conn, err := db.Conn(ctx)
 		if err != nil {
@@ -238,7 +238,7 @@ func TestMergeMemory133(t *testing.T) {
 	}
 }
 
-func issue133Inner(ctx context.Context, t *testing.T, conn *sql.Conn, rowsToInsert, firstRowBytes int, useLobs bool) error {
+func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInsert, firstRowBytes int, useLobs bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 

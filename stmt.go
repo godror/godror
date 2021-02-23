@@ -637,12 +637,6 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 	if Log != nil {
 		Log("enter", "bindVars", "st", fmt.Sprintf("%p", st), "args", args)
 	}
-	for i, v := range st.vars[:cap(st.vars)] {
-		if v != nil {
-			C.dpiVar_release(v)
-			st.vars[i], st.varInfos[i] = nil, varInfo{}
-		}
-	}
 	var named bool
 	if cap(st.vars) < len(args) {
 		st.vars = make([]*C.dpiVar, len(args))
@@ -789,7 +783,12 @@ func (st *statement) bindVars(args []driver.NamedValue, Log logFunc) error {
 		if vi.IsPLSArray && vi.SliceLen > maxArraySize {
 			return fmt.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
-		if st.vars[i] == nil || st.data[i] == nil || st.varInfos[i] != vi {
+		mustAllocate := st.vars[i] == nil || st.data[i] == nil
+		if !mustAllocate && st.varInfos[i] != vi {
+			C.dpiVar_release(st.vars[i])
+			mustAllocate = true
+		}
+		if mustAllocate {
 			if st.vars[i], st.data[i], err = st.newVar(vi); err != nil {
 				return fmt.Errorf("%d: %w", i, err)
 			}
