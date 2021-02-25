@@ -1078,8 +1078,15 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = dataGetBytes
 		}
 
-	case time.Time, []time.Time, NullTime, []NullTime:
+	case time.Time, NullTime:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+		info.set = st.conn.dataSetTime
+		if info.isOut {
+			*get = st.conn.dataGetTime
+		}
+
+	case []time.Time, []NullTime:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 		info.set = st.conn.dataSetTime
 		if info.isOut {
 			*get = st.conn.dataGetTime

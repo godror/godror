@@ -488,7 +488,9 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 	case string, []string, nil:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
 		bufSize = 32767
-	case time.Time, []time.Time, NullTime, []NullTime:
+	case time.Time, NullTime:
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+	case []time.Time, []NullTime:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
 	case userType, []userType:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
