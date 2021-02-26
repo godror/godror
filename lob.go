@@ -172,7 +172,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			if Log != nil {
 				Log("msg", "LOB read", "error", err)
 			}
-			if dlr.finished = err.(*OraErr).Code() == 1403; dlr.finished {
+			var codeErr interface{ Code() int }
+			if dlr.finished = errors.As(err, &codeErr) && codeErr.Code() == 1403; dlr.finished {
 				dlr.offset += n
 				return int(n), io.EOF
 			}
@@ -255,7 +256,8 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 	if C.dpiLob_getIsResourceOpen(lob, &isOpen) != C.DPI_FAILURE && isOpen == 1 {
 		if C.dpiLob_closeResource(lob) == C.DPI_FAILURE {
 			if err := d.getError(); err != nil {
-				if err.(*OraErr).Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
+				var codeErr interface{ Code() int }
+				if errors.As(err, &codeErr) && codeErr.Code() != 22289 { // cannot perform %s operation on an unopened file or LOB
 					return fmt.Errorf("closeResource(%p): %w", lob, err)
 				}
 			}
