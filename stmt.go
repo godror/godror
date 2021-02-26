@@ -1086,7 +1086,11 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		}
 
 	case []time.Time, []NullTime:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+		// info.Typ should be C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, but it does not work for DATE PL/SQL associative arrays
+		if st.plSQLArrays {
+			info.typ = C.DPI_ORACLE_TYPE_DATE
+		}
 		info.set = st.conn.dataSetTime
 		if info.isOut {
 			*get = st.conn.dataGetTime

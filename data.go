@@ -491,7 +491,8 @@ func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
 	case time.Time, NullTime:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
 	case []time.Time, []NullTime:
-		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_DATE, C.DPI_NATIVE_TYPE_TIMESTAMP
+		// Maybe vi.Typ should be C.DPI_ORACLE_TYPE_DATE
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
 	case userType, []userType:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		switch v := v.(type) {
