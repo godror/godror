@@ -10,7 +10,6 @@ package godror
 */
 import "C"
 import (
-	//"fmt"
 	"bufio"
 	"fmt"
 	"io"
@@ -142,7 +141,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr.finished {
 		return 0, io.EOF
 	}
-	if len(p) == 0 {
+	if len(p) < 1 || dlr.IsClob && len(p) < 4 {
 		return 0, io.ErrShortBuffer
 	}
 	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
@@ -159,6 +158,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	n := C.uint64_t(len(p))
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
+	if Log != nil {
+		Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n)
+	}
 	if dlr.offset+1 >= dlr.sizePlusOne {
 		if Log != nil {
 			Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
@@ -166,7 +168,10 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
-		if err := fmt.Errorf("readBytes: %w", dlr.getError()); err != nil {
+		if Log != nil {
+			Log("msg", "readBytes", "error", dlr.getError())
+		}
+		if err := dlr.getError(); err != nil {
 			C.dpiLob_close(dlr.dpiLob)
 			dlr.dpiLob = nil
 			if Log != nil {
@@ -177,17 +182,19 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 				dlr.offset += n
 				return int(n), io.EOF
 			}
-			return int(n), fmt.Errorf("lob=%p offset=%d n=%d: %w", dlr.dpiLob, dlr.offset, len(p), err)
+			return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
 		}
 	}
-	// fmt.Printf("read %d\n", n)
+	if Log != nil {
+		Log("msg", "read", "n", n)
+	}
 	if dlr.IsClob {
 		dlr.offset += C.uint64_t(utf8.RuneCount(p[:n]))
 	} else {
 		dlr.offset += n
 	}
 	var err error
-	if n == 0 || dlr.offset+1 >= dlr.sizePlusOne {
+	if dlr.offset+1 >= dlr.sizePlusOne {
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
 		dlr.finished = true
