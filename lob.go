@@ -1,4 +1,4 @@
-// Copyright 2017, 2020 The Godror Authors
+// Copyright 2017, 2021 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strings"
 	"sync"
 	"unicode/utf8"
 	"unsafe"
@@ -105,10 +106,21 @@ var freeBufs = make(chan []byte, 4)
 // Uses efficient, multiple-of-LOB-chunk-size buffered reads.
 func (dlr *dpiLobReader) WriteTo(w io.Writer) (n int64, err error) {
 	size := dlr.ChunkSize()
-	for size < 1<<19 { // at most 1M
-		size *= 2
+	const minBufferSize = 1 << 20
+	if size <= 0 {
+		size = minBufferSize
+	} else {
+		for size < minBufferSize/2 { // at most 1M
+			size *= 2
+		}
 	}
-	return io.CopyBuffer(w, io.Reader(dlr), make([]byte, size))
+	return io.CopyBuffer(
+		w,
+		// Mask WriteTo method
+		io.Reader(struct {
+			io.Reader
+		}{dlr}),
+		make([]byte, size))
 }
 
 // ChunkSize returns the LOB's native chunk size. Reads/writes with a multiply of this size is the most performant.
@@ -138,7 +150,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if Log != nil {
 		Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
-	if dlr.finished {
+	if dlr.finished || dlr.dpiLob == nil {
 		return 0, io.EOF
 	}
 	if len(p) < 1 || dlr.IsClob && len(p) < 4 {
@@ -149,10 +161,14 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if dlr.sizePlusOne == 0 {
 		// never read size before
 		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
-			err := fmt.Errorf("getSize: %w", dlr.getError())
+			err := dlr.getError()
 			C.dpiLob_close(dlr.dpiLob)
 			dlr.dpiLob = nil
-			return 0, err
+			var coder interface{ Code() int }
+			if errors.As(err, &coder) && coder.Code() == 22922 || strings.Contains(err.Error(), "invalid dpiLob handle") {
+				return 0, io.EOF
+			}
+			return 0, fmt.Errorf("getSize: %w", err)
 		}
 		dlr.sizePlusOne++
 	}
@@ -315,7 +331,14 @@ func (dl *DirectLob) Close() error {
 // the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) Size() (int64, error) {
 	var n C.uint64_t
+	if dl.dpiLob == nil {
+		return 0, nil
+	}
 	if err := dl.conn.checkExec(func() C.int { return C.dpiLob_getSize(dl.dpiLob, &n) }); err != nil {
+		var coder interface{ Code() int }
+		if errors.As(err, &coder) && coder.Code() == 22922 || strings.Contains(err.Error(), "invalid dpiLob handle") {
+			return 0, nil
+		}
 		return int64(n), fmt.Errorf("getSize: %w", err)
 	}
 	return int64(n), nil
@@ -343,6 +366,9 @@ func (dl *DirectLob) Set(p []byte) error {
 // ReadAt reads at most len(p) bytes into p at offset.
 func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 	n := C.uint64_t(len(p))
+	if dl.dpiLob == nil {
+		return 0, io.EOF
+	}
 	if err := dl.conn.checkExec(func() C.int {
 		return C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n)
 	}); err != nil {
