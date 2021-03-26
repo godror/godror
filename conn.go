@@ -705,59 +705,72 @@ func maybeBadConn(err error, c *conn) error {
 	if Log != nil {
 		Log("msg", "maybeBadConn", "err", err, "errS", fmt.Sprintf("%q", err.Error()), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
 	}
-	var cd interface{ Code() int }
-	if errors.As(err, &cd) {
-		// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
-		switch cd.Code() {
-		case 0:
-			if strings.Contains(err.Error(), " DPI-1002: ") {
-				cl()
-				return driver.ErrBadConn
-			}
-
-		case // cases by experience:
-			12170, // TNS:Connect timeout occurred
-			12528, // TNS:listener: all appropriate instances are blocking new connections
-			12545: // Connect failed because target host or object does not exist
-			fallthrough
-		case // cases from go-oci8
-			1033, // ORACLE initialization or shutdown in progress
-			1034: // ORACLE not available
-			fallthrough
-		case //cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
-			22,    // invalid session ID; access denied
-			28,    // your session has been killed
-			31,    // your session has been marked for kill
-			45,    // your session has been terminated with no replay
-			378,   // buffer pools cannot be created as specified
-			602,   // internal programming exception
-			603,   // ORACLE server session terminated by fatal error
-			609,   // could not attach to incoming connection
-			1012,  // not logged on
-			1041,  // internal error. hostdef extension doesn't exist
-			1043,  // user side memory corruption
-			1089,  // immediate shutdown or close in progress
-			1092,  // ORACLE instance terminated. Disconnection forced
-			2396,  // exceeded maximum idle time, please connect again
-			3113,  // end-of-file on communication channel
-			3114,  // not connected to ORACLE
-			3122,  // attempt to close ORACLE-side window on user side
-			3135,  // connection lost contact
-			3136,  // inbound connection timed out
-			12153, // TNS:not connected
-			12537, // TNS:connection closed
-			12547, // TNS:lost contact
-			12570, // TNS:packet reader failure
-			12583, // TNS:no reader
-			27146, // post/wait initialization failed
-			28511, // lost RPC connection
-			28547, // connection to server failed, probable Oracle Net admin error
-			56600: // an illegal OCI function call was issued
-			cl()
-			return driver.ErrBadConn
-		}
+	if IsBadConn(err) {
+		cl()
+		return driver.ErrBadConn
 	}
 	return err
+}
+
+func IsBadConn(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, driver.ErrBadConn) {
+		return true
+	}
+	var cd interface{ Code() int }
+	if !errors.As(err, &cd) {
+		return false
+	}
+	// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
+	switch cd.Code() {
+	case 0:
+		if strings.Contains(err.Error(), " DPI-1002: ") {
+			return true
+		}
+
+	case // cases by experience:
+		12170, // TNS:Connect timeout occurred
+		12528, // TNS:listener: all appropriate instances are blocking new connections
+		12545: // Connect failed because target host or object does not exist
+		fallthrough
+	case // cases from go-oci8
+		1033, // ORACLE initialization or shutdown in progress
+		1034: // ORACLE not available
+		fallthrough
+	case //cases from https://github.com/oracle/odpi/blob/master/src/dpiError.c#L61-L94
+		22,    // invalid session ID; access denied
+		28,    // your session has been killed
+		31,    // your session has been marked for kill
+		45,    // your session has been terminated with no replay
+		378,   // buffer pools cannot be created as specified
+		602,   // internal programming exception
+		603,   // ORACLE server session terminated by fatal error
+		609,   // could not attach to incoming connection
+		1012,  // not logged on
+		1041,  // internal error. hostdef extension doesn't exist
+		1043,  // user side memory corruption
+		1089,  // immediate shutdown or close in progress
+		1092,  // ORACLE instance terminated. Disconnection forced
+		2396,  // exceeded maximum idle time, please connect again
+		3113,  // end-of-file on communication channel
+		3114,  // not connected to ORACLE
+		3122,  // attempt to close ORACLE-side window on user side
+		3135,  // connection lost contact
+		3136,  // inbound connection timed out
+		12153, // TNS:not connected
+		12537, // TNS:connection closed
+		12547, // TNS:lost contact
+		12570, // TNS:packet reader failure
+		12583, // TNS:no reader
+		27146, // post/wait initialization failed
+		28511, // lost RPC connection
+		28547, // connection to server failed, probable Oracle Net admin error
+		56600: // an illegal OCI function call was issued
+		return true
+	}
+	return false
 }
 
 func (c *conn) setTraceTag(tt TraceTag) error {
