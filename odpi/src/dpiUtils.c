@@ -142,7 +142,7 @@ int dpiUtils__getAttrStringWithDup(const char *action, const void *ociHandle,
     if (dpiUtils__allocateMemory(1, *valueLength, 0, action, (void**) &temp,
             error) < 0)
         return DPI_FAILURE;
-    *value = (const char*) memcpy(temp, source, *valueLength);
+    *value = (const char*) memmove(temp, source, *valueLength);
     return DPI_SUCCESS;
 }
 

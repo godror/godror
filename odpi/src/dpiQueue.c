@@ -58,7 +58,7 @@ int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
         dpiQueue__free(tempQueue, error);
         return DPI_FAILURE;
     }
-    memcpy(buffer, name, nameLength);
+    memmove(buffer, name, nameLength);
     buffer[nameLength] = '\0';
     tempQueue->name = buffer;
 

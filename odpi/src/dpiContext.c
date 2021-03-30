@@ -197,7 +197,7 @@ int dpiContext_createWithParams(unsigned int majorVersion,
     // modify the original parameters that were passed; then add defaults, if
     // needed
     if (params) {
-        memcpy(&localParams, params, sizeof(localParams));
+        memmove(&localParams, params, sizeof(localParams));
     } else {
         memset(&localParams, 0, sizeof(localParams));
     }
@@ -210,7 +210,7 @@ int dpiContext_createWithParams(unsigned int majorVersion,
             &localParams, context, &error);
     if (status < 0) {
         dpiError__getInfo(&error, &localErrorInfo);
-        memcpy(errorInfo, &localErrorInfo, sizeof(dpiErrorInfo__v33));
+        memmove(errorInfo, &localErrorInfo, sizeof(dpiErrorInfo__v33));
     }
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn end %s -> %d\n", __func__, status);
@@ -257,7 +257,7 @@ int dpiContext_getClientVersion(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, versionInfo)
-    memcpy(versionInfo, context->versionInfo, sizeof(dpiVersionInfo));
+    memmove(versionInfo, context->versionInfo, sizeof(dpiVersionInfo));
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

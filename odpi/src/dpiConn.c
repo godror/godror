@@ -1858,7 +1858,7 @@ int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
         *releaseString = conn->releaseString;
     if (releaseStringLength)
         *releaseStringLength = conn->releaseStringLength;
-    memcpy(versionInfo, &conn->versionInfo, sizeof(dpiVersionInfo));
+    memmove(versionInfo, &conn->versionInfo, sizeof(dpiVersionInfo));
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 

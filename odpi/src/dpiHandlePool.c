@@ -48,7 +48,7 @@ int dpiHandlePool__acquire(dpiHandlePool *pool, void **handle, dpiError *error)
                 dpiMutex__release(pool->mutex);
                 return DPI_FAILURE;
             }
-            memcpy(tempHandles, pool->handles, pool->numSlots * sizeof(void*));
+            memmove(tempHandles, pool->handles, pool->numSlots * sizeof(void*));
             dpiUtils__freeMemory(pool->handles);
             pool->handles = tempHandles;
             pool->numSlots = numSlots;

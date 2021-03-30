@@ -212,7 +212,7 @@ static int dpiJsonNode__fromOracleNumberAsText(dpiJson *json,
                     (void**) &tempBuffers, error) < 0)
                 return DPI_FAILURE;
             if (json->numTempBuffers > 0) {
-                memcpy(tempBuffers, json->tempBuffers,
+                memmove(tempBuffers, json->tempBuffers,
                         json->numTempBuffers * sizeof(char*));
                 dpiUtils__freeMemory(json->tempBuffers);
             }

@@ -132,7 +132,7 @@ static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, uint32_t pos,
                     error) < 0)
                 return DPI_FAILURE;
             entry->nameLength = nameLength;
-            memcpy( (void*) entry->name, name, nameLength);
+            memmove( (void*) entry->name, name, nameLength);
         }
         stmt->numBindVars++;
 
@@ -1706,7 +1706,7 @@ int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos, dpiQueryInfo *info)
     }
 
     // copy query information from internal cache
-    memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
+    memmove(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
 

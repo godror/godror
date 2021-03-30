@@ -140,7 +140,7 @@ static int dpiVar__allocateChunks(dpiDynamicBytes *dynBytes, dpiError *error)
             1, "allocate chunks", (void**) &chunks, error) < 0)
         return DPI_FAILURE;
     if (dynBytes->chunks) {
-        memcpy(chunks, dynBytes->chunks,
+        memmove(chunks, dynBytes->chunks,
                 dynBytes->numChunks * sizeof(dpiDynamicBytesChunk));
         dpiUtils__freeMemory(dynBytes->chunks);
     }
@@ -324,7 +324,7 @@ int dpiVar__copyData(dpiVar *var, uint32_t pos, dpiData *sourceData,
             return dpiVar__setFromRowid(var, pos, sourceData->value.asRowid,
                     error);
         default:
-            memcpy(targetData, sourceData, sizeof(dpiData));
+            memmove(targetData, sourceData, sizeof(dpiData));
     }
 
     return DPI_SUCCESS;
@@ -1148,7 +1148,7 @@ static int dpiVar__setBytesFromDynamicBytes(dpiBytes *bytes,
     // copy memory from chunks to consolidated chunk
     bytes->length = 0;
     for (i = 0; i < dynBytes->numChunks; i++) {
-        memcpy(bytes->ptr + bytes->length, dynBytes->chunks[i].ptr,
+        memmove(bytes->ptr + bytes->length, dynBytes->chunks[i].ptr,
                 dynBytes->chunks[i].length);
         bytes->length += dynBytes->chunks[i].length;
         dpiUtils__freeMemory(dynBytes->chunks[i].ptr);
@@ -1245,7 +1245,7 @@ static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
         if (dpiVar__allocateDynamicBytes(dynBytes, valueLength, error) < 0)
             return DPI_FAILURE;
         if (valueLength > 0)
-            memcpy(dynBytes->chunks->ptr, value, valueLength);
+            memmove(dynBytes->chunks->ptr, value, valueLength);
         dynBytes->numChunks = 1;
         dynBytes->chunks->length = valueLength;
         bytes->ptr = dynBytes->chunks->ptr;
@@ -1255,7 +1255,7 @@ static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
     } else {
         bytes->length = valueLength;
         if (valueLength > 0)
-            memcpy(bytes->ptr, value, valueLength);
+            memmove(bytes->ptr, value, valueLength);
         if (var->type->sizeInBytes == 0) {
             if (var->buffer.actualLength32)
                 var->buffer.actualLength32[pos] = valueLength;

@@ -77,7 +77,7 @@ static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
                 return DPI_FAILURE;
             }
             if (names->nameLengths) {
-                memcpy(tempNameLengths, names->nameLengths,
+                memmove(tempNameLengths, names->nameLengths,
                         names->numNames * sizeof(uint32_t));
                 dpiUtils__freeMemory(names->nameLengths);
             }
@@ -95,7 +95,7 @@ static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
                 return DPI_FAILURE;
             }
             if (*namesBuffer) {
-                memcpy(tempNamesBuffer, *namesBuffer, namesBufferUsed);
+                memmove(tempNamesBuffer, *namesBuffer, namesBufferUsed);
                 dpiUtils__freeMemory(*namesBuffer);
             }
             *namesBuffer = tempNamesBuffer;
@@ -105,7 +105,7 @@ static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
         // store name in buffer and length in array
         // the names array itself is created and populated afterwards in order
         // to avoid unnecessary copying
-        memcpy(ptr, name, nameLength);
+        memmove(ptr, name, nameLength);
         namesBufferUsed += nameLength;
         names->nameLengths[names->numNames] = nameLength;
         names->numNames++;
