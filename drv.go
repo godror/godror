@@ -63,6 +63,9 @@ package godror
 #cgo CFLAGS: -I./odpi/include -I./odpi/src -I./odpi/embed
 
 #include "dpi.c"
+
+// https://www.win.tue.nl/~aeb/linux/misc/gcc-semibug.html
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 */
 import "C"
 
