@@ -4035,3 +4035,43 @@ func getRandomString() string {
 	// fix starting letter as alphabet
 	return "A" + b.String() // E.g. "ExcbsVQs"
 }
+
+func TestNullIssue143(t *testing.T) {
+	t.Parallel()
+	const funQry = `CREATE OR REPLACE FUNCTION test_getXml_143(
+		    pInDate IN DATE,
+		    pOutDate IN DATE,
+		    pAmount IN NUMBER DEFAULT NULL) RETURN CLOB IS BEGIN RETURN(NULL); END;`
+
+	ctx, cancel := context.WithTimeout(testContext("NullIssue143"), 10*time.Second)
+	defer cancel()
+
+	if _, err := testDb.ExecContext(ctx, funQry); err != nil {
+		t.Fatalf("%s: %v", funQry, err)
+	}
+	defer testDb.ExecContext(context.Background(), "DROP FUNCTION test_getXml_143")
+
+	const qry = `begin :xmlResponse := test_getXml_143(pindate => :startDate,
+                                              poutdate => :endDate,
+											  pamount => :amount);end;`
+	stmt, err := testDb.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("prepare %s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	var xmlResponse string
+	params := []interface{}{
+		sql.Named("xmlResponse", sql.Out{Dest: &xmlResponse}),
+		sql.Named("startDate", time.Now()),
+		sql.Named("endDate", time.Now()),
+		sql.Named("amount", nil),
+	}
+	_, err = stmt.ExecContext(ctx, params...)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+
+	// Logic for xmlResponse
+	t.Log(xmlResponse)
+}
