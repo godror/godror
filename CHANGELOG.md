@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.24.3]
+### Added
+- IsBadConn to check for the several error numbers all indicate connection failure
+
 ## [v0.24.0]
 ### Added
 - noTimezoneCheck flag in connection string to suppress the WARNING printout
