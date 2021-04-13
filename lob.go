@@ -98,8 +98,6 @@ type dpiLobReader struct {
 	IsClob              bool
 }
 
-var freeBufs = make(chan []byte, 4)
-
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
 // The return value n is the number of bytes written. Any error encountered during the write is also returned.
 //
