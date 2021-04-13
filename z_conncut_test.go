@@ -266,7 +266,7 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 				time.Sleep(time.Second)
 				continue
 			} else {
-				consecEOF = 0
+				//consecEOF = 0
 				if px.T != nil {
 					px.Logf("Copy from %s to %s: %v", src.RemoteAddr(), dst.RemoteAddr(), err)
 				}

@@ -342,7 +342,7 @@ func testQueue(
 				}
 				seen[s] = i
 			}
-			i += n
+			//i += n
 			if err = tx.Commit(); err != nil {
 				t.Fatal(err)
 			}

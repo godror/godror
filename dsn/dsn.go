@@ -272,6 +272,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 }
 
 // Parse parses the given connection string into a struct.
+//
+// For examples, see [../doc/connection.md](../doc/connection.md)
 func Parse(dataSourceName string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
