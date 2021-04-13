@@ -189,11 +189,7 @@ type drv struct {
 }
 
 func NewDriver() *drv {
-	if defaultDrv == nil {
-		return &drv{}
-	}
-	// Use one global dpiContext - see https://github.com/golang/go/issues/43977
-	return &drv{dpiContext: defaultDrv.dpiContext}
+    return &drv{}
 }
 func (d *drv) Close() error {
 	if d == nil {
@@ -206,10 +202,7 @@ func (d *drv) Close() error {
 	for _, pool := range pools {
 		pool.Close()
 	}
-	// As we use one global dpiContext, don't destroy it
-	if dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx) {
-		C.dpiContext_destroy(dpiCtx)
-	}
+    C.dpiContext_destroy(dpiCtx)
 	return nil
 }
 
