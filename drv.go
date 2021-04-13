@@ -188,8 +188,16 @@ type drv struct {
 	mu            sync.RWMutex
 }
 
+const oneContext = false
+
 func NewDriver() *drv {
-    return &drv{}
+	if oneContext {
+		if defaultDrv == nil {
+			return &drv{}
+		}
+		return &drv{dpiContext: defaultDrv.dpiContext}
+	}
+	return &drv{}
 }
 func (d *drv) Close() error {
 	if d == nil {
@@ -202,7 +210,11 @@ func (d *drv) Close() error {
 	for _, pool := range pools {
 		pool.Close()
 	}
-    C.dpiContext_destroy(dpiCtx)
+	if !oneContext ||
+		// As we use one global dpiContext, don't destroy it
+		(dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
+		C.dpiContext_destroy(dpiCtx)
+	}
 	return nil
 }
 
