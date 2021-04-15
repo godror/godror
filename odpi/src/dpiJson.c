@@ -730,15 +730,17 @@ int dpiJson_getValue(dpiJson *json, uint32_t options, dpiJsonNode **topNode)
 
     if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    if (json->topNode.oracleTypeNum == DPI_ORACLE_TYPE_NONE) {
-        if (dpiOci__jsonDomDocGet(json, &domDoc, &error) < 0)
+    dpiJsonNode__free(&json->topNode);
+    json->topNode.value = &json->topNodeBuffer;
+    json->topNode.oracleTypeNum = DPI_ORACLE_TYPE_NONE;
+    json->topNode.nativeTypeNum = DPI_NATIVE_TYPE_NULL;
+    if (dpiOci__jsonDomDocGet(json, &domDoc, &error) < 0)
+        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+    if (domDoc) {
+        oracleNode = (*domDoc->methods->fnGetRootNode)(domDoc);
+        if (dpiJsonNode__fromOracleToNative(json, &json->topNode, domDoc,
+                oracleNode, options, &error) < 0)
             return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-        if (domDoc) {
-            oracleNode = (*domDoc->methods->fnGetRootNode)(domDoc);
-            if (dpiJsonNode__fromOracleToNative(json, &json->topNode, domDoc,
-                    oracleNode, options, &error) < 0)
-                return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-        }
     }
 
     *topNode = &json->topNode;

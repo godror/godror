@@ -47,6 +47,7 @@ static void *dpiGlobalErrorHandle = NULL;
 static void *dpiGlobalThreadKey = NULL;
 static dpiErrorBuffer dpiGlobalErrorBuffer;
 static dpiVersionInfo dpiGlobalClientVersionInfo;
+static int dpiGlobalInitialized = 0;
 
 // a global mutex is used to ensure that only one thread is used to perform
 // initialization of ODPI-C
@@ -54,7 +55,7 @@ static dpiMutexType dpiGlobalMutex;
 
 // forward declarations of internal functions only used in this file
 static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
-        dpiVersionInfo **clientVersionInfo, dpiError *error);
+        dpiError *error);
 static void dpiGlobal__finalize(void);
 static int dpiGlobal__getErrorBuffer(const char *fnName, dpiError *error);
 
@@ -71,7 +72,6 @@ int dpiGlobal__ensureInitialized(const char *fnName,
         dpiContextCreateParams *params, dpiVersionInfo **clientVersionInfo,
         dpiError *error)
 {
-    dpiVersionInfo versionInfo;
     // initialize error buffer output to global error buffer structure; this is
     // the value that is used if an error takes place before the thread local
     // error structure can be returned
@@ -79,21 +79,17 @@ int dpiGlobal__ensureInitialized(const char *fnName,
     error->buffer = &dpiGlobalErrorBuffer;
     error->buffer->fnName = fnName;
 
-    if (dpiGlobalClientVersionInfo.versionNum != 0) {
-        versionInfo = dpiGlobalClientVersionInfo;
-        *clientVersionInfo = &versionInfo;
-    } else {
     // perform global initializations, if needed
+    if (!dpiGlobalInitialized) {
         dpiMutex__acquire(dpiGlobalMutex);
-        if (dpiGlobalClientVersionInfo.versionNum == 0) {
-            if (dpiGlobal__extendedInitialize(params, clientVersionInfo, error) == DPI_SUCCESS) {
-                dpiGlobalClientVersionInfo = *(*clientVersionInfo);
-            }
-        }
+        if (!dpiGlobalInitialized)
+            dpiGlobal__extendedInitialize(params, error);
         dpiMutex__release(dpiGlobalMutex);
-        if (dpiGlobalClientVersionInfo.versionNum == 0)
+        if (!dpiGlobalInitialized)
             return DPI_FAILURE;
     }
+
+    *clientVersionInfo = &dpiGlobalClientVersionInfo;
     return dpiGlobal__getErrorBuffer(fnName, error);
 }
 
@@ -106,12 +102,12 @@ int dpiGlobal__ensureInitialized(const char *fnName,
 // IANA or Oracle character set name.
 //-----------------------------------------------------------------------------
 static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
-        dpiVersionInfo **clientVersionInfo, dpiError *error)
+        dpiError *error)
 {
     int status;
 
     // load OCI library
-    if (dpiOci__loadLib(params, clientVersionInfo, error) < 0)
+    if (dpiOci__loadLib(params, &dpiGlobalClientVersionInfo, error) < 0)
         return DPI_FAILURE;
 
     // create threaded OCI environment for storing error buffers and for
@@ -138,6 +134,9 @@ static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
         return DPI_FAILURE;
     }
 
+    // mark library as fully initialized
+    dpiGlobalInitialized = 1;
+
     return DPI_SUCCESS;
 }
 
@@ -153,7 +152,7 @@ static void dpiGlobal__finalize(void)
     dpiError error;
 
     dpiMutex__acquire(dpiGlobalMutex);
-    dpiGlobalClientVersionInfo.versionNum = 0;
+    dpiGlobalInitialized = 0;
     error.buffer = &dpiGlobalErrorBuffer;
     if (dpiGlobalThreadKey) {
         dpiOci__threadKeyGet(dpiGlobalEnvHandle, dpiGlobalErrorHandle,
@@ -242,7 +241,7 @@ int dpiGlobal__initError(const char *fnName, dpiError *error)
 
     // check to see if global environment has been initialized; if not, no call
     // to dpiContext_createWithParams() was made successfully
-    if (dpiGlobalClientVersionInfo.versionNum == 0)
+    if (!dpiGlobalInitialized)
         return dpiError__set(error, "check context creation",
                 DPI_ERR_CONTEXT_NOT_CREATED);
 

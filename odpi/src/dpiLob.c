@@ -386,6 +386,22 @@ int dpiLob_getSize(dpiLob *lob, uint64_t *size)
 
 
 //-----------------------------------------------------------------------------
+// dpiLob_getType() [PUBLIC]
+//   Returns the type of the LOB.
+//-----------------------------------------------------------------------------
+int dpiLob_getType(dpiLob *lob, dpiOracleTypeNum *type)
+{
+    dpiError error;
+
+    if (dpiLob__check(lob, __func__, &error) < 0)
+        return dpiGen__endPublicFn(lob, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(lob, type)
+    *type = lob->type->oracleTypeNum;
+    return dpiGen__endPublicFn(lob, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiLob_openResource() [PUBLIC]
 //   Open the LOB's resources to speed further accesses.
 //-----------------------------------------------------------------------------

@@ -284,13 +284,23 @@ void dpiContext_getError(const dpiContext *context, dpiErrorInfo *info)
 int dpiContext_initCommonCreateParams(const dpiContext *context,
         dpiCommonCreateParams *params)
 {
+    dpiCommonCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initCommonCreateParams(context, params);
+
+    // size changed in version 4.2; local structure and check can be dropped
+    // once version 5 released
+    if (context->dpiMinorVersion > 1) {
+        dpiContext__initCommonCreateParams(context, params);
+    } else {
+        dpiContext__initCommonCreateParams(context, &localParams);
+        memcpy(params, &localParams, sizeof(dpiCommonCreateParams__v41));
+    }
+
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

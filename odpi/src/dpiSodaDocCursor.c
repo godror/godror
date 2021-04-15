@@ -107,20 +107,16 @@ int dpiSodaDocCursor_close(dpiSodaDocCursor *cursor)
 // dpiSodaDocCursor_getNext() [PUBLIC]
 //   Return the next document available from the cursor.
 //-----------------------------------------------------------------------------
-int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, uint32_t flags,
+int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, UNUSED uint32_t flags,
         dpiSodaDoc **doc)
 {
     dpiError error;
-    uint32_t mode;
     void *handle;
 
     if (dpiSodaDocCursor__check(cursor, __func__, &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(cursor, doc)
-    mode = DPI_OCI_DEFAULT;
-    if (flags & DPI_SODA_FLAGS_ATOMIC_COMMIT)
-        mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
-    if (dpiOci__sodaDocGetNext(cursor, &handle, mode, &error) < 0)
+    if (dpiOci__sodaDocGetNext(cursor, &handle, &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     *doc = NULL;
     if (handle) {

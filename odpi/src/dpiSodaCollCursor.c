@@ -107,21 +107,17 @@ int dpiSodaCollCursor_close(dpiSodaCollCursor *cursor)
 // dpiSodaCollCursor_getNext() [PUBLIC]
 //   Return the next collection available from the cursor.
 //-----------------------------------------------------------------------------
-int dpiSodaCollCursor_getNext(dpiSodaCollCursor *cursor, uint32_t flags,
+int dpiSodaCollCursor_getNext(dpiSodaCollCursor *cursor, UNUSED uint32_t flags,
         dpiSodaColl **coll)
 {
     dpiError error;
-    uint32_t mode;
     void *handle;
 
     if (dpiSodaCollCursor__check(cursor, __func__, &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(cursor, coll)
-    mode = DPI_OCI_DEFAULT;
-    if (flags & DPI_SODA_FLAGS_ATOMIC_COMMIT)
-        mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
     if (dpiOci__sodaCollGetNext(cursor->db->conn, cursor->handle, &handle,
-            mode, &error) < 0)
+            &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     *coll = NULL;
     if (handle) {

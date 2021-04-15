@@ -52,7 +52,7 @@ static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
 
         // get next collection from cursor
         if (dpiOci__sodaCollGetNext(db->conn, cursorHandle, &collectionHandle,
-                DPI_OCI_DEFAULT, error) < 0)
+                error) < 0)
             return DPI_FAILURE;
         if (!collectionHandle)
             break;

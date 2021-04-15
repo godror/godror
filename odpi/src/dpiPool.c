@@ -485,6 +485,29 @@ int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value)
 
 
 //-----------------------------------------------------------------------------
+// dpiPool_getSodaMetadataCache() [PUBLIC]
+//   Return whether the SODA metadata cache is enabled or not.
+//-----------------------------------------------------------------------------
+int dpiPool_getSodaMetadataCache(dpiPool *pool, int *enabled)
+{
+    dpiError error;
+
+    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(pool, enabled)
+    if (dpiUtils__checkClientVersionMulti(pool->env->versionInfo, 19, 11, 21,
+            3, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+    if (dpiOci__attrGet(pool->env->handle, DPI_OCI_HTYPE_ENV, enabled, NULL,
+            DPI_OCI_ATTR_SODA_METADATA_CACHE, "get SODA metadata cache",
+            &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiPool_getStmtCacheSize() [PUBLIC]
 //   Return the pool's default statement cache size.
 //-----------------------------------------------------------------------------
@@ -546,6 +569,28 @@ int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value)
 {
     return dpiPool__setAttributeUint(pool,
             DPI_OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION, value, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiPool_setSodaMetadataCache() [PUBLIC]
+//   Set whether the SODA metadata cache is enabled or not.
+//-----------------------------------------------------------------------------
+int dpiPool_setSodaMetadataCache(dpiPool *pool, int enabled)
+{
+    dpiError error;
+
+    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+    if (dpiUtils__checkClientVersionMulti(pool->env->versionInfo, 19, 11, 21,
+            3, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+    if (dpiOci__attrSet(pool->env->handle, DPI_OCI_HTYPE_ENV, &enabled, 0,
+            DPI_OCI_ATTR_SODA_METADATA_CACHE, "set SODA metadata cache",
+            &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
 }
 
 

@@ -56,9 +56,9 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   4
-#define DPI_MINOR_VERSION   1
+#define DPI_MINOR_VERSION   2
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX
+#define DPI_VERSION_SUFFIX  "-dev"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -527,37 +527,38 @@ struct dpiAppContext {
 // structure used for common parameters used for creating standalone
 // connections and session pools
 struct dpiCommonCreateParams {
+    dpiCreateMode createMode;
     const char *encoding;
     const char *nencoding;
     const char *edition;
-    const char *driverName;
-    dpiCreateMode createMode;
     uint32_t editionLength;
+    const char *driverName;
     uint32_t driverNameLength;
+    int sodaMetadataCache;
 };
 
 // structure used for creating connections
 struct dpiConnCreateParams {
     dpiAuthMode authMode;
     const char *connectionClass;
+    uint32_t connectionClassLength;
+    dpiPurity purity;
     const char *newPassword;
+    uint32_t newPasswordLength;
     dpiAppContext *appContext;
+    uint32_t numAppContext;
+    int externalAuth;
     void *externalHandle;
     dpiPool *pool;
     const char *tag;
-    const char *outTag;
-    dpiShardingKeyColumn *shardingKeyColumns;
-    dpiShardingKeyColumn *superShardingKeyColumns;
-    uint32_t connectionClassLength;
-    dpiPurity purity;
-    uint32_t newPasswordLength;
-    uint32_t numAppContext;
-    int externalAuth;
     uint32_t tagLength;
     int matchAnyTag;
+    const char *outTag;
     uint32_t outTagLength;
     int outTagFound;
+    dpiShardingKeyColumn *shardingKeyColumns;
     uint8_t numShardingKeyColumns;
+    dpiShardingKeyColumn *superShardingKeyColumns;
     uint8_t numSuperShardingKeyColumns;
     int outNewSession;
 };
@@ -728,20 +729,20 @@ struct dpiSubscrCreateParams {
 
 // structure used for transferring messages in subscription callbacks
 struct dpiSubscrMessage {
-    dpiErrorInfo *errorInfo;
-    const char *dbName;
-    const char *queueName;
-    const char *consumerName;
-    dpiSubscrMessageTable *tables;
-    dpiSubscrMessageQuery *queries;
-    const void *txId;
     dpiEventType eventType;
+    const char *dbName;
     uint32_t dbNameLength;
+    dpiSubscrMessageTable *tables;
     uint32_t numTables;
+    dpiSubscrMessageQuery *queries;
     uint32_t numQueries;
+    dpiErrorInfo *errorInfo;
+    const void *txId;
     uint32_t txIdLength;
     int registered;
+    const char *queueName;
     uint32_t queueNameLength;
+    const char *consumerName;
     uint32_t consumerNameLength;
 };
 
@@ -765,10 +766,10 @@ struct dpiSubscrMessageRow {
 // structure used for transferring table information in messages in
 // subscription callbacks
 struct dpiSubscrMessageTable {
-    const char *name;
-    dpiSubscrMessageRow *rows;
     dpiOpCode operation;
+    const char *name;
     uint32_t nameLength;
+    dpiSubscrMessageRow *rows;
     uint32_t numRows;
 };
 
@@ -1282,6 +1283,9 @@ DPI_EXPORT int dpiLob_getIsResourceOpen(dpiLob *lob, int *isOpen);
 // return the current size of the LOB
 DPI_EXPORT int dpiLob_getSize(dpiLob *lob, uint64_t *size);
 
+// return the type of the LOB
+DPI_EXPORT int dpiLob_getType(dpiLob *lob, dpiOracleTypeNum *type);
+
 // open the LOB's resources (used to improve performance of multiple
 // read/writes operations)
 DPI_EXPORT int dpiLob_openResource(dpiLob *lob);
@@ -1531,6 +1535,9 @@ DPI_EXPORT int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value);
 // get the pool's open count
 DPI_EXPORT int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value);
 
+// return whether the SODA metadata cache is enabled or not
+DPI_EXPORT int dpiPool_getSodaMetadataCache(dpiPool *pool, int *enabled);
+
 // return the statement cache size
 DPI_EXPORT int dpiPool_getStmtCacheSize(dpiPool *pool, uint32_t *cacheSize);
 
@@ -1548,6 +1555,9 @@ DPI_EXPORT int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
 
 // set the pool's maximum lifetime session
 DPI_EXPORT int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value);
+
+// set whether the SODA metadata cache is enabled or not
+DPI_EXPORT int dpiPool_setSodaMetadataCache(dpiPool *pool, int enabled);
 
 // set the statement cache size
 DPI_EXPORT int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t cacheSize);

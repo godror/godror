@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -323,6 +323,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
 #define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
+#define DPI_OCI_ATTR_SODA_METADATA_CACHE            624
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -595,6 +596,7 @@ typedef enum {
     DPI_ERR_UNHANDLED_JSON_NODE_TYPE,
     DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE,
     DPI_ERR_UNHANDLED_CONVERSION_TO_JSON,
+    DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -660,6 +662,18 @@ typedef struct {
     const char *sqlState;
     int isRecoverable;
 } dpiErrorInfo__v33;
+
+// structure used for common parameters used for creating standalone
+// connections and session pools
+typedef struct {
+    dpiCreateMode createMode;
+    const char *encoding;
+    const char *nencoding;
+    const char *edition;
+    uint32_t editionLength;
+    const char *driverName;
+    uint32_t driverNameLength;
+} dpiCommonCreateParams__v41;
 
 
 //-----------------------------------------------------------------------------
@@ -1189,6 +1203,7 @@ struct dpiConn {
     void *sessionHandle;                // OCI session handle
     void *shardingKey;                  // OCI sharding key descriptor
     void *superShardingKey;             // OCI supper sharding key descriptor
+    void *transactionHandle;            // OCI transaction handle
     const char *releaseString;          // cached release string or NULL
     uint32_t releaseStringLength;       // cached release string length or 0
     void *rawTDO;                       // cached RAW TDO
@@ -1865,7 +1880,7 @@ int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
         uint64_t valueLength, dpiError *error);
 int dpiOci__loadLib(dpiContextCreateParams *params,
-        dpiVersionInfo **clientVersionInfo, dpiError *error);
+        dpiVersionInfo *clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);
 int dpiOci__lobCreateTemporary(dpiLob *lob, dpiError *error);
 int dpiOci__lobFileExists(dpiLob *lob, int *exists, dpiError *error);
@@ -1978,7 +1993,7 @@ int dpiOci__sodaCollCreateWithMetadata(dpiSodaDb *db, const char *name,
 int dpiOci__sodaCollDrop(dpiSodaColl *coll, int *isDropped, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaCollGetNext(dpiConn *conn, void *cursorHandle,
-        void **collectionHandle, uint32_t mode, dpiError *error);
+        void **collectionHandle, dpiError *error);
 int dpiOci__sodaCollList(dpiSodaDb *db, const char *startingName,
         uint32_t startingNameLength, void **handle, uint32_t mode,
         dpiError *error);
@@ -1990,7 +2005,7 @@ int dpiOci__sodaDataGuideGet(dpiSodaColl *coll, void **handle, uint32_t mode,
 int dpiOci__sodaDocCount(dpiSodaColl *coll, void *options, uint32_t mode,
         uint64_t *count, dpiError *error);
 int dpiOci__sodaDocGetNext(dpiSodaDocCursor *cursor, void **handle,
-        uint32_t mode, dpiError *error);
+        dpiError *error);
 int dpiOci__sodaFind(dpiSodaColl *coll, const void *options, uint32_t flags,
         uint32_t mode, void **handle, dpiError *error);
 int dpiOci__sodaFindOne(dpiSodaColl *coll, const void *options, uint32_t flags,
@@ -2103,6 +2118,9 @@ int dpiUtils__allocateMemory(size_t numMembers, size_t memberSize,
         int clearMemory, const char *action, void **ptr, dpiError *error);
 int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
         int minVersionNum, int minReleaseNum, dpiError *error);
+int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
+        int minVersionNum1, int minReleaseNum1, int minVersionNum2,
+        int minReleaseNum2, dpiError *error);
 int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
         int minReleaseNum, dpiError *error);
 void dpiUtils__clearMemory(void *ptr, size_t length);

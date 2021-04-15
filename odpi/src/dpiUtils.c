@@ -55,6 +55,28 @@ int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
 
 
 //-----------------------------------------------------------------------------
+// dpiUtils__checkClientVersionMulti() [INTERNAL]
+//   Check the Oracle Client version and verify that it is at least at the
+// minimum version that is required.
+//-----------------------------------------------------------------------------
+int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
+        int minVersionNum1, int minReleaseNum1, int minVersionNum2,
+        int minReleaseNum2, dpiError *error)
+{
+    if (versionInfo->versionNum < minVersionNum1 ||
+            (versionInfo->versionNum == minVersionNum1 &&
+                    versionInfo->releaseNum < minReleaseNum1) ||
+            (versionInfo->versionNum == minVersionNum2 &&
+                    versionInfo->releaseNum < minReleaseNum2))
+        return dpiError__set(error, "check Oracle Client version",
+                DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI, versionInfo->versionNum,
+                versionInfo->releaseNum, minVersionNum1, minReleaseNum1,
+                minVersionNum2, minReleaseNum2);
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiUtils__checkDatabaseVersion() [INTERNAL]
 //   Check the Oracle Database version and verify that it is at least at the
 // minimum version that is required.

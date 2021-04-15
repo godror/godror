@@ -63,6 +63,7 @@ package godror
 #cgo CFLAGS: -I./odpi/include -I./odpi/src -I./odpi/embed
 
 #include "dpi.c"
+
 */
 import "C"
 

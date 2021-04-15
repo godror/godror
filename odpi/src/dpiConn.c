@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -507,6 +507,10 @@ void dpiConn__free(dpiConn *conn, dpiError *error)
     if (conn->objects) {
         dpiHandleList__free(conn->objects);
         conn->objects = NULL;
+    }
+    if (conn->transactionHandle) {
+        dpiOci__handleFree(conn->transactionHandle, DPI_OCI_HTYPE_TRANS);
+        conn->transactionHandle = NULL;
     }
     dpiUtils__freeMemory(conn);
 }
@@ -1227,7 +1231,6 @@ int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
         const char *transactionId, uint32_t transactionIdLength,
         const char *branchId, uint32_t branchIdLength)
 {
-    void *transactionHandle;
     dpiError error;
     dpiOciXID xid;
     int status;
@@ -1250,28 +1253,18 @@ int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
 
-    // determine if a transaction handle was previously allocated
-    if (dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-            (void*) &transactionHandle, NULL, DPI_OCI_ATTR_TRANS,
-            "get transaction handle", &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-
-    // if one was not found, create one and associate it with the connection
-    if (!transactionHandle) {
-
-        // create new handle
-        if (dpiOci__handleAlloc(conn->env->handle, &transactionHandle,
+    // if a transaction handle does not exist, create one
+    if (!conn->transactionHandle) {
+        if (dpiOci__handleAlloc(conn->env->handle, &conn->transactionHandle,
                 DPI_OCI_HTYPE_TRANS, "create transaction handle", &error) < 0)
             return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
 
-        // associate the transaction with the connection
-        if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-                transactionHandle, 0, DPI_OCI_ATTR_TRANS,
-                "associate transaction", &error) < 0) {
-            dpiOci__handleFree(transactionHandle, DPI_OCI_HTYPE_TRANS);
-            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-        }
-
+    // associate the transaction with the connection
+    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            conn->transactionHandle, 0, DPI_OCI_ATTR_TRANS,
+            "associate transaction", &error) < 0) {
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
 
     // set the XID for the transaction, if applicable
@@ -1283,7 +1276,7 @@ int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
             strncpy(xid.data, transactionId, transactionIdLength);
         if (branchIdLength > 0)
             strncpy(&xid.data[transactionIdLength], branchId, branchIdLength);
-        if (dpiOci__attrSet(transactionHandle, DPI_OCI_HTYPE_TRANS, &xid,
+        if (dpiOci__attrSet(conn->transactionHandle, DPI_OCI_HTYPE_TRANS, &xid,
                 sizeof(dpiOciXID), DPI_OCI_ATTR_XID, "set XID", &error) < 0)
             return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     }
@@ -1403,6 +1396,12 @@ int dpiConn_commit(dpiConn *conn)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiOci__transCommit(conn, conn->commitMode, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (conn->transactionHandle) {
+        if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, NULL, 0,
+                DPI_OCI_ATTR_TRANS, "clear transaction", &error) < 0)
+            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+
     conn->commitMode = DPI_OCI_DEFAULT;
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
@@ -2117,6 +2116,12 @@ int dpiConn_rollback(dpiConn *conn)
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__transRollback(conn, 1, &error);
+    if (conn->transactionHandle) {
+        if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, NULL, 0,
+                DPI_OCI_ATTR_TRANS, "clear transaction", &error) < 0)
+            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+
     return dpiGen__endPublicFn(conn, status, &error);
 }
 

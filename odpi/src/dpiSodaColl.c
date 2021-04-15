@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -15,6 +15,11 @@
 //-----------------------------------------------------------------------------
 
 #include "dpiImpl.h"
+
+// forward declarations of internal functions only used in this file
+static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, void *handle, dpiError *error);
+
 
 //-----------------------------------------------------------------------------
 // dpiSodaColl__allocate() [INTERNAL]
@@ -86,76 +91,10 @@ static int dpiSodaColl__createOperOptions(dpiSodaColl *coll,
             "allocate SODA operation options handle", error) < 0)
         return DPI_FAILURE;
 
-    // set multiple keys, if applicable
-    if (options->numKeys > 0) {
-        if (dpiOci__sodaOperKeysSet(options, *handle, error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set single key, if applicable
-    if (options->keyLength > 0) {
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) options->key, options->keyLength,
-                DPI_OCI_ATTR_SODA_KEY, "set key", error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set single version, if applicable
-    if (options->versionLength > 0) {
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) options->version, options->versionLength,
-                DPI_OCI_ATTR_SODA_VERSION, "set version", error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set filter, if applicable
-    if (options->filterLength > 0) {
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) options->filter, options->filterLength,
-                DPI_OCI_ATTR_SODA_FILTER, "set filter", error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set skip count, if applicable
-    if (options->skip > 0) {
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) &options->skip, 0, DPI_OCI_ATTR_SODA_SKIP,
-                "set skip count", error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set limit, if applicable
-    if (options->limit > 0) {
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) &options->limit, 0, DPI_OCI_ATTR_SODA_LIMIT,
-                "set limit", error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
-    }
-
-    // set fetch array size, if applicable (only available in 19.5+ client)
-    if (options->fetchArraySize > 0) {
-        if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 5,
-                error) < 0)
-            return DPI_FAILURE;
-        if (dpiOci__attrSet(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
-                (void*) &options->fetchArraySize, 0,
-                DPI_OCI_ATTR_SODA_FETCH_ARRAY_SIZE, "set fetch array size",
-                error) < 0) {
-            dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
-            return DPI_FAILURE;
-        }
+    // populate handle attributes
+    if (dpiSodaColl__populateOperOptions(coll, options, *handle, error) < 0) {
+        dpiOci__handleFree(*handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS);
+        return DPI_FAILURE;
     }
 
     return DPI_SUCCESS;
@@ -342,6 +281,76 @@ static int dpiSodaColl__insertMany(dpiSodaColl *coll, uint32_t numDocs,
                 return DPI_FAILURE;
             }
         }
+    }
+
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaColl__populateOperOptions() [INTERNAL]
+//   Populate the SODA operation options handle with the information found in
+// the supplied structure.
+//-----------------------------------------------------------------------------
+static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
+        const dpiSodaOperOptions *options, void *handle, dpiError *error)
+{
+    // set multiple keys, if applicable
+    if (options->numKeys > 0) {
+        if (dpiOci__sodaOperKeysSet(options, handle, error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set single key, if applicable
+    if (options->keyLength > 0) {
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) options->key, options->keyLength,
+                DPI_OCI_ATTR_SODA_KEY, "set key", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set single version, if applicable
+    if (options->versionLength > 0) {
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) options->version, options->versionLength,
+                DPI_OCI_ATTR_SODA_VERSION, "set version", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set filter, if applicable
+    if (options->filterLength > 0) {
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) options->filter, options->filterLength,
+                DPI_OCI_ATTR_SODA_FILTER, "set filter", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set skip count, if applicable
+    if (options->skip > 0) {
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) &options->skip, 0, DPI_OCI_ATTR_SODA_SKIP,
+                "set skip count", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set limit, if applicable
+    if (options->limit > 0) {
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) &options->limit, 0, DPI_OCI_ATTR_SODA_LIMIT,
+                "set limit", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // set fetch array size, if applicable (only available in 19.5+ client)
+    if (options->fetchArraySize > 0) {
+        if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 5,
+                error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
+                (void*) &options->fetchArraySize, 0,
+                DPI_OCI_ATTR_SODA_FETCH_ARRAY_SIZE, "set fetch array size",
+                error) < 0)
+            return DPI_FAILURE;
     }
 
     return DPI_SUCCESS;
@@ -883,8 +892,8 @@ int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc, uint32_t flags,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
-    // save is only supported with Oracle Client 20+
-    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 20, 1,
+    // save is only supported with Oracle Client 19.9+
+    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 9,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 

@@ -128,6 +128,8 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         const dpiCommonCreateParams *params, void *externalHandle,
         dpiError *error)
 {
+    int temp;
+
     // store context and version information
     env->context = context;
     env->versionInfo = context->versionInfo;
@@ -210,6 +212,18 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
     // set whether or not events mode has been set
     if (params->createMode & DPI_MODE_CREATE_EVENTS)
         env->events = 1;
+
+    // enable SODA metadata cache, if applicable
+    if (params->sodaMetadataCache) {
+        if (dpiUtils__checkClientVersionMulti(env->versionInfo, 19, 11, 21, 3,
+                error) < 0)
+            return DPI_FAILURE;
+        temp = 1;
+        if (dpiOci__attrSet(env->handle, DPI_OCI_HTYPE_ENV, &temp, 0,
+                DPI_OCI_ATTR_SODA_METADATA_CACHE, "set SODA metadata cache",
+                error) < 0)
+            return DPI_FAILURE;
+    }
 
     return DPI_SUCCESS;
 }
