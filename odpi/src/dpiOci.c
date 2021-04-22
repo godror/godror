@@ -336,6 +336,9 @@ typedef int (*dpiOciFnType__sodaBulkInsert)(void *svchp,
 typedef int (*dpiOciFnType__sodaBulkInsertAndGet)(void *svchp,
         void *collection, void **documentarray, uint32_t arraylen,
         void *opoptns, void *errhp, uint32_t mode);
+typedef int (*dpiOciFnType__sodaBulkInsertAndGetWithOpts)(void *svchp,
+        void *collection, void **documentarray, uint32_t arraylen,
+        void *oproptns, void *opoptns, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaCollCreateWithMetadata)(void *svchp,
         const char *collname, uint32_t collnamelen, const char *metadata,
         uint32_t metadatalen, void **collection, void *errhp, uint32_t mode);
@@ -370,6 +373,9 @@ typedef int (*dpiOciFnType__sodaInsert)(void *svchp, void *collection,
         void *document, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaInsertAndGet)(void *svchp, void *collection,
         void **document, void *errhp, uint32_t mode);
+typedef int (*dpiOciFnType__sodaInsertAndGetWithOpts)(void *svchp,
+        void *collection, void **document, void *oproptns, void *errhp,
+        uint32_t mode);
 typedef int (*dpiOciFnType__sodaOperKeysSet)(const void *operhp,
         const char **keysArray, uint32_t *lengthsArray, uint32_t count,
         void *errhp, uint32_t mode);
@@ -385,6 +391,9 @@ typedef int (*dpiOciFnType__sodaSave)(void *svchp, void *collection,
         void *document, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaSaveAndGet)(void *svchp, void *collection,
         void **document, void *errhp, uint32_t mode);
+typedef int (*dpiOciFnType__sodaSaveAndGetWithOpts)(void *svchp,
+        void *collection, void **document, void *oproptns, void *errhp,
+        uint32_t mode);
 typedef int (*dpiOciFnType__stmtExecute)(void *svchp, void *stmtp, void *errhp,
         uint32_t iters, uint32_t rowoff, const void *snap_in, void *snap_out,
         uint32_t mode);
@@ -588,6 +597,7 @@ static struct {
     dpiOciFnType__stmtExecute fnStmtExecute;
     dpiOciFnType__sodaBulkInsert fnSodaBulkInsert;
     dpiOciFnType__sodaBulkInsertAndGet fnSodaBulkInsertAndGet;
+    dpiOciFnType__sodaBulkInsertAndGetWithOpts fnSodaBulkInsertAndGetWithOpts;
     dpiOciFnType__sodaCollCreateWithMetadata fnSodaCollCreateWithMetadata;
     dpiOciFnType__sodaCollDrop fnSodaCollDrop;
     dpiOciFnType__sodaCollGetNext fnSodaCollGetNext;
@@ -603,12 +613,14 @@ static struct {
     dpiOciFnType__sodaIndexDrop fnSodaIndexDrop;
     dpiOciFnType__sodaInsert fnSodaInsert;
     dpiOciFnType__sodaInsertAndGet fnSodaInsertAndGet;
+    dpiOciFnType__sodaInsertAndGetWithOpts fnSodaInsertAndGetWithOpts;
     dpiOciFnType__sodaOperKeysSet fnSodaOperKeysSet;
     dpiOciFnType__sodaRemove fnSodaRemove;
     dpiOciFnType__sodaReplOne fnSodaReplOne;
     dpiOciFnType__sodaReplOneAndGet fnSodaReplOneAndGet;
     dpiOciFnType__sodaSave fnSodaSave;
     dpiOciFnType__sodaSaveAndGet fnSodaSaveAndGet;
+    dpiOciFnType__sodaSaveAndGetWithOpts fnSodaSaveAndGetWithOpts;
     dpiOciFnType__stmtFetch2 fnStmtFetch2;
     dpiOciFnType__stmtGetBindInfo fnStmtGetBindInfo;
     dpiOciFnType__stmtGetNextResult fnStmtGetNextResult;
@@ -3235,7 +3247,7 @@ int dpiOci__sodaBulkInsert(dpiSodaColl *coll, void **documents,
 
 //-----------------------------------------------------------------------------
 // dpiOci__sodaBulkInsertAndGet() [INTERNAL]
-//   Wrapper for OCISodaBulkInsert().
+//   Wrapper for OCISodaBulkInsertAndGet().
 //-----------------------------------------------------------------------------
 int dpiOci__sodaBulkInsertAndGet(dpiSodaColl *coll, void **documents,
         uint32_t numDocuments, void *outputOptions, uint32_t mode,
@@ -3251,6 +3263,27 @@ int dpiOci__sodaBulkInsertAndGet(dpiSodaColl *coll, void **documents,
             error->handle, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn,
             "insert (and get) multiple documents");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__sodaBulkInsertAndGetWithOpts() [INTERNAL]
+//   Wrapper for OCISodaBulkInsertAndGetWithOpts().
+//-----------------------------------------------------------------------------
+int dpiOci__sodaBulkInsertAndGetWithOpts(dpiSodaColl *coll, void **documents,
+        uint32_t numDocuments, void *operOptions, void *outputOptions,
+        uint32_t mode, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCISodaBulkInsertAndGetWithOpts",
+            dpiOciSymbols.fnSodaBulkInsertAndGetWithOpts)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnSodaBulkInsertAndGetWithOpts)
+            (coll->db->conn->handle, coll->handle, documents, numDocuments,
+             operOptions, outputOptions, error->handle, mode);
+    DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn,
+            "insert (and get) multiple documents with options");
 }
 
 
@@ -3549,6 +3582,26 @@ int dpiOci__sodaInsertAndGet(dpiSodaColl *coll, void **handle, uint32_t mode,
 
 
 //-----------------------------------------------------------------------------
+// dpiOci__sodaInsertAndGetWithOpts() [INTERNAL]
+//   Wrapper for OCISodaInsertAndGetWithOpts().
+//-----------------------------------------------------------------------------
+int dpiOci__sodaInsertAndGetWithOpts(dpiSodaColl *coll, void **handle,
+        void *operOptions, uint32_t mode, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCISodaInsertAndGetWithOpts",
+            dpiOciSymbols.fnSodaInsertAndGetWithOpts)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnSodaInsertAndGetWithOpts)
+            (coll->db->conn->handle, coll->handle, handle, operOptions,
+             error->handle, mode);
+    DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn,
+            "insert and get SODA document with options");
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiOci__sodaOperKeysSet() [INTERNAL]
 //   Wrapper for OCISodaOperKeysSet().
 //-----------------------------------------------------------------------------
@@ -3653,6 +3706,25 @@ int dpiOci__sodaSaveAndGet(dpiSodaColl *coll, void **handle, uint32_t mode,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnSodaSaveAndGet)(coll->db->conn->handle,
             coll->handle, handle, error->handle, mode);
+    DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn,
+            "save and get SODA document");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__sodaSaveAndGetWithOpts() [INTERNAL]
+//   Wrapper for OCISodaSaveAndGetWithOpts().
+//-----------------------------------------------------------------------------
+int dpiOci__sodaSaveAndGetWithOpts(dpiSodaColl *coll, void **handle,
+        void *operOptions, uint32_t mode, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCISodaSaveAndGetWithOpts",
+            dpiOciSymbols.fnSodaSaveAndGetWithOpts)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnSodaSaveAndGetWithOpts)(coll->db->conn->handle,
+            coll->handle, handle, operOptions, error->handle, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn,
             "save and get SODA document");
 }

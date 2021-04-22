@@ -15,6 +15,8 @@
 //     sysoper=0
 //     poolMinSessions=1
 //     poolMaxSessions=1000
+//     poolMaxSessionsPerShard=
+//     poolPingInterval=
 //     poolIncrement=1
 //     connectionClass=
 //     standaloneConnection=0
@@ -31,6 +33,7 @@
 //     onInit="ALTER SESSION SET current_schema=my_schema"
 //     configDir=
 //     libDir=
+//     stmtCacheSize=
 //
 // These are the defaults.
 // For external authentication, user and password should be empty
@@ -312,7 +315,7 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 // initCommonCreateParams initializes ODPI-C common creation parameters used for creating pools and
 // standalone connections. The C strings for the encoding and driver name are
 // defined at the package level for convenience.
-func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool) error {
+func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool, stmtCacheSize int) error {
 	// initialize ODPI-C structure for common creation parameters
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initCommonCreateParams(d.dpiContext, P)
@@ -334,6 +337,13 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 	P.createMode = C.DPI_MODE_CREATE_DEFAULT | C.DPI_MODE_CREATE_THREADED
 	if enableEvents {
 		P.createMode |= C.DPI_MODE_CREATE_EVENTS
+	}
+	if stmtCacheSize != 0 {
+		if stmtCacheSize < 0 {
+			P.stmtCacheSize = 0
+		} else {
+			P.stmtCacheSize = C.uint32_t(stmtCacheSize)
+		}
 	}
 
 	return nil
@@ -392,12 +402,11 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	var commonCreateParamsPtr *C.dpiCommonCreateParams
 	var commonCreateParams C.dpiCommonCreateParams
 	if pool == nil {
-		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents); err != nil {
+		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize); err != nil {
 			return nil, false, err
 		}
 		commonCreateParamsPtr = &commonCreateParams
 	}
-
 	// manage strings
 	var cUsername, cPassword, cNewPassword, cConnectString, cConnClass *C.char
 	defer func() {
@@ -638,7 +647,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// set up common creation parameters
 	var commonCreateParams C.dpiCommonCreateParams
-	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents); err != nil {
+	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize); err != nil {
 		return nil, err
 	}
 

@@ -156,7 +156,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
 	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
-	if dlr.sizePlusOne == 0 {
+	if dlr.sizePlusOne == 0 { // first read
 		// never read size before
 		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
 			err := dlr.getError()
@@ -169,6 +169,12 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			return 0, fmt.Errorf("getSize: %w", err)
 		}
 		dlr.sizePlusOne++
+
+		var lobType C.dpiOracleTypeNum
+		if C.dpiLob_getType(dlr.dpiLob, &lobType) != C.DPI_FAILURE &&
+			(2017 <= lobType && lobType <= 2019) {
+			dlr.IsClob = lobType == 2017 || lobType == 2018 // CLOB and NCLOB
+		}
 	}
 	n := C.uint64_t(len(p))
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)

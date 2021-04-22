@@ -360,7 +360,7 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
 
     // initialize environment (for non-pooled connections)
     if (!pool && dpiEnv__init(conn->env, context, commonParams, envHandle,
-            error) < 0)
+            commonParams->createMode, error) < 0)
         return DPI_FAILURE;
 
     // if a handle is specified, use it
@@ -470,7 +470,16 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
     authMode = createParams->authMode | DPI_OCI_STMT_CACHE;
     if (dpiOci__sessionBegin(conn, credentialType, authMode, error) < 0)
         return DPI_FAILURE;
-    return dpiConn__getServerCharset(conn, error);
+    if (dpiConn__getServerCharset(conn, error) < 0)
+        return DPI_FAILURE;
+
+    // set the statement cache size
+    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            (void*) &commonParams->stmtCacheSize, 0,
+            DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size", error) < 0)
+        return DPI_FAILURE;
+
+    return DPI_SUCCESS;
 }
 
 
@@ -792,6 +801,19 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         // connection
         if (!lastTimeUsed || !conn->pool) {
             params->outNewSession = 1;
+
+            // for pooled connections, set the statement cache size; when a
+            // pool is created, the minSessions value is used to create
+            // connections and these use the default statement cache size, not
+            // the statement cache size specified for the pool; setting the
+            // value here eliminates that discrepancy
+            if (conn->pool) {
+                if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                        &conn->pool->stmtCacheSize, 0,
+                        DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size",
+                        error) < 0)
+                    return DPI_FAILURE;
+            }
             break;
         }
 

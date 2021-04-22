@@ -55,8 +55,10 @@ type CommonParams struct {
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
-	AlterSession            [][2]string
-	Timezone                *time.Location
+	AlterSession [][2]string
+	Timezone     *time.Location
+	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache completely
+	StmtCacheSize           int
 	EnableEvents, NoTZCheck bool
 }
 
@@ -87,6 +89,9 @@ func (P CommonParams) String() string {
 	}
 	if P.NoTZCheck {
 		q.Add("noTimezoneCheck", "1")
+	}
+	if P.StmtCacheSize != 0 {
+		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
 	}
 
 	return q.String()
@@ -130,7 +135,9 @@ func (P ConnParams) String() string {
 // PoolParams holds the configuration of the Oracle Session Pool.
 type PoolParams struct {
 	MinSessions, MaxSessions, SessionIncrement int
+	MaxSessionsPerShard                        int
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
+	PingInterval                               time.Duration
 	Heterogeneous, ExternalAuth                bool
 }
 
@@ -139,6 +146,9 @@ func (P PoolParams) String() string {
 	q := newParamsArray(8)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
+	if P.MaxSessionsPerShard != 0 {
+		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
+	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	if P.Heterogeneous {
 		q.Add("heterogeneousPool", "1")
@@ -148,6 +158,9 @@ func (P PoolParams) String() string {
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	if P.ExternalAuth {
 		q.Add("externalAuth", "1")
+	}
+	if P.PingInterval != 0 {
+		q.Add("pingInterval", P.PingInterval.String())
 	}
 	return q.String()
 }
@@ -243,8 +256,14 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		return "0"
 	}
 	q.Add("noTimezoneCheck", B(P.NoTZCheck))
+	if P.StmtCacheSize != 0 {
+		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
+	}
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
+	if P.MaxSessionsPerShard != 0 {
+		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
+	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	q.Add("sysdba", B(P.IsSysDBA))
 	q.Add("sysoper", B(P.IsSysOper))
@@ -428,15 +447,16 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.Timezone = time.UTC
 		}
 	}
-
 	for _, task := range []struct {
 		Dest *int
 		Key  string
 	}{
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
+		{&P.MaxSessionsPerShard, "poolMasSessionsPerShard"},
 		{&P.SessionIncrement, "poolIncrement"},
 		{&P.SessionIncrement, "sessionIncrement"},
+		{&P.StmtCacheSize, "stmtCacheSize"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
@@ -448,6 +468,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
 		}
 	}
+
 	for _, task := range []struct {
 		Dest *time.Duration
 		Key  string
@@ -455,6 +476,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.SessionTimeout, "poolSessionTimeout"},
 		{&P.WaitTimeout, "poolWaitTimeout"},
 		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
+		{&P.PingInterval, "pingInterval"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {

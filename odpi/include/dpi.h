@@ -86,11 +86,14 @@ extern "C" {
 // define default number of rows to prefetch
 #define DPI_DEFAULT_PREFETCH_ROWS               2
 
-// define ping interval (in seconds) used when getting connections
+// define default ping interval (in seconds) used when getting connections
 #define DPI_DEFAULT_PING_INTERVAL               60
 
-// define ping timeout (in milliseconds) used when getting connections
+// define default ping timeout (in milliseconds) used when getting connections
 #define DPI_DEFAULT_PING_TIMEOUT                5000
+
+// define default statement cache size
+#define DPI_DEFAULT_STMT_CACHE_SIZE             20
 
 // define constants for dequeue wait (AQ)
 #define DPI_DEQ_WAIT_NO_WAIT                    0
@@ -535,6 +538,7 @@ struct dpiCommonCreateParams {
     const char *driverName;
     uint32_t driverNameLength;
     int sodaMetadataCache;
+    uint32_t stmtCacheSize;
 };
 
 // structure used for creating connections
@@ -689,6 +693,8 @@ struct dpiSodaOperOptions {
     uint32_t skip;
     uint32_t limit;
     uint32_t fetchArraySize;
+    const char *hint;
+    uint32_t hintLength;
 };
 
 // structure used for transferring statement information from ODPI-C
@@ -1532,6 +1538,9 @@ DPI_EXPORT int dpiPool_getGetMode(dpiPool *pool, dpiPoolGetMode *value);
 // get the pool's maximum lifetime session
 DPI_EXPORT int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value);
 
+// get the pool's maximum sessions per shard
+DPI_EXPORT int dpiPool_getMaxSessionsPerShard(dpiPool *pool, uint32_t *value);
+
 // get the pool's open count
 DPI_EXPORT int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value);
 
@@ -1547,6 +1556,9 @@ DPI_EXPORT int dpiPool_getTimeout(dpiPool *pool, uint32_t *value);
 // get the pool's wait timeout value
 DPI_EXPORT int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value);
 
+// get the pool-ping-interval
+DPI_EXPORT int dpiPool_getPingInterval(dpiPool *pool, int *value);
+
 // release a reference to the pool
 DPI_EXPORT int dpiPool_release(dpiPool *pool);
 
@@ -1555,6 +1567,9 @@ DPI_EXPORT int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
 
 // set the pool's maximum lifetime session
 DPI_EXPORT int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value);
+
+// set the pool's maximum sessions per shard
+DPI_EXPORT int dpiPool_setMaxSessionsPerShard(dpiPool *pool, uint32_t value);
 
 // set whether the SODA metadata cache is enabled or not
 DPI_EXPORT int dpiPool_setSodaMetadataCache(dpiPool *pool, int enabled);
@@ -1567,6 +1582,9 @@ DPI_EXPORT int dpiPool_setTimeout(dpiPool *pool, uint32_t value);
 
 // set the pool's wait timeout value
 DPI_EXPORT int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
+
+// set the pool-ping-interval value
+DPI_EXPORT int dpiPool_setPingInterval(dpiPool *pool, int value);
 
 
 //-----------------------------------------------------------------------------
@@ -1601,6 +1619,9 @@ DPI_EXPORT int dpiQueue_getEnqOptions(dpiQueue *queue,
 // release a reference to the queue
 DPI_EXPORT int dpiQueue_release(dpiQueue *queue);
 
+// reconfigure the current pool
+DPI_EXPORT int dpiPool_reconfigure(dpiPool *pool, uint32_t minSessions,
+        uint32_t maxSessions, uint32_t sessionIncrement);
 
 //-----------------------------------------------------------------------------
 // SODA Collection Methods (dpiSodaColl)
@@ -1650,9 +1671,19 @@ DPI_EXPORT int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
 DPI_EXPORT int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
         dpiSodaDoc **docs, uint32_t flags, dpiSodaDoc **insertedDocs);
 
+// insert multiple documents into the SODA collection (with options)
+DPI_EXPORT int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll,
+        uint32_t numDocs, dpiSodaDoc **docs, dpiSodaOperOptions *options,
+        uint32_t flags, dpiSodaDoc **insertedDocs);
+
 // insert a document into the SODA collection
 DPI_EXPORT int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc,
         uint32_t flags, dpiSodaDoc **insertedDoc);
+
+// insert a document into the SODA collection (with options)
+DPI_EXPORT int dpiSodaColl_insertOneWithOptions(dpiSodaColl *coll,
+        dpiSodaDoc *doc, dpiSodaOperOptions *options, uint32_t flags,
+        dpiSodaDoc **insertedDoc);
 
 // release a reference to the SODA collection
 DPI_EXPORT int dpiSodaColl_release(dpiSodaColl *coll);
@@ -1669,6 +1700,10 @@ DPI_EXPORT int dpiSodaColl_replaceOne(dpiSodaColl *coll,
 // save a document to a SODA collection
 DPI_EXPORT int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc,
         uint32_t flags, dpiSodaDoc **savedDoc);
+
+// save a document to a SODA collection (with options)
+DPI_EXPORT int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
+        dpiSodaOperOptions *options, uint32_t flags, dpiSodaDoc **savedDoc);
 
 // remove all of the documents from a SODA collection
 DPI_EXPORT int dpiSodaColl_truncate(dpiSodaColl *coll);
