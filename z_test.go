@@ -51,7 +51,16 @@ var tblSuffix string
 const maxSessions = 16
 const useDefaultFetchValue = -99
 
-func init() {
+// TestMain is called instead of the separate Test functions,
+// to allow setup and teardown.
+func TestMain(m *testing.M) {
+	tearDown := setUp()
+	rc := m.Run()
+	tearDown()
+	os.Exit(rc)
+}
+
+func setUp() func() {
 	hsh := fnv.New32()
 	hsh.Write([]byte(runtime.Version()))
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
@@ -68,6 +77,7 @@ func init() {
 		}
 	}
 
+	var tearDown []func()
 	eDSN := os.Getenv("GODROR_TEST_DSN")
 	fmt.Println("eDSN:", eDSN)
 	var configDir string
@@ -81,7 +91,7 @@ func init() {
 		if err != nil {
 			panic(err)
 		}
-		// defer os.RemoveAll(tempDir)
+		tearDown = append(tearDown, func() { os.RemoveAll(tempDir) })
 		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
 			var sfh *os.File
 			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
@@ -166,6 +176,7 @@ func init() {
 	if testDb, err = sql.Open("godror", testConStr); err != nil {
 		panic(fmt.Errorf("connect to %s: %w", testConStr, err))
 	}
+	tearDown = append(tearDown, func() { testDb.Close() })
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
 	if err = testDb.PingContext(ctx); err != nil {
@@ -238,6 +249,12 @@ func init() {
 				cancel()
 			}
 		}()
+	}
+
+	return func() {
+		for i := len(tearDown) - 1; i >= 0; i-- {
+			tearDown[i]()
+		}
 	}
 }
 
