@@ -379,7 +379,9 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 			c.params.Username = pool.params.Username
 		}
 	}
-	c.init(getOnInit(&P.CommonParams))
+	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
+	c.init(ctx, getOnInit(&P.CommonParams))
+	cancel()
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
@@ -582,7 +584,10 @@ func (d *drv) createConnFromParams(P dsn.ConnectionParams) (*conn, error) {
 	if onInit == nil {
 		return conn, err
 	}
-	if err = onInit(conn); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), nvlD(P.WaitTimeout, time.Minute))
+	err = onInit(ctx, conn)
+	cancel()
+	if err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -605,11 +610,11 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		usernameKey = P.Username
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s",
+	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
 		usernameKey, P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
-		P.Timezone,
+		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
 	if Log != nil {
 		Log("msg", "getPool", "key", poolKey)
@@ -1081,7 +1086,7 @@ func (c connector) Driver() driver.Driver { return c.drv }
 //
 // Deprecated. Use ParseDSN + ConnectionParams.SetSessionParamOnInit and NewConnector.
 // which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
-func NewSessionIniter(m map[string]string) func(driver.Conn) error {
+func NewSessionIniter(m map[string]string) func(context.Context, driver.ConnPrepareContext) error {
 	var buf strings.Builder
 	buf.WriteString("ALTER SESSION SET ")
 	for k, v := range m {
@@ -1090,7 +1095,7 @@ func NewSessionIniter(m map[string]string) func(driver.Conn) error {
 	}
 	return mkExecMany([]string{buf.String()})
 }
-func getOnInit(P *CommonParams) func(driver.Conn) error {
+func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext) error {
 	if P.OnInit != nil {
 		return P.OnInit
 	}
@@ -1114,19 +1119,25 @@ func getOnInit(P *CommonParams) func(driver.Conn) error {
 }
 
 // mkExecMany returns a function that applies the queries to the connection.
-func mkExecMany(qrys []string) func(driver.Conn) error {
-	return func(conn driver.Conn) error {
+func mkExecMany(qrys []string) func(context.Context, driver.ConnPrepareContext) error {
+	return func(ctx context.Context, conn driver.ConnPrepareContext) error {
 		for _, qry := range qrys {
-			st, err := conn.Prepare(qry)
+			st, err := conn.PrepareContext(ctx, qry)
+			if err == nil {
+				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+				st.Close()
+			}
 			if err != nil {
 				return fmt.Errorf("%s: %w", qry, err)
-			}
-			_, err = st.Exec(nil) //lint:ignore SA1019 it's hard to use ExecContext here
-			st.Close()
-			if err != nil {
-				return err
 			}
 		}
 		return nil
 	}
+}
+
+func nvlD(a, b time.Duration) time.Duration {
+	if a == 0 {
+		return b
+	}
+	return a
 }

@@ -6,6 +6,7 @@
 package dsn
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/base64"
 	"fmt"
@@ -51,7 +52,7 @@ type CommonParams struct {
 	Password                Password
 	ConfigDir, LibDir       string
 	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
-	OnInit func(driver.Conn) error
+	OnInit func(context.Context, driver.ConnPrepareContext) error
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.

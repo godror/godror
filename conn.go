@@ -278,14 +278,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 				continue
 			}
 			qry = "SET TRANSACTION " + qry
-			stmt, err := c.PrepareContext(ctx, qry)
+			st, err := c.PrepareContext(ctx, qry)
 			if err == nil {
-				if stc, ok := stmt.(driver.StmtExecContext); ok {
-					_, err = stc.ExecContext(ctx, nil)
-				} else {
-					_, err = stmt.Exec(nil) //lint:ignore SA1019 as that comment is not relevant here
-				}
-				stmt.Close()
+				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+				st.Close()
 			}
 			if err != nil {
 				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
@@ -458,7 +454,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init(onInit func(conn driver.Conn) error) error {
+func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
 	c.released = false
 	if Log != nil {
 		Log("msg", "init connection", "conn", c, "onInit", onInit)
@@ -467,7 +463,7 @@ func (c *conn) init(onInit func(conn driver.Conn) error) error {
 	if err := c.initTZ(); err != nil || onInit == nil || !c.newSession {
 		return err
 	}
-	return onInit(c)
+	return onInit(ctx, c)
 }
 
 func (c *conn) initTZ() error {
@@ -1056,7 +1052,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	}
 
 	if paramsFromCtx || newSession || !c.tzValid || c.params.Timezone == nil {
-		c.init(P.OnInit)
+		c.init(ctx, P.OnInit)
 	}
 	return nil
 }
