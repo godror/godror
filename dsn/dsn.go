@@ -763,11 +763,11 @@ func ParseTZ(s string) (int, error) {
 	var tz int
 	var ok bool
 	if i := strings.IndexByte(s, ':'); i >= 0 {
-		i64, err := strconv.ParseInt(s[i+1:], 10, 6)
+		u64, err := strconv.ParseUint(s[i+1:], 10, 6)
 		if err != nil {
 			return tz, errors.Errorf("%s: %w", s, err)
 		}
-		tz = int(i64 * 60)
+		tz = int(u64 * 60)
 		s = s[:i]
 		ok = true
 	}
