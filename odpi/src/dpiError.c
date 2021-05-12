@@ -140,7 +140,7 @@ int dpiError__set(dpiError *error, const char *action, dpiErrorNum errorNum,
 int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         const char *action)
 {
-    uint32_t callTimeout;
+    uint32_t callTimeout, serverStatus;
 
     // special error cases
     if (status == DPI_OCI_INVALID_HANDLE)
@@ -178,10 +178,24 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
             (void*) &error->buffer->isRecoverable, 0,
             DPI_OCI_ATTR_ERROR_IS_RECOVERABLE, NULL, error);
 
-    // check for certain errors which indicate that the session is dead and
-    // should be dropped from the session pool (if a session pool was used)
-    // also check for call timeout and raise unified message instead
+    // check the health of the connection (if one was specified in this call)
     if (conn && !conn->deadSession) {
+
+        // first check the attribute specifically designed to check the health
+        // of the connection, if possible
+        if (conn->serverHandle) {
+            if (dpiOci__attrGet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
+                    &serverStatus, NULL, DPI_OCI_ATTR_SERVER_STATUS,
+                    "get server status", error) < 0 ||
+                    serverStatus != DPI_OCI_SERVER_NORMAL) {
+                conn->deadSession = 1;
+                return DPI_FAILURE;
+            }
+        }
+
+        // otherwise, check for certain errors which indicate that the session
+        // is dead; also check for call timeout and raise unified message
+        // instead
         switch (error->buffer->code) {
             case    22: // invalid session ID; access denied
             case    28: // your session has been killed
@@ -226,6 +240,7 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
                 }
                 break;
         }
+
     }
 
     return DPI_FAILURE;

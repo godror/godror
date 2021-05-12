@@ -88,7 +88,8 @@ static int dpiConn__check(dpiConn *conn, const char *fnName, dpiError *error)
 //-----------------------------------------------------------------------------
 int dpiConn__checkConnected(dpiConn *conn, dpiError *error)
 {
-    if (!conn->handle || conn->closing || (conn->pool && !conn->pool->handle))
+    if (!conn->handle || conn->closing || conn->deadSession ||
+            (conn->pool && !conn->pool->handle))
         return dpiError__set(error, "check connected", DPI_ERR_NOT_CONNECTED);
     return DPI_SUCCESS;
 }
@@ -789,17 +790,21 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         if (dpiConn__getHandles(conn, error) < 0)
             return DPI_FAILURE;
 
-        // get last time used from session context
+        // for standalone connections, nothing more needs to be done
+        if (!conn->pool) {
+            params->outNewSession = 1;
+            break;
+        }
+
+        // remainder of the loop is for pooled connections only; get last time
+        // used from session context; if value is not found, a new connection
+        // has been created and there is no need to perform a ping
         lastTimeUsed = NULL;
         if (dpiOci__contextGetValue(conn, DPI_CONTEXT_LAST_TIME_USED,
                 (uint32_t) (sizeof(DPI_CONTEXT_LAST_TIME_USED) - 1),
                 (void**) &lastTimeUsed, 1, error) < 0)
             return DPI_FAILURE;
-
-        // if value is not found, a new connection has been created and there
-        // is no need to perform a ping; nor if we are creating a standalone
-        // connection
-        if (!lastTimeUsed || !conn->pool) {
+        if (!lastTimeUsed) {
             params->outNewSession = 1;
 
             // for pooled connections, set the statement cache size; when a
@@ -807,13 +812,11 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
             // connections and these use the default statement cache size, not
             // the statement cache size specified for the pool; setting the
             // value here eliminates that discrepancy
-            if (conn->pool) {
-                if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-                        &conn->pool->stmtCacheSize, 0,
-                        DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size",
-                        error) < 0)
-                    return DPI_FAILURE;
-            }
+            if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                    &conn->pool->stmtCacheSize, 0, DPI_OCI_ATTR_STMTCACHESIZE,
+                    "set stmt cache size", error) < 0)
+                return DPI_FAILURE;
+
             break;
         }
 
@@ -824,7 +827,8 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
             break;
 
         // ping needs to be done at this point; set parameters to ensure that
-        // the ping does not take too long to complete; keep original values
+        // the ping does not take too long to complete; keep original values so
+        // that they can be restored after the ping is completed
         dpiOci__attrGet(conn->serverHandle,
                 DPI_OCI_HTYPE_SERVER, &savedTimeout, NULL,
                 DPI_OCI_ATTR_RECEIVE_TIMEOUT, NULL, error);
@@ -841,7 +845,7 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
                     NULL, error);
         }
 
-        // if ping is successful, the connection is valid and can be returned
+        // if ping is successful, the connection is valid and can be returned;
         // restore original network parameters
         if (dpiOci__ping(conn, error) == 0) {
             dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,

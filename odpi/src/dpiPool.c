@@ -492,7 +492,7 @@ int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value)
 // dpiPool_getMaxSessionsPerShard() [PUBLIC]
 //   Return the pool's maximum sessions per shard.
 //-----------------------------------------------------------------------------
-int dpiPool_getSessionsMaxPerShard(dpiPool *pool, uint32_t *value)
+int dpiPool_getMaxSessionsPerShard(dpiPool *pool, uint32_t *value)
 {
     return dpiPool__getAttributeUint(pool, DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD,
             value, __func__);
