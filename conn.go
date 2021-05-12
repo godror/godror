@@ -629,7 +629,10 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
-		if tz, err = time.LoadLocation(dbTZ); err == nil {
+		if tz, err = time.LoadLocation(dbTZ); err != nil && dbTZ == strings.ToUpper(dbTZ) {
+			tz, err = time.LoadLocation(strings.Title(strings.ToLower(dbTZ)))
+		}
+		if err == nil {
 			if tz == nil {
 				tz = time.UTC
 			}
