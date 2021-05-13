@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.24.7]
+### Changed
+- Recognize uppercased time zone names, too (#153)
+
 ## [v0.24.5]
 ### Changed
 - Let the GLIBC-2.14 -evading `__asm__` trick be Linux-only (fails with clang).
