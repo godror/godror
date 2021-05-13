@@ -261,49 +261,6 @@ func TestParseTZ(t *testing.T) {
 	}
 }
 
-func TestTZName(t *testing.T) {
-	f := func(dbTZ string) (*time.Location, error) {
-		t.Log("try", dbTZ)
-		tz, err := time.LoadLocation(dbTZ)
-		if err != nil && dbTZ == strings.ToUpper(dbTZ) {
-			t.Log("try", strings.Title(strings.ToLower(dbTZ)))
-			tz, err = time.LoadLocation(strings.Title(strings.ToLower(dbTZ)))
-		}
-		if err == nil {
-			if tz == nil {
-				tz = time.UTC
-			}
-			return tz, nil
-		}
-		return nil, err
-	}
-
-	chicago, err := time.LoadLocation("America/Chicago")
-	if err != nil {
-		t.Fatal(err)
-	}
-	berlin, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for in, want := range map[string]struct {
-		*time.Location
-		error
-	}{
-		"UTC": {time.UTC, nil},
-		"Europe/Berlin": {berlin, nil},
-		"America/Chicago": {chicago, nil},
-		"AMERICA/CHICAGO": {chicago, nil},
-	} {
-		got, err := f(in)
-		if err != want.error {
-			t.Errorf("%q got error %+v, wanted %v", in, err, want.error)
-		} else if got != want.Location && got.String() != want.Location.String() {
-			t.Errorf("%q got %v, wanted %v", in, got, want.Location)
-		}
-	}
-}
-
 func TestSplitQuoted(t *testing.T) {
 	for tName, tCase := range map[string]struct {
 		In   string

@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2021 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -508,7 +508,7 @@ func (c *conn) initTZ() error {
 	// DBTIMEZONE is useless, false, and misdirecting!
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	// https://stackoverflow.com/questions/29271224/how-to-handle-day-light-saving-in-oracle-database/29272926#29272926
-	const qry = "SELECT DBTIMEZONE as dbTZ, NVL(TO_CHAR(SYSTIMESTAMP, 'TZR'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS dbOSTZ FROM DUAL"
+	const qry = "SELECT DBTIMEZONE as dbTZ, NVL(TO_CHAR(SYSTIMESTAMP, 'tzr'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS dbOSTZ FROM DUAL"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
@@ -570,6 +570,9 @@ func (c *conn) initTZ() error {
 	return nil
 }
 
+//go:generate go run generate_tznames.go -pkg godror -o tznames_generated.go
+var tzNames []string
+
 func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, error) {
 	if dbTZ == "" && dbOSTZ != "" {
 		dbTZ = dbOSTZ
@@ -625,8 +628,13 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
-		if tz, err = time.LoadLocation(dbTZ); err != nil && dbTZ == strings.ToUpper(dbTZ) {
-			tz, err = time.LoadLocation(strings.Title(strings.ToLower(dbTZ)))
+		if tz, err = time.LoadLocation(dbTZ); err != nil {
+			for _, nm := range tzNames {
+				if strings.EqualFold(nm, dbTZ) {
+					tz, err = time.LoadLocation(nm)
+					break
+				}
+			}
 		}
 		if err == nil {
 			if tz == nil {
