@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,6 +63,58 @@ func TestCalculateTZ(t *testing.T) {
 			t.Errorf("ERR %s: wanted %v, got %v", prefix, tC.err, err)
 		} else if err == nil && off != tC.off {
 			t.Errorf("ERR %s: got %d, wanted %d.", prefix, off, tC.off)
+		}
+	}
+}
+
+func TestTZName(t *testing.T) {
+	f := func(dbTZ string) (*time.Location, error) {
+		t.Log("try", dbTZ)
+		tz, err := time.LoadLocation(dbTZ)
+		if err != nil {
+			for _, nm := range tzNames {
+				if strings.EqualFold(nm, dbTZ) {
+					tz, err = time.LoadLocation(nm)
+					break
+				}
+			}
+		}
+		if err == nil {
+			if tz == nil {
+				tz = time.UTC
+			}
+			return tz, nil
+		}
+		return nil, err
+	}
+
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newYork, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for in, want := range map[string]struct {
+		*time.Location
+		error
+	}{
+		"UTC":              {time.UTC, nil},
+		"Europe/Berlin":    {berlin, nil},
+		"America/Chicago":  {chicago, nil},
+		"AMERICA/CHICAGO":  {chicago, nil},
+		"AMERICA/NeW_yORk": {newYork, nil},
+	} {
+		got, err := f(in)
+		if err != want.error {
+			t.Errorf("%q got error %+v, wanted %v", in, err, want.error)
+		} else if got != want.Location && got.String() != want.Location.String() {
+			t.Errorf("%q got %v, wanted %v", in, got, want.Location)
 		}
 	}
 }
