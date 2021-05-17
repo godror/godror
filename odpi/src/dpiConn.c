@@ -1365,8 +1365,13 @@ int dpiConn_close(dpiConn *conn, dpiConnCloseMode mode, const char *tag,
     int closing;
 
     // validate parameters
-    if (dpiConn__check(conn, __func__, &error) < 0)
+    if (dpiGen__startPublicFn(conn, DPI_HTYPE_CONN, __func__, &error) < 0)
+        return DPI_FAILURE;
+    if (!conn->handle || conn->closing ||
+            (conn->pool && !conn->pool->handle)) {
+        dpiError__set(&error, "check connected", DPI_ERR_NOT_CONNECTED);
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
     DPI_CHECK_PTR_AND_LENGTH(conn, tag)
     if (mode && !conn->pool) {
         dpiError__set(&error, "check in pool", DPI_ERR_CONN_NOT_IN_POOL);

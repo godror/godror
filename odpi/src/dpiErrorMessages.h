@@ -93,4 +93,5 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1077: JSON scalar type %d is not supported", // DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE
     "DPI-1078: native type %d with Oracle type %d is not supported by JSON", // DPI_ERR_UNHANDLED_CONVERSION_TO_JSON
     "DPI-1079: Oracle Client library is at version %d.%d but either version %d.%d (or later DBRU) or version %d.%d (or higher) is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI
+    "DPI-1080: connection was closed by ORA-%d", // DPI_ERR_CONN_CLOSED
 };
