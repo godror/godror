@@ -11,11 +11,66 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
 )
+
+func TestReadLargeLOB(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("LOBAppend"), 30*time.Second)
+	defer cancel()
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	qry := `CREATE OR REPLACE FUNCTION test_readlargelob(p_size IN PLS_INTEGER) RETURN CLOB IS
+  v_clob CLOB;
+  i PLS_INTEGER;
+BEGIN
+  DBMS_LOB.createtemporary(v_clob, TRUE, DBMS_LOB.session);
+  FOR i IN 1..NVL(p_size, 0)/10 + 1 LOOP
+    DBMS_LOB.writeappend(v_clob, 10, LPAD(i, 10, ' ')||CHR(10));
+  END LOOP;
+  RETURN(v_clob);
+END;`
+	if _, err := tx.ExecContext(ctx, qry); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION test_readlargelob") }()
+
+	qry = "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(32768+1)); END;"
+	var want int64
+	if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &want}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	t.Logf("n=%d", want)
+	qry = "BEGIN :1 := test_readlargelob(32768+1); END;"
+	stmt, err := tx.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	lob := godror.Lob{IsClob: true}
+	if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &lob}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+
+	got, err := io.Copy(ioutil.Discard, lob.Reader)
+	t.Logf("Read %d bytes from LOB: %+v", got, err)
+	if err != nil {
+		t.Error(err)
+	}
+	if got != want {
+		t.Errorf("got %d, wanted %d", got, want)
+	}
+}
 
 func TestLOBAppend(t *testing.T) {
 	t.Parallel()
