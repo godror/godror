@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - Add stmtCacheSize, poolMaxSessionPerShard, poolPingInterval params
+- OnInit use context.Context
+
+### Changed
+- Use ODPI-C v4.2.0
 
 ## [v0.24.3]
 ### Added
