@@ -212,12 +212,14 @@ func (d *drv) Close() error {
 	dpiCtx, pools := d.dpiContext, d.pools
 	d.dpiContext, d.pools, d.timezones = nil, nil, nil
 	for _, pool := range pools {
-		pool.Close()
+		pool.Purge()
 	}
 	if !oneContext ||
 		// As we use one global dpiContext, don't destroy it
 		(dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
-		C.dpiContext_destroy(dpiCtx)
+		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
+			return fmt.Errorf("error destroying dpiContext %p", dpiCtx)
+		}
 	}
 	return nil
 }
@@ -230,6 +232,15 @@ type connPool struct {
 	dpiPool *C.dpiPool
 	key     string
 	params  commonAndPoolParams
+}
+
+// Purge force-closes the pool's connections then closes the pool.
+func (p *connPool) Purge() {
+	dpiPool := p.dpiPool
+	p.dpiPool = nil
+	if dpiPool != nil {
+		C.dpiPool_close(dpiPool, C.DPI_MODE_POOL_CLOSE_FORCE)
+	}
 }
 
 func (p *connPool) Close() error {
