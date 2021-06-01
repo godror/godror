@@ -387,6 +387,10 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 			if prev == '*' && r == '/' {
 				state = 0
 			}
+		case 4:
+			if r == '\'' {
+				state = 0
+			}
 		case 0:
 			switch r {
 			case '-':
@@ -397,6 +401,8 @@ func MapToSlice(qry string, metParam func(string) interface{}) (string, []interf
 				if prev == '/' {
 					state = 3
 				}
+			case '\'':
+				state = 4
 			case ':':
 				state = 1
 				p = i
