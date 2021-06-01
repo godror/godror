@@ -19,10 +19,10 @@ func TestMapToSlice(t *testing.T) {
 	}{
 		{
 			`SELECT NVL(MAX(F_dazon), :dazon) FROM T_spl_level
-			WHERE (F_spl_azon = :lev_azon OR --:lev_azon OR
+			WHERE (to_char(CURRENT_DATE, 'HH:MM') = '00:42' AND F_spl_azon = :lev_azon OR --:lev_azon OR
 			       F_ssz = 0 AND F_lev_azon = /*:lev_azon*/:lev_azon)`,
 			`SELECT NVL(MAX(F_dazon), :1) FROM T_spl_level
-			WHERE (F_spl_azon = :2 OR --:lev_azon OR
+			WHERE (to_char(CURRENT_DATE, 'HH:MM') = '00:42' AND F_spl_azon = :2 OR --:lev_azon OR
 			       F_ssz = 0 AND F_lev_azon = /*:lev_azon*/:3)`,
 			[]interface{}{"dazon", "lev_azon", "lev_azon"},
 		},
