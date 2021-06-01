@@ -3,12 +3,13 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
-package godror
+package godror_test
 
 import (
 	"reflect"
 	"testing"
 
+	godror "github.com/godror/godror"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -66,7 +67,7 @@ END;
 		},
 	} {
 
-		got, params := MapToSlice(tc.in, func(s string) interface{} { return s })
+		got, params := godror.MapToSlice(tc.in, func(s string) interface{} { return s })
 		d := cmp.Diff(tc.await, got)
 		if d != "" {
 			t.Errorf("%d. diff:\n%s", i, d)
