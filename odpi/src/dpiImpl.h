@@ -84,6 +84,9 @@ extern unsigned long dpiDebugLevel;
 // define context name for ping interval
 #define DPI_CONTEXT_LAST_TIME_USED                  "DPI_LAST_TIME_USED"
 
+// define context name for server version information
+#define DPI_CONTEXT_SERVER_VERSION                  "DPI_SERVER_VERSION"
+
 // define size of buffer used for numbers transferred to/from Oracle as text
 #define DPI_NUMBER_AS_TEXT_CHARS                    172
 
@@ -1238,6 +1241,7 @@ struct dpiConn {
     int externalHandle;                 // OCI handle provided directly?
     int deadSession;                    // dead session (drop from pool)?
     int standalone;                     // standalone connection (not pooled)?
+    int creating;                       // connection is being created?
     int closing;                        // connection is being closed?
 };
 

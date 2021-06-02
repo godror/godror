@@ -5,12 +5,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.25.1]
 ### Added
 - Add stmtCacheSize, poolMaxSessionPerShard, poolPingInterval params
 - OnInit use context.Context
 
 ### Changed
-- Use ODPI-C v4.2.0
+- Use ODPI-C v4.2.1
 
 ## [v0.24.3]
 ### Added

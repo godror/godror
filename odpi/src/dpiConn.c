@@ -330,6 +330,11 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         dpiConnCreateParams *createParams, dpiError *error)
 {
     void *envHandle = NULL;
+    int status;
+
+    // mark connection as being created so that errors that are raised do not
+    // do dead connection detection
+    conn->creating = 1;
 
     // allocate handle lists for statements, LOBs and objects
     if (dpiHandleList__create(&conn->openStmts, error) < 0)
@@ -375,13 +380,21 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
     if (pool || (createParams->connectionClass &&
             createParams->connectionClassLength > 0) ||
             createParams->shardingKeyColumns ||
-            createParams->superShardingKeyColumns)
-        return dpiConn__get(conn, userName, userNameLength, password,
+            createParams->superShardingKeyColumns) {
+        status = dpiConn__get(conn, userName, userNameLength, password,
                 passwordLength, connectString, connectStringLength,
                 createParams, pool, error);
-    return dpiConn__createStandalone(conn, userName, userNameLength, password,
-            passwordLength, connectString, connectStringLength, commonParams,
-            createParams, error);
+    } else {
+        status = dpiConn__createStandalone(conn, userName, userNameLength,
+                password, passwordLength, connectString, connectStringLength,
+                commonParams, createParams, error);
+    }
+
+    // mark connection as no longer being created so that subsequent errors
+    // that are raised do perform dead connection detection
+    conn->creating = 0;
+
+    return status;
 }
 
 
@@ -695,24 +708,44 @@ int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
         dpiError *error)
 {
     char buffer[512], *releaseString;
+    dpiVersionInfo *tempVersionInfo;
     uint32_t serverRelease, mode;
     uint32_t releaseStringLength;
+    int ociCanCache;
 
     // nothing to do if the server version has been cached earlier
     if (conn->releaseString ||
             (conn->versionInfo.versionNum > 0 && !wantReleaseString))
         return DPI_SUCCESS;
 
-    // the server version is not available in the cache so a call is required
-    // to get it; as of Oracle Client 20.3, a special mode is available that
-    // causes OCI to cache server version information; this mode can be used
-    // exclusively once 20.3 is the minimum version supported by ODPI-C; until
-    // that time, since ODPI-C already caches server version information
-    // itself, this mode is only used when the release string is not requested,
-    // in order to avoid the round-trip in that particular case
-    if ((conn->env->versionInfo->versionNum > 20 ||
+    // the server version is not available in the cache so it must be
+    // determined; as of Oracle Client 20.3, a special mode is available that
+    // causes OCI to cache the server version information, so this mode can be
+    // used if the release string information is not desired and the client
+    // supports it
+    ociCanCache = ((conn->env->versionInfo->versionNum > 20 ||
             (conn->env->versionInfo->versionNum == 20 &&
-             conn->env->versionInfo->releaseNum >= 3)) && !wantReleaseString) {
+             conn->env->versionInfo->releaseNum >= 3)) && !wantReleaseString);
+
+    // for earlier versions where the OCI cache is not available, pooled
+    // connections can cache the information on the session in order to avoid
+    // the round trip, but again only if the release string is not desired;
+    // nothing further needs to be done if this cache is present
+    if (conn->pool && !ociCanCache && !wantReleaseString) {
+        tempVersionInfo = NULL;
+        if (dpiOci__contextGetValue(conn, DPI_CONTEXT_SERVER_VERSION,
+                (uint32_t) (sizeof(DPI_CONTEXT_SERVER_VERSION) - 1),
+                (void**) &tempVersionInfo, 1, error) < 0)
+            return DPI_FAILURE;
+        if (tempVersionInfo) {
+            memcpy(&conn->versionInfo, tempVersionInfo,
+                    sizeof(conn->versionInfo));
+            return DPI_SUCCESS;
+        }
+    }
+
+    // calculate the server version by making the appropriate call
+    if (ociCanCache) {
         mode = DPI_OCI_SRVRELEASE2_CACHED;
         releaseString = NULL;
         releaseStringLength = 0;
@@ -755,6 +788,21 @@ int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
                     conn->versionInfo.updateNum,
                     conn->versionInfo.portReleaseNum,
                     conn->versionInfo.portUpdateNum);
+
+    // for earlier versions where the OCI cache is not available, store the
+    // version information on the session in order to avoid the round-trip the
+    // next time the pooled session is acquired from the pool
+    if (conn->pool && !ociCanCache) {
+        if (dpiOci__memoryAlloc(conn, (void**) &tempVersionInfo,
+                sizeof(conn->versionInfo), 1, error) < 0)
+            return DPI_FAILURE;
+        memcpy(tempVersionInfo, &conn->versionInfo, sizeof(conn->versionInfo));
+        if (dpiOci__contextSetValue(conn, DPI_CONTEXT_SERVER_VERSION,
+                (uint32_t) (sizeof(DPI_CONTEXT_SERVER_VERSION) - 1),
+                tempVersionInfo, 1, error) < 0) {
+            dpiOci__memoryFree(conn, tempVersionInfo, error);
+        }
+    }
 
     return DPI_SUCCESS;
 }

@@ -36,38 +36,15 @@ int dpiError__getInfo(dpiError *error, dpiErrorInfo *info)
     info->isRecoverable = error->buffer->isRecoverable;
     info->encoding = error->buffer->encoding;
     info->isWarning = error->buffer->isWarning;
-    switch(info->code) {
-        case 12154: // TNS:could not resolve the connect identifier specified
-            info->sqlState = "42S02";
-            break;
-        case    22: // invalid session ID; access denied
-        case   378: // buffer pools cannot be created as specified
-        case   602: // Internal programming exception
-        case   603: // ORACLE server session terminated by fatal error
-        case   604: // error occurred at recursive SQL level
-        case   609: // could not attach to incoming connection
-        case  1012: // not logged on
-        case  1033: // ORACLE initialization or shutdown in progress
-        case  1041: // internal error. hostdef extension doesn't exist
-        case  1043: // user side memory corruption
-        case  1089: // immediate shutdown or close in progress
-        case  1090: // shutdown in progress
-        case  1092: // ORACLE instance terminated. Disconnection forced
-        case  3113: // end-of-file on communication channel
-        case  3114: // not connected to ORACLE
-        case  3122: // attempt to close ORACLE-side window on user side
-        case  3135: // connection lost contact
-        case 12153: // TNS:not connected
-        case 27146: // post/wait initialization failed
-        case 28511: // lost RPC connection to heterogeneous remote agent
-            info->sqlState = "01002";
-            break;
-        default:
-            if (error->buffer->code == 0 &&
-                    error->buffer->errorNum == (dpiErrorNum) 0)
-                info->sqlState = "00000";
-            else info->sqlState = "HY000";
-            break;
+    if (info->code == 12154) {
+        info->sqlState = "42S02";
+    } else if (error->buffer->errorNum == DPI_ERR_CONN_CLOSED) {
+        info->sqlState = "01002";
+    } else if (error->buffer->code == 0 &&
+            error->buffer->errorNum == (dpiErrorNum) 0) {
+        info->sqlState = "00000";
+    } else {
+        info->sqlState = "HY000";
     }
     return DPI_FAILURE;
 }
@@ -178,8 +155,9 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
             (void*) &error->buffer->isRecoverable, 0,
             DPI_OCI_ATTR_ERROR_IS_RECOVERABLE, NULL, error);
 
-    // check the health of the connection (if one was specified in this call)
-    if (conn && !conn->deadSession) {
+    // check the health of the connection (if one was specified in this call
+    // and we are not in the middle of creating that connection)
+    if (conn && !conn->creating && !conn->deadSession) {
 
         // first check the attribute specifically designed to check the health
         // of the connection, if possible
