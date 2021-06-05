@@ -108,7 +108,7 @@ END;`
 		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}
 
-	if true {
+	if false {
 		// Either use DBMS_LOB.freetemporary
 		if _, err := tx.ExecContext(ctx, "BEGIN dbms_lob.freetemporary(:1); END;", tmp); err != nil {
 			t.Errorf("Failed to close temporary lob(%v): %+v", tmp, err)
