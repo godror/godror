@@ -1,3 +1,4 @@
+//go:build gofuzz
 // +build gofuzz
 
 // Copyright 2020 The Godror Authors
