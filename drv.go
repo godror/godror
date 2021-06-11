@@ -1011,6 +1011,7 @@ func ContextWithLog(ctx context.Context, logF func(...interface{}) error) contex
 
 var _ driver.DriverContext = (*drv)(nil)
 var _ driver.Connector = (*connector)(nil)
+var _ io.Closer = (*connector)(nil)
 
 type connector struct {
 	drv *drv
@@ -1092,6 +1093,16 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 // mainly to maintain compatibility with the Driver method
 // on sql.DB.
 func (c connector) Driver() driver.Driver { return c.drv }
+
+// Close the connector's underlying driver.
+//
+// From Go 1.17 sql.DB.Close() will call this method.
+func (c connector) Close() error {
+	if c.drv == nil {
+		return nil
+	}
+	return c.drv.Close()
+}
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
 //
