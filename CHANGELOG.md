@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.25.2]
+### Changed
+- Go 1.14 minimum requirement
+
 ## [v0.25.1]
 ### Added
 - Add stmtCacheSize, poolMaxSessionPerShard, poolPingInterval params
