@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 git checkout gh-pages
-trap 'git checkout master' EXIT 
+trap 'git checkout main' EXIT 
 git pull -s recursive -X theirs origin gh-pages
 version="$(git tag | sort -Vr|head -n1)"
 set -x
