@@ -10,14 +10,18 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
-At least Go 1.13 is required!
-Cgo is required, so cross-compilation is hard, and you cannot set `CGO_ENABLED=0`!
+## Build-time Requirements
+  - Go 1.14
+  - C compiler with `CGO_ENABLED=1` - so cross-compilation is hard
+
+## Run-time Requirements
+  - Oracle Client libraries - see [ODPI-C](https://oracle.github.io/odpi/doc/installation.html) 
 
 Although Oracle Client libraries are NOT required for compiling, they *are*
 needed at run time.  Download the free Basic or Basic Light package from
 <https://www.oracle.com/database/technologies/instant-client/downloads.html>.
 
-### Rationale
+## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored

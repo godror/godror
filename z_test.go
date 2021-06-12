@@ -944,7 +944,7 @@ func TestSelectRefCursorWrap(t *testing.T) {
 			continue
 		}
 		t.Logf("%[1]T %[1]p", intf)
-		dr := intf.(driver.Rows)
+		dr := intf
 		sub, err := godror.WrapRows(ctx, testDb, dr)
 		if err != nil {
 			dr.Close()
@@ -2550,7 +2550,7 @@ END;`
 
 			}
 			defer rows1.Close()
-			cols1 := rows1.(driver.Rows).Columns()
+			cols1 := rows1.Columns()
 			values := make([]driver.Value, len(cols1))
 
 			var rowNum int
@@ -2592,7 +2592,7 @@ END;`
 
 			}
 			defer rows1.Close()
-			cols1 := rows1.(driver.Rows).Columns()
+			cols1 := rows1.Columns()
 			values := make([]driver.Value, len(cols1))
 
 			var rowNum int

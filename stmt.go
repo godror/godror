@@ -38,6 +38,10 @@ import (
 	"unsafe"
 )
 
+type NullTime = sql.NullTime
+
+var nullTime interface{} = nil
+
 type stmtOptions struct {
 	boolString         boolString
 	fetchArraySize     int // zero means DefaultFetchArraySize
@@ -434,6 +438,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if n == 0 {
 				st.data[i] = st.data[i][:0]
 			} else {
+				//st.data[i] = unsafe.Slice(data, n) // go1.17
 				st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 			}
 		}

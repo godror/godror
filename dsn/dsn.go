@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
-	errors "golang.org/x/xerrors"
 )
 
 const (
@@ -320,7 +319,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		// URL
 		u, err := url.Parse(dataSourceName)
 		if err != nil {
-			return P, errors.Errorf("%s: %w", dataSourceName, err)
+			return P, fmt.Errorf("%s: %w", dataSourceName, err)
 		}
 		if usr := u.User; usr != nil {
 			P.Username = usr.Username()
@@ -388,7 +387,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			}
 		}
 		if err := d.Err(); err != nil {
-			return P, errors.Errorf("parsing parameters %q: %w", paramsString, err)
+			return P, fmt.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
 	}
 	//fmt.Printf("cs0=%q\n", P.ConnectString)
@@ -420,7 +419,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		var err error
 		if *task.Dest, err = strconv.ParseBool(s); err != nil {
-			return P, errors.Errorf("%s=%q: %w", task.Key, s, err)
+			return P, fmt.Errorf("%s=%q: %w", task.Key, s, err)
 		}
 		if task.Key == "heterogeneousPool" {
 			P.StandaloneConnection = !P.Heterogeneous
@@ -433,7 +432,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.Timezone = time.Local
 		} else if strings.Contains(tz, "/") {
 			if P.Timezone, err = time.LoadLocation(tz); err != nil {
-				return P, errors.Errorf("%s: %w", tz, err)
+				return P, fmt.Errorf("%s: %w", tz, err)
 			}
 		} else if off, err := ParseTZ(tz); err == nil {
 			if off == 0 {
@@ -442,7 +441,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 				P.Timezone = time.FixedZone(tz, off)
 			}
 		} else {
-			return P, errors.Errorf("%s: %w", tz, err)
+			return P, fmt.Errorf("%s: %w", tz, err)
 		}
 		if P.Timezone == nil {
 			P.Timezone = time.UTC
@@ -466,7 +465,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		var err error
 		*task.Dest, err = strconv.Atoi(s)
 		if err != nil {
-			return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+			return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
 		}
 	}
 
@@ -487,11 +486,11 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		*task.Dest, err = time.ParseDuration(s)
 		if err != nil {
 			if !strings.Contains(err.Error(), "time: missing unit in duration") {
-				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+				return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
 			}
 			i, err := strconv.Atoi(s)
 			if err != nil {
-				return P, errors.Errorf("%s: %w", task.Key+"="+s, err)
+				return P, fmt.Errorf("%s: %w", task.Key+"="+s, err)
 			}
 			base := time.Second
 			if task.Key == "poolWaitTimeout" {
@@ -516,7 +515,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			}
 		}
 		if err := d.Err(); err != nil {
-			return P, errors.Errorf("%q: %w", s, err)
+			return P, fmt.Errorf("%q: %w", s, err)
 		}
 	}
 	P.OnInitStmts = q["onInit"]
@@ -766,7 +765,7 @@ func ParseTZ(s string) (int, error) {
 	if i := strings.IndexByte(s, ':'); i >= 0 {
 		u64, err := strconv.ParseUint(s[i+1:], 10, 6)
 		if err != nil {
-			return tz, errors.Errorf("%s: %w", s, err)
+			return tz, fmt.Errorf("%s: %w", s, err)
 		}
 		tz = int(u64 * 60)
 		s = s[:i]
@@ -776,7 +775,7 @@ func ParseTZ(s string) (int, error) {
 		if i := strings.IndexByte(s, '/'); i >= 0 {
 			targetLoc, err := time.LoadLocation(s)
 			if err != nil {
-				return tz, errors.Errorf("%s: %w", s, err)
+				return tz, fmt.Errorf("%s: %w", s, err)
 			}
 			if targetLoc == nil {
 				targetLoc = time.UTC
@@ -790,7 +789,7 @@ func ParseTZ(s string) (int, error) {
 	}
 	i64, err := strconv.ParseInt(s, 10, 5)
 	if err != nil {
-		return tz, errors.Errorf("%s: %w", s, err)
+		return tz, fmt.Errorf("%s: %w", s, err)
 	}
 	if i64 < 0 {
 		tz = -tz

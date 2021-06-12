@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	errors "golang.org/x/xerrors"
 )
 
 func TestParse(t *testing.T) {
@@ -27,7 +26,6 @@ func TestParse(t *testing.T) {
 			Username:      "cc",
 			Password:      Password{"c@c*1"},
 			ConnectString: "192.168.1.1/cc",
-			Timezone:      time.Local,
 		},
 		PoolParams: PoolParams{
 			MaxLifeTime:    DefaultMaxLifeTime,
@@ -41,7 +39,6 @@ func TestParse(t *testing.T) {
 			Username:      "user",
 			Password:      Password{"pass"},
 			ConnectString: "sid",
-			Timezone:      time.Local,
 		},
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
@@ -138,7 +135,6 @@ func TestParse(t *testing.T) {
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: Password{"pass"}, ConnectString: "sid",
-					Timezone: time.Local,
 				},
 				ConnParams: ConnParams{
 					ConnClass: "TestClassName", IsSysOper: true,
@@ -164,7 +160,6 @@ func TestParse(t *testing.T) {
 				StandaloneConnection: DefaultStandaloneConnection,
 				CommonParams: CommonParams{
 					ConnectString: "[::1]:12345/dbname",
-					Timezone:      time.Local,
 				},
 				ConnParams: ConnParams{
 					ConnClass: cc,
@@ -172,7 +167,7 @@ func TestParse(t *testing.T) {
 				PoolParams: PoolParams{
 					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
 					WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
-					ExternalAuth: DefaultStandaloneConnection,
+					ExternalAuth: true,
 				},
 			},
 		},
@@ -196,7 +191,6 @@ func TestParse(t *testing.T) {
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: Password{"pass"}, ConnectString: "sid",
-					Timezone:    time.Local,
 					OnInitStmts: []string{"a", "b"},
 				},
 				ConnParams: ConnParams{
@@ -253,7 +247,7 @@ func TestParseTZ(t *testing.T) {
 		i, err := ParseTZ(k)
 		t.Logf("Parse(%q): %d %v", k, i, err)
 		if err != nil {
-			t.Fatal(errors.Errorf("%s: %w", k, err))
+			t.Fatal(fmt.Errorf("%s: %w", k, err))
 		}
 		if i != v {
 			t.Errorf("%s. got %d, wanted %d.", k, i, v)
@@ -302,8 +296,8 @@ func ExampleConnectString() {
 	// Output:
 	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
-	// configDir= connectionClass= enableEvents=0 heterogeneousPool=0 libDir= newPassword=
-	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
-	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 standaloneConnection=0
-	// sysasm=0 sysdba=0 sysoper=0 timezone=local
+	// configDir= connectionClass= enableEvents=0 externalAuth=0 heterogeneousPool=0
+	// libDir= newPassword= noTimezoneCheck=0 poolIncrement=0 poolMaxSessions=0 poolMinSessions=0
+	// poolSessionMaxLifetime=0s poolSessionTimeout=42s poolWaitTimeout=0s prelim=0
+	// standaloneConnection=0 sysasm=0 sysdba=0 sysoper=0 timezone=
 }

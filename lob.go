@@ -11,6 +11,7 @@ package godror
 import "C"
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -18,8 +19,6 @@ import (
 	"sync"
 	"unicode/utf8"
 	"unsafe"
-
-	errors "golang.org/x/xerrors"
 )
 
 // Lob is for reading/writing a LOB.
@@ -413,7 +412,7 @@ func (dl *DirectLob) GetFileName() (dir, file string, err error) {
 			&fileNameLength,
 		)
 	}); err != nil {
-		return dir, file, errors.Errorf("GetFileName: %w", err)
+		return dir, file, fmt.Errorf("GetFileName: %w", err)
 	}
 	dir = C.GoStringN(directoryAlias, C.int(directoryAliasLength))
 	file = C.GoStringN(fileName, C.int(fileNameLength))

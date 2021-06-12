@@ -643,16 +643,13 @@ type ObjectAttribute struct {
 
 // Close the ObjectAttribute.
 func (A ObjectAttribute) Close() error {
-	attr := A.dpiObjectAttr
-	A.dpiObjectAttr = nil
-
-	if attr == nil {
+	if A.dpiObjectAttr == nil {
 		return nil
 	}
 	if Log != nil {
 		Log("msg", "ObjectAttribute.Close", "name", A.Name)
 	}
-	if err := A.ObjectType.conn.checkExec(func() C.int { return C.dpiObjectAttr_release(attr) }); err != nil {
+	if err := A.ObjectType.conn.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
 		return err
 	}
 	return A.ObjectType.Close()
