@@ -31,7 +31,6 @@ import (
 	"github.com/godror/godror/dsn"
 )
 
-const getConnection = "--GET_CONNECTION--"
 const wrapResultset = "--WRAP_RESULTSET--"
 
 // The maximum capacity is limited to (2^32 / sizeof(dpiData))-1 to remain compatible
@@ -55,6 +54,7 @@ type conn struct {
 	tranParams    tranParams
 	poolKey       string
 	Server        VersionInfo
+	onRelease     func() error
 	params        dsn.ConnectionParams
 	tzOffSecs     int
 	mu            sync.RWMutex
@@ -207,6 +207,11 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
+	onRelease := c.onRelease
+	c.onRelease = nil
+	if onRelease != nil {
+		return onRelease()
+	}
 	c.currentTT = TraceTag{}
 	dpiConn := c.dpiConn
 	if dpiConn == nil {
@@ -321,13 +326,6 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		c.mu.Lock()
 		c.setTraceTag(tt)
 		c.mu.Unlock()
-	}
-	// TODO: get rid of this hack
-	if query == getConnection {
-		if Log != nil {
-			Log("msg", "PrepareContext", "shortcut", query)
-		}
-		return &statement{conn: c, query: query}, nil
 	}
 
 	c.mu.RLock()

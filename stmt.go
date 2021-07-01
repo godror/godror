@@ -360,11 +360,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	st.ctx = ctx
 
-	if st.dpiStmt == nil && st.query == getConnection {
-		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
-		return driver.ResultNoRows, nil
-	}
-
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 
@@ -502,12 +497,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 
 	Log := ctxGetLog(ctx)
 	switch st.query {
-	case getConnection:
-		if Log != nil {
-			Log("msg", "QueryContext", "args", args)
-		}
-		return &directRow{conn: st.conn, query: st.query, result: []interface{}{st.conn}}, nil
-
 	case wrapResultset:
 		if Log != nil {
 			Log("msg", "QueryContext", "args", args)
@@ -583,7 +572,7 @@ func (st *statement) NumInput() int {
 	}
 	if st.dpiStmt == nil {
 		switch st.query {
-		case getConnection, wrapResultset:
+		case wrapResultset:
 			return 1
 		}
 		return 0
