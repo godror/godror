@@ -630,6 +630,10 @@ func (dr *directRow) Columns() []string {
 	if Log != nil {
 		Log("directRow", "Columns")
 	}
+	switch dr.query {
+	case getConnection:
+		return []string{"CONNECTION"}
+	}
 	return nil
 }
 
@@ -650,6 +654,10 @@ func (dr *directRow) Close() error {
 func (dr *directRow) Next(dest []driver.Value) error {
 	if Log != nil {
 		Log("directRow", "Next", "query", dr.query, "dest", dest)
+	}
+	switch dr.query {
+	case getConnection:
+		*(dest[0].(*interface{})) = dr.result[0]
 	}
 	return nil
 }

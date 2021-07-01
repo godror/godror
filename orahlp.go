@@ -11,10 +11,12 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -544,39 +546,19 @@ func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }
 
+var getConnMu sync.Mutex
+
 // getConn will acquire a separate connection to the same DB as what ex is connected to.
-func getConn(ctx context.Context, ex Execer) (c *conn, err error) {
-	gotConn := make(chan struct{})
-	go func() {
-		err = Raw(ctx, ex, func(driverConn Conn) error {
-			c = driverConn.(*conn)
-			var p string
-			if Log != nil {
-				p = fmt.Sprintf("%p", c)
-				Log("msg", "getConn", "conn", p)
-			}
-			done := make(chan struct{})
-			c.onRelease = func() error {
-				if Log != nil {
-					Log("msg", "releasing getConn", "conn", p)
-				}
-				close(done)
-				return nil
-			}
-			close(gotConn)
-			select {
-			case <-ctx.Done():
-			case <-done:
-			}
-			return nil
-		})
-	}()
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-gotConn:
-		return c, nil
+func getConn(ctx context.Context, ex Execer) (*conn, error) {
+	getConnMu.Lock()
+	defer getConnMu.Unlock()
+	var c interface{}
+	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
+		return nil, fmt.Errorf("getConnection: %w", err)
+	} else if c == nil {
+		return nil, errors.New("nil connection")
 	}
+	return c.(*conn), nil
 }
 
 // Raw executes f on the given *sql.DB or *sql.Conn.
