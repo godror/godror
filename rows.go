@@ -617,6 +617,43 @@ func (r *rows) Next(dest []driver.Value) error {
 	return nil
 }
 
+var _ = driver.Rows((*directRow)(nil))
+
+type directRow struct {
+	conn   *conn
+	query  string
+	result []interface{}
+	args   []string
+}
+
+func (dr *directRow) Columns() []string {
+	if Log != nil {
+		Log("directRow", "Columns")
+	}
+	return nil
+}
+
+// Close closes the rows iterator.
+func (dr *directRow) Close() error {
+	dr.conn = nil
+	dr.query = ""
+	dr.args = nil
+	dr.result = nil
+	return nil
+}
+
+// Next is called to populate the next row of data into
+// the provided slice. The provided slice will be the same
+// size as the Columns() are wide.
+//
+// Next should return io.EOF when there are no more rows.
+func (dr *directRow) Next(dest []driver.Value) error {
+	if Log != nil {
+		Log("directRow", "Next", "query", dr.query, "dest", dest)
+	}
+	return nil
+}
+
 func (r *rows) getImplicitResult() {
 	if r == nil || r.nextRsErr != nil {
 		return
