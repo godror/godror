@@ -2819,7 +2819,7 @@ func TestCancel(t *testing.T) {
 	t.Log("Pid:", pid)
 	goal := Cnt() + 1
 	t.Logf("Before: %d", goal)
-	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_LOCK.SLEEP(10); END LOOP; END;"
+	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_SESSION.SLEEP(10); END LOOP; END;"
 	subCtx, subCancel := context.WithTimeout(ctx, (2*maxConc+1)*time.Second)
 	grp, grpCtx := errgroup.WithContext(subCtx)
 	for i := 0; i < maxConc; i++ {
