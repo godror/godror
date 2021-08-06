@@ -23,6 +23,17 @@ import (
 // Number as string
 type Number string
 
+//Json as string
+type Json string
+
+//Json as Bytes
+type JsonByte []byte
+
+//Timestamp as time.Time
+type Timestamp time.Time
+
+type IntervalYMJson string
+
 var (
 	// Int64 for converting to-from int64.
 	Int64 = intType{}

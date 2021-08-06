@@ -423,7 +423,7 @@ typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
 typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
-
+typedef struct dpiJznDomDoc dpiJznDomDoc;
 
 //-----------------------------------------------------------------------------
 // Complex Native Data Types (used for transferring data to/from ODPI-C)
@@ -1251,6 +1251,20 @@ DPI_EXPORT int dpiJson_release(dpiJson *json);
 // set the value of the JSON object, given a hierarchy of nodes
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
+//parse textual json into json descriptor
+DPI_EXPORT int dpiJson_jsonTextBufferParse(dpiJson *json, const char *value, uint64_t vlen);
+
+//Fill textual json into text buffer from json descriptor
+DPI_EXPORT int dpiJson_jsonToTextBuffer(dpiJson *json,  char *value, uint64_t *vlen);
+
+// return the Json portion of the data
+DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
+
+// return the JsonObject portion of the data
+DPI_EXPORT dpiJsonObject *dpiData_getJsonObject(dpiData *data);
+
+// return the JsonArray portion of the data
+DPI_EXPORT dpiJsonArray *dpiData_getJsonArray(dpiData *data);
 
 //-----------------------------------------------------------------------------
 // LOB Methods (dpiLob)
@@ -2033,6 +2047,13 @@ DPI_EXPORT int dpiVar_setFromStmt(dpiVar *var, uint32_t pos, dpiStmt *stmt);
 // set the number of elements in a PL/SQL index-by table
 DPI_EXPORT int dpiVar_setNumElementsInArray(dpiVar *var, uint32_t numElements);
 
+
+//set the value from a json descriptor
+DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *js);
+
+
+//set the value from a json string
+DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, uint64_t strlen);
 #ifdef __cplusplus
 }
 #endif

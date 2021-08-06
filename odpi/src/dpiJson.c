@@ -603,7 +603,7 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
     // acquire the DOM doc which will be used to create the Oracle nodes
     if (dpiOci__jsonDomDocGet(json, &domDoc, error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, error);
-
+    
     // convert the top node (and all of the child nodes to Oracle nodes)
     if (dpiJsonNode__toOracleFromNative(json, topNode, domDoc, &oracleTopNode,
             error) < 0)
@@ -771,4 +771,27 @@ int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
     status = dpiJson__setValue(json, topNode, &error);
     return dpiGen__endPublicFn(json, status, &error);
+}
+
+// TBD Add flag ext types oson/bson
+int dpiJson_jsonTextBufferParse(dpiJson *json, const char *value, uint64_t vlen)
+{
+    dpiError error;
+    int status;
+    if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
+        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+
+    status = dpiOci__jsonTextBufferParse(json, value, vlen, &error);
+    return dpiGen__endPublicFn(json, status, &error);
+}
+
+int dpiJson_jsonToTextBuffer(dpiJson *json, char *value , uint64_t *vlen)
+{
+    dpiError error;
+    int status;
+
+    if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
+        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+    status = dpiOci__jsonToTextBuffer(json, value, vlen, &error);
+    return status;
 }

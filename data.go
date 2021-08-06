@@ -317,6 +317,10 @@ func (d *Data) Get() interface{} {
 		return d.GetTime()
 	case C.DPI_NATIVE_TYPE_UINT64:
 		return d.GetUint64()
+	case C.DPI_NATIVE_TYPE_JSON_ARRAY:
+		return d.GetJSONArray()
+	case C.DPI_NATIVE_TYPE_JSON_OBJECT:
+		return d.GetJSONObject()
 	default:
 		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
 	}
@@ -525,6 +529,16 @@ func (d *Data) reset() {
 func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiData) }
 func (d *Data) dpiDataGetBytesUnsafe() *C.dpiBytes {
 	return ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
+}
+
+func (d *Data) GetJSON() JSON {
+	return JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONObject() JSONObject {
+	return JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONArray() JSONArray {
+	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
 // For tests

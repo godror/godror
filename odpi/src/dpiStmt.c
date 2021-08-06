@@ -339,6 +339,7 @@ int dpiStmt__close(dpiStmt *stmt, const char *tag, uint32_t tagLength,
         stmt->handle = NULL;
     }
 
+
     // if actual close fails, reset closing flag; again, this must be done
     // while holding the lock (if in threaded mode) in order to avoid race
     // conditions!
