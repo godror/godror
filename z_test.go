@@ -3750,6 +3750,23 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 	}
 	return c
 }
+func TestShortTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("ShortTimeout"), 1*time.Minute)
+	defer cancel()
+	const qry = `SELECT * FROM all_objects ORDER BY DBMS_RANDOM.value`
+	shortCtx, shortCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	rows, err := testDb.QueryContext(shortCtx, qry)
+	t.Log(rows, err)
+	shortCancel()
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Log(err)
+			return
+		}
+		t.Fatal(err)
+	}
+	rows.Close()
+}
 
 func TestIssue100(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Issue100"), 1*time.Minute)
