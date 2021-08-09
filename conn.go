@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -51,7 +52,7 @@ var _ driver.Pinger = (*conn)(nil)
 type conn struct {
 	drv           *drv
 	dpiConn       *C.dpiConn
-	currentTT     TraceTag
+	currentTT     atomic.Value
 	tranParams    tranParams
 	poolKey       string
 	Server        VersionInfo
@@ -207,7 +208,7 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
-	c.currentTT = TraceTag{}
+	c.currentTT.Store(TraceTag{})
 	dpiConn := c.dpiConn
 	if dpiConn == nil {
 		return nil
@@ -318,9 +319,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 
 	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
-		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.mu.Unlock()
 	}
 	// TODO: get rid of this hack
 	if query == getConnection {
@@ -785,42 +784,56 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 	if c == nil || c.dpiConn == nil {
 		return nil
 	}
+	todo := make([][2]string, 0, 5)
+	currentTT, _ := c.currentTT.Load().(TraceTag)
 	for nm, vv := range map[string][2]string{
-		"action":     {c.currentTT.Action, tt.Action},
-		"module":     {c.currentTT.Module, tt.Module},
-		"info":       {c.currentTT.ClientInfo, tt.ClientInfo},
-		"identifier": {c.currentTT.ClientIdentifier, tt.ClientIdentifier},
-		"op":         {c.currentTT.DbOp, tt.DbOp},
+		"action":     {currentTT.Action, tt.Action},
+		"module":     {currentTT.Module, tt.Module},
+		"info":       {currentTT.ClientInfo, tt.ClientInfo},
+		"identifier": {currentTT.ClientIdentifier, tt.ClientIdentifier},
+		"op":         {currentTT.DbOp, tt.DbOp},
 	} {
 		if vv[0] == vv[1] {
 			continue
 		}
-		v := vv[1]
+		todo = append(todo, [2]string{nm, vv[1]})
+	}
+	if len(todo) == 0 {
+		return nil
+	}
+	c.currentTT.Store(tt)
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for _, f := range todo {
 		var s *C.char
-		if v != "" {
-			s = C.CString(v)
+		if f[1] != "" {
+			s = C.CString(f[1])
 		}
-		var err error
-		switch nm {
+		length := C.uint32_t(len(f[1]))
+		var res C.int
+		switch f[0] {
 		case "action":
-			err = c.checkExec(func() C.int { return C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setAction(c.dpiConn, s, length)
 		case "module":
-			err = c.checkExec(func() C.int { return C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setModule(c.dpiConn, s, length)
 		case "info":
-			err = c.checkExec(func() C.int { return C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setClientInfo(c.dpiConn, s, length)
 		case "identifier":
-			err = c.checkExec(func() C.int { return C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setClientIdentifier(c.dpiConn, s, length)
 		case "op":
-			err = c.checkExec(func() C.int { return C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setDbOp(c.dpiConn, s, length)
 		}
 		if s != nil {
 			C.free(unsafe.Pointer(s))
 		}
-		if err != nil {
-			return fmt.Errorf("%s: %w", nm, err)
+		var err error
+		if res == C.DPI_FAILURE {
+			err = c.getError()
 		}
+
+		return fmt.Errorf("%s: %w", f[0], err)
 	}
-	c.currentTT = tt
 	return nil
 }
 func (c *conn) GetPoolStats() (stats PoolStats, err error) {
@@ -1112,6 +1125,7 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) String() string {
+	currentTT, _ := c.currentTT.Load().(TraceTag)
 	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d&new=%t",
-		c.currentTT, c.params, c.Server, c.tzOffSecs, c.newSession)
+		currentTT, c.params, c.Server, c.tzOffSecs, c.newSession)
 }
