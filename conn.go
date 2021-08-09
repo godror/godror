@@ -72,6 +72,9 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 func (c *conn) checkExec(f func() C.int) error {
+	if c == nil || c.drv == nil {
+		return driver.ErrBadConn
+	}
 	return c.drv.checkExec(f)
 }
 
@@ -94,7 +97,7 @@ func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
 	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
 		if err := c.setCallTimeout(time.Until(dl)); err != nil {
 			if !errors.Is(err, errClientTooOld) {
-				c.drv.pushError(maybeBadConn(err, c))
+				c.drv.pushError(err)
 			}
 			return
 		}
@@ -685,7 +688,10 @@ var errClientTooOld = errors.New("client is too old")
 func (c *conn) setCallTimeout(dur time.Duration) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.drv.clientVersion.Version < 18 {
+	c.drv.mu.RLock()
+	ok := c.drv.clientVersion.Version >= 18
+	c.drv.mu.RUnlock()
+	if !ok {
 		return errClientTooOld
 	}
 	ms := C.uint32_t(dur / time.Millisecond)
@@ -693,7 +699,7 @@ func (c *conn) setCallTimeout(dur time.Duration) error {
 		Log("msg", "setCallTimeout", "conn", fmt.Sprintf("%p", c), "ms", ms)
 	}
 	runtime.LockOSThread()
-	ok := C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE
+	ok = C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE
 	runtime.UnlockOSThread()
 	if ok {
 		return nil
@@ -1144,5 +1150,5 @@ func (c *conn) IsValid() bool {
 func (c *conn) String() string {
 	currentTT, _ := c.currentTT.Load().(TraceTag)
 	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d&new=%t",
-		currentTT, c.params, c.Server, c.tzOffSecs, c.newSession)
+		currentTT, c.params, c.Server.String(), c.tzOffSecs, c.newSession)
 }

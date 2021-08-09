@@ -199,12 +199,12 @@ func setUp() func() {
 		if clientVersion, err = cx.ClientVersion(); err != nil {
 			return err
 		}
-		fmt.Println("Client:", clientVersion, "Timezone:", time.Local.String())
+		fmt.Println("Client:", clientVersion.String(), "Timezone:", time.Local.String())
 		if serverVersion, err = cx.ServerVersion(); err != nil {
 			return err
 		}
 		dbTZ := cx.Timezone()
-		fmt.Println("Server:", serverVersion, "Timezone:", dbTZ.String())
+		fmt.Println("Server:", serverVersion.String(), "Timezone:", dbTZ.String())
 		return nil
 	}); err != nil {
 		panic(err)
@@ -1147,7 +1147,7 @@ func TestExecuteMany(t *testing.T) {
 		i++
 	}
 }
-func TestReadWriteLob(t *testing.T) {
+func TestReadWriteLOB(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), 30*time.Second)
 	defer cancel()
@@ -3020,6 +3020,9 @@ func TestConnClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	if err := db.PingContext(ctx); err != nil {
+		t.Skip(err)
+	}
 
 	const qry = "SELECT username,program,cclass_name FROM v$cpool_conn_info"
 	rows, err := db.QueryContext(ctx, qry)
@@ -3501,7 +3504,7 @@ func TestSelectROWID(t *testing.T) {
 	}
 }
 
-func TestOpenCloseLob(t *testing.T) {
+func TestOpenCloseLOB(t *testing.T) {
 	const poolSize = 2
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
@@ -3755,7 +3758,7 @@ func TestShortTimeout(t *testing.T) {
 	const qry = `SELECT * FROM all_objects ORDER BY DBMS_RANDOM.value`
 	shortCtx, shortCancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	rows, err := testDb.QueryContext(shortCtx, qry)
-	t.Log(rows, err)
+	t.Log("rowsNil:", rows == nil, "error:", err)
 	shortCancel()
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -3902,7 +3905,7 @@ END;`
 
 	for rows.Next() { // stmtFetch wont complete and cause deadline error
 		if err = ctx.Err(); err != nil {
-			t.Fatal(err)
+			break
 		}
 		if err = rows.Scan(&k, &c, &b); err != nil {
 			t.Fatal(err)
@@ -3912,13 +3915,11 @@ END;`
 
 	err = rows.Err()
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			t.Logf("Info: %+v", err)
 		}
-	} else {
-		if ctx.Err() != context.DeadlineExceeded {
-			t.Fatal("Error:Deadline Not Exceeded")
-		}
+	} else if err = ctx.Err(); !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		t.Fatalf("Error:Deadline Not Exceeded, but %+v", err)
 	}
 }
 

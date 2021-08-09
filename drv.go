@@ -176,7 +176,7 @@ func NewLogfmtLog(w io.Writer) func(...interface{}) error {
 	}
 }
 
-var defaultDrv = newDrv()
+var defaultDrv = &drv{}
 
 func init() {
 	sql.Register("godror", defaultDrv)
@@ -195,15 +195,13 @@ type drv struct {
 
 const oneContext = false
 
-func newDrv() *drv { return &drv{errStack: make(chan error, 1)} }
-
 func NewDriver() *drv {
-	d := newDrv()
+	var d drv
 	if !oneContext || defaultDrv == nil {
-		return d
+		return &d
 	}
 	d.dpiContext = defaultDrv.dpiContext
-	return d
+	return &d
 }
 func (d *drv) Close() error {
 	if d == nil {
@@ -255,6 +253,9 @@ func (p *connPool) Close() error {
 }
 
 func (d *drv) checkExec(f func() C.int) error {
+	if d == nil {
+		return driver.ErrBadConn
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if f() != C.DPI_FAILURE {
@@ -271,6 +272,9 @@ func (d *drv) init(configDir, libDir string) error {
 	}
 	if d.timezones == nil {
 		d.timezones = make(map[string]locationWithOffSecs)
+	}
+	if d.errStack == nil {
+		d.errStack = make(chan error, 1)
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -643,8 +647,8 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	if ok {
 		return pool, nil
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	if pool, ok = d.pools[poolKey]; ok {
 		return pool, nil
 	}
@@ -919,19 +923,26 @@ func newErrorInfo(code int, message string) C.dpiErrorInfo {
 var _ = newErrorInfo
 
 func (d *drv) getError() error {
-	if d == nil || d.dpiContext == nil {
+	if d == nil {
 		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
 	}
+	d.mu.RLock()
+	dpiContext, errStack := d.dpiContext, d.errStack
+	d.mu.RUnlock()
+
 	select {
-	case err := <-d.errStack:
+	case err := <-errStack:
 		if Log != nil {
 			Log("msg", "cannedError", "error", err)
 		}
 		return err
 	default:
 	}
+	if dpiContext == nil {
+		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
+	}
 	var errInfo C.dpiErrorInfo
-	C.dpiContext_getError(d.dpiContext, &errInfo)
+	C.dpiContext_getError(dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)
 }
 func (d *drv) pushError(err error) {
@@ -968,7 +979,7 @@ func (V *VersionInfo) set(v *C.dpiVersionInfo) {
 		Full: uint8(v.fullVersionNum),
 	}
 }
-func (V VersionInfo) String() string {
+func (V *VersionInfo) String() string {
 	var s string
 	if V.ServerRelease != "" {
 		s = " [" + V.ServerRelease + "]"
