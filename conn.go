@@ -72,12 +72,7 @@ func (c *conn) getError() error {
 	return c.drv.getError()
 }
 func (c *conn) checkExec(f func() C.int) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	if f() != C.DPI_FAILURE {
-		return nil
-	}
-	return c.getError()
+	return c.drv.checkExec(f)
 }
 
 // used before an ODPI call to force it to return within the context deadline
@@ -96,6 +91,23 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
 func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
+	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
+		if err := c.setCallTimeout(time.Until(dl)); err != nil {
+			if !errors.Is(err, errClientTooOld) {
+				c.drv.pushError(maybeBadConn(err, c))
+			}
+			return
+		}
+		defer func() {
+			err := c.getError()
+			if toErr := c.setCallTimeout(0); toErr != nil && err == nil {
+				err = toErr
+			}
+			if err != nil {
+				c.drv.pushError(err)
+			}
+		}()
+	}
 	select {
 	case <-done:
 		return
@@ -107,7 +119,7 @@ func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
 		default:
 			err := ctx.Err()
 			if Log != nil {
-				Log("msg", "BREAK context statement", "error", err)
+				Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
 			}
 			_ = c.Break()
 			return
@@ -158,17 +170,11 @@ func (c *conn) Ping(ctx context.Context) error {
 	defer c.mu.RUnlock()
 
 	done := make(chan struct{})
-	go c.ociBreakDone(ctx, done)
-
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		c.setCallTimeout(time.Until(dl))
+	if err := c.handleDeadline(ctx, done); err != nil {
+		return err
 	}
 	err := c.checkExec(func() C.int { return C.dpiConn_ping(c.dpiConn) })
 	close(done)
-	if hasDeadline {
-		c.setCallTimeout(0)
-	}
 	if err != nil {
 		return maybeBadConn(fmt.Errorf("Ping: %w", err), c)
 	}
@@ -673,15 +679,26 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	}
 	return tz, off, nil
 }
-func (c *conn) setCallTimeout(dur time.Duration) {
+
+var errClientTooOld = errors.New("client is too old")
+
+func (c *conn) setCallTimeout(dur time.Duration) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.drv.clientVersion.Version < 18 {
-		return
+		return errClientTooOld
 	}
 	ms := C.uint32_t(dur / time.Millisecond)
 	if Log != nil {
-		Log("msg", "setCallTimeout", "ms", ms)
+		Log("msg", "setCallTimeout", "conn", fmt.Sprintf("%p", c), "ms", ms)
 	}
-	C.dpiConn_setCallTimeout(c.dpiConn, ms)
+	runtime.LockOSThread()
+	ok := C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE
+	runtime.UnlockOSThread()
+	if ok {
+		return nil
+	}
+	return c.getError()
 }
 
 // maybeBadConn checks whether the error is because of a bad connection,
@@ -798,10 +815,10 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		}
 		todo = append(todo, [2]string{nm, vv[1]})
 	}
+	c.currentTT.Store(tt)
 	if len(todo) == 0 {
 		return nil
 	}
-	c.currentTT.Store(tt)
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

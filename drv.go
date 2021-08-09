@@ -176,7 +176,7 @@ func NewLogfmtLog(w io.Writer) func(...interface{}) error {
 	}
 }
 
-var defaultDrv = &drv{}
+var defaultDrv = newDrv()
 
 func init() {
 	sql.Register("godror", defaultDrv)
@@ -189,19 +189,21 @@ type drv struct {
 	pools         map[string]*connPool
 	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
+	errStack      chan error
 	mu            sync.RWMutex
 }
 
 const oneContext = false
 
+func newDrv() *drv { return &drv{errStack: make(chan error, 1)} }
+
 func NewDriver() *drv {
-	if oneContext {
-		if defaultDrv == nil {
-			return &drv{}
-		}
-		return &drv{dpiContext: defaultDrv.dpiContext}
+	d := newDrv()
+	if !oneContext || defaultDrv == nil {
+		return d
 	}
-	return &drv{}
+	d.dpiContext = defaultDrv.dpiContext
+	return d
 }
 func (d *drv) Close() error {
 	if d == nil {
@@ -920,9 +922,29 @@ func (d *drv) getError() error {
 	if d == nil || d.dpiContext == nil {
 		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
 	}
+	select {
+	case err := <-d.errStack:
+		if Log != nil {
+			Log("msg", "cannedError", "error", err)
+		}
+		return err
+	default:
+	}
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(d.dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)
+}
+func (d *drv) pushError(err error) {
+	if Log != nil {
+		Log("msg", "pushError", "error", err)
+	}
+	if err == nil {
+		return
+	}
+	select {
+	case d.errStack <- err:
+	default:
+	}
 }
 
 func b2i(b bool) uint8 {
