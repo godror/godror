@@ -95,6 +95,27 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
 func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
+		c.drv.mu.RLock()
+		defer c.drv.mu.RUnlock()
+		if err := c.setCallTimeout(time.Until(dl)); err != nil {
+			if !errors.Is(err, errClientTooOld) {
+				c.drv.pushError(maybeBadConn(err, c))
+			}
+			return
+		}
+		defer func() {
+			err := c.getError()
+			if toErr := c.setCallTimeout(0); toErr != nil && err == nil {
+				err = toErr
+			}
+			if err != nil {
+				c.drv.pushError(maybeBadConn(err, c))
+			}
+		}()
+	}
 	select {
 	case <-done:
 		return
@@ -106,7 +127,7 @@ func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
 		default:
 			err := ctx.Err()
 			if Log != nil {
-				Log("msg", "BREAK context statement", "error", err)
+				Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
 			}
 			_ = c.Break()
 			return
@@ -157,17 +178,11 @@ func (c *conn) Ping(ctx context.Context) error {
 	defer c.mu.RUnlock()
 
 	done := make(chan struct{})
-	go c.ociBreakDone(ctx, done)
-
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
-		c.setCallTimeout(time.Until(dl))
+	if err := c.handleDeadline(ctx, done); err != nil {
+		return err
 	}
 	err := c.checkExec(func() C.int { return C.dpiConn_ping(c.dpiConn) })
 	close(done)
-	if hasDeadline {
-		c.setCallTimeout(0)
-	}
 	if err != nil {
 		return maybeBadConn(fmt.Errorf("Ping: %w", err), c)
 	}
@@ -318,9 +333,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 
 	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
-		c.mu.Lock()
 		c.setTraceTag(tt)
-		c.mu.Unlock()
 	}
 	// TODO: get rid of this hack
 	if query == getConnection {
@@ -674,15 +687,26 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	}
 	return tz, off, nil
 }
-func (c *conn) setCallTimeout(dur time.Duration) {
+
+var errClientTooOld = errors.New("client is too old")
+
+func (c *conn) setCallTimeout(dur time.Duration) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.drv.clientVersion.Version < 18 {
-		return
+		return errClientTooOld
 	}
 	ms := C.uint32_t(dur / time.Millisecond)
 	if Log != nil {
-		Log("msg", "setCallTimeout", "ms", ms)
+		Log("msg", "setCallTimeout", "conn", fmt.Sprintf("%p", c), "ms", ms)
 	}
-	C.dpiConn_setCallTimeout(c.dpiConn, ms)
+	runtime.LockOSThread()
+	ok := C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE
+	runtime.UnlockOSThread()
+	if ok {
+		return nil
+	}
+	return c.getError()
 }
 
 // maybeBadConn checks whether the error is because of a bad connection,
@@ -785,6 +809,8 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 	if c == nil || c.dpiConn == nil {
 		return nil
 	}
+	todo := make([][2]string, 0, 5)
+	c.mu.RLock()
 	for nm, vv := range map[string][2]string{
 		"action":     {c.currentTT.Action, tt.Action},
 		"module":     {c.currentTT.Module, tt.Module},
@@ -795,32 +821,46 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		if vv[0] == vv[1] {
 			continue
 		}
-		v := vv[1]
+		todo = append(todo, [2]string{nm, vv[1]})
+	}
+	c.mu.RUnlock()
+	if len(todo) == 0 {
+		return nil
+	}
+	c.mu.Lock()
+	c.currentTT = tt
+	c.mu.Unlock()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for _, f := range todo {
 		var s *C.char
-		if v != "" {
-			s = C.CString(v)
+		if f[1] != "" {
+			s = C.CString(f[1])
 		}
-		var err error
-		switch nm {
+		length := C.uint32_t(len(f[1]))
+		var res C.int
+		switch f[0] {
 		case "action":
-			err = c.checkExec(func() C.int { return C.dpiConn_setAction(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setAction(c.dpiConn, s, length)
 		case "module":
-			err = c.checkExec(func() C.int { return C.dpiConn_setModule(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setModule(c.dpiConn, s, length)
 		case "info":
-			err = c.checkExec(func() C.int { return C.dpiConn_setClientInfo(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setClientInfo(c.dpiConn, s, length)
 		case "identifier":
-			err = c.checkExec(func() C.int { return C.dpiConn_setClientIdentifier(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setClientIdentifier(c.dpiConn, s, length)
 		case "op":
-			err = c.checkExec(func() C.int { return C.dpiConn_setDbOp(c.dpiConn, s, C.uint32_t(len(v))) })
+			res = C.dpiConn_setDbOp(c.dpiConn, s, length)
 		}
 		if s != nil {
 			C.free(unsafe.Pointer(s))
 		}
-		if err != nil {
-			return fmt.Errorf("%s: %w", nm, err)
+		var err error
+		if res == C.DPI_FAILURE {
+			err = c.getError()
 		}
+
+		return fmt.Errorf("%s: %w", f[0], err)
 	}
-	c.currentTT = tt
 	return nil
 }
 func (c *conn) GetPoolStats() (stats PoolStats, err error) {

@@ -616,18 +616,6 @@ func (st *statement) NumInput() int {
 	return int(cnt)
 }
 
-/*
-// setCallTimeout measures only the round-trips,
-func (st *statement) setCallTimeout(ctx context.Context) {
-	if st.callTimeout != 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, st.callTimeout)
-		_ = cancel
-	}
-	st.conn.setCallTimeout(ctx)
-}
-*/
-
 type argInfo struct {
 	objType     *C.dpiObjectType
 	set         dataSetter

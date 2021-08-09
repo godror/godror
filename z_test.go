@@ -1772,22 +1772,22 @@ func TestExecHang(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("ExecHang"), 1*time.Second)
 	defer cancel()
-	done := make(chan error, 13)
+	done := make(chan error, 1)
 	var wg sync.WaitGroup
 	for i := 0; i < cap(done); i++ {
-		wg.Add(1)
 		i := i
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := ctx.Err(); err != nil {
 				done <- err
 				return
 			}
-			_, err := testDb.ExecContext(ctx, "DECLARE v_deadline DATE := SYSDATE + 3/24/3600; v_db PLS_INTEGER; BEGIN LOOP SELECT COUNT(0) INTO v_db FROM cat; EXIT WHEN SYSDATE >= v_deadline; END LOOP; END;")
+			_, err := testDb.ExecContext(ctx, "BEGIN DBMS_SESSION.sleep(3); END;")
+			t.Logf("%d. %v", i, err)
 			if err == nil {
 				done <- fmt.Errorf("%d. wanted timeout got %v", i, err)
 			}
-			t.Logf("%d. %v", i, err)
 		}()
 	}
 	wg.Wait()
@@ -1963,7 +1963,6 @@ func TestReturning(t *testing.T) {
 }
 
 func TestMaxOpenCursorsORA1000(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithCancel(testContext("ORA1000"))
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects WHERE ROWNUM < 100")
