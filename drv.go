@@ -924,7 +924,7 @@ var _ = newErrorInfo
 
 func (d *drv) getError() error {
 	if d == nil {
-		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
+		return &OraErr{code: 12153, message: driver.ErrBadConn.Error()}
 	}
 	d.mu.RLock()
 	dpiContext, errStack := d.dpiContext, d.errStack
@@ -939,7 +939,7 @@ func (d *drv) getError() error {
 	default:
 	}
 	if dpiContext == nil {
-		return &OraErr{code: -12153, message: driver.ErrBadConn.Error()}
+		return &OraErr{code: 12153, message: driver.ErrBadConn.Error()}
 	}
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(dpiContext, &errInfo)
