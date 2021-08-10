@@ -109,9 +109,6 @@ func (t *MyTable) Scan(src interface{}) error {
 	var i int
 	for i, err = collection.First(); err == nil; i, err = collection.Next(i) {
 		//fmt.Printf("Scan[%d]: %+v\n", i, err)
-		if err != nil {
-			break
-		}
 		var data godror.Data
 		err = collection.GetItem(&data, i)
 		if err != nil {
