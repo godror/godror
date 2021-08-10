@@ -52,6 +52,7 @@ type stmtOptions struct {
 	plSQLArrays        bool
 	lobAsReader        bool
 	nullDateAsZeroTime bool
+	deleteFromCache    bool
 }
 
 type boolString struct {
@@ -120,6 +121,7 @@ func (o stmtOptions) NullDate() interface{} {
 	}
 	return nullTime
 }
+func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -240,6 +242,9 @@ func CallTimeout(d time.Duration) Option {
 // NullDateAsZeroTime is an option to return NULL DATE columns as time.Time{} instead of nil.
 // If you must Scan into time.Time (cannot use sql.NullTime), this may help.
 func NullDateAsZeroTime() Option { return func(o *stmtOptions) { o.nullDateAsZeroTime = true } }
+
+// DeleteFromCache is an option to delete the statement from the statement cache.
+func DeleteFromCache() Option { return func(o *stmtOptions) { o.deleteFromCache = true } }
 
 const minChunkSize = 1 << 16
 
@@ -394,6 +399,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
+	//if st.DeleteFromCache() {
+	//	C.dpiStmt_deleteFromCache(st.dpiStmt)
+	//}
 	// execute
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
