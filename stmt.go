@@ -870,7 +870,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	vlr, isValuer := value.(driver.Valuer)
 
 	switch value.(type) {
-	case *driver.Rows:
+	case *driver.Rows, *pbTimestamp, *Object:
 	default:
 		rv := reflect.ValueOf(value)
 		kind := rv.Kind()
@@ -1097,6 +1097,23 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.conn.dataGetTime
 		}
 
+	case *pbTimestamp:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+		info.set = st.conn.dataSetTime
+		if info.isOut {
+			*get = st.conn.dataGetTime
+		}
+	case []*pbTimestamp:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+		// info.Typ should be C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, but it does not work for DATE PL/SQL associative arrays
+		if st.plSQLArrays {
+			info.typ = C.DPI_ORACLE_TYPE_DATE
+		}
+		info.set = st.conn.dataSetTime
+		if info.isOut {
+			*get = st.conn.dataGetTime
+		}
+
 	case time.Duration, []time.Duration:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS
 		info.set = st.conn.dataSetIntervalDS
@@ -1132,7 +1149,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 
 	default:
 		if !isValuer {
-			return value, fmt.Errorf("unknown type %T", value)
+			return value, fmt.Errorf("unknown type %T (%T)", value, &pbTimestamp{})
 		}
 		var err error
 		if value, err = vlr.Value(); err != nil {
@@ -1221,6 +1238,15 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 			c.dataGetTimeC(&x.Time, &data[0])
 		}
 
+	case *pbTimestamp:
+		if len(data) == 0 || data[0].isNull == 1 {
+			x.Reset()
+			return nil
+		}
+		var t time.Time
+		c.dataGetTimeC(&t, &data[0])
+		setPbTimestamp(x, t)
+
 	case *[]time.Time:
 		n := len(data)
 		if cap(*x) >= n {
@@ -1242,6 +1268,19 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 			if (*x)[i].Valid = !(data[i].isNull == 1); (*x)[i].Valid {
 				c.dataGetTimeC(&((*x)[i].Time), &data[i])
 			}
+		}
+
+	case *[]*pbTimestamp:
+		n := len(data)
+		if cap(*x) >= n {
+			*x = (*x)[:n]
+		} else {
+			*x = make([]*pbTimestamp, n)
+		}
+		var t time.Time
+		for i := range data {
+			c.dataGetTimeC(&t, &data[i])
+			setPbTimestamp((*x)[i], t)
 		}
 	}
 	return nil
@@ -1274,6 +1313,16 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		if data[0].isNull = C.int(b2i(!x.Valid)); x.Valid {
 			times[0] = x.Time
 		}
+	case *pbTimestamp:
+		if !x.IsValid() {
+			data[0].isNull = 1
+		} else {
+			data[0].isNull = 0
+			times[0] = x.AsTime()
+		}
+		if Log != nil {
+			Log("msg", "dataSetTime", "ts", x, "t", times[0])
+		}
 
 	case []time.Time:
 		times = x
@@ -1289,6 +1338,20 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		for i, n := range x {
 			if data[i].isNull = C.int(b2i(!n.Valid)); n.Valid {
 				times[i] = x[i].Time
+			}
+		}
+	case []*pbTimestamp:
+		if cap(times) < len(x) {
+			times = make([]time.Time, len(x))
+		} else {
+			times = times[:len(x)]
+		}
+		for i, n := range x {
+			if !n.IsValid() {
+				data[i].isNull = 1
+			} else {
+				data[i].isNull = 0
+				times[i] = n.AsTime()
 			}
 		}
 

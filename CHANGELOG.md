@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Implement use of "google.golang.org/protobuf/types/known/timestamppb".Timestamp,
+  behind the timestamppb tag
+
 ### Changed
 - Use dpiConn_setCallTimeout for faster recovers.
 - Faster setTraceTag, drv.init.

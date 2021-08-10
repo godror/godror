@@ -23,4 +23,7 @@ func TestTimestamppb(t *testing.T) {
 		t.Fatalf("%s: %v", qry, err)
 	}
 	t.Logf("SYSDATE=%v 1=%v 2=%v", ot1, ot2, on3)
+	if !(ot2.Valid && !ot2.Time.IsZero()) {
+		t.Errorf("ot2=%v", ot2)
+	}
 }
