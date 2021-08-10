@@ -94,10 +94,14 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
 func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
+		c.drv.mu.RLock()
+		defer c.drv.mu.RUnlock()
 		if err := c.setCallTimeout(time.Until(dl)); err != nil {
 			if !errors.Is(err, errClientTooOld) {
-				c.drv.pushError(err)
+				c.drv.pushError(maybeBadConn(err, c))
 			}
 			return
 		}
@@ -686,8 +690,6 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 var errClientTooOld = errors.New("client is too old")
 
 func (c *conn) setCallTimeout(dur time.Duration) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	c.drv.mu.RLock()
 	ok := c.drv.clientVersion.Version >= 18
 	c.drv.mu.RUnlock()
@@ -850,12 +852,9 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		if s != nil {
 			C.free(unsafe.Pointer(s))
 		}
-		var err error
 		if res == C.DPI_FAILURE {
-			err = c.getError()
+			return fmt.Errorf("%s: %w", f[0], c.getError())
 		}
-
-		return fmt.Errorf("%s: %w", f[0], err)
 	}
 	return nil
 }
