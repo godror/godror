@@ -716,11 +716,7 @@ func maybeBadConn(err error, c *conn) error {
 	if err == nil {
 		return nil
 	}
-	cl := func() {
-		if Log != nil {
-			Log("msg", "maybeBadConn", "error", err)
-		}
-	}
+	cl := func() {}
 	if c != nil {
 		cl = func() {
 			if Log != nil {
