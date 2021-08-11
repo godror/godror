@@ -4128,8 +4128,8 @@ func TestReadWriteEJSON(t *testing.T) {
 		JDOC   string
 		Wanted string
 	}{
-		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123Z\"},\"age\":25,\"creditScore\":[700,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":4500.23}}"},
-		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123Z\"},\"age\":25,\"creditScore\":[800,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.23}}"},
+		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123000Z\"},\"age\":25,\"creditScore\":[700,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":4500.23}}"},
+		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123000Z\"},\"age\":25,\"creditScore\":[800,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.23}}"},
 	} {
 		jsonval, _ := godror.NewJsonValue(tC.JDOC)
 
@@ -4140,7 +4140,7 @@ func TestReadWriteEJSON(t *testing.T) {
 
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(ctx,
-			"SELECT id, jdoc FROM "+tbl) //nolint:gas
+			"SELECT id, jdoc FROM "+tbl+" where id = :1", tN*2) //nolint:gas
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
@@ -4155,7 +4155,7 @@ func TestReadWriteEJSON(t *testing.T) {
 			if jsondoc, ok := jsondoc.(godror.JSON); !ok {
 				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
 			} else {
-				//				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
 				got := jsondoc.String()
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
