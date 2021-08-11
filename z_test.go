@@ -4104,7 +4104,7 @@ func TestReadWriteEJSON(t *testing.T) {
 	defer conn.Close()
 	tbl := "test_personcollection_ejson" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
-	_,err = conn.ExecContext(ctx,
+	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
@@ -4161,6 +4161,105 @@ func TestReadWriteEJSON(t *testing.T) {
 					t.Errorf("%d. %v", id, err)
 				} else if !bytes.Equal([]byte(got), []byte(tC.Wanted)) {
 					t.Errorf("%d. got %q for JDOC, wanted %q", id, got, tC.Wanted)
+				}
+			}
+		}
+		rows.Close()
+	}
+}
+
+func TestReadWriteJsonMap(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteEJSON"), 30*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_personcollection_jsonmap" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf(" JSON Document table  %q): ", tbl)
+
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, jdoc) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+	jmap := map[string]interface{}{
+		"person": map[string]interface{}{
+			"ID":        12,
+			"FirstName": "john",
+			"creditScore": []interface{}{
+				700,
+				250,
+				340,
+			},
+			"age":    25,
+			"salary": 4500.23,
+		},
+	}
+	for tN, tC := range []struct {
+		JDOC map[string]interface{}
+	}{
+		{JDOC: jmap},
+	} {
+		jsonval, _ := godror.NewJsonValue(tC.JDOC)
+
+		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
+			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
+			continue
+		}
+
+		var rows *sql.Rows
+		rows, err = conn.QueryContext(ctx,
+			"SELECT id, jdoc FROM "+tbl) //nolint:gas
+		if err != nil {
+			t.Errorf("%d/3. %v", tN, err)
+			continue
+		}
+		for rows.Next() {
+			var id, jsondoc interface{}
+			if err = rows.Scan(&id, &jsondoc); err != nil {
+				rows.Close()
+				t.Errorf("%d/3. scan: %v", tN, err)
+				continue
+			}
+			if jsondoc, ok := jsondoc.(godror.JSON); !ok {
+				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
+			} else {
+				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				if err != nil {
+					t.Errorf("%d. %v", id, err)
+				} else {
+					wantmap := make(map[string]godror.Data)
+					//var wantmap map[string]interface{}
+					var jobj godror.JSONObject
+					err = jsondoc.GetJsonObject(&jobj, godror.JSONOptDefault)
+					if err != nil {
+						t.Errorf("%d. %v", id, err)
+					}
+					jobj.Get(wantmap)
+					got := wantmap["person"]
+					var objmap = make(map[string]godror.Data)
+					got.GetJSONObject().Get(objmap)
+					gotAge := objmap["age"]
+					wantage := 25
+					if gotAge.Get() != float64(wantage) {
+						t.Errorf("%d. got %v for JDOC, wanted %v", id, gotAge.Get(), wantage)
+					}
 				}
 			}
 		}

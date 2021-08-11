@@ -1937,3 +1937,37 @@ int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, ui
             &error, -1);
     return dpiGen__endPublicFn(var, status, &error);
 }
+
+//-----------------------------------------------------------------------------
+// dpiVar_setFromJsonObject() [PUBLIC]
+// Convert dpiJsonObject to Json descriptor and set the value of variable the at the given position
+// from the Json descriptor.Checks on the array position and the validity of the passed handle.
+// A reference to the descriptor is retained by the variable
+//-----------------------------------------------------------------------------
+
+int dpiVar_setFromJsonObject( dpiVar *var, uint32_t pos, dpiJsonNode *jsnode)
+{
+    dpiError error;
+    int status;
+    dpiJson *js;
+
+    if (dpiVar__checkArraySize(var, pos, __func__, &error) < 0)
+        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
+    if(dpiJson__allocate(var->conn, &js,&error) < 0 )
+    {
+        return DPI_FAILURE;
+    }
+    if (var->nativeTypeNum != DPI_NATIVE_TYPE_JSON) {
+        dpiError__set(&error, "native type", DPI_ERR_NOT_SUPPORTED);
+        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
+    }
+    
+    status = dpiVar__setFromJson(var, pos, js, &error);
+    dpiGen__setRefCount(js,
+            &error, -1);
+    if(dpiJson_setValue(js, jsnode) < 0 )
+    {
+        return DPI_FAILURE; 
+    }
+    return dpiGen__endPublicFn(var, status, &error);
+}

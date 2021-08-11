@@ -1629,7 +1629,7 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnJsonTextBufferParse)(json->conn->handle,
             json->handle, (void*) value, valueLength,
-            (DPI_JZN_USE_EXTENSION_TYPES|DPI_JZN_BSON_TYPE_PATTERNS) , DPI_JZN_INPUT_UTF8, error->handle,
+            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|DPI_JZN_USE_EXTENSION_TYPES|DPI_JZN_BSON_TYPE_PATTERNS) , DPI_JZN_INPUT_UTF8, error->handle,
             DPI_OCI_DEFAULT);
     DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
 }
