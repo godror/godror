@@ -4217,6 +4217,12 @@ func TestReadWriteJsonMap(t *testing.T) {
 		{JDOC: jmap},
 	} {
 		jsonval, _ := godror.NewJsonValue(tC.JDOC)
+		var jsonobj godror.JSONObject
+		var ok bool
+		if jsonobj, ok = jsonval.(godror.JSONObject); !ok {
+			t.Errorf("%d Casting to JsonObject Failed", tN)
+		}
+		defer jsonobj.Close()
 
 		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
@@ -4237,7 +4243,7 @@ func TestReadWriteJsonMap(t *testing.T) {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			if jsondoc, ok := jsondoc.(godror.JSON); !ok {
+			if jsondocJSON, ok := jsondoc.(godror.JSON); !ok {
 				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
 			} else {
 				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
@@ -4247,7 +4253,7 @@ func TestReadWriteJsonMap(t *testing.T) {
 					wantmap := make(map[string]godror.Data)
 					//var wantmap map[string]interface{}
 					var jobj godror.JSONObject
-					err = jsondoc.GetJsonObject(&jobj, godror.JSONOptDefault)
+					err = jsondocJSON.GetJsonObject(&jobj, godror.JSONOptDefault)
 					if err != nil {
 						t.Errorf("%d. %v", id, err)
 					}
