@@ -2055,8 +2055,12 @@ DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *js);
 //set the value from a json string
 DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, uint64_t strlen);
 
-//set the value from a json string
+//set the value from a json object
 DPI_EXPORT int dpiVar_setFromJsonObject( dpiVar *var, uint32_t pos, dpiJsonNode *jsnode);
+
+//set the value from a json array
+DPI_EXPORT int dpiVar_setFromJsonArray( dpiVar *var, uint32_t pos, dpiJsonNode *jsnode);
+
 #ifdef __cplusplus
 }
 #endif
