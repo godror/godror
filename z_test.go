@@ -4170,7 +4170,7 @@ func TestReadWriteEJSON(t *testing.T) {
 
 func TestReadWriteJsonMap(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteEJSON"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonMap"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -4198,17 +4198,20 @@ func TestReadWriteJsonMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
+	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 	jmap := map[string]interface{}{
 		"person": map[string]interface{}{
-			"ID":        12,
+			"ID":        float64(12),
 			"FirstName": "john",
 			"creditScore": []interface{}{
-				700,
-				250,
-				340,
+				float64(700),
+				float64(250),
+				float64(340),
 			},
-			"age":    25,
-			"salary": 4500.23,
+			"age":       float64(25),
+			"BirthDate": birthdate,
+			"salary":    float64(4500.2351),
+			"Local":     true,
 		},
 	}
 	for tN, tC := range []struct {
@@ -4250,21 +4253,145 @@ func TestReadWriteJsonMap(t *testing.T) {
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				} else {
-					wantmap := make(map[string]godror.Data)
-					//var wantmap map[string]interface{}
 					var jobj godror.JSONObject
 					err = jsondocJSON.GetJsonObject(&jobj, godror.JSONOptDefault)
 					if err != nil {
 						t.Errorf("%d. %v", id, err)
 					}
-					jobj.Get(wantmap)
-					got := wantmap["person"]
-					var objmap = make(map[string]godror.Data)
-					got.GetJSONObject().Get(objmap)
-					gotAge := objmap["age"]
-					wantage := 25
-					if gotAge.Get() != float64(wantage) {
-						t.Errorf("%d. got %v for JDOC, wanted %v", id, gotAge.Get(), wantage)
+					jsonmapobj,err := jobj.GetUserMap()
+					if err != nil {
+						t.Errorf("%d. %v", id, err)
+					}
+					eq := reflect.DeepEqual(tC.JDOC, jsonmapobj)
+					if !eq {
+						t.Errorf("Got %+v, wanted %+v", jsonmapobj, tC.JDOC)
+					}
+				}
+			}
+		}
+		rows.Close()
+	}
+}
+
+func TestReadWriteJsonArray(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonArray"), 30*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_personcollection_jsonarr" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf(" JSON Document table  %q): ", tbl)
+
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, jdoc) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
+	jsarray := []interface{}{
+		map[string]interface{}{
+			"person": map[string]interface{}{
+				"ID":        float64(12),
+				"FirstName": "john",
+				"creditScore": []interface{}{
+					float64(700),
+					float64(250),
+					float64(340),
+				},
+				"age":       float64(25),
+				"BirthDate": birthdate,
+				"salary":    float64(4500.2351),
+				"Local":     true,
+			},
+		},
+		"helloworld",
+	} 
+    /*
+	jsarray := []interface{}{
+		map[string]interface{}{
+			"person": map[string]interface{}{
+				"ID":        12,
+				"FirstName": "john",
+				"creditScore": []interface{}{
+					700,
+					250,
+					340,
+				},
+				"age":       25,
+				"BirthDate": birthdate,
+				"salary":    4500.2351,
+				"Local":     true,
+			},
+		},
+		"helloworld",
+	}*/
+	for tN, tC := range []struct {
+		JDOC []interface{}
+	}{
+		{JDOC: jsarray},
+	} {
+		jsonval, _ := godror.NewJsonValue(tC.JDOC)
+		var jsonarr godror.JSONArray
+		var ok bool
+		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
+			t.Errorf("%d Casting to JsonArray Failed", tN)
+		}
+		defer jsonarr.Close()
+
+		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
+			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
+			continue
+		}
+
+		var rows *sql.Rows
+		rows, err = conn.QueryContext(ctx,
+			"SELECT id, jdoc FROM "+tbl) //nolint:gas
+		if err != nil {
+			t.Errorf("%d/3. %v", tN, err)
+			continue
+		}
+		for rows.Next() {
+			var id, jsondoc interface{}
+			if err = rows.Scan(&id, &jsondoc); err != nil {
+				rows.Close()
+				t.Errorf("%d/3. scan: %v", tN, err)
+				continue
+			}
+			if jsondocJSON, ok := jsondoc.(godror.JSON); !ok {
+				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
+			} else {
+				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				if err != nil {
+					t.Errorf("%d. %v", id, err)
+				} else {
+					var jarr godror.JSONArray
+					err = jsondocJSON.GetJsonArray(&jarr, godror.JSONOptDefault)
+					if err != nil {
+						t.Errorf("%d. %v", id, err)
+					}
+					jsonarrobj, err := jarr.GetUserArray()
+					if err != nil {
+						t.Errorf("%d. %v", id, err)
+					}
+					eq := reflect.DeepEqual(tC.JDOC, jsonarrobj)
+					if !eq {
+						t.Errorf("Got %+v, wanted %+v", jsonarrobj, tC.JDOC)
 					}
 				}
 			}

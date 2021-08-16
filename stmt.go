@@ -1152,11 +1152,11 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		if info.isOut {
 			*get = st.conn.dataGetJSONArray
 		}
-	case JsonString:
+	case JSONString:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
-		info.set = st.dataSetJsonString
+		info.set = st.dataSetJSONString
 		if info.isOut {
-			*get = st.dataGetJsonString
+			*get = st.dataGetJSONString
 		}
 
 	default:
@@ -2345,7 +2345,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 	return firstErr
 }
 
-func (c *conn) dataSetJsonString(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	var firstErr error
 	i := 0
 	if len(data) == 0 {
@@ -2355,7 +2355,7 @@ func (c *conn) dataSetJsonString(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		return dataSetNull(dv, data, nil)
 	}
 	switch js := vv.(type) {
-	case JsonString:
+	case JSONString:
 		str := string(js)
 		//	str := vv.(string)
 		cstr := C.CString(str)
@@ -2367,7 +2367,7 @@ func (c *conn) dataSetJsonString(dv *C.dpiVar, data []C.dpiData, vv interface{})
 	return firstErr
 }
 
-func (c *conn) dataGetJsonString(v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
 	if len(data) == 0 || data[0].isNull == 1 {
 		return nil
 	}
