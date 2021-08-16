@@ -231,6 +231,7 @@ func (j JSON) Get(data *Data, opts JSONOption) error {
 	return nil
 }
 
+// Returns JSONObject from JSON
 func (j JSON) GetJsonObject(jsobj *JSONObject, opts JSONOption) error {
 	var datajsobj Data
 	err := j.Get(&datajsobj, opts)
@@ -238,6 +239,7 @@ func (j JSON) GetJsonObject(jsobj *JSONObject, opts JSONOption) error {
 	return err
 }
 
+// Returns JSONArray from JSON
 func (j JSON) GetJsonArray(jsarr *JSONArray, opts JSONOption) error {
 	var datajsobj Data
 	err := j.Get(&datajsobj, opts)
@@ -245,6 +247,7 @@ func (j JSON) GetJsonArray(jsarr *JSONArray, opts JSONOption) error {
 	return err
 }
 
+// Returns JSON formatted standard string
 func (j JSON) String() string {
 	var cBuf *C.char
 	cBuf = C.CString(strings.Repeat("0", 1024))
@@ -294,6 +297,7 @@ func (j JSONArray) Get(nodes []Data) []Data {
 	return nodes
 }
 
+// Returns the Go type, []interface{} from JSONArray
 func (j JSONArray) GetUserArray() (nodes []interface{}, err error) {
 	n := int(j.dpiJsonArray.numElements)
 	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
@@ -342,6 +346,7 @@ type JSONObject struct {
 	dpiJsonNode *C.dpiJsonNode
 }
 
+// populates dpiJsonNode from user inputs
 func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	switch x := in.(type) {
 	case []interface{}:
@@ -409,6 +414,7 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	return nil
 }
 
+// Creates a JSONArray from user input []interface{}
 func newJSONArray(arr []interface{}, jsarr *JSONArray) error {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
@@ -423,6 +429,7 @@ func newJSONArray(arr []interface{}, jsarr *JSONArray) error {
 	return nil
 }
 
+// Creates a JSONObject from user input map[string]interface{}
 func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
@@ -437,6 +444,7 @@ func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
 	return nil
 }
 
+// Frees the C memory associated with JSONObject
 func (jsobj *JSONObject) Close() error {
 	C.godror_dpiJsonfreeMem(jsobj.dpiJsonNode)
 	return nil
@@ -455,6 +463,7 @@ func (j JSONObject) Get(m map[string]Data) {
 	}
 }
 
+// Returns the Go type map[string]interface{} from JSONObject
 func (j JSONObject) GetUserMap() (m map[string]interface{}, err error) {
 	m = make(map[string]interface{})
 	n := int(j.dpiJsonObject.numFields)
@@ -505,17 +514,21 @@ func (j JSONObject) GetInto(v interface{}) {
 	}
 }
 
+// Converts Timestamp to compatible eJSON string
 func (t Timestamp) MarshalJSON() ([]byte, error) {
 
 	str := "{\"$oracleTimestampTZ\":\"" + time.Time(t).Format(time.RFC3339Nano) + "\"}"
 	return []byte(str), nil
 }
 
+// Converts IntervalYMJson to compatible eJSON string
 func (t IntervalYMJson) MarshalJSON() ([]byte, error) {
 	str := "{\"$intervalYearMonth\":\"" + t + "\"}"
 	return []byte(str), nil
 }
 
+// NewJsonValue will take user input and returns an interface which
+// abstracts one of these: JSONObject, JSONArray, JSONString, ...
 func NewJsonValue(in interface{}) (JsonValue, error) {
 	v := reflect.ValueOf(in)
 	t := v.Type()
