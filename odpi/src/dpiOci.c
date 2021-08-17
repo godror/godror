@@ -657,7 +657,7 @@ static struct {
 
 
 //-----------------------------------------------------------------------------
-// dpiOc_allocateMem() [INTERNAL]
+// dpiOci__allocateMem() [INTERNAL]
 //   Wrapper for OCI allocation of memory, only used when debugging memory
 // allocation.
 //-----------------------------------------------------------------------------

@@ -2529,12 +2529,12 @@ func (c *conn) dataSetJSONObject(dv *C.dpiVar, data []C.dpiData, vv interface{})
 	}
 	switch x := vv.(type) {
 	case JSONObject:
-		*((**C.dpiJsonObject)(unsafe.Pointer(&(data[0].value)))) = x.dpiJsonObject
-		C.dpiVar_setFromJsonObject(dv, C.uint32_t(0), x.dpiJsonNode)
+		data[0].isNull = 0
+		C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), x.dpiJsonNode)
 	case []JSONObject:
 		for i := range x {
-			*((**C.dpiJsonObject)(unsafe.Pointer(&(data[i].value)))) = x[i].dpiJsonObject
-			C.dpiVar_setFromJsonObject(dv, C.uint32_t(i), x[i].dpiJsonNode)
+			data[i].isNull = 0
+			C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), x[i].dpiJsonNode)
 		}
 	default:
 		return fmt.Errorf("dataSetJSONArray not implemented for type %T", x)
@@ -2561,12 +2561,12 @@ func (c *conn) dataSetJSONArray(dv *C.dpiVar, data []C.dpiData, vv interface{}) 
 	}
 	switch x := vv.(type) {
 	case JSONArray:
-		*((*C.dpiJsonArray)(unsafe.Pointer(&(data[0].value)))) = *x.dpiJsonArray
-		C.dpiVar_setFromJsonArray(dv, C.uint32_t(0), x.dpiJsonNode)
+		data[0].isNull = 0
+		C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), x.dpiJsonNode)
 	case []JSONArray:
 		for i := range x {
-			*((*C.dpiJsonArray)(unsafe.Pointer(&(data[i].value)))) = *x[i].dpiJsonArray
-			C.dpiVar_setFromJsonArray(dv, C.uint32_t(i), x[i].dpiJsonNode)
+			data[i].isNull = 0
+			C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), x[i].dpiJsonNode)
 		}
 
 	default:

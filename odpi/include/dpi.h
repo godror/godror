@@ -423,7 +423,6 @@ typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
 typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
-typedef struct dpiJznDomDoc dpiJznDomDoc;
 
 //-----------------------------------------------------------------------------
 // Complex Native Data Types (used for transferring data to/from ODPI-C)
@@ -1252,10 +1251,10 @@ DPI_EXPORT int dpiJson_release(dpiJson *json);
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
 //parse textual json into json descriptor
-DPI_EXPORT int dpiJson_jsonTextBufferParse(dpiJson *json, const char *value, uint64_t vlen);
+DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen);
 
 //Fill textual json into text buffer from json descriptor
-DPI_EXPORT int dpiJson_jsonToTextBuffer(dpiJson *json,  char *value, uint64_t *vlen);
+DPI_EXPORT int dpiJson_setToText(dpiJson *json,  char *value, uint64_t *vlen);
 
 // return the Json portion of the data
 DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
@@ -2054,12 +2053,6 @@ DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *js);
 
 //set the value from a json string
 DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, uint64_t strlen);
-
-//set the value from a json object
-DPI_EXPORT int dpiVar_setFromJsonObject( dpiVar *var, uint32_t pos, dpiJsonNode *jsnode);
-
-//set the value from a json array
-DPI_EXPORT int dpiVar_setFromJsonArray( dpiVar *var, uint32_t pos, dpiJsonNode *jsnode);
 
 #ifdef __cplusplus
 }

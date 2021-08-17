@@ -56,7 +56,7 @@ int godror_dpiJson_setDouble(dpiJsonNode *topNode, double value) {
 int godror_dpiJson_setInt64(dpiJsonNode *topNode, double value) {
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_INT64;
-    topNode->value->asDouble = value;
+    topNode->value->asInt64 = value;
 }
 
 int godror_dpiJson_setTime(dpiJsonNode *topNode, dpiData *data) {
@@ -71,10 +71,10 @@ int godror_dpiJson_setBool(dpiJsonNode *topNode, dpiData *data) {
     topNode->value->asBoolean = data->value.asBoolean;
 }
 
-int godror_dpiJson_setString(dpiJsonNode *topNode, const char *value, uint32_t keyLength) {
+int godror_dpiJson_setString(dpiJsonNode *topNode, char *value, uint32_t keyLength) {
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_VARCHAR;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
-    topNode->value->asBytes.ptr = strndup(value, keyLength);
+    topNode->value->asBytes.ptr = value;
     topNode->value->asBytes.length = keyLength;
 }
 
@@ -255,7 +255,7 @@ func (j JSON) String() string {
 
 	var cLen C.uint64_t
 	cLen = C.uint64_t(1024) // tbd remove hardcoding
-	if C.dpiJson_jsonToTextBuffer(j.dpiJson, cBuf, &cLen) ==
+	if C.dpiJson_setToText(j.dpiJson, cBuf, &cLen) ==
 		C.DPI_FAILURE {
 		return ""
 	}
@@ -395,7 +395,6 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	case string:
 		cval := C.CString(x)
 		C.godror_dpiJson_setString(jsonnode, cval, C.uint32_t(len(x)))
-		C.free(unsafe.Pointer(cval))
 	case time.Time:
 		data, err := NewData(x)
 		if err != nil {

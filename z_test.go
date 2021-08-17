@@ -4202,7 +4202,8 @@ func TestReadWriteJsonMap(t *testing.T) {
 	jmap := map[string]interface{}{
 		"person": map[string]interface{}{
 			"ID":        float64(12),
-			"FirstName": "john",
+			"FirstName": "Mary",
+			"LastName":  "John",
 			"creditScore": []interface{}{
 				float64(700),
 				float64(250),
@@ -4258,7 +4259,7 @@ func TestReadWriteJsonMap(t *testing.T) {
 					if err != nil {
 						t.Errorf("%d. %v", id, err)
 					}
-					jsonmapobj,err := jobj.GetUserMap()
+					jsonmapobj, err := jobj.GetUserMap()
 					if err != nil {
 						t.Errorf("%d. %v", id, err)
 					}
@@ -4304,11 +4305,13 @@ func TestReadWriteJsonArray(t *testing.T) {
 	}
 	defer stmt.Close()
 	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
+	//birthdate := time.Now()
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
 				"ID":        float64(12),
-				"FirstName": "john",
+				"FirstName": "Mary",
+				"LastName":  "John",
 				"creditScore": []interface{}{
 					float64(700),
 					float64(250),
@@ -4321,26 +4324,27 @@ func TestReadWriteJsonArray(t *testing.T) {
 			},
 		},
 		"helloworld",
-	} 
-    /*
-	jsarray := []interface{}{
-		map[string]interface{}{
-			"person": map[string]interface{}{
-				"ID":        12,
-				"FirstName": "john",
-				"creditScore": []interface{}{
-					700,
-					250,
-					340,
+	}
+	/*
+		jsarray := []interface{}{
+			map[string]interface{}{
+				"person": map[string]interface{}{
+					"ID":        12,
+					"FirstName": "Mary",
+			        "LastName":  "John",
+					"creditScore": []interface{}{
+						700,
+						250,
+						340,
+					},
+					"age":       25,
+					"BirthDate": birthdate,
+					"salary":    4500.2351,
+					"Local":     true,
 				},
-				"age":       25,
-				"BirthDate": birthdate,
-				"salary":    4500.2351,
-				"Local":     true,
 			},
-		},
-		"helloworld",
-	}*/
+			"helloworld",
+		}*/
 	for tN, tC := range []struct {
 		JDOC []interface{}
 	}{
