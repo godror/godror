@@ -4,6 +4,10 @@ package godror
 #include <stdlib.h>
 #include "dpiImpl.h"
 
+// All CGO functions are used because handling unions, indexing,
+// nested mallocs for substructures is hard to handle in Go code
+
+
 int godror_allocate_dpiNode(dpiJsonNode **dpijsonnode) {
 	*dpijsonnode = (dpiJsonNode *)(malloc(sizeof(dpiJsonNode)));
 	dpiDataBuffer *dpijsonDataBuffer = (dpiDataBuffer *)(malloc(sizeof(dpiDataBuffer)));
@@ -53,10 +57,16 @@ int godror_dpiJson_setDouble(dpiJsonNode *topNode, double value) {
     topNode->value->asDouble = value;
 }
 
-int godror_dpiJson_setInt64(dpiJsonNode *topNode, double value) {
+int godror_dpiJson_setInt64(dpiJsonNode *topNode, int64_t value) {
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_INT64;
     topNode->value->asInt64 = value;
+}
+
+int godror_dpiJson_setUint64(dpiJsonNode *topNode, uint64_t value) {
+    topNode->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
+    topNode->nativeTypeNum = DPI_NATIVE_TYPE_UINT64;
+    topNode->value->asUint64 = value;
 }
 
 int godror_dpiJson_setTime(dpiJsonNode *topNode, dpiData *data) {
@@ -65,23 +75,35 @@ int godror_dpiJson_setTime(dpiJsonNode *topNode, dpiData *data) {
     topNode->value->asTimestamp = data->value.asTimestamp;
 }
 
+int godror_dpiJson_setBytes(dpiJsonNode *topNode, dpiData *data) {
+    uint32_t size = data->value.asBytes.length;
+    topNode->oracleTypeNum = DPI_ORACLE_TYPE_RAW;
+    topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
+    topNode->value->asBytes.ptr = malloc(size);
+    memcpy(topNode->value->asBytes.ptr, data->value.asBytes.ptr, size);
+    topNode->value->asBytes.length = size;
+}
+
+int godror_dpiJson_setIntervalDS(dpiJsonNode *topNode, dpiData *data) {
+    topNode->oracleTypeNum = DPI_ORACLE_TYPE_INTERVAL_DS;
+    topNode->nativeTypeNum = DPI_NATIVE_TYPE_INTERVAL_DS;
+    topNode->value->asIntervalDS = data->value.asIntervalDS;
+}
+
 int godror_dpiJson_setBool(dpiJsonNode *topNode, dpiData *data) {
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_BOOLEAN;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_BOOLEAN;
     topNode->value->asBoolean = data->value.asBoolean;
 }
 
-int godror_dpiJson_setString(dpiJsonNode *topNode, char *value, uint32_t keyLength) {
+int godror_dpiJson_setString(dpiJsonNode *topNode, dpiData *data) {
+    uint32_t size = data->value.asBytes.length;
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_VARCHAR;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
-    topNode->value->asBytes.ptr = value;
-    topNode->value->asBytes.length = keyLength;
-}
-
-int godror_dpiJson_setFloat64(dpiJsonNode *topNode, float value) {
-    topNode->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
-    topNode->nativeTypeNum = DPI_NATIVE_TYPE_FLOAT;
-    topNode->value->asFloat = value;
+    // make a copy before passing to C?
+    topNode->value->asBytes.ptr = malloc(size);
+    memcpy(topNode->value->asBytes.ptr, data->value.asBytes.ptr, size);
+    topNode->value->asBytes.length = size;
 }
 
 int godror_dpiJsonObject_initialize(dpiJsonNode **dpijsonnode, uint32_t numfields) {
@@ -185,7 +207,6 @@ void godror_dpiJsonfreeMem(dpiJsonNode *node) {
 import "C"
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -194,68 +215,177 @@ import (
 	"unsafe"
 )
 
-type JsonValue interface {
-	//	Unmarshal(out interface{}) (err error)
-	//	Marshal(in interface{}) error
-}
-
-type JSONString string
-
-// JSON holds the JSON data to/from Oracle.
-type JSON struct {
-	dpiJson     *C.dpiJson
-	dpiJsonNode *C.dpiJsonNode
-}
 type JSONOption uint8
 
-var ErrSthHappened = errors.New("something happened")
+var ErrInvalidJSON = errors.New("Invalid JSON Document")
+var ErrInvalidType = errors.New("Invalid JSON Scalar Type")
 
-/*
- * if Default is passed and we have json element "age":25 we
- * get back age as double as data type in data.Get() ,
- * if numberasstring is passed, we get age value as bytes
- */
 const (
 	JSONOptDefault        = JSONOption(C.DPI_JSON_OPT_DEFAULT)
 	JSONOptNumberAsString = JSONOption(C.DPI_JSON_OPT_NUMBER_AS_STRING)
 	JSONOptDateAsDouble   = JSONOption(C.DPI_JSON_OPT_DATE_AS_DOUBLE)
 )
 
+const (
+	MAXVARCHAR2 = 32767 // to be removed. only for testing
+)
+
+// Represents JSON string format, if its in std, ORACLE extended types,
+// BSON extended types, etc
+type JSONStringFlags uint
+
+const (
+	JSONFormatExtnTypes       JSONStringFlags = C.DPI_JSON_USE_EXTENSION_TYPES
+	JSONFormatBSONTypes                       = C.DPI_JSON_BSON_TYPE_PATTERNS
+	JSONFormatBSONTypePattern                 = C.DPI_JSON_USE_BSON_TYPES
+)
+
+type JSONString struct {
+	Flags JSONStringFlags // standard , extended types for OSON, BSON
+	Value string          // JSON input
+}
+
+// JSONValue is the interface implemented by structs encapsulating
+// various JSON inputs.
+// JSON, JSONObject, JSONArray and JSONScalar implement it.
+type JSONValue interface {
+	// JSONType is native type stored.
+	GetJSONType() C.dpiNativeTypeNum
+}
+
+// JSONScalar holds the JSON data to/from Oracle.
+// It includes all scalar values such as int, float, bool, time.Time,
+// time.Duration, byte[] , map and arrays.
+type JSONScalar struct {
+	dpiJsonNode *C.dpiJsonNode
+	isMemOwned  bool // true indicates associated C memory needs to be freed.
+}
+
+func (j JSONScalar) GetValue() (val interface{}, err error) {
+	var d Data
+	jsonNodeToData(&d, j.dpiJsonNode)
+	val = d.Get()
+	if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
+		val = string((d.Get()).([]byte))
+	}
+	err = nil
+	return
+}
+
+func (j JSONScalar) GetJSONType() C.dpiNativeTypeNum {
+	var d Data
+	jsonNodeToData(&d, j.dpiJsonNode)
+	return d.NativeTypeNum
+}
+
+func (js *JSONScalar) Close() error {
+	if js.isMemOwned {
+		C.godror_dpiJsonfreeMem(js.dpiJsonNode)
+	}
+	return nil
+}
+
+// JSON holds the JSON data to/from Oracle.
+// It is like a root node in JSON tree.
+type JSON struct {
+	dpiJson       *C.dpiJson
+	isMemOwned    bool // true indicates associated C memory needs to be freed.
+	nativeTypeNum C.dpiNativeTypeNum
+}
+
+// During Fetch the JSON struct is created.
+// Explicit creation is not supported.
+func createJSON(js *C.dpiJson, mutable bool) (JSON, error) {
+	ntype := C.dpiNativeTypeNum(js.topNode.nativeTypeNum)
+	json := JSON{dpiJson: js, isMemOwned: mutable, nativeTypeNum: ntype}
+	return json, nil
+}
+
+func (j JSON) GetJSONType() C.dpiNativeTypeNum {
+	return j.nativeTypeNum
+}
+
 func (j JSON) Get(data *Data, opts JSONOption) error {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return ErrSthHappened
+		return ErrInvalidJSON
 	}
 	jsonNodeToData(data, node)
-	j.dpiJsonNode = node
 	return nil
 }
 
 // Returns JSONObject from JSON
-func (j JSON) GetJsonObject(jsobj *JSONObject, opts JSONOption) error {
-	var datajsobj Data
-	err := j.Get(&datajsobj, opts)
-	*jsobj = JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(datajsobj.dpiData))}
-	return err
+func (j JSON) GetJSONObject(jsobj *JSONObject, opts JSONOption) error {
+	var node *C.dpiJsonNode
+	var d Data
+	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
+		return ErrInvalidJSON
+	}
+	jsonNodeToData(&d, node)
+	if C.dpiNativeTypeNum(node.nativeTypeNum) != C.DPI_NATIVE_TYPE_JSON_OBJECT {
+		return ErrInvalidType
+	}
+
+	*jsobj = JSONObject{dpiJsonNode: node,
+		dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData)),
+		isMemOwned:    j.isMemOwned}
+	return nil
 }
 
 // Returns JSONArray from JSON
-func (j JSON) GetJsonArray(jsarr *JSONArray, opts JSONOption) error {
-	var datajsobj Data
-	err := j.Get(&datajsobj, opts)
-	*jsarr = JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(datajsobj.dpiData))}
-	return err
+func (j JSON) GetJSONArray(jsarr *JSONArray, opts JSONOption) error {
+	var node *C.dpiJsonNode
+	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
+		return ErrInvalidJSON
+	}
+	var d Data
+	jsonNodeToData(&d, node)
+	if C.dpiNativeTypeNum(node.nativeTypeNum) != C.DPI_NATIVE_TYPE_JSON_ARRAY {
+		return ErrInvalidType
+	}
+	*jsarr = JSONArray{dpiJsonNode: node,
+		dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData)),
+		isMemOwned:   j.isMemOwned}
+	return nil
+}
+
+// Returns JSONScalar from JSON
+func (j JSON) GetJSONScalar(js *JSONScalar, opts JSONOption) error {
+	var node *C.dpiJsonNode
+	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
+		return ErrInvalidJSON
+	}
+	*js = JSONScalar{dpiJsonNode: node,
+		isMemOwned: j.isMemOwned}
+	return nil
+}
+
+// Returns JSON formatted string. flags control extended attributes
+func (j JSON) ToJSONString(flags JSONStringFlags) (string, error) {
+	var cBuf *C.char
+	cBuf = C.CString(strings.Repeat("0", MAXVARCHAR2))
+	defer C.free(unsafe.Pointer(cBuf))
+
+	var cLen C.uint64_t
+	cLen = C.uint64_t(MAXVARCHAR2) // tbd remove hardcoding
+	if C.dpiJson_setToText(j.dpiJson, cBuf, &cLen, C.uint(flags)) ==
+		C.DPI_FAILURE {
+		return "", ErrInvalidJSON
+	}
+	jdstr := C.GoStringN(cBuf, C.int(cLen))
+	return jdstr, nil
 }
 
 // Returns JSON formatted standard string
 func (j JSON) String() string {
 	var cBuf *C.char
-	cBuf = C.CString(strings.Repeat("0", 1024))
+	cBuf = C.CString(strings.Repeat("0", MAXVARCHAR2))
 	defer C.free(unsafe.Pointer(cBuf))
 
+	var jsonFlags uint = 0
 	var cLen C.uint64_t
-	cLen = C.uint64_t(1024) // tbd remove hardcoding
-	if C.dpiJson_setToText(j.dpiJson, cBuf, &cLen) ==
+	cLen = C.uint64_t(MAXVARCHAR2) // tbd remove hardcoding
+	if C.dpiJson_setToText(j.dpiJson, cBuf, &cLen, C.uint(jsonFlags)) ==
 		C.DPI_FAILURE {
 		return ""
 	}
@@ -272,9 +402,15 @@ func jsonNodeToData(data *Data, node *C.dpiJsonNode) {
 	data.NativeTypeNum = node.nativeTypeNum
 }
 
+// It represents the array input.
 type JSONArray struct {
-	dpiJsonArray *C.dpiJsonArray
 	dpiJsonNode  *C.dpiJsonNode
+	dpiJsonArray *C.dpiJsonArray
+	isMemOwned   bool // true indicates associated C memory needs to be freed
+}
+
+func (j JSONArray) GetJSONType() C.dpiNativeTypeNum {
+	return C.DPI_NATIVE_TYPE_JSON_ARRAY
 }
 
 func (j JSONArray) Len() int { return int(j.dpiJsonArray.numElements) }
@@ -286,6 +422,7 @@ func (j JSONArray) GetElement(i int) Data {
 	return d
 
 }
+
 func (j JSONArray) Get(nodes []Data) []Data {
 	n := int(j.dpiJsonArray.numElements)
 	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
@@ -298,7 +435,7 @@ func (j JSONArray) Get(nodes []Data) []Data {
 }
 
 // Returns the Go type, []interface{} from JSONArray
-func (j JSONArray) GetUserArray() (nodes []interface{}, err error) {
+func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 	n := int(j.dpiJsonArray.numElements)
 	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
 	for i := 0; i < n; i++ {
@@ -307,21 +444,21 @@ func (j JSONArray) GetUserArray() (nodes []interface{}, err error) {
 		if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_OBJECT {
 
 			jsobj := JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData))}
-			m, err := jsobj.GetUserMap()
+			m, err := jsobj.GetValue()
 			if err != nil {
 				return nil, err
 			}
 			nodes = append(nodes, m)
 		} else if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_ARRAY {
 			jsarr := JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData))}
-			ua, err := jsarr.GetUserArray()
+			ua, err := jsarr.GetValue()
 			if err != nil {
 				return nil, err
 			}
 			nodes = append(nodes, ua)
 		} else {
 			if elts[i].oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
-				keyval, err := d.getString()
+				keyval, err := d.getStringFromDPIBytes()
 				if err == nil {
 					nodes = append(nodes, keyval)
 				} else {
@@ -335,18 +472,29 @@ func (j JSONArray) GetUserArray() (nodes []interface{}, err error) {
 	return nodes, nil
 }
 
+// Frees the C memory allocated
 func (jsarr *JSONArray) Close() error {
-	C.godror_dpiJsonfreeMem(jsarr.dpiJsonNode)
+	if jsarr.isMemOwned {
+		C.godror_dpiJsonfreeMem(jsarr.dpiJsonNode)
+	}
 	return nil
 }
 
+// It represents the map input.
 type JSONObject struct {
+	dpiJsonNode   *C.dpiJsonNode
 	dpiJsonObject *C.dpiJsonObject
-	// tbd null check for dpijsonnode
-	dpiJsonNode *C.dpiJsonNode
+	isMemOwned    bool
 }
 
-// populates dpiJsonNode from user inputs
+func (j JSONObject) GetJSONType() C.dpiNativeTypeNum {
+	return C.DPI_NATIVE_TYPE_JSON_OBJECT
+}
+
+// populates dpiJsonNode from user inputs.
+// It creates a seperate memory for the new output value, jsonnode.
+// memory from user input, in is not shared with jsonnode.
+// Caller has to explicitly free using godror_dpiJsonfreeMem
 func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	switch x := in.(type) {
 	case []interface{}:
@@ -388,19 +536,53 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 		}
 
 	case int:
-		C.godror_dpiJson_setInt64(jsonnode, C.double(x))
+		C.godror_dpiJson_setInt64(jsonnode, C.int64_t(x))
+	case int8:
+		C.godror_dpiJson_setInt64(jsonnode, C.int64_t(x))
+	case int16:
+		C.godror_dpiJson_setInt64(jsonnode, C.int64_t(x))
+	case int32:
+		C.godror_dpiJson_setInt64(jsonnode, C.int64_t(x))
+	case int64:
+		C.godror_dpiJson_setInt64(jsonnode, C.int64_t(x))
+	case uint:
+		C.godror_dpiJson_setUint64(jsonnode, C.uint64_t(x))
+	case uint8:
+		C.godror_dpiJson_setUint64(jsonnode, C.uint64_t(x))
+	case uint16:
+		C.godror_dpiJson_setUint64(jsonnode, C.uint64_t(x))
+	case uint32:
+		C.godror_dpiJson_setUint64(jsonnode, C.uint64_t(x))
+	case uint64:
+		C.godror_dpiJson_setUint64(jsonnode, C.uint64_t(x))
+	case float32:
+		C.godror_dpiJson_setDouble(jsonnode, C.double(x))
 	case float64:
 		C.godror_dpiJson_setDouble(jsonnode, C.double(x))
-		//C.godror_dpiJson_setFloat64(jsonnode, C.float(x))
 	case string:
-		cval := C.CString(x)
-		C.godror_dpiJson_setString(jsonnode, cval, C.uint32_t(len(x)))
+		data, err := NewData(x)
+		if err != nil {
+			return err
+		}
+		C.godror_dpiJson_setString(jsonnode, &(data.dpiData))
 	case time.Time:
 		data, err := NewData(x)
 		if err != nil {
 			return err
 		}
 		C.godror_dpiJson_setTime(jsonnode, &(data.dpiData))
+	case time.Duration:
+		data, err := NewData(x)
+		if err != nil {
+			return err
+		}
+		C.godror_dpiJson_setIntervalDS(jsonnode, &(data.dpiData))
+	case []byte:
+		data, err := NewData(x)
+		if err != nil {
+			return err
+		}
+		C.godror_dpiJson_setBytes(jsonnode, &(data.dpiData))
 	case bool:
 		data, err := NewData(x)
 		if err != nil {
@@ -410,6 +592,21 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	default:
 		return fmt.Errorf("Unsupported type %T\n", in)
 	}
+	return nil
+}
+
+// Creates a JSONInt from user input []interface{}
+func newJSONScalar(val interface{}, jscalar *JSONScalar) error {
+	var dpijsonnode *C.dpiJsonNode
+	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
+	err := populateJsonNode(val, dpijsonnode)
+	if err != nil {
+		C.godror_dpiJsonfreeMem(dpijsonnode)
+		return err
+	}
+	dpidataw := new(Data)
+	jsonNodeToData(dpidataw, dpijsonnode)
+	*jscalar = JSONScalar{dpiJsonNode: dpijsonnode, isMemOwned: true}
 	return nil
 }
 
@@ -439,7 +636,7 @@ func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
 	}
 	dpidataw := new(Data)
 	jsonNodeToData(dpidataw, dpijsonnode)
-	*jsobj = JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode}
+	*jsobj = JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode, isMemOwned: true}
 	return nil
 }
 
@@ -463,7 +660,7 @@ func (j JSONObject) Get(m map[string]Data) {
 }
 
 // Returns the Go type map[string]interface{} from JSONObject
-func (j JSONObject) GetUserMap() (m map[string]interface{}, err error) {
+func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
 	m = make(map[string]interface{})
 	n := int(j.dpiJsonObject.numFields)
 	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(j.dpiJsonObject.fieldNames)))[:n:n]
@@ -474,20 +671,20 @@ func (j JSONObject) GetUserMap() (m map[string]interface{}, err error) {
 		jsonNodeToData(&d, &fields[i])
 		if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_OBJECT {
 			jsobj := JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData))}
-			um, err := jsobj.GetUserMap()
+			um, err := jsobj.GetValue()
 			if err != nil {
 				return nil, err
 			}
 			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = um
 		} else if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_ARRAY {
 			jsobj := JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData))}
-			ua, err := jsobj.GetUserArray()
+			ua, err := jsobj.GetValue()
 			if err != nil {
 				return nil, err
 			}
 			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = ua
 		} else if fields[i].oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
-			keyval, err := d.getString()
+			keyval, err := d.getStringFromDPIBytes()
 			if err == nil {
 				m[C.GoStringN(names[i], C.int(nameLengths[i]))] = keyval
 			} else {
@@ -526,9 +723,9 @@ func (t IntervalYMJson) MarshalJSON() ([]byte, error) {
 	return []byte(str), nil
 }
 
-// NewJsonValue will take user input and returns an interface which
-// abstracts one of these: JSONObject, JSONArray, JSONString, ...
-func NewJsonValue(in interface{}) (JsonValue, error) {
+// NewJSONValue will take user input and returns an interface which
+// abstracts one of these: JSONObject, JSONArray, JSONArray, ...
+func NewJSONValue(in interface{}) (JSONValue, error) {
 	v := reflect.ValueOf(in)
 	t := v.Type()
 	switch t.Kind() {
@@ -539,21 +736,26 @@ func NewJsonValue(in interface{}) (JsonValue, error) {
 		var jsonobj JSONObject
 		newJSONObject(in.(map[string]interface{}), &jsonobj)
 		return jsonobj, nil
-	case reflect.Struct:
-		// Add Json Map
-		outByte, _ := json.Marshal(&in)
-		return JSONString(outByte), nil
 	case reflect.Ptr:
 		// Add Json Map
 		var jsonobj JSONObject
 		newJSONObject(in.(map[string]interface{}), &jsonobj)
 		return jsonobj, nil
 	case reflect.String:
-		return JSONString(in.(string)), nil
+		var jsonscl JSONScalar
+		//newJSONScalar(in.(int8), &jsonscl)
+		newJSONScalar(in, &jsonscl)
+		return jsonscl, nil
 	case reflect.Slice:
 		var jsonarr JSONArray
 		newJSONArray(in.([]interface{}), &jsonarr)
 		return jsonarr, nil
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		var jsonscl JSONScalar
+		newJSONScalar(in, &jsonscl)
+		return jsonscl, nil
 	default:
 		return nil, fmt.Errorf("Unsupported JSON doc type %#v: ", t.Name())
 	}

@@ -1620,7 +1620,7 @@ int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
 //   Wrapper for OCIJsonTextBufferParse().
 //-----------------------------------------------------------------------------
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
-        uint64_t valueLength, dpiError *error)
+        uint64_t valueLength, unsigned int flags, dpiError *error)
 {
     int status;
 
@@ -1629,8 +1629,8 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnJsonTextBufferParse)(json->conn->handle,
             json->handle, (void*) value, valueLength,
-            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|DPI_JZN_USE_EXTENSION_TYPES|DPI_JZN_BSON_TYPE_PATTERNS) , DPI_JZN_INPUT_UTF8, error->handle,
-            DPI_OCI_DEFAULT);
+            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|flags), 
+            DPI_JZN_INPUT_UTF8, error->handle, DPI_OCI_DEFAULT);
     DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
 }
 
@@ -1641,7 +1641,7 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
 //   Wrapper for OCIJsonToTextBuffer().
 //-----------------------------------------------------------------------------
 int dpiOci__jsonToTextBuffer(dpiJson *json, char *value,
-        uint64_t *valueLength, dpiError *error)
+        uint64_t *valueLength, unsigned int flags, dpiError *error)
 {
     int status;
 
@@ -1650,7 +1650,7 @@ int dpiOci__jsonToTextBuffer(dpiJson *json, char *value,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnJsonToTextBuffer)(json->conn->handle,
             json->handle, value, valueLength,
-            (DPI_JZN_USE_EXTENSION_TYPES|DPI_JZN_USE_BSON_TYPES|DPI_JZN_BSON_TYPE_PATTERNS) , error->handle,
+            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|flags) , error->handle,
             DPI_OCI_DEFAULT);
     int         ismut;
 

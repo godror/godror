@@ -588,6 +588,7 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
     dpiJznDomDoc *domDoc;
     void *oracleTopNode;
     int mutable = 1;
+    unsigned int jsonFlags = 0;
 
     // first, set the JSON descriptor as mutable
     if (dpiOci__attrSet(json->handle, DPI_OCI_DTYPE_JSON,
@@ -597,7 +598,7 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
 
     // write a dummy value to the JSON descriptor
     if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue),
-            error) < 0)
+            jsonFlags, error) < 0)
         return DPI_FAILURE;
 
     // acquire the DOM doc which will be used to create the Oracle nodes
@@ -774,24 +775,26 @@ int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode)
 }
 
 // TBD Add flag ext types oson/bson
-int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen)
+int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen, 
+        unsigned int flags)
 {
     dpiError error;
     int status;
     if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
 
-    status = dpiOci__jsonTextBufferParse(json, value, vlen, &error);
+    status = dpiOci__jsonTextBufferParse(json, value, vlen, flags, &error);
     return dpiGen__endPublicFn(json, status, &error);
 }
 
-int dpiJson_setToText(dpiJson *json, char *value , uint64_t *vlen)
+int dpiJson_setToText(dpiJson *json, char *value , uint64_t *vlen, 
+        unsigned int flags)
 {
     dpiError error;
     int status;
 
     if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    status = dpiOci__jsonToTextBuffer(json, value, vlen, &error);
-    return status;
+    status = dpiOci__jsonToTextBuffer(json, value, vlen, flags, &error);
+    return dpiGen__endPublicFn(json, status, &error);
 }

@@ -450,9 +450,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_JZNVAL_OCI_DATETIME                     34
 #define DPI_JZNVAL_OCI_INTERVAL                     40
 #define DPI_JZNU_PRINT_PRETTY                       1
-#define DPI_JZN_USE_EXTENSION_TYPES                 0x00040000
-#define DPI_JZN_BSON_TYPE_PATTERNS                  0x00080000
-#define DPI_JZN_USE_BSON_TYPES                      0x00020000 
 
 // define XDK miscellaneous constants
 #define DPI_JZN_ALLOW_SCALAR_DOCUMENTS              0x00000080
@@ -1908,9 +1905,9 @@ int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
 int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
         dpiError *error);
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
-        uint64_t valueLength, dpiError *error);
+        uint64_t valueLength, unsigned int flags, dpiError *error);
 int dpiOci__jsonToTextBuffer(dpiJson *json, char *value,
-        uint64_t *valueLength, dpiError *error);        
+        uint64_t *valueLength, unsigned int flags, dpiError *error);        
 int dpiOci__loadLib(dpiContextCreateParams *params,
         dpiVersionInfo *clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);

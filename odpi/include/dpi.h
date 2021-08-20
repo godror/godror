@@ -369,6 +369,11 @@ typedef uint32_t dpiVisibility;
 #define DPI_VISIBILITY_IMMEDIATE                    1
 #define DPI_VISIBILITY_ON_COMMIT                    2
 
+// JSON String Formats
+
+#define DPI_JSON_USE_EXTENSION_TYPES                 0x00040000
+#define DPI_JSON_BSON_TYPE_PATTERNS                  0x00080000
+#define DPI_JSON_USE_BSON_TYPES                      0x00020000 
 
 //-----------------------------------------------------------------------------
 // Handle Types
@@ -1251,10 +1256,12 @@ DPI_EXPORT int dpiJson_release(dpiJson *json);
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
 //parse textual json into json descriptor
-DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen);
+DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value, 
+        uint64_t vlen, unsigned int flags);
 
 //Fill textual json into text buffer from json descriptor
-DPI_EXPORT int dpiJson_setToText(dpiJson *json,  char *value, uint64_t *vlen);
+DPI_EXPORT int dpiJson_setToText(dpiJson *json,  char *value, uint64_t *vlen, 
+        unsigned int flags);
 
 // return the Json portion of the data
 DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
@@ -2052,7 +2059,8 @@ DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *js);
 
 
 //set the value from a json string
-DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, uint64_t strlen);
+DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, 
+        const char *jstring, uint64_t len, unsigned int flags);
 
 #ifdef __cplusplus
 }

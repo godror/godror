@@ -1912,7 +1912,8 @@ int dpiVar_setFromJson( dpiVar *var, uint32_t pos, dpiJson *js)
 // A reference to the descriptor is retained by the variable
 //-----------------------------------------------------------------------------
 
-int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, uint64_t strlen)
+int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, 
+    uint64_t len, unsigned int flags)
 {
     dpiError error;
     int status;
@@ -1924,7 +1925,7 @@ int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, const char *jstring, ui
     {
         return DPI_FAILURE;
     }
-    if(dpiJson_setFromText(js, jstring , strlen) < 0 )
+    if(dpiJson_setFromText(js, jstring , len, flags) < 0 )
     {
         return DPI_FAILURE; 
     }

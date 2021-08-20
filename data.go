@@ -541,7 +541,8 @@ func (d *Data) GetJSONArray() JSONArray {
 	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
-func (d *Data) getString() (string, error) {
+// get string from native type, DPI_NATIVE_TYPE_BYTES
+func (d *Data) getStringFromDPIBytes() (string, error) {
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
 		b := (*C.dpiBytes)(unsafe.Pointer(&(d.dpiData.value)))
 		if b.length == 0 {
