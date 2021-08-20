@@ -22,7 +22,7 @@ Applications should set the properties because they can greatly help to identify
 and resolve unnecessary database resource usage, or improper access.
 
 `ClientIdentifier`, `ClientInfo`, `Module`, `Action` and `DbOp` can be set on
-the session.  The values can then be seen by the DBA in databaase views such as
+the session.  The values can then be seen by the DBA in database views such as
 V$SESSION.  For example to set `Module` and `Action` on the Context:
 
 ```go
