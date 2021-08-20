@@ -10,14 +10,18 @@
 for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
-At least Go 1.13 is required!
-Cgo is required, so cross-compilation is hard, and you cannot set `CGO_ENABLED=0`!
+## Build-time Requirements
+  - Go 1.14
+  - C compiler with `CGO_ENABLED=1` - so cross-compilation is hard
+
+## Run-time Requirements
+  - Oracle Client libraries - see [ODPI-C](https://oracle.github.io/odpi/doc/installation.html) 
 
 Although Oracle Client libraries are NOT required for compiling, they *are*
 needed at run time.  Download the free Basic or Basic Light package from
 <https://www.oracle.com/database/technologies/instant-client/downloads.html>.
 
-### Rationale
+## Rationale
 
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored
@@ -74,12 +78,19 @@ See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
+As sql.DB will close the statemenet ASAP, for long-lived objects (LOB, REF CURSOR),
+you have to keep the Stmt alive: Prepare the statement, 
+and Close only after finished with the Lob/Rows.
+
 ### Using cursors returned by stored procedures
 
 Use `ExecContext` and an `interface{}` or a `database/sql/driver.Rows` as the `sql.Out` destination,
 then either use the `driver.Rows` interface,
 or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
 or (since Go 1.12) just Scan into `*sql.Rows`.
+
+As sql.DB will close the statemenet ASAP, you have to keep the Stmt alive: 
+Prepare the statement, and Close only after finished with the Rows.
 
 For examples, see Anthony Tuininga's
 [presentation about Go](https://static.rainfocus.com/oracle/oow19/sess/1567058525476001cK8G/PF/DEV6708-Using-the-Go-Language-for-Efficient-Oracle-Database-Applications_1568841171132001jI7d.pdf)
@@ -144,9 +155,14 @@ then set the "location" in  the connection string, or the `Timezone` in the `Con
 ```go
 var rset1, rset2 driver.Rows
 
-query := `BEGIN Package.StoredProcA(123, :1, :2); END;`
+const query = `BEGIN Package.StoredProcA(123, :1, :2); END;`
 
-if _, err := db.ExecContext(ctx, query, sql.Out{Dest: &rset1}, sql.Out{Dest: &rset2}); err != nil {
+stmt, err := db.PrepareContext(ctx, query)
+if err != nil {
+    return fmt.Errorf("%s: %w", query, err)
+}
+defer stmt.Close()
+if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &rset1}, sql.Out{Dest: &rset2}); err != nil {
 	log.Printf("Error running %q: %+v", query, err)
 	return
 }
