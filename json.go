@@ -227,10 +227,6 @@ const (
 	JSONOptDateAsDouble   = JSONOption(C.DPI_JSON_OPT_DATE_AS_DOUBLE)
 )
 
-const (
-	MAXVARCHAR2 = 32767 // to be removed. only for testing
-)
-
 // Represents JSON string format, if its in std, ORACLE extended types,
 // BSON extended types, etc
 type JSONStringFlags uint
@@ -252,7 +248,7 @@ type JSONString struct {
 // various JSON inputs(map, array, struct(?),scalar values like int, string ..).
 // JSON, JSONObject, JSONArray and JSONScalar implement it.
 type JSONValue interface {
-	// JSONType is Oracle type stored.
+	// JSONType is Oracle type stored. Its not used now.
 	getOracleJSONType() C.dpiOracleTypeNum
 }
 
@@ -373,6 +369,7 @@ func (j JSON) GetJSONScalar(js *JSONScalar, opts JSONOption) error {
 	return nil
 }
 
+// Returns a Go type Value from JSON
 func (j JSON) GetValue(opts JSONOption, val *interface{}) (err error) {
 	var jScalar JSONScalar
 	err = j.GetJSONScalar(&jScalar, opts)
