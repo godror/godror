@@ -162,6 +162,13 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			}
 			runtime.UnlockOSThread()
 		}
+		// If the dest buffer is big enough, avoid copying.
+		if len(p) >= int(dlr.chunkSize) {
+			if Log != nil {
+				Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
+			}
+			return dlr.read(p)
+		}
 		dlr.buf = make([]byte, int(dlr.chunkSize))
 	}
 	var err error
