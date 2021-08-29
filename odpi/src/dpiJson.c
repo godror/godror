@@ -786,15 +786,3 @@ int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen,
     status = dpiOci__jsonTextBufferParse(json, value, vlen, flags, &error);
     return dpiGen__endPublicFn(json, status, &error);
 }
-
-int dpiJson_setToText(dpiJson *json, char *value , uint64_t *vlen, 
-        unsigned int flags)
-{
-    dpiError error;
-    int status;
-
-    if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
-        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    status = dpiOci__jsonToTextBuffer(json, value, vlen, flags, &error);
-    return dpiGen__endPublicFn(json, status, &error);
-}

@@ -23,15 +23,10 @@ import (
 // Number as string
 type Number string
 
-//Json as string
-type Json string
-
-//Json as Bytes
-type JsonByte []byte
-
-//Timestamp as time.Time
+// Timestamp as time.Time. For eJSON Marshal Support
 type Timestamp time.Time
 
+// IntervalYM as string. For eJSON Marshal Support
 type IntervalYMJson string
 
 var (

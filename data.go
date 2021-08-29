@@ -541,18 +541,5 @@ func (d *Data) GetJSONArray() JSONArray {
 	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
-// get string from native type, DPI_NATIVE_TYPE_BYTES
-func (d *Data) getStringFromDPIBytes() (string, error) {
-	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
-		b := (*C.dpiBytes)(unsafe.Pointer(&(d.dpiData.value)))
-		if b.length == 0 {
-			return string(""), nil
-		} else {
-			return C.GoStringN(b.ptr, C.int(b.length)), nil
-		}
-	}
-	return "", fmt.Errorf("Invalid  NativeTypeNum=%d", d.NativeTypeNum)
-}
-
 // For tests
 var _, _ = ((*Data)(nil)).dpiDataGetBytes, ((*Data)(nil)).dpiDataGetBytesUnsafe

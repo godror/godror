@@ -1259,10 +1259,6 @@ DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value, 
         uint64_t vlen, unsigned int flags);
 
-//Fill textual json into text buffer from json descriptor
-DPI_EXPORT int dpiJson_setToText(dpiJson *json,  char *value, uint64_t *vlen, 
-        unsigned int flags);
-
 // return the Json portion of the data
 DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
 

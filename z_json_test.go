@@ -6,9 +6,9 @@
 package godror_test
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -16,21 +16,24 @@ import (
 	godror "github.com/godror/godror"
 )
 
-// Inserts the JSON Formatted string with extended types for OSON bytes and
-// BSON type . Reads from DB as standard JSON( extended strings removed)
-// and does byte compare.
-// Without extended strings in JSON format, the extended data types like Date
-// would get stored as strings.
-func TestReadWriteEJSON(t *testing.T) {
+// Inserts the JSON Formatted string without extended types.
+// Reads from DB as standard JSON and compare with input JSON string.
+// The Dates below are not stored as Oracle extended type, timestamp,
+// instead they are stored as string.
+// We need to use eJSON to retain types from JSON string.
+// Alternatively if application uses map, array ,
+// the extended types can be retained as show in tests, TestReadWriteJSONMap
+// and TestReadWriteJSONArray.
+func TestReadWriteJSONString(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteEJSON"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteJSONString"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	tbl := "test_personcollection_ejson" + tblSuffix
+	tbl := "test_personcollection_jsonstring" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
@@ -56,10 +59,10 @@ func TestReadWriteEJSON(t *testing.T) {
 		JDOC   string
 		Wanted string
 	}{
-		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123000Z\"},\"age\":25,\"creditScore\":[700,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":4500.23}}"},
-		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":{\"$oracleDate\":\"1999-02-03T00:00:00\"},\"Experience\":{\"$intervalYearMonth\" : \"P10Y8M\"},\"ID\":{\"$numberInt\" :12},\"JoinDate\":{\"$oracleTimestampTZ\": \"2020-11-24T12:34:56.123000Z\"},\"age\":25,\"creditScore\":[800,250,340],\"salary\":{\"$numberFloat\":4500.23}}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"Experience\":\"P10Y8M\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.23}}"},
+		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":45.23}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":45.23}}"},
+		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.2351}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.2351}}"},
 	} {
-		jsonval := godror.JSONString{Value: tC.JDOC, Flags: godror.JSONFormatExtnTypes | godror.JSONFormatBSONTypes | godror.JSONFormatBSONTypePattern}
+		jsonval := godror.JSONString{Value: tC.JDOC, Flags: 0}
 
 		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
@@ -73,21 +76,24 @@ func TestReadWriteEJSON(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
+		var id interface{}
+		var jsondoc godror.JSON
 		for rows.Next() {
-			var id, jsondoc interface{}
 			if err = rows.Scan(&id, &jsondoc); err != nil {
 				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			if jsondoc, ok := jsondoc.(godror.JSON); !ok {
-				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
+			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+			got := jsondoc.String()
+			if got == "" {
+				t.Errorf("%d. %v", id, err)
 			} else {
-				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
-				got, err := jsondoc.ToJSONString(0)
+				eq, err := isEqualJSONString(got, tC.Wanted)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
-				} else if !bytes.Equal([]byte(got), []byte(tC.Wanted)) {
+				}
+				if !eq {
 					t.Errorf("%d. got %q for JDOC, wanted %q", id, got, tC.Wanted)
 				}
 			}
@@ -96,8 +102,34 @@ func TestReadWriteEJSON(t *testing.T) {
 	}
 }
 
+// Check if two JSON strings are equal ignoring the order
+func isEqualJSONString(js1, js2 string) (bool, error) {
+	var js1type interface{}
+	var js2type interface{}
+
+	var err error
+	err = json.Unmarshal([]byte(js1), &js1type)
+	if err != nil {
+		return false, err
+	}
+	err = json.Unmarshal([]byte(js2), &js2type)
+	if err != nil {
+		return false, err
+	}
+	return reflect.DeepEqual(js1type, js2type), nil
+
+}
+
 // It inserts Go map[string]interface{} and reads the JSON Document from DB.
-// converts JSON Document into map[string]interface{} and compares with source
+// converts JSON Document into map[string]interface{}
+// and compares with source.
+// We are sending float64 types from map because from DB , we always
+// get float64 for numbers used in JSON document.
+// All int8, int16, int32, int64, float32, float64, uint8, uint16,
+// uint32, uint64 are stored as Number in DB.
+// Application can always convert to required types
+// using conversions after fetching from DB.
+// ex: toint8 = int8(val.float64)
 func TestReadWriteJSONMap(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonMap"), 30*time.Second)
@@ -141,7 +173,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 			},
 			"age":       float64(25),
 			"BirthDate": birthdate,
-			"salary":    float64(4500.2351),
+			"salary":    float64(45.231),
 			"Local":     true,
 		},
 	}
@@ -150,7 +182,10 @@ func TestReadWriteJSONMap(t *testing.T) {
 	}{
 		{JDOC: jmap},
 	} {
-		jsonval, _ := godror.NewJSONValue(tC.JDOC)
+		jsonval, err := godror.NewJSONValue(tC.JDOC)
+		if err != nil {
+			t.Errorf("%d. %v", tN, err)
+		}
 		var jsonobj godror.JSONObject
 		var ok bool
 		if jsonobj, ok = jsonval.(godror.JSONObject); !ok {
@@ -170,37 +205,36 @@ func TestReadWriteJSONMap(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
-		defer rows.Close()
+		var id interface{}
+		var jsondoc godror.JSON
 		for rows.Next() {
-			var id interface{}
-			var jsondoc godror.JSONValue
 			if err = rows.Scan(&id, &jsondoc); err != nil {
+				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			if jsondocJSON, ok := jsondoc.(godror.JSON); !ok {
-				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
+
+			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+			if err != nil {
+				t.Errorf("%d. %v", id, err)
 			} else {
-				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				var v interface{}
+				var gotmap map[string]interface{}
+				err = jsondoc.GetValue(godror.JSONOptNumberAsString, &v)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
-				} else {
-					var jobj godror.JSONObject
-					err = jsondocJSON.GetJSONObject(&jobj, godror.JSONOptDefault)
-					if err != nil {
-						t.Errorf("%d. %v", id, err)
-					}
-					jsonmapobj, err := jobj.GetValue()
-					if err != nil {
-						t.Errorf("%d. %v", id, err)
-					}
-					eq := reflect.DeepEqual(tC.JDOC, jsonmapobj)
-					if !eq {
-						t.Errorf("Got %+v, wanted %+v", jsonmapobj, tC.JDOC)
-					}
+				}
+				if gotmap, ok = v.(map[string]interface{}); !ok {
+					t.Errorf("%d. %T is not JSONObject ", id, v)
+				}
+				eq := reflect.DeepEqual(tC.JDOC, gotmap)
+				if !eq {
+					t.Errorf("Got %+v, wanted %+v", gotmap, tC.JDOC)
 				}
 			}
+
 		}
+		rows.Close()
 	}
 }
 
@@ -298,37 +332,35 @@ func TestReadWriteJSONArray(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
-		defer rows.Close()
+		var id interface{}
+		var jsondoc godror.JSON
 		for rows.Next() {
-			var id, jsondoc interface{}
 			if err = rows.Scan(&id, &jsondoc); err != nil {
+				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			if jsondocJSON, ok := jsondoc.(godror.JSON); !ok {
-				t.Errorf("%d. %T is not Json Doc", id, jsondoc)
+			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+			if err != nil {
+				t.Errorf("%d. %v", id, err)
 			} else {
-				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				var v interface{}
+				var gotarr []interface{}
+				err = jsondoc.GetValue(godror.JSONOptNumberAsString, &v)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
-				} else {
-					var jarr godror.JSONArray
-					err = jsondocJSON.GetJSONArray(&jarr, godror.JSONOptDefault)
-					if err != nil {
-						t.Errorf("%d. %v", id, err)
-					}
-					jsonarrobj, err := jarr.GetValue()
-					if err != nil {
-						t.Errorf("%d. %v", id, err)
-					}
-					eq := reflect.DeepEqual(tC.JDOC, jsonarrobj)
-					t.Logf("%d. Got  Document read %+v): ", id, jsonarrobj)
-					if !eq {
-						t.Errorf("Got %+v, wanted %+v", jsonarrobj, tC.JDOC)
-					}
+				}
+				if gotarr, ok = v.([]interface{}); !ok {
+					t.Errorf("%d. %T is not JSONArray ", id, v)
+				}
+				eq := reflect.DeepEqual(tC.JDOC, gotarr)
+				t.Logf("%d. Got  Document read %+v): ", id, gotarr)
+				if !eq {
+					t.Errorf("Got %+v, wanted %+v", gotarr, tC.JDOC)
 				}
 			}
 		}
+		rows.Close()
 	}
 }
 
@@ -426,11 +458,11 @@ func TestReadJSONScalar(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
-		defer rows.Close()
 		for rows.Next() {
 			var id, person, personBirthDate interface{}
 			var persontype, personDOBType string
 			if err = rows.Scan(&id, &person, &personBirthDate, &persontype, &personDOBType); err != nil {
+				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
@@ -455,34 +487,30 @@ func TestReadJSONScalar(t *testing.T) {
 			if personBirthDateJSON, ok := personBirthDate.(godror.JSON); !ok {
 				t.Errorf("%d. %T is not Json Doc", id, personBirthDate)
 			} else {
-				var birthDate godror.JSONScalar
-				err = personBirthDateJSON.GetJSONScalar(&birthDate, godror.JSONOptDefault)
+
+				var v interface{}
+				var dobarr []interface{}
+				err = personBirthDateJSON.GetValue(godror.JSONOptNumberAsString, &v)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
-				dob, err := birthDate.GetValue()
-				if err != nil {
-					t.Errorf("%d. %v", id, err)
+				if dobarr, ok = v.([]interface{}); !ok {
+					t.Errorf("%d. %T is not JSONArray ", id, v)
 				}
-				if dobarr, ok := dob.(godror.JSONArray); !ok {
-					t.Errorf("%d. BirthDate Array type is not %T", id, dobarr)
-				} else {
-					dobarrayval, err := dobarr.GetValue()
-					if err != nil {
-						t.Errorf("%d. %v", id, err)
-					}
-					for _, entry := range dobarrayval {
-						if entry != birthdate {
-							t.Errorf("Got %+v, wanted %+v", entry, birthdate)
-						}
+				for _, entry := range dobarr {
+					if entry != birthdate {
+						t.Errorf("Got %+v, wanted %+v", entry, birthdate)
 					}
 				}
 			}
 		}
+		rows.Close()
 	}
 }
 
-// It retrieves the object , person from JSON coloumn and updates it.
+// It retrieves the object , person from JSON coloumn and updates
+// BirthDate . We again read the BirthDate and verify its matching with
+// what is written.
 func TestUpdateJSONObject(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("UpdateJSONObject"), 30*time.Second)
@@ -541,7 +569,10 @@ func TestUpdateJSONObject(t *testing.T) {
 	}{
 		{JDOC: jsarray},
 	} {
-		jsonval, _ := godror.NewJSONValue(tC.JDOC)
+		jsonval, err := godror.NewJSONValue(tC.JDOC)
+		if err != nil {
+			t.Errorf("%d/3. %v", tN, err)
+		}
 		var jsonarr godror.JSONArray
 		var ok bool
 		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
@@ -562,32 +593,31 @@ func TestUpdateJSONObject(t *testing.T) {
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var id, person interface{}
-			if err = rows.Scan(&id, &person); err != nil {
+			var id interface{}
+			var personJSON godror.JSON
+			if err = rows.Scan(&id, &personJSON); err != nil {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
 
-			// Get object person
-			var personObj godror.JSONObject
-			var personJSON godror.JSON
-			if personJSON, ok = person.(godror.JSON); !ok {
-				t.Errorf("%d. %T is not Json Doc", id, person)
-			} else {
-				t.Logf("%d. JSON Document for Person %q: ", id, personJSON)
-			}
-			err = personJSON.GetJSONObject(&personObj, godror.JSONOptDefault)
+			var v interface{}
+			var personMap map[string]interface{}
+			err = personJSON.GetValue(godror.JSONOptNumberAsString, &v)
 			if err != nil {
-				t.Errorf("%d. %v", id, err)
+				t.Errorf("%d. %v", tN, err)
+			}
+			if personMap, ok = v.(map[string]interface{}); !ok {
+				t.Errorf("%d. %T is not JSONObject ", id, v)
 			}
 
-			personMap, err := personObj.GetValue()
+			// Update BirthDate
+			personMap["BirthDate"] = newBirthDate
+			var newPersonObj godror.JSONObject
+			// Get new JSONObject to be pushed to DB
+			jsonval, err := godror.NewJSONValue(personMap)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			}
-			personMap["BirthDate"] = newBirthDate
-			jsonval, _ := godror.NewJSONValue(personMap)
-			var newPersonObj godror.JSONObject
 			if newPersonObj, ok = jsonval.(godror.JSONObject); !ok {
 				t.Errorf("%d Casting to JsonObject Failed", tN)
 			}
@@ -597,6 +627,34 @@ func TestUpdateJSONObject(t *testing.T) {
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			}
+
+			// Verify updated BirthDate by reading DB
+			// tbd replace this with queryRowContext
+			qry = "SELECT c.jdoc.person.BirthDate FROM " + tbl + " c where id =:1"
+			row1, err := conn.QueryContext(ctx, qry, tN*2)
+			if err != nil {
+				t.Errorf("%d. %v", id, err)
+			}
+			var birthDateJSON godror.JSON
+			for row1.Next() {
+				if err = row1.Scan(&birthDateJSON); err != nil {
+					t.Errorf("%d. %v", id, err)
+				}
+
+				var birthDateScalar interface{}
+				var gotDOB time.Time
+				err = birthDateJSON.GetValue(godror.JSONOptDefault, &birthDateScalar)
+				if err != nil {
+					t.Errorf("%d. %v", id, err)
+				}
+				if gotDOB, ok = birthDateScalar.(time.Time); !ok {
+					t.Errorf("%d. %T is not TimeStamp ", id, birthDateScalar)
+				}
+				if gotDOB != newBirthDate {
+					t.Errorf("Got %+v, wanted %+v", gotDOB, newBirthDate)
+				}
+			}
+			row1.Close()
 		}
 	}
 }

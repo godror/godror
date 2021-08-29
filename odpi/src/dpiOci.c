@@ -200,8 +200,6 @@ typedef int (*dpiOciFnType__jsonDomDocGet)(void *svchp, void *jsond,
 typedef int (*dpiOciFnType__jsonTextBufferParse)(void *hndlp, void *jsond,
         void *bufp, uint64_t buf_sz, uint32_t validation, uint16_t encoding,
         void *errhp, uint32_t mode);
-typedef int (*dpiOciFnType__jsonToTextBuffer)(void *hndlp, void *jsond,
-         char *bufp, uint64_t *buf_sz, uint32_t print, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__lobClose)(void *svchp, void *errhp, void *locp);
 typedef int (*dpiOciFnType__lobCreateTemporary)(void *svchp, void *errhp,
         void *locp, uint16_t csid, uint8_t csfrm, uint8_t lobtype, int cache,
@@ -543,7 +541,6 @@ static struct {
     dpiOciFnType__intervalSetYearMonth fnIntervalSetYearMonth;
     dpiOciFnType__jsonDomDocGet fnJsonDomDocGet;
     dpiOciFnType__jsonTextBufferParse fnJsonTextBufferParse;
-    dpiOciFnType__jsonToTextBuffer fnJsonToTextBuffer;
     dpiOciFnType__lobClose fnLobClose;
     dpiOciFnType__lobCreateTemporary fnLobCreateTemporary;
     dpiOciFnType__lobFileExists fnLobFileExists;
@@ -1631,30 +1628,6 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
             json->handle, (void*) value, valueLength,
             (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|flags), 
             DPI_JZN_INPUT_UTF8, error->handle, DPI_OCI_DEFAULT);
-    DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
-}
-
-
-
-//-----------------------------------------------------------------------------
-// dpiOci__jsonToTextBuffer() [INTERNAL]
-//   Wrapper for OCIJsonToTextBuffer().
-//-----------------------------------------------------------------------------
-int dpiOci__jsonToTextBuffer(dpiJson *json, char *value,
-        uint64_t *valueLength, unsigned int flags, dpiError *error)
-{
-    int status;
-
-    DPI_OCI_LOAD_SYMBOL("OCIJsonToTextBuffer",
-            dpiOciSymbols.fnJsonToTextBuffer)
-    DPI_OCI_ENSURE_ERROR_HANDLE(error)
-    status = (*dpiOciSymbols.fnJsonToTextBuffer)(json->conn->handle,
-            json->handle, value, valueLength,
-            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS|flags) , error->handle,
-            DPI_OCI_DEFAULT);
-    int         ismut;
-
-    status = (*dpiOciSymbols.fnAttrGet)(json->handle, DPI_OCI_DTYPE_JSON, &ismut, 0, DPI_OCI_ATTR_JSON_DOM_MUTABLE, error->handle);
     DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
 }
 

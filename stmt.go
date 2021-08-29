@@ -2487,15 +2487,15 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 
 func (c *conn) dataGetJSON(v interface{}, data []C.dpiData) error {
 
-	fmt.Println(" Inside dataGetJSON ")
 	switch out := v.(type) {
 	case *JSON:
-		*out = JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
+		*out = JSON{dpiJson: *((**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
 	default:
 		return fmt.Errorf("dataGetJSONNode not implemented for type %T", v)
 	}
 	return nil
 }
+
 func (c *conn) dataSetJSON(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if len(data) == 0 {
 		return nil
@@ -2555,6 +2555,7 @@ func (c *conn) dataSetJSONObject(dv *C.dpiVar, data []C.dpiData, vv interface{})
 	}
 	return err
 }
+
 func (c *conn) dataSetJSONScalar(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	var err error = nil
 	if len(data) == 0 {
@@ -2602,6 +2603,7 @@ func (c *conn) dataGetJSONArray(v interface{}, data []C.dpiData) error {
 	return nil
 
 }
+
 func (c *conn) dataSetJSONArray(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	var err error = nil
 	if len(data) == 0 {
