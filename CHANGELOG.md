@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Use dpiConn_setCallTimeout for faster recovers.
 - Faster setTraceTag, drv.init.
+- Buffer dpiLobReader.Read with chunk-sized reads for 
+  * avoiding io.ReadAll short read and
+  * performance
 
 ## [v0.25.2]
 ### Changed
