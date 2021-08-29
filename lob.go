@@ -90,9 +90,11 @@ var _ = io.Reader((*dpiLobReader)(nil))
 type dpiLobReader struct {
 	*conn
 	dpiLob              *C.dpiLob
+	buf                 []byte
 	offset, sizePlusOne C.uint64_t
 	mu                  sync.Mutex
 	chunkSize           C.uint32_t
+	bufR, bufW          int
 	finished            bool
 	IsClob              bool
 }
@@ -122,6 +124,8 @@ func (dlr *dpiLobReader) WriteTo(w io.Writer) (n int64, err error) {
 
 // ChunkSize returns the LOB's native chunk size. Reads/writes with a multiply of this size is the most performant.
 func (dlr *dpiLobReader) ChunkSize() int {
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
 	if dlr.chunkSize != 0 {
 		return int(dlr.chunkSize)
 	}
@@ -135,15 +139,43 @@ func (dlr *dpiLobReader) ChunkSize() int {
 	return int(dlr.chunkSize)
 }
 
+// Read from LOB. It does buffer the reading internally against short buffers (io.ReadAll).
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	if Log != nil {
+		Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
+	}
+	if dlr.bufW != 0 && cap(dlr.buf) != 0 {
+		if dlr.bufR == dlr.bufW {
+			dlr.bufR, dlr.bufW = 0, 0
+		} else {
+			n := copy(p, dlr.buf[dlr.bufR:dlr.bufW])
+			dlr.bufR += n
+			return n, nil
+		}
+	} else if dlr.buf == nil {
+		if dlr.chunkSize == 0 {
+			runtime.LockOSThread()
+			if C.dpiLob_getChunkSize(dlr.dpiLob, &dlr.chunkSize) == C.DPI_FAILURE {
+				return 0, fmt.Errorf("getChunkSize: %w", dlr.getError())
+			}
+			runtime.UnlockOSThread()
+		}
+		dlr.buf = make([]byte, int(dlr.chunkSize))
+	}
+	var err error
+	dlr.bufW, err = dlr.read(dlr.buf)
+	n := copy(p, dlr.buf[:dlr.bufW])
+	dlr.bufR = n
+	return n, err
+}
 
+// read does the real LOB reading.
+func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
-	dlr.mu.Lock()
-	defer dlr.mu.Unlock()
 	if Log != nil {
 		Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
@@ -153,6 +185,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if len(p) < 1 || dlr.IsClob && len(p) < 4 {
 		return 0, io.ErrShortBuffer
 	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
 	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
 	if dlr.sizePlusOne == 0 { // first read
