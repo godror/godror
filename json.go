@@ -9,14 +9,19 @@ package godror
 
 
 int godror_allocate_dpiNode(dpiJsonNode **dpijsonnode) {
-	*dpijsonnode = (dpiJsonNode *)(malloc(sizeof(dpiJsonNode)));
-	dpiDataBuffer *dpijsonDataBuffer = (dpiDataBuffer *)(malloc(sizeof(dpiDataBuffer)));
+	*dpijsonnode = (dpiJsonNode *)(calloc(1, sizeof(dpiJsonNode)));
+	dpiDataBuffer *dpijsonDataBuffer = (dpiDataBuffer *)(calloc(1, sizeof(dpiDataBuffer)));
 	(*dpijsonnode)->value = dpijsonDataBuffer;
 }
 
-int godror_free_dpiNode(dpiJsonNode *node) {
-    free(node->value);
-    node->value = NULL;
+void godror_free_dpiNode(dpiJsonNode *node) {
+    if(node == NULL) {
+        return;
+    }
+    if (node->value) {
+        free(node->value);
+        node->value = NULL;
+    }
     free(node);
     node = NULL;
 }
@@ -29,7 +34,7 @@ void godror_setObjectFields(dpiJsonObject * jsonobj, int i, dpiJsonNode **jnode)
 
 int godror_dpiJsonObject_setKey(dpiJsonNode *dpijsonnode, int index, const char *key, uint32_t keyLength) {
     dpiJsonObject *dpijsonobj = &(dpijsonnode->value->asJsonObject);
-    dpijsonobj->fieldNames[index] = malloc(sizeof(char) * (keyLength + 1));
+    dpijsonobj->fieldNames[index] = calloc((keyLength + 1), sizeof(char));
     memcpy(dpijsonobj->fieldNames[index], key, keyLength);
     dpijsonobj->fieldNames[index][keyLength] = '\0';
     dpijsonobj->fieldNameLengths[index] = keyLength;
@@ -79,9 +84,19 @@ int godror_dpiJson_setBytes(dpiJsonNode *topNode, dpiData *data) {
     uint32_t size = data->value.asBytes.length;
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_RAW;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
-    topNode->value->asBytes.ptr = malloc(size);
+    topNode->value->asBytes.ptr = calloc(1, size);
     memcpy(topNode->value->asBytes.ptr, data->value.asBytes.ptr, size);
     topNode->value->asBytes.length = size;
+}
+
+int godror_dpiJson_setNumber(dpiJsonNode *topNode, const _GoString_ value) {
+    uint32_t length;
+    length = _GoStringLen(value);
+    topNode->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
+    topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
+    topNode->value->asBytes.ptr = calloc(1, length);
+    memcpy(topNode->value->asBytes.ptr, _GoStringPtr(value), length);
+    topNode->value->asBytes.length = length;
 }
 
 int godror_dpiJson_setIntervalDS(dpiJsonNode *topNode, dpiData *data) {
@@ -101,7 +116,7 @@ int godror_dpiJson_setString(dpiJsonNode *topNode, dpiData *data) {
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_VARCHAR;
     topNode->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
     // make a copy before passing to C?
-    topNode->value->asBytes.ptr = malloc(size);
+    topNode->value->asBytes.ptr = calloc(1, size);
     memcpy(topNode->value->asBytes.ptr, data->value.asBytes.ptr, size);
     topNode->value->asBytes.length = size;
 }
@@ -111,10 +126,10 @@ int godror_dpiJsonObject_initialize(dpiJsonNode **dpijsonnode, uint32_t numfield
     dpiJsonObject *dpijsonobj = &dpijsonobjtmp;
     (*dpijsonnode)->oracleTypeNum = DPI_ORACLE_TYPE_JSON_OBJECT;
     (*dpijsonnode)->nativeTypeNum = DPI_NATIVE_TYPE_JSON_OBJECT;
-    dpijsonobj->fieldNames = (malloc(numfields * sizeof(char *)));
-    dpijsonobj->fields = (dpiJsonNode *)(malloc(numfields * sizeof(dpiJsonNode)));
-    dpijsonobj->fieldNameLengths = malloc(numfields * sizeof(uint32_t));
-    dpijsonobj->fieldValues = (dpiDataBuffer *)malloc(numfields * sizeof(dpiDataBuffer));
+    dpijsonobj->fieldNames = (calloc(numfields,  sizeof(char *)));
+    dpijsonobj->fields = (dpiJsonNode *)(calloc(numfields, sizeof(dpiJsonNode)));
+    dpijsonobj->fieldNameLengths = calloc(numfields, sizeof(uint32_t));
+    dpijsonobj->fieldValues = (dpiDataBuffer *)calloc(numfields, sizeof(dpiDataBuffer));
 	dpijsonobj->numFields = numfields;
     (*dpijsonnode)->value->asJsonObject = *dpijsonobj;
     return 0;
@@ -125,8 +140,8 @@ int godror_dpiJsonArray_initialize(dpiJsonNode **dpijsonnode, uint32_t numelem) 
     dpiJsonArray *dpijsonarr = &dpijsonarrtmp;
     (*dpijsonnode)->oracleTypeNum = DPI_ORACLE_TYPE_JSON_ARRAY;
     (*dpijsonnode)->nativeTypeNum = DPI_NATIVE_TYPE_JSON_ARRAY;
-    dpijsonarr->elements = malloc(numelem * sizeof(dpiJsonNode));
-    dpijsonarr->elementValues = (dpiDataBuffer *)malloc(numelem * sizeof(dpiDataBuffer));
+    dpijsonarr->elements = calloc(numelem, sizeof(dpiJsonNode));
+    dpijsonarr->elementValues = (dpiDataBuffer *)calloc(numelem, sizeof(dpiDataBuffer));
 	dpijsonarr->numElements = numelem;
     (*dpijsonnode)->value->asJsonArray = *dpijsonarr;
     return 0;
@@ -199,6 +214,10 @@ void godror_dpiJsonNodeFree(dpiJsonNode *node)
 }
 
 void godror_dpiJsonfreeMem(dpiJsonNode *node) {
+    if (node == NULL)
+    {
+        return;
+    }
     godror_dpiJsonNodeFree(node);
     godror_free_dpiNode(node);
 }
@@ -211,7 +230,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"time"
 	"unsafe"
 )
@@ -265,7 +283,7 @@ func (j JSONScalar) GetValue() (val interface{}, err error) {
 	var d Data
 	jsonNodeToData(&d, j.dpiJsonNode)
 	if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-		val, err = getJSONScalarDouble(d)
+		val = getJSONScalarNumber(d)
 	} else if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
 		val, err = getJSONScalarString(d)
 	} else {
@@ -288,8 +306,9 @@ func (j JSONScalar) getOracleJSONType() C.dpiOracleTypeNum {
 }
 
 func (js *JSONScalar) Close() error {
-	if js.isMemOwned {
+	if js.isMemOwned && (js.dpiJsonNode != nil) {
 		C.godror_dpiJsonfreeMem(js.dpiJsonNode)
+		js.dpiJsonNode = nil
 	}
 	return nil
 }
@@ -460,14 +479,14 @@ func (j JSONArray) Get(nodes []Data) []Data {
 	return nodes
 }
 
-func getJSONScalarDouble(d Data) (val float64, err error) {
-	err = nil
+// Returns DB NUMBER as byte array for option, JSONOptNumberAsString
+// and float64 for JSONOptDefault.
+func getJSONScalarNumber(d Data) (val interface{}) {
+	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
-		b := (*C.dpiBytes)(unsafe.Pointer(&(d.dpiData).value))
-		s := C.GoStringN(b.ptr, C.int(b.length))
-		val, err = strconv.ParseFloat(s, 64)
+		val = Number(string(b.([]byte)))
 	} else {
-		val = (d.Get()).(float64)
+		val = b.(float64)
 	}
 	return
 }
@@ -508,11 +527,7 @@ func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 					return nil, err
 				}
 			} else if elts[i].oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-				jd, err := getJSONScalarDouble(d)
-				if err != nil {
-					return nil, err
-				}
-				nodes = append(nodes, jd)
+				nodes = append(nodes, getJSONScalarNumber(d))
 			} else {
 				nodes = append(nodes, d.Get())
 			}
@@ -523,8 +538,9 @@ func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 
 // Frees the C memory allocated
 func (jsarr *JSONArray) Close() error {
-	if jsarr.isMemOwned {
+	if jsarr.isMemOwned && (jsarr.dpiJsonNode != nil) {
 		C.godror_dpiJsonfreeMem(jsarr.dpiJsonNode)
+		jsarr.dpiJsonNode = nil
 	}
 	return nil
 }
@@ -608,6 +624,8 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 		C.godror_dpiJson_setDouble(jsonnode, C.double(x))
 	case float64:
 		C.godror_dpiJson_setDouble(jsonnode, C.double(x))
+	case Number:
+		C.godror_dpiJson_setNumber(jsonnode, x.String())
 	case string:
 		data, err := NewData(x)
 		if err != nil {
@@ -690,8 +708,9 @@ func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
 
 // Frees the C memory associated with JSONObject
 func (jsobj *JSONObject) Close() error {
-	if jsobj.isMemOwned {
+	if jsobj.isMemOwned && (jsobj.dpiJsonNode != nil) {
 		C.godror_dpiJsonfreeMem(jsobj.dpiJsonNode)
+		jsobj.dpiJsonNode = nil
 	}
 	return nil
 }
@@ -743,11 +762,7 @@ func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
 				return nil, err
 			}
 		} else if fields[i].oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-			jd, err := getJSONScalarDouble(d)
-			if err != nil {
-				return nil, err
-			}
-			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = jd
+			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = getJSONScalarNumber(d)
 		} else {
 			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = d.Get()
 		}

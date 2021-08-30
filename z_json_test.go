@@ -24,6 +24,9 @@ import (
 // Alternatively if application uses map, array ,
 // the extended types can be retained as show in tests, TestReadWriteJSONMap
 // and TestReadWriteJSONArray.
+//
+// The float values are received as strings as DB NUMBER is converted to
+// godror.Number
 func TestReadWriteJSONString(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJSONString"), 30*time.Second)
@@ -59,8 +62,8 @@ func TestReadWriteJSONString(t *testing.T) {
 		JDOC   string
 		Wanted string
 	}{
-		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":45.23}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":45.23}}"},
-		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.2351}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.2351}}"},
+		{JDOC: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[700,250,340],\"salary\":45.23}}", Wanted: "{\"person\":{\"Name\":\"Alex\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":\"12\",\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":\"25\",\"creditScore\":[\"700\",\"250\",\"340\"],\"salary\":\"45.23\"}}"},
+		{JDOC: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":12,\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":25,\"creditScore\":[800,250,340],\"salary\":4500.2351}}", Wanted: "{\"person\":{\"Name\":\"John\",\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":\"12\",\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"age\":\"25\",\"creditScore\":[\"800\",\"250\",\"340\"],\"salary\":\"4500.2351\"}}"},
 	} {
 		jsonval := godror.JSONString{Value: tC.JDOC, Flags: 0}
 
@@ -123,13 +126,17 @@ func isEqualJSONString(js1, js2 string) (bool, error) {
 // It inserts Go map[string]interface{} and reads the JSON Document from DB.
 // converts JSON Document into map[string]interface{}
 // and compares with source.
-// We are sending float64 types from map because from DB , we always
-// get float64 for numbers used in JSON document.
-// All int8, int16, int32, int64, float32, float64, uint8, uint16,
-// uint32, uint64 are stored as Number in DB.
+//
+// All int8, int16, int32, int64, float32, float64, godror.Number, uint8,
+// uint16, uint32, uint64 are stored as NUMBER in DB.
+//
+// We are sending godror.Number types from map because with option
+// JSONOptNumberAsString, we get DB NUMBER type as godor.Number. If
+// we send JSONOptDefault, NUMBER type is converted to float64.
+// use option, JSONOptDefault if the precision is with in float64 range
+//
 // Application can always convert to required types
 // using conversions after fetching from DB.
-// ex: toint8 = int8(val.float64)
 func TestReadWriteJSONMap(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonMap"), 30*time.Second)
@@ -163,17 +170,17 @@ func TestReadWriteJSONMap(t *testing.T) {
 	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 	jmap := map[string]interface{}{
 		"person": map[string]interface{}{
-			"ID":        float64(12),
+			"ID":        godror.Number("12"),
 			"FirstName": "Mary",
 			"LastName":  "John",
 			"creditScore": []interface{}{
-				float64(700),
-				float64(250),
-				float64(340),
+				godror.Number("700"),
+				godror.Number("250"),
+				godror.Number("340"),
 			},
-			"age":       float64(25),
+			"age":       godror.Number("25"),
 			"BirthDate": birthdate,
-			"salary":    float64(45.231),
+			"salary":    godror.Number("45.23"),
 			"Local":     true,
 		},
 	}
@@ -185,11 +192,13 @@ func TestReadWriteJSONMap(t *testing.T) {
 		jsonval, err := godror.NewJSONValue(tC.JDOC)
 		if err != nil {
 			t.Errorf("%d. %v", tN, err)
+			continue
 		}
 		var jsonobj godror.JSONObject
 		var ok bool
 		if jsonobj, ok = jsonval.(godror.JSONObject); !ok {
 			t.Errorf("%d Casting to JsonObject Failed", tN)
+			continue
 		}
 		defer jsonobj.Close()
 
@@ -275,33 +284,33 @@ func TestReadWriteJSONArray(t *testing.T) {
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
-				"ID":        float64(12),
+				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
 				"creditScore": []interface{}{
-					float64(700),
-					float64(250),
-					float64(340),
+					godror.Number("700"),
+					godror.Number("250"),
+					godror.Number("340"),
 				},
-				"age":       float64(25),
+				"age":       godror.Number("25"),
 				"BirthDate": birthdate,
-				"salary":    float64(4500.2351),
+				"salary":    godror.Number("4500.2351"),
 				"Local":     true,
 			},
 		},
 		map[string]interface{}{
 			"person": map[string]interface{}{
-				"ID":        float64(13),
+				"ID":        godror.Number("13"),
 				"FirstName": "Ivan",
 				"LastName":  "John",
 				"creditScore": []interface{}{
-					float64(800),
-					float64(550),
-					float64(340),
+					godror.Number("800"),
+					godror.Number("550"),
+					godror.Number("340"),
 				},
-				"age":       float64(22),
+				"age":       godror.Number("22"),
 				"BirthDate": birthdate,
-				"salary":    float64(4800.2351),
+				"salary":    godror.Number("4800.2351"),
 				"Local":     true,
 			},
 		},
@@ -317,6 +326,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 		var ok bool
 		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
 			t.Errorf("%d Casting to JsonArray Failed", tN)
+			continue
 		}
 		defer jsonarr.Close()
 
@@ -402,33 +412,33 @@ func TestReadJSONScalar(t *testing.T) {
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
-				"ID":        float64(12),
+				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
 				"creditScore": []interface{}{
-					float64(700),
-					float64(250),
-					float64(340),
+					godror.Number("700"),
+					godror.Number("250"),
+					godror.Number("340"),
 				},
-				"age":       float64(25),
+				"age":       godror.Number("25"),
 				"BirthDate": birthdate,
-				"salary":    float64(4500.2351),
+				"salary":    godror.Number("4500.2351"),
 				"Local":     true,
 			},
 		},
 		map[string]interface{}{
 			"person": map[string]interface{}{
-				"ID":        float64(13),
+				"ID":        godror.Number("13"),
 				"FirstName": "Ivan",
 				"LastName":  "John",
 				"creditScore": []interface{}{
-					float64(800),
-					float64(550),
-					float64(340),
+					godror.Number("800"),
+					godror.Number("550"),
+					godror.Number("340"),
 				},
-				"age":       float64(22),
+				"age":       godror.Number("22"),
 				"BirthDate": birthdate,
-				"salary":    float64(4800.2351),
+				"salary":    godror.Number("4800.2351"),
 				"Local":     true,
 			},
 		},
@@ -444,6 +454,7 @@ func TestReadJSONScalar(t *testing.T) {
 		var ok bool
 		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
 			t.Errorf("%d Casting to JsonArray Failed", tN)
+			continue
 		}
 		defer jsonarr.Close()
 
@@ -509,7 +520,8 @@ func TestReadJSONScalar(t *testing.T) {
 }
 
 // It retrieves the object , person from JSON coloumn and updates
-// BirthDate . We again read the BirthDate and verify its matching with
+// BirthDate and LatName Scalars.
+// We again read the BirthDate, LastName  and verify its matching with
 // what is written.
 func TestUpdateJSONObject(t *testing.T) {
 	t.Parallel()
@@ -547,17 +559,17 @@ func TestUpdateJSONObject(t *testing.T) {
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
-				"ID":        float64(12),
+				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
 				"creditScore": []interface{}{
-					float64(700),
-					float64(250),
-					float64(340),
+					godror.Number("700"),
+					godror.Number("250"),
+					godror.Number("340"),
 				},
-				"age":       float64(25),
+				"age":       godror.Number("25"),
 				"BirthDate": birthdate,
-				"salary":    float64(4500.2351),
+				"salary":    godror.Number("4500.2351"),
 				"Local":     true,
 			},
 		},
@@ -572,11 +584,13 @@ func TestUpdateJSONObject(t *testing.T) {
 		jsonval, err := godror.NewJSONValue(tC.JDOC)
 		if err != nil {
 			t.Errorf("%d/3. %v", tN, err)
+			continue
 		}
 		var jsonarr godror.JSONArray
 		var ok bool
 		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
 			t.Errorf("%d Casting to JsonArray Failed", tN)
+			continue
 		}
 		defer jsonarr.Close()
 
@@ -617,9 +631,11 @@ func TestUpdateJSONObject(t *testing.T) {
 			jsonval, err := godror.NewJSONValue(personMap)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
+				continue
 			}
 			if newPersonObj, ok = jsonval.(godror.JSONObject); !ok {
 				t.Errorf("%d Casting to JsonObject Failed", tN)
+				continue
 			}
 			defer newPersonObj.Close()
 			qry := "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person'=:1)"
@@ -628,19 +644,40 @@ func TestUpdateJSONObject(t *testing.T) {
 				t.Errorf("%d. %v", id, err)
 			}
 
-			// Verify updated BirthDate by reading DB
+			// Update LastName
+			wantLastName := "Ivan"
+			jsonval, err = godror.NewJSONValue(wantLastName)
+			if err != nil {
+				t.Errorf("%d. %v", id, err)
+				continue
+			}
+			var lastNameJScalar godror.JSONScalar
+			if lastNameJScalar, ok = jsonval.(godror.JSONScalar); !ok {
+				t.Errorf("%d Casting to JsonScalar Failed", tN)
+				continue
+			}
+			defer lastNameJScalar.Close()
+			qry = "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person.LastName'=:1 )"
+			_, err = conn.ExecContext(ctx, qry, jsonval)
+			if err != nil {
+				t.Errorf("%d. %v", id, err)
+			}
+
+			// Verify updated BirthDate and LastName by reading DB
 			// tbd replace this with queryRowContext
-			qry = "SELECT c.jdoc.person.BirthDate FROM " + tbl + " c where id =:1"
+			qry = "SELECT c.jdoc.person.BirthDate, c.jdoc.person.LastName  FROM " + tbl + " c where id =:1"
 			row1, err := conn.QueryContext(ctx, qry, tN*2)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			}
 			var birthDateJSON godror.JSON
+			var lastNameJSON godror.JSON
 			for row1.Next() {
-				if err = row1.Scan(&birthDateJSON); err != nil {
+				if err = row1.Scan(&birthDateJSON, &lastNameJSON); err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
 
+				// Verify BirthDate
 				var birthDateScalar interface{}
 				var gotDOB time.Time
 				err = birthDateJSON.GetValue(godror.JSONOptDefault, &birthDateScalar)
@@ -652,6 +689,20 @@ func TestUpdateJSONObject(t *testing.T) {
 				}
 				if gotDOB != newBirthDate {
 					t.Errorf("Got %+v, wanted %+v", gotDOB, newBirthDate)
+				}
+
+				// Verify LastName
+				var lastNameScalar interface{}
+				var gotLastName string
+				err = lastNameJSON.GetValue(godror.JSONOptDefault, &lastNameScalar)
+				if err != nil {
+					t.Errorf("%d. %v", id, err)
+				}
+				if gotLastName, ok = lastNameScalar.(string); !ok {
+					t.Errorf("%d. %T is not String ", id, lastNameScalar)
+				}
+				if gotLastName != wantLastName {
+					t.Errorf("Got %+v, wanted %+v", gotLastName, wantLastName)
 				}
 			}
 			row1.Close()

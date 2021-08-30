@@ -1140,7 +1140,6 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.conn.dataGetJSON
 		}
 	case JSONObject:
-		//info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_NATIVE_TYPE_JSON_OBJECT
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
 		info.set = st.conn.dataSetJSONObject
 		if info.isOut {
@@ -1159,7 +1158,6 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.dataGetJSONString
 		}
 	case JSONScalar:
-		//info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_NATIVE_TYPE_JSON_OBJECT
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
 		info.set = st.conn.dataSetJSONScalar
 		if info.isOut {
