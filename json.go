@@ -690,7 +690,9 @@ func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
 
 // Frees the C memory associated with JSONObject
 func (jsobj *JSONObject) Close() error {
-	C.godror_dpiJsonfreeMem(jsobj.dpiJsonNode)
+	if jsobj.isMemOwned {
+		C.godror_dpiJsonfreeMem(jsobj.dpiJsonNode)
+	}
 	return nil
 }
 
