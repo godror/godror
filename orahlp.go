@@ -23,12 +23,6 @@ import (
 // Number as string
 type Number string
 
-// Timestamp as time.Time. For eJSON Marshal Support
-type Timestamp time.Time
-
-// IntervalYM as string. For eJSON Marshal Support
-type IntervalYMJson string
-
 var (
 	// Int64 for converting to-from int64.
 	Int64 = intType{}

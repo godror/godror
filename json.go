@@ -304,10 +304,10 @@ type JSON struct {
 
 // During Fetch the JSON struct is created.
 // Explicit creation is not supported.
-func createJSON(js *C.dpiJson, mutable bool) (JSON, error) {
+func createJSON(js *C.dpiJson, mutable bool) JSON {
 	ntype := C.dpiOracleTypeNum(js.topNode.oracleTypeNum)
 	json := JSON{dpiJson: js, isMemOwned: mutable, oracleTypeNum: ntype}
-	return json, nil
+	return json
 }
 
 func (j JSON) getOracleJSONType() C.dpiOracleTypeNum {
@@ -644,19 +644,18 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 	return nil
 }
 
-// Creates a JSONInt from user input []interface{}
-func newJSONScalar(val interface{}, jscalar *JSONScalar) error {
+// Creates a JSONScalar from user input []interface{}
+func newJSONScalar(val interface{}) (*JSONScalar, error) {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
 	err := populateJsonNode(val, dpijsonnode)
 	if err != nil {
 		C.godror_dpiJsonfreeMem(dpijsonnode)
-		return err
+		return nil, err
 	}
 	dpidataw := new(Data)
 	jsonNodeToData(dpidataw, dpijsonnode)
-	*jscalar = JSONScalar{dpiJsonNode: dpijsonnode, isMemOwned: true}
-	return nil
+	return &JSONScalar{dpiJsonNode: dpijsonnode, isMemOwned: true}, nil
 }
 
 // Creates a JSONArray from user input []interface{}
@@ -696,16 +695,18 @@ func (jsobj *JSONObject) Close() error {
 }
 
 func (j JSONObject) Len() int { return int(j.dpiJsonObject.numFields) }
-func (j JSONObject) Get(m map[string]Data) {
+func (j JSONObject) Get() map[string]Data {
 	n := int(j.dpiJsonObject.numFields)
 	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(j.dpiJsonObject.fieldNames)))[:n:n]
 	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(j.dpiJsonObject.fieldNameLengths)))[:n:n]
 	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonObject.fields)))[:n:n]
+	m := make(map[string]Data, n)
 	for i := 0; i < n; i++ {
 		var d Data
 		jsonNodeToData(&d, &fields[i])
 		m[C.GoStringN(names[i], C.int(nameLengths[i]))] = d
 	}
+	return m
 }
 
 // Returns the Go type map[string]interface{} from JSONObject
@@ -765,19 +766,6 @@ func (j JSONObject) GetInto(v interface{}) {
 	}
 }
 
-// Converts Timestamp to compatible eJSON string
-func (t Timestamp) MarshalJSON() ([]byte, error) {
-
-	str := "{\"$oracleTimestampTZ\":\"" + time.Time(t).Format(time.RFC3339Nano) + "\"}"
-	return []byte(str), nil
-}
-
-// Converts IntervalYMJson to compatible eJSON string
-func (t IntervalYMJson) MarshalJSON() ([]byte, error) {
-	str := "{\"$intervalYearMonth\":\"" + t + "\"}"
-	return []byte(str), nil
-}
-
 // NewJSONValue will take user input and returns an interface which
 // abstracts one of these: JSONObject, JSONArray, JSONArray, ...
 func NewJSONValue(in interface{}) (JSONValue, error) {
@@ -790,9 +778,8 @@ func NewJSONValue(in interface{}) (JSONValue, error) {
 		err = newJSONObject(in.(map[string]interface{}), &jsonobj)
 		return jsonobj, err
 	case reflect.String:
-		var jsonscl JSONScalar
-		err = newJSONScalar(in, &jsonscl)
-		return jsonscl, err
+		jscalar, err := newJSONScalar(in)
+		return *jscalar, err
 	case reflect.Slice:
 		var jsonarr JSONArray
 		err = newJSONArray(in.([]interface{}), &jsonarr)
@@ -800,9 +787,8 @@ func NewJSONValue(in interface{}) (JSONValue, error) {
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
-		var jsonscl JSONScalar
-		err = newJSONScalar(in, &jsonscl)
-		return jsonscl, err
+		jscalar, err := newJSONScalar(in)
+		return *jscalar, err
 	default:
 		return nil, fmt.Errorf("Unsupported JSON doc type %#v: ", t.Name())
 	}

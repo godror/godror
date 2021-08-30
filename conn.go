@@ -738,7 +738,7 @@ func IsBadConn(err error) bool {
 		}
 
 	case // cases by experience:
-        3106,  // fatal two-task communication protocol error
+		3106,  // fatal two-task communication protocol error
 		12170, // TNS:Connect timeout occurred
 		12528, // TNS:listener: all appropriate instances are blocking new connections
 		12545: // Connect failed because target host or object does not exist

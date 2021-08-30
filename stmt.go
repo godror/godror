@@ -2364,6 +2364,7 @@ func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{})
 	switch js := vv.(type) {
 	case JSONString:
 		cstr := C.CString(js.Value)
+		defer C.free(unsafe.Pointer(cstr))
 		if err = c.checkExec(func() C.int {
 			return C.dpiVar_setFromJsonString(dv, C.uint32_t(i), cstr, C.uint64_t(len(js.Value)), C.uint(js.Flags))
 		}); err != nil {
