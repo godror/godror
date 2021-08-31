@@ -306,9 +306,10 @@ func (j JSONScalar) getOracleJSONType() C.dpiOracleTypeNum {
 }
 
 func (js *JSONScalar) Close() error {
-	if js.isMemOwned && (js.dpiJsonNode != nil) {
-		C.godror_dpiJsonfreeMem(js.dpiJsonNode)
-		js.dpiJsonNode = nil
+	dpiJsonNode := js.dpiJsonNode
+	js.dpiJsonNode = nil
+	if dpiJsonNode != nil && js.isMemOwned {
+		C.godror_dpiJsonfreeMem(dpiJsonNode)
 	}
 	return nil
 }
@@ -343,69 +344,65 @@ func (j JSON) Get(data *Data, opts JSONOption) error {
 }
 
 // Returns JSONObject from JSON
-func (j JSON) GetJSONObject(jsobj *JSONObject, opts JSONOption) error {
+func (j JSON) GetJSONObject(opts JSONOption) (*JSONObject, error) {
 	var node *C.dpiJsonNode
 	var d Data
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return ErrInvalidJSON
+		return nil, ErrInvalidJSON
 	}
 	jsonNodeToData(&d, node)
 	if C.dpiOracleTypeNum(node.oracleTypeNum) != C.DPI_ORACLE_TYPE_JSON_OBJECT {
-		return ErrInvalidType
+		return nil, ErrInvalidType
 	}
 
-	*jsobj = JSONObject{dpiJsonNode: node,
+	return &JSONObject{dpiJsonNode: node,
 		dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData)),
-		isMemOwned:    j.isMemOwned}
-	return nil
+		isMemOwned:    j.isMemOwned}, nil
 }
 
 // Returns JSONArray from JSON
-func (j JSON) GetJSONArray(jsarr *JSONArray, opts JSONOption) error {
+func (j JSON) GetJSONArray(opts JSONOption) (*JSONArray, error) {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return ErrInvalidJSON
+		return nil, ErrInvalidJSON
 	}
 	var d Data
 	jsonNodeToData(&d, node)
 	if C.dpiOracleTypeNum(node.oracleTypeNum) != C.DPI_ORACLE_TYPE_JSON_ARRAY {
-		return ErrInvalidType
+		return nil, ErrInvalidType
 	}
-	*jsarr = JSONArray{dpiJsonNode: node,
+	return &JSONArray{dpiJsonNode: node,
 		dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData)),
-		isMemOwned:   j.isMemOwned}
-	return nil
+		isMemOwned:   j.isMemOwned}, nil
 }
 
 // Returns JSONScalar from JSON
-func (j JSON) GetJSONScalar(js *JSONScalar, opts JSONOption) error {
+func (j JSON) GetJSONScalar(opts JSONOption) (*JSONScalar, error) {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return ErrInvalidJSON
+		return nil, ErrInvalidJSON
 	}
-	*js = JSONScalar{dpiJsonNode: node,
-		isMemOwned: j.isMemOwned}
-	return nil
+	return &JSONScalar{dpiJsonNode: node,
+		isMemOwned: j.isMemOwned}, nil
 }
 
 // Returns a Go type Value from JSON
-func (j JSON) GetValue(opts JSONOption, val *interface{}) (err error) {
-	var jScalar JSONScalar
-	err = j.GetJSONScalar(&jScalar, opts)
+func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
+	jScalar, err := j.GetJSONScalar(opts)
 	if err != nil {
 		if Log != nil {
 			Log("msg", "JSON.GetValue", "Error", err.Error())
 		}
-		return err
+		return nil, err
 	}
-	*val, err = jScalar.GetValue()
+	val, err := jScalar.GetValue()
 	if err != nil {
 		if Log != nil {
 			Log("msg", "JSON.GetValue", "Error", err.Error())
 		}
-		return err
+		return nil, err
 	}
-	return nil
+	return val, nil
 }
 
 // Returns JSON formatted standard string
@@ -413,8 +410,7 @@ func (j JSON) GetValue(opts JSONOption, val *interface{}) (err error) {
 // with ODPI direct call to get JSON string from JSON object
 // returning empty string for error case, fix?
 func (j JSON) String() string {
-	var jScalar JSONScalar
-	err := j.GetJSONScalar(&jScalar, JSONOptNumberAsString)
+	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
 	if err != nil {
 		if Log != nil {
 			Log("msg", "JSON.String", "Error", err.Error())
@@ -538,9 +534,10 @@ func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 
 // Frees the C memory allocated
 func (jsarr *JSONArray) Close() error {
-	if jsarr.isMemOwned && (jsarr.dpiJsonNode != nil) {
-		C.godror_dpiJsonfreeMem(jsarr.dpiJsonNode)
-		jsarr.dpiJsonNode = nil
+	dpiJsonNode := jsarr.dpiJsonNode
+	jsarr.dpiJsonNode = nil
+	if dpiJsonNode != nil && jsarr.isMemOwned {
+		C.godror_dpiJsonfreeMem(dpiJsonNode)
 	}
 	return nil
 }
@@ -560,7 +557,7 @@ func (j JSONObject) getOracleJSONType() C.dpiOracleTypeNum {
 // It creates a seperate memory for the new output value, jsonnode.
 // memory from user input, in is not shared with jsonnode.
 // Caller has to explicitly free using godror_dpiJsonfreeMem
-func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
+func populateJsonNode(jsonnode *C.dpiJsonNode, in interface{}) error {
 	switch x := in.(type) {
 	case []interface{}:
 		arr, _ := in.([]interface{})
@@ -571,7 +568,7 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 		for index, entry := range arr {
 			var jsonnodelocal *C.dpiJsonNode
 			C.godror_setArrayElements(dpijsonarr, C.int(index), (**C.dpiJsonNode)(unsafe.Pointer(&jsonnodelocal)))
-			err := populateJsonNode(entry, jsonnodelocal)
+			err := populateJsonNode(jsonnodelocal, entry)
 			if err != nil {
 				return err
 			}
@@ -593,7 +590,7 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 			var jsonnodelocal *C.dpiJsonNode
 			C.free(unsafe.Pointer(cKey))
 			C.godror_setObjectFields(dpijsonobj, i, (**C.dpiJsonNode)(unsafe.Pointer(&jsonnodelocal)))
-			err := populateJsonNode(v, jsonnodelocal)
+			err := populateJsonNode(jsonnodelocal, v)
 			if err != nil {
 				return err
 			}
@@ -666,7 +663,7 @@ func populateJsonNode(in interface{}, jsonnode *C.dpiJsonNode) error {
 func newJSONScalar(val interface{}) (*JSONScalar, error) {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
-	err := populateJsonNode(val, dpijsonnode)
+	err := populateJsonNode(dpijsonnode, val)
 	if err != nil {
 		C.godror_dpiJsonfreeMem(dpijsonnode)
 		return nil, err
@@ -677,40 +674,39 @@ func newJSONScalar(val interface{}) (*JSONScalar, error) {
 }
 
 // Creates a JSONArray from user input []interface{}
-func newJSONArray(arr []interface{}, jsarr *JSONArray) error {
+func newJSONArray(arr []interface{}) (*JSONArray, error) {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
-	err := populateJsonNode(arr, dpijsonnode)
+	err := populateJsonNode(dpijsonnode, arr)
 	if err != nil {
 		C.godror_dpiJsonfreeMem(dpijsonnode)
-		return err
+		return nil, err
 	}
 	dpidataw := new(Data)
 	jsonNodeToData(dpidataw, dpijsonnode)
-	*jsarr = JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode}
-	return nil
+	return &JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode, isMemOwned: true}, nil
 }
 
 // Creates a JSONObject from user input map[string]interface{}
-func newJSONObject(m map[string]interface{}, jsobj *JSONObject) error {
+func newJSONObject(m map[string]interface{}) (*JSONObject, error) {
 	var dpijsonnode *C.dpiJsonNode
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(&dpijsonnode)))
-	err := populateJsonNode(m, dpijsonnode)
+	err := populateJsonNode(dpijsonnode, m)
 	if err != nil {
 		C.godror_dpiJsonfreeMem(dpijsonnode)
-		return err
+		return nil, err
 	}
 	dpidataw := new(Data)
 	jsonNodeToData(dpidataw, dpijsonnode)
-	*jsobj = JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode, isMemOwned: true}
-	return nil
+	return &JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(dpidataw.dpiData)), dpiJsonNode: dpijsonnode, isMemOwned: true}, nil
 }
 
 // Frees the C memory associated with JSONObject
 func (jsobj *JSONObject) Close() error {
-	if jsobj.isMemOwned && (jsobj.dpiJsonNode != nil) {
-		C.godror_dpiJsonfreeMem(jsobj.dpiJsonNode)
-		jsobj.dpiJsonNode = nil
+	dpiJsonNode := jsobj.dpiJsonNode
+	jsobj.dpiJsonNode = nil
+	if dpiJsonNode != nil && jsobj.isMemOwned {
+		C.godror_dpiJsonfreeMem(dpiJsonNode)
 	}
 	return nil
 }
@@ -786,21 +782,18 @@ func (j JSONObject) GetInto(v interface{}) {
 // NewJSONValue will take user input and returns an interface which
 // abstracts one of these: JSONObject, JSONArray, JSONArray, ...
 func NewJSONValue(in interface{}) (JSONValue, error) {
-	var err error
 	v := reflect.ValueOf(in)
 	t := v.Type()
 	switch t.Kind() {
 	case reflect.Map:
-		var jsonobj JSONObject
-		err = newJSONObject(in.(map[string]interface{}), &jsonobj)
-		return jsonobj, err
+		jsonobj, err := newJSONObject(in.(map[string]interface{}))
+		return *jsonobj, err
 	case reflect.String:
 		jscalar, err := newJSONScalar(in)
 		return *jscalar, err
 	case reflect.Slice:
-		var jsonarr JSONArray
-		err = newJSONArray(in.([]interface{}), &jsonarr)
-		return jsonarr, err
+		jsonarr, err := newJSONArray(in.([]interface{}))
+		return *jsonarr, err
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:

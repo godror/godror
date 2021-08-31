@@ -227,9 +227,8 @@ func TestReadWriteJSONMap(t *testing.T) {
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
-				var v interface{}
 				var gotmap map[string]interface{}
-				err = jsondoc.GetValue(godror.JSONOptNumberAsString, &v)
+				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
@@ -354,9 +353,8 @@ func TestReadWriteJSONArray(t *testing.T) {
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
-				var v interface{}
 				var gotarr []interface{}
-				err = jsondoc.GetValue(godror.JSONOptNumberAsString, &v)
+				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
@@ -498,10 +496,8 @@ func TestReadJSONScalar(t *testing.T) {
 			if personBirthDateJSON, ok := personBirthDate.(godror.JSON); !ok {
 				t.Errorf("%d. %T is not Json Doc", id, personBirthDate)
 			} else {
-
-				var v interface{}
 				var dobarr []interface{}
-				err = personBirthDateJSON.GetValue(godror.JSONOptNumberAsString, &v)
+				v, err := personBirthDateJSON.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
@@ -519,11 +515,13 @@ func TestReadJSONScalar(t *testing.T) {
 	}
 }
 
-// It retrieves the object , person from JSON coloumn and updates
-// BirthDate and LatName Scalars.
-// We again read the BirthDate, LastName  and verify its matching with
+// It retrieves the object, person from JSON coloumn and updates
+// BirthDate. It then binds the map as a JSON scalar.
+// object person LastName is changed by binding string as a JSON scalar.
+//
+// We again read the BirthDate, LastName from DB and verify its matching with
 // what is written.
-func TestUpdateJSONObject(t *testing.T) {
+func TestUpdateJSONScalar(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("UpdateJSONObject"), 30*time.Second)
 	defer cancel()
@@ -614,9 +612,8 @@ func TestUpdateJSONObject(t *testing.T) {
 				continue
 			}
 
-			var v interface{}
 			var personMap map[string]interface{}
-			err = personJSON.GetValue(godror.JSONOptNumberAsString, &v)
+			v, err := personJSON.GetValue(godror.JSONOptNumberAsString)
 			if err != nil {
 				t.Errorf("%d. %v", tN, err)
 			}
@@ -639,6 +636,7 @@ func TestUpdateJSONObject(t *testing.T) {
 			}
 			defer newPersonObj.Close()
 			qry := "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person'=:1)"
+			// binding map object
 			_, err = conn.ExecContext(ctx, qry, jsonval)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
@@ -658,6 +656,7 @@ func TestUpdateJSONObject(t *testing.T) {
 			}
 			defer lastNameJScalar.Close()
 			qry = "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person.LastName'=:1 )"
+			// binding string scalar
 			_, err = conn.ExecContext(ctx, qry, jsonval)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
@@ -678,9 +677,8 @@ func TestUpdateJSONObject(t *testing.T) {
 				}
 
 				// Verify BirthDate
-				var birthDateScalar interface{}
 				var gotDOB time.Time
-				err = birthDateJSON.GetValue(godror.JSONOptDefault, &birthDateScalar)
+				birthDateScalar, err := birthDateJSON.GetValue(godror.JSONOptDefault)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
@@ -692,9 +690,8 @@ func TestUpdateJSONObject(t *testing.T) {
 				}
 
 				// Verify LastName
-				var lastNameScalar interface{}
 				var gotLastName string
-				err = lastNameJSON.GetValue(godror.JSONOptDefault, &lastNameScalar)
+				lastNameScalar, err := lastNameJSON.GetValue(godror.JSONOptDefault)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
