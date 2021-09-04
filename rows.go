@@ -189,7 +189,6 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 		return "OBJECT"
 	case C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY:
 		return "JSON"
-
 	default:
 		return fmt.Sprintf("OTHER[%d]", r.columns[index].OracleType)
 	}
@@ -608,12 +607,18 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			dest[i] = o
 
-		case C.DPI_NATIVE_TYPE_JSON:
+		case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&d.value)))}
+			switch col.NativeType {
+			case C.DPI_NATIVE_TYPE_JSON:
+				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
+				dest[i] = JSON{dpiJson: dj}
+			default:
+			}
+
 		case C.DPI_NATIVE_TYPE_JSON_OBJECT:
 			if isNull {
 				dest[i] = nil
