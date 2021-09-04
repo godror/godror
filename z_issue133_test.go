@@ -315,9 +315,6 @@ func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInse
 	t.Logf("Merge done, number of rows merged: %d, merge timing: %s\n", totalRowsMerged, dur)
 
 	stmt.Close()
-	if err != nil {
-		return fmt.Errorf("%s: %w", qry, err)
-	}
 	return nil
 }
 

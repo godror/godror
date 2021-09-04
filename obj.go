@@ -425,8 +425,8 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
