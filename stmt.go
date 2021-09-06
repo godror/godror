@@ -2578,7 +2578,7 @@ func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
         js := JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
         *out = js.String()
     default:
-        return fmt.Errorf("dataGetJSONValue not implemented for type %T", out)
+        return fmt.Errorf("dataGetJSONString not implemented for type %T", out)
     }
     return nil
 }

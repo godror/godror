@@ -192,7 +192,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 	}
 
 	// values for batch insert
-	const num = 20
+	const num = 40
 	ids := make([]godror.Number, num)
 	docs := make([]godror.JSONValue, num)
 	for i := range ids {
