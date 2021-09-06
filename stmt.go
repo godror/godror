@@ -1139,29 +1139,17 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		if info.isOut {
 			*get = st.conn.dataGetJSON
 		}
-	case JSONObject:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
-		info.set = st.conn.dataSetJSONObject
-		if info.isOut {
-			*get = st.conn.dataGetJSONObject
-		}
-	case JSONArray:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
-		info.set = st.conn.dataSetJSONArray
-		if info.isOut {
-			*get = st.conn.dataGetJSONArray
-		}
-	case JSONString:
+	case JSONString, []JSONString:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
 		info.set = st.dataSetJSONString
 		if info.isOut {
 			*get = st.dataGetJSONString
 		}
-	case JSONScalar:
+	case JSONValue, []JSONValue:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
-		info.set = st.conn.dataSetJSONScalar
+		info.set = st.conn.dataSetJSONValue
 		if info.isOut {
-			*get = st.conn.dataGetJSONScalar
+			*get = st.conn.dataGetJSONValue
 		}
 
 	default:
@@ -2350,38 +2338,6 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 	return firstErr
 }
 
-func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	var err error = nil
-	i := 0
-	if len(data) == 0 {
-		return nil
-	}
-	if vv == nil {
-		return dataSetNull(dv, data, nil)
-	}
-	switch js := vv.(type) {
-	case JSONString:
-		cstr := C.CString(js.Value)
-		defer C.free(unsafe.Pointer(cstr))
-		if err = c.checkExec(func() C.int {
-			return C.dpiVar_setFromJsonString(dv, C.uint32_t(i), cstr, C.uint64_t(len(js.Value)), C.uint(js.Flags))
-		}); err != nil {
-			return fmt.Errorf("setFromJsonString(string=%#v): %w", vv, err)
-		}
-	default:
-		return fmt.Errorf("unknown json string [%T] %#v", vv, vv)
-	}
-	return err
-}
-
-func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
-	if len(data) == 0 || data[0].isNull == 1 {
-		return nil
-	}
-	C.dpiData_getJson(&data[0])
-	return nil
-}
-
 type userType interface {
 	ObjectRef() *Object
 }
@@ -2518,17 +2474,7 @@ func (c *conn) dataSetJSON(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 	return nil
 }
 
-func (c *conn) dataGetJSONObject(v interface{}, data []C.dpiData) error {
-	switch out := v.(type) {
-	case *JSONObject:
-		*out = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&(data[0].value))))}
-	default:
-		return fmt.Errorf("dataGetJSONNode not implemented for type %T", out)
-	}
-	return nil
-}
-
-func (c *conn) dataSetJSONObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetJSONValue(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	var err error = nil
 	if len(data) == 0 {
 		return nil
@@ -2537,98 +2483,104 @@ func (c *conn) dataSetJSONObject(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		return dataSetNull(dv, data, nil)
 	}
 	switch x := vv.(type) {
-	case JSONObject:
-		data[0].isNull = 0
-		if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), x.dpiJsonNode) }); err != nil {
-			return fmt.Errorf("dataSetJSONObject %w", err)
+	case JSONValue:
+		v := reflect.ValueOf(x.Value)
+		t := v.Type()
+		switch t.Kind() {
+		case reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
+			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+			reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+			reflect.Uint32, reflect.Uint64, reflect.Float32,
+			reflect.Float64:
+			data[0].isNull = 0
+			var dpijsonnode *C.dpiJsonNode
+			err = allocdpiJSONNode(x.Value, &dpijsonnode)
+			if err != nil {
+				return fmt.Errorf("dataSetJSONValue %w", err)
+			}
+			defer freedpiJSONNode(dpijsonnode)
+			if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), dpijsonnode) }); err != nil {
+				return fmt.Errorf("dataSetJSONValue %w", err)
+			}
+		default:
+			return fmt.Errorf("dataSetJSONValue Unsupported JSON doc type %#v: ", t.Name())
 		}
-	case []JSONObject:
+	case []JSONValue:
 		for i := range x {
 			data[i].isNull = 0
-			if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), x[i].dpiJsonNode) }); err != nil {
-				return fmt.Errorf("dataSetJSONObject[%d] %w", i, err)
+
+			v := reflect.ValueOf(x[i].Value)
+			t := v.Type()
+			switch t.Kind() {
+			case reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
+				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+				reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+				reflect.Uint32, reflect.Uint64, reflect.Float32,
+				reflect.Float64:
+				var dpijsonnode *C.dpiJsonNode
+				err = allocdpiJSONNode(x[i].Value, &dpijsonnode)
+				if err != nil {
+					return fmt.Errorf("dataSetJSONValue[%d] %w", i, err)
+				}
+				defer freedpiJSONNode(dpijsonnode)
+				if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), dpijsonnode) }); err != nil {
+					return fmt.Errorf("dataSetJSONValue[%d] %w", i, err)
+				}
+			default:
+				return fmt.Errorf("dataSetJSONValue Unsupported JSON doc[%d] type %#v: ", i, t.Name())
 			}
 		}
 	default:
-		return fmt.Errorf("dataSetJSONArray not implemented for type %T", x)
+		return fmt.Errorf("dataSetJSONValue not implemented for type %T", x)
 	}
 	return err
 }
 
-func (c *conn) dataSetJSONScalar(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataGetJSONValue(v interface{}, data []C.dpiData) error {
+	switch out := v.(type) {
+	case *JSON:
+		*out = JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
+	default:
+		return fmt.Errorf("dataGetJSONValue not implemented for type %T", out)
+	}
+	return nil
+}
+
+func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	var err error = nil
+	i := 0
 	if len(data) == 0 {
 		return nil
 	}
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
 	}
-	switch x := vv.(type) {
-	case JSONScalar:
-		data[0].isNull = 0
-		if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), x.dpiJsonNode) }); err != nil {
-			return fmt.Errorf("dataSetJSONScalar %w", err)
-		}
-	case []JSONScalar:
-		for i := range x {
-			data[i].isNull = 0
-			if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), x[i].dpiJsonNode) }); err != nil {
-				return fmt.Errorf("dataSetJSONScalar[%d] %w", i, err)
-			}
+
+	switch js := vv.(type) {
+	case JSONString:
+		cstr := C.CString(js.Value)
+		defer C.free(unsafe.Pointer(cstr))
+		if err = c.checkExec(func() C.int {
+			return C.dpiVar_setFromJsonString(dv, C.uint32_t(i), cstr, C.uint64_t(len(js.Value)), C.uint(js.Flags))
+		}); err != nil {
+			return fmt.Errorf("setFromJsonString(string=%#v): %w", vv, err)
 		}
 	default:
-		return fmt.Errorf("dataSetJSONArray not implemented for type %T", x)
+		return fmt.Errorf("setFromJsonString Unsupported JSON string [%T] %#v", vv, vv)
 	}
 	return err
 }
 
-func (c *conn) dataGetJSONScalar(v interface{}, data []C.dpiData) error {
-	switch out := v.(type) {
-	case *JSONScalar:
-		*out = JSONScalar{dpiJsonNode: ((*C.dpiJsonNode)(unsafe.Pointer(&(data[0].value))))}
-	default:
-		return fmt.Errorf("dataGetJSONScalar not implemented for type %T", out)
-	}
-	return nil
-}
+func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
 
-func (c *conn) dataGetJSONArray(v interface{}, data []C.dpiData) error {
-	switch out := v.(type) {
-	case *JSONArray:
-		*out = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&(data[0].value))))}
-	default:
-		return fmt.Errorf("dataGetJSONNode not implemented for type %T", v)
-	}
-	return nil
-
-}
-
-func (c *conn) dataSetJSONArray(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	var err error = nil
-	if len(data) == 0 {
-		return nil
-	}
-	if vv == nil {
-		return dataSetNull(dv, data, nil)
-	}
-	switch x := vv.(type) {
-	case JSONArray:
-		data[0].isNull = 0
-		if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[0])), x.dpiJsonNode) }); err != nil {
-			return fmt.Errorf("dataSetJSONArray %w", err)
-		}
-	case []JSONArray:
-		for i := range x {
-			data[i].isNull = 0
-			if err = c.checkExec(func() C.int { return C.dpiJson_setValue(C.dpiData_getJson(&(data[i])), x[i].dpiJsonNode) }); err != nil {
-				return fmt.Errorf("dataSetJSONArray[%d] %w", i, err)
-			}
-		}
-
-	default:
-		return fmt.Errorf("dataSetJSONArray not implemented for type %T", x)
-	}
-	return err
+    switch out := v.(type) {
+    case *string:
+        js := JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
+        *out = js.String()
+    default:
+        return fmt.Errorf("dataGetJSONValue not implemented for type %T", out)
+    }
+    return nil
 }
 
 var ErrNotImplemented = errors.New("not implemented")

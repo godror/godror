@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -123,7 +124,9 @@ func isEqualJSONString(js1, js2 string) (bool, error) {
 
 }
 
-// It inserts Go map[string]interface{} and reads the JSON Document from DB.
+// It simulates batch insert of JSON Column and single row insert.
+// Go map[string]interface{} type is inserted for JSON Column and
+// then read the JSON Document from DB.
 // converts JSON Document into map[string]interface{}
 // and compares with source.
 //
@@ -131,8 +134,8 @@ func isEqualJSONString(js1, js2 string) (bool, error) {
 // uint16, uint32, uint64 are stored as NUMBER in DB.
 //
 // We are sending godror.Number types from map because with option
-// JSONOptNumberAsString, we get DB NUMBER type as godor.Number. If
-// we send JSONOptDefault, NUMBER type is converted to float64.
+// JSONOptNumberAsString, we get DB NUMBER type as godor.Number.
+// If we send JSONOptDefault, NUMBER type is converted to float64.
 // use option, JSONOptDefault if the precision is with in float64 range
 //
 // Application can always convert to required types
@@ -167,6 +170,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
+	var travelTime time.Duration = 5*time.Hour + 21*time.Minute + 10*time.Millisecond + 20*time.Nanosecond
 	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 	jmap := map[string]interface{}{
 		"person": map[string]interface{}{
@@ -174,35 +178,40 @@ func TestReadWriteJSONMap(t *testing.T) {
 			"FirstName": "Mary",
 			"LastName":  "John",
 			"creditScore": []interface{}{
-				godror.Number("700"),
+				godror.Number("123456789123456789123456789123456789.12"),
 				godror.Number("250"),
 				godror.Number("340"),
 			},
-			"age":       godror.Number("25"),
-			"BirthDate": birthdate,
-			"salary":    godror.Number("45.23"),
-			"Local":     true,
+			"age":              godror.Number("25"),
+			"BirthDate":        birthdate,
+			"salary":           godror.Number("45.23"),
+			"Local":            true,
+			"BinData":          []byte{0, 1, 2, 3, 4},
+			"TravelTimePerDay": travelTime,
 		},
 	}
-	for tN, tC := range []struct {
-		JDOC map[string]interface{}
-	}{
-		{JDOC: jmap},
-	} {
-		jsonval, err := godror.NewJSONValue(tC.JDOC)
-		if err != nil {
-			t.Errorf("%d. %v", tN, err)
-			continue
-		}
-		var jsonobj godror.JSONObject
-		var ok bool
-		if jsonobj, ok = jsonval.(godror.JSONObject); !ok {
-			t.Errorf("%d Casting to JsonObject Failed", tN)
-			continue
-		}
-		defer jsonobj.Close()
 
-		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
+	// values for batch insert
+	const num = 20
+	ids := make([]godror.Number, num)
+	docs := make([]godror.JSONValue, num)
+	for i := range ids {
+		docs[i] = godror.JSONValue{Value: jmap}
+		ids[i] = godror.Number(strconv.Itoa(i))
+	}
+
+	// value for last row to simulate simple insert
+	lastIndex := godror.Number(strconv.Itoa(40))
+	lastJSONDoc := godror.JSONValue{Value: jmap}
+
+	for tN, tC := range []struct {
+		ID   interface{}
+		JDOC interface{}
+	}{
+		{JDOC: docs, ID: ids},
+		{JDOC: lastJSONDoc, ID: lastIndex},
+	} {
+		if _, err = stmt.ExecContext(ctx, tC.ID, tC.JDOC); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
 			continue
 		}
@@ -216,6 +225,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 		}
 		var id interface{}
 		var jsondoc godror.JSON
+		var ok bool
 		for rows.Next() {
 			if err = rows.Scan(&id, &jsondoc); err != nil {
 				rows.Close()
@@ -223,10 +233,11 @@ func TestReadWriteJSONMap(t *testing.T) {
 				continue
 			}
 
-			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
+				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+
 				var gotmap map[string]interface{}
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
@@ -235,9 +246,9 @@ func TestReadWriteJSONMap(t *testing.T) {
 				if gotmap, ok = v.(map[string]interface{}); !ok {
 					t.Errorf("%d. %T is not JSONObject ", id, v)
 				}
-				eq := reflect.DeepEqual(tC.JDOC, gotmap)
+				eq := reflect.DeepEqual(jmap, gotmap)
 				if !eq {
-					t.Errorf("Got %+v, wanted %+v", gotmap, tC.JDOC)
+					t.Errorf("Got %+v, wanted %+v", gotmap, jmap)
 				}
 			}
 
@@ -320,20 +331,11 @@ func TestReadWriteJSONArray(t *testing.T) {
 	}{
 		{JDOC: jsarray},
 	} {
-		jsonval, _ := godror.NewJSONValue(tC.JDOC)
-		var jsonarr godror.JSONArray
-		var ok bool
-		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
-			t.Errorf("%d Casting to JsonArray Failed", tN)
-			continue
-		}
-		defer jsonarr.Close()
-
+		jsonval := godror.JSONValue{Value: tC.JDOC}
 		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
 			continue
 		}
-
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(ctx,
 			"SELECT id, jdoc FROM "+tbl) //nolint:gas
@@ -349,11 +351,12 @@ func TestReadWriteJSONArray(t *testing.T) {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
+				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
 				var gotarr []interface{}
+				var ok bool
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
@@ -362,7 +365,6 @@ func TestReadWriteJSONArray(t *testing.T) {
 					t.Errorf("%d. %T is not JSONArray ", id, v)
 				}
 				eq := reflect.DeepEqual(tC.JDOC, gotarr)
-				t.Logf("%d. Got  Document read %+v): ", id, gotarr)
 				if !eq {
 					t.Errorf("Got %+v, wanted %+v", gotarr, tC.JDOC)
 				}
@@ -447,15 +449,7 @@ func TestReadJSONScalar(t *testing.T) {
 	}{
 		{JDOC: jsarray},
 	} {
-		jsonval, _ := godror.NewJSONValue(tC.JDOC)
-		var jsonarr godror.JSONArray
-		var ok bool
-		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
-			t.Errorf("%d Casting to JsonArray Failed", tN)
-			continue
-		}
-		defer jsonarr.Close()
-
+		jsonval := godror.JSONValue{Value: tC.JDOC}
 		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
 			continue
@@ -579,19 +573,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 	}{
 		{JDOC: jsarray},
 	} {
-		jsonval, err := godror.NewJSONValue(tC.JDOC)
-		if err != nil {
-			t.Errorf("%d/3. %v", tN, err)
-			continue
-		}
-		var jsonarr godror.JSONArray
-		var ok bool
-		if jsonarr, ok = jsonval.(godror.JSONArray); !ok {
-			t.Errorf("%d Casting to JsonArray Failed", tN)
-			continue
-		}
-		defer jsonarr.Close()
-
+		jsonval := godror.JSONValue{Value: tC.JDOC}
 		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
 			continue
@@ -611,8 +593,8 @@ func TestUpdateJSONScalar(t *testing.T) {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-
 			var personMap map[string]interface{}
+			var ok bool
 			v, err := personJSON.GetValue(godror.JSONOptNumberAsString)
 			if err != nil {
 				t.Errorf("%d. %v", tN, err)
@@ -623,18 +605,8 @@ func TestUpdateJSONScalar(t *testing.T) {
 
 			// Update BirthDate
 			personMap["BirthDate"] = newBirthDate
-			var newPersonObj godror.JSONObject
 			// Get new JSONObject to be pushed to DB
-			jsonval, err := godror.NewJSONValue(personMap)
-			if err != nil {
-				t.Errorf("%d. %v", id, err)
-				continue
-			}
-			if newPersonObj, ok = jsonval.(godror.JSONObject); !ok {
-				t.Errorf("%d Casting to JsonObject Failed", tN)
-				continue
-			}
-			defer newPersonObj.Close()
+			jsonval := godror.JSONValue{personMap}
 			qry := "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person'=:1)"
 			// binding map object
 			_, err = conn.ExecContext(ctx, qry, jsonval)
@@ -644,17 +616,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 
 			// Update LastName
 			wantLastName := "Ivan"
-			jsonval, err = godror.NewJSONValue(wantLastName)
-			if err != nil {
-				t.Errorf("%d. %v", id, err)
-				continue
-			}
-			var lastNameJScalar godror.JSONScalar
-			if lastNameJScalar, ok = jsonval.(godror.JSONScalar); !ok {
-				t.Errorf("%d Casting to JsonScalar Failed", tN)
-				continue
-			}
-			defer lastNameJScalar.Close()
+			jsonval = godror.JSONValue{Value: wantLastName}
 			qry = "update " + tbl + " c set c.jdoc=JSON_TRANSFORM(c.jdoc, set '$.person.LastName'=:1 )"
 			// binding string scalar
 			_, err = conn.ExecContext(ctx, qry, jsonval)
@@ -671,13 +633,13 @@ func TestUpdateJSONScalar(t *testing.T) {
 			}
 			var birthDateJSON godror.JSON
 			var lastNameJSON godror.JSON
+			var gotDOB time.Time
+			var gotLastName string
 			for row1.Next() {
 				if err = row1.Scan(&birthDateJSON, &lastNameJSON); err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
-
 				// Verify BirthDate
-				var gotDOB time.Time
 				birthDateScalar, err := birthDateJSON.GetValue(godror.JSONOptDefault)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
@@ -690,7 +652,6 @@ func TestUpdateJSONScalar(t *testing.T) {
 				}
 
 				// Verify LastName
-				var gotLastName string
 				lastNameScalar, err := lastNameJSON.GetValue(godror.JSONOptDefault)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)

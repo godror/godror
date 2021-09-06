@@ -615,7 +615,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			switch col.NativeType {
 			case C.DPI_NATIVE_TYPE_JSON:
 				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
-				dest[i] = createJSON(dj, false)
+				dest[i] = JSON{dpiJson: dj}
 			default:
 			}
 
