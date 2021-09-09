@@ -213,17 +213,28 @@ func (d *drv) Close() error {
 	d.dpiContext, d.pools, d.timezones = nil, nil, nil
 	done := make(chan error, 1)
 	go func() {
-		defer close(done)
 		for _, pool := range pools {
 			pool.Purge()
 		}
-		if !oneContext ||
-			// As we use one global dpiContext, don't destroy it
-			(dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
-			if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
-				done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
-			}
+		done <- nil
+	}()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(5 * time.Second):
+		err = fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
+	}
+
+	if oneContext &&
+		// As we use one global dpiContext, don't destroy it
+		(dpiCtx == nil || (d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
+		return err
+	}
+	go func() {
+		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
+			done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
 		}
+		close(done)
 	}()
 	select {
 	case err := <-done:
