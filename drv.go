@@ -211,17 +211,26 @@ func (d *drv) Close() error {
 	defer d.mu.Unlock()
 	dpiCtx, pools := d.dpiContext, d.pools
 	d.dpiContext, d.pools, d.timezones = nil, nil, nil
-	for _, pool := range pools {
-		pool.Purge()
-	}
-	if !oneContext ||
-		// As we use one global dpiContext, don't destroy it
-		(dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
-		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
-			return fmt.Errorf("error destroying dpiContext %p", dpiCtx)
+	done := make(chan error, 1)
+	go func() {
+		defer close(done)
+		for _, pool := range pools {
+			pool.Purge()
 		}
+		if !oneContext ||
+			// As we use one global dpiContext, don't destroy it
+			(dpiCtx != nil && !(d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
+			if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
+				done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
+			}
+		}
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
 	}
-	return nil
 }
 
 type locationWithOffSecs struct {
