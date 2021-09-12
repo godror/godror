@@ -2562,7 +2562,6 @@ func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		cstr := C.CString(js.Value)
 		defer C.free(unsafe.Pointer(cstr))
 		data[0].isNull = 0
-
 		if err := c.checkExec(func() C.int {
 			return C.dpiJson_setFromText(C.dpiData_getJson(&(data[0])), cstr, C.uint64_t(len(js.Value)), C.uint32_t(js.Flags))
 		}); err != nil {
