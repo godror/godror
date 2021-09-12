@@ -2547,40 +2547,58 @@ func (c *conn) dataGetJSONValue(v interface{}, data []C.dpiData) error {
 }
 
 func (c *conn) dataSetJSONString(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	var err error = nil
-	i := 0
 	if len(data) == 0 {
 		return nil
 	}
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
 	}
-
 	switch js := vv.(type) {
 	case JSONString:
+		if len(js.Value) == 0 {
+			data[0].isNull = 1
+			return nil
+		}
 		cstr := C.CString(js.Value)
 		defer C.free(unsafe.Pointer(cstr))
-		if err = c.checkExec(func() C.int {
-			return C.dpiVar_setFromJsonString(dv, C.uint32_t(i), cstr, C.uint64_t(len(js.Value)), C.uint(js.Flags))
+		data[0].isNull = 0
+
+		if err := c.checkExec(func() C.int {
+			return C.dpiJson_setFromText(C.dpiData_getJson(&(data[0])), cstr, C.uint64_t(len(js.Value)), C.uint32_t(js.Flags))
 		}); err != nil {
 			return fmt.Errorf("setFromJsonString(string=%#v): %w", vv, err)
+		}
+	case []JSONString:
+		for i := range js {
+			if len(js[i].Value) == 0 {
+				data[0].isNull = 1
+				continue
+			}
+			data[i].isNull = 0
+			cstr := C.CString(js[i].Value)
+			defer C.free(unsafe.Pointer(cstr))
+			if err := c.checkExec(func() C.int {
+				return C.dpiJson_setFromText(C.dpiData_getJson(&(data[i])), cstr, C.uint64_t(len(js[i].Value)), C.uint32_t(js[i].Flags))
+			}); err != nil {
+				return fmt.Errorf("setFromJsonString(string=%#v): %w", js[i].Value, err)
+			}
 		}
 	default:
 		return fmt.Errorf("setFromJsonString Unsupported JSON string [%T] %#v", vv, vv)
 	}
-	return err
+	return nil
 }
 
 func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
 
-    switch out := v.(type) {
-    case *string:
-        js := JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
-        *out = js.String()
-    default:
-        return fmt.Errorf("dataGetJSONString not implemented for type %T", out)
-    }
-    return nil
+	switch out := v.(type) {
+	case *string:
+		js := JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
+		*out = js.String()
+	default:
+		return fmt.Errorf("dataGetJSONString not implemented for type %T", out)
+	}
+	return nil
 }
 
 var ErrNotImplemented = errors.New("not implemented")

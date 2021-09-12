@@ -775,14 +775,14 @@ int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode)
 }
 
 // TBD Add flag ext types oson/bson
-int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t vlen, 
-        unsigned int flags)
+int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t valueLength, 
+        uint32_t flags)
 {
     dpiError error;
     int status;
     if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
 
-    status = dpiOci__jsonTextBufferParse(json, value, vlen, flags, &error);
+    status = dpiOci__jsonTextBufferParse(json, value, valueLength, flags, &error);
     return dpiGen__endPublicFn(json, status, &error);
 }

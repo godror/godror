@@ -379,12 +379,6 @@ func jsonNodeToData(data *Data, node *C.dpiJsonNode) {
 // BSON extended types.
 type JSONStringFlags uint
 
-const (
-	JSONFormatExtnTypes       JSONStringFlags = C.DPI_JSON_USE_EXTENSION_TYPES
-	JSONFormatBSONTypes                       = C.DPI_JSON_BSON_TYPE_PATTERNS
-	JSONFormatBSONTypePattern                 = C.DPI_JSON_USE_BSON_TYPES
-)
-
 // JSONString encapsulates JSON formatted string.
 type JSONString struct {
 	Flags JSONStringFlags // standard , extended types for OSON, BSON
