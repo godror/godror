@@ -75,6 +75,8 @@ The `sql.Open()` data source name `connectString` parameter or
    Database Connection Syntax](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf)
    contains more information.
 
+   You can specify the connection timeout in seconds with "?connect_timeout=15".
+
 - An Oracle Net Connect Descriptor String
 
    Full descriptors can be used, such as
