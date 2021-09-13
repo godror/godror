@@ -177,6 +177,10 @@ func (c *conn) Ping(ctx context.Context) error {
 	defer c.mu.RUnlock()
 
 	done := make(chan struct{})
+	if Log != nil {
+		dl, ok := ctx.Deadline()
+		Log("msg", "Ping", "deadline", dl, "ok", ok)
+	}
 	if err := c.handleDeadline(ctx, done); err != nil {
 		return err
 	}

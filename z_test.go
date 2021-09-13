@@ -2043,7 +2043,7 @@ func TestPing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	P.Username += "--BAD---"
+	P.ConnectString = "--BAD---" + P.ConnectString
 	badDB, err := sql.Open("godror", P.String())
 	if err != nil {
 		t.Fatal(err)
