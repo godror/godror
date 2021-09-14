@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
+	"golang.org/x/sync/errgroup"
 )
 
 var _ godror.ObjectScanner = new(MyRecord)
@@ -1034,4 +1036,55 @@ END;`
 			}
 		}
 	})
+}
+
+func TestObjectTypeClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("ObjectTypeClose"), 30*time.Second)
+	defer cancel()
+	const typeName = "test_typeclose_t"
+	const del = `DROP TYPE ` + typeName + ` CASCADE`
+	testDb.ExecContext(ctx, del)
+	// createType
+	const ddl = `create or replace type ` + typeName + ` force as object (
+     id NUMBER(10),  
+	 balance NUMBER(18));`
+	_, err := testDb.ExecContext(ctx, ddl)
+	if err != nil {
+		t.Fatalf("%s: %+v", ddl, err)
+	}
+	defer testDb.ExecContext(context.Background(), del)
+
+	getObjectType := func(ctx context.Context, db *sql.DB) error {
+		cx, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer cx.Close()
+
+		objType, err := godror.GetObjectType(ctx, cx, typeName)
+		if err != nil {
+			return err
+		}
+		defer objType.Close()
+
+		return nil
+	}
+
+	const maxConn = maxSessions * 2
+	for j := 0; j < 5; j++ {
+		t.Logf("Run %d group\n", j)
+		var start sync.WaitGroup
+		g, ctx := errgroup.WithContext(ctx)
+		start.Add(1)
+		for i := 0; i < maxConn/2; i++ {
+			g.Go(func() error {
+				start.Wait()
+				return getObjectType(ctx, testDb)
+			})
+		}
+		start.Done()
+		if err := g.Wait(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

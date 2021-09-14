@@ -486,8 +486,8 @@ func (t *ObjectType) Close() error {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	attributes, cof, d := t.Attributes, t.CollectionOf, t.dpiObjectType
-	t.Attributes, t.CollectionOf, t.dpiObjectType = nil, nil, nil
+	attributes, cof, d, conn := t.Attributes, t.CollectionOf, t.dpiObjectType, t.conn
+	t.Attributes, t.CollectionOf, t.dpiObjectType, t.conn = nil, nil, nil, nil
 
 	if d == nil {
 		return nil
@@ -504,12 +504,11 @@ func (t *ObjectType) Close() error {
 			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
-	t.conn = nil
 
 	if Log != nil {
 		Log("msg", "ObjectType.Close", "name", t.Name)
 	}
-	if err := t.conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
+	if err := conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
 		return fmt.Errorf("error on close object type: %w", err)
 	}
 
