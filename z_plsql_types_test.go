@@ -1038,6 +1038,7 @@ END;`
 	})
 }
 
+// See https://github.com/godror/godror/issues/179
 func TestObjectTypeClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("ObjectTypeClose"), 30*time.Second)
 	defer cancel()
@@ -1062,6 +1063,71 @@ func TestObjectTypeClose(t *testing.T) {
 		defer cx.Close()
 
 		objType, err := godror.GetObjectType(ctx, cx, typeName)
+		if err != nil {
+			return err
+		}
+		defer objType.Close()
+
+		return nil
+	}
+
+	const maxConn = maxSessions * 2
+	for j := 0; j < 5; j++ {
+		t.Logf("Run %d group\n", j)
+		var start sync.WaitGroup
+		g, ctx := errgroup.WithContext(ctx)
+		start.Add(1)
+		for i := 0; i < maxConn/2; i++ {
+			g.Go(func() error {
+				start.Wait()
+				return getObjectType(ctx, testDb)
+			})
+		}
+		start.Done()
+		if err := g.Wait(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// See https://github.com/godror/godror/issues/180
+func TestSubObjectTypeClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("SubObjectTypeClose"), 30*time.Second)
+	defer cancel()
+	const typeName = "test_subtypeclose"
+	dels := []string{
+		`DROP TYPE ` + typeName + `_ot CASCADE`,
+		`DROP TYPE ` + typeName + `_lt CASCADE`,
+	}
+	for _, del := range dels {
+		testDb.ExecContext(ctx, del)
+	}
+	// createType
+	for _, ddl := range []string{
+		`CREATE OR REPLACE TYPE ` + typeName + `_lt FORCE AS VARRAY(30) OF VARCHAR2(30);`,
+		`CREATE OR REPLACE TYPE ` + typeName + `_ot FORCE AS OBJECT (
+     id NUMBER(10),  
+	 list ` + typeName + `_lt);`,
+	} {
+		_, err := testDb.ExecContext(ctx, ddl)
+		if err != nil {
+			t.Fatalf("%s: %+v", ddl, err)
+		}
+	}
+	defer func() {
+		for _, del := range dels {
+			_, _ = testDb.ExecContext(context.Background(), del)
+		}
+	}()
+
+	getObjectType := func(ctx context.Context, db *sql.DB) error {
+		cx, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer cx.Close()
+
+		objType, err := godror.GetObjectType(ctx, cx, typeName+"_ot")
 		if err != nil {
 			return err
 		}
