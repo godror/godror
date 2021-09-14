@@ -598,6 +598,9 @@ func (t *ObjectType) init() error {
 			Name:          C.GoStringN(attrInfo.name, C.int(attrInfo.nameLength)),
 			ObjectType:    sub,
 		}
+		if sub.dpiObjectType != nil {
+			C.dpiObjectType_addRef(sub.dpiObjectType)
+		}
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
