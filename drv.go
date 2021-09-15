@@ -673,14 +673,18 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	if ok {
 		return pool, nil
 	}
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	if pool, ok = d.pools[poolKey]; ok {
-		return pool, nil
-	}
+	// createPool uses checkExec wich needs getError which uses RLock,
+	// so we cannot Lock here, thus this little race window for
+	// creating a pool and throwing it away.
 	pool, err := d.createPool(P)
 	if err != nil {
 		return nil, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if poolOld, ok := d.pools[poolKey]; ok {
+		_ = pool.Close()
+		return poolOld, nil
 	}
 	pool.key = poolKey
 	d.pools[poolKey] = pool
