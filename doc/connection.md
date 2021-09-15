@@ -70,12 +70,11 @@ The `sql.Open()` data source name `connectString` parameter or
    Common options are `connect_timeout` to return an error if connection takes
    too long, and `expire_time` to make sure idle connections are not closed by
    firewalls.
+   Note that `connect_timeout` requires at least 19c client.
 
    The technical article [Oracle Database 19c Easy Connect Plus Configurable
    Database Connection Syntax](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf)
    contains more information.
-
-   You can specify the connection timeout in seconds with "?connect_timeout=15".
 
 - An Oracle Net Connect Descriptor String
 

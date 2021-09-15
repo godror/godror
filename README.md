@@ -65,6 +65,7 @@ string](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-
 like `host:port/service_name`, or a connect descriptor like `(DESCRIPTION=...)`.
 
 You can specify connection timeout seconds with "?connect_timeout=15" - Ping uses this timeout, NOT the Deadline in Context!
+Note that `connect_timeout` requires at least 19c client.
 
 For more connection options, see [Godor Connection
 Handling](https://godror.github.io/godror/doc/connection.html).
