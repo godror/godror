@@ -70,6 +70,7 @@ The `sql.Open()` data source name `connectString` parameter or
    Common options are `connect_timeout` to return an error if connection takes
    too long, and `expire_time` to make sure idle connections are not closed by
    firewalls.
+   Note that `connect_timeout` requires at least 19c client.
 
    The technical article [Oracle Database 19c Easy Connect Plus Configurable
    Database Connection Syntax](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf)
@@ -128,6 +129,10 @@ The search includes:
 * `/opt/oracle/instantclient_19_8/network/admin` if Instant Client is in `/opt/oracle/instantclient_19_8`.
 * `/usr/lib/oracle/19.8/client64/lib/network/admin` if Oracle 19.8 Instant Client RPMs are used on Linux.
 * `$ORACLE_HOME/network/admin` if godror is using libraries from a database installation.
+
+### <a name="adb"></a> Oracle Autonomous DataBase (ADB)
+
+See https://blogs.oracle.com/opal/how-connect-to-oracle-autonomous-cloud-databases for ADB-specific guide.
 
 ### <a name="pooling"></a> Oracle Session Pooling
 

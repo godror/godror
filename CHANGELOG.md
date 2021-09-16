@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.25.4]
+### Added
+- Implement use of "google.golang.org/protobuf/types/known/timestamppb".Timestamp,
+  behind the timestamppb tag
+
+### Changed
+- Use dpiConn_setCallTimeout for faster recovers.
+- Faster setTraceTag, drv.init.
+- Buffer dpiLobReader.Read with chunk-sized reads for 
+  * avoiding io.ReadAll short read and
+  * performance
+
 ## [v0.25.2]
 ### Changed
 - Go 1.14 minimum requirement
