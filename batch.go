@@ -47,6 +47,9 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 	return b.Flush(ctx)
 }
 
+// Size returns the buffered (unflushed) number of records.
+func (b *Batch) Size() int { return b.size }
+
 // Flush executes the statement is and the clears the storage.
 func (b *Batch) Flush(ctx context.Context) error {
 	if b.values == nil {
