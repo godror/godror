@@ -11,8 +11,10 @@ import (
 	"reflect"
 )
 
-const DefaultLimit = 1024
+const DefaultBatchLimit = 1024
 
+// Batch collects the Added rows and executes in batches, after collecting Limit number of rows.
+// The default Limit is DefaultBatchLimit.
 type Batch struct {
 	Stmt        *sql.Stmt
 	values      []interface{}
@@ -28,7 +30,7 @@ type Batch struct {
 func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 	if b.rValues == nil {
 		if b.Limit <= 0 {
-			b.Limit = DefaultLimit
+			b.Limit = DefaultBatchLimit
 		}
 		b.rValues = make([]reflect.Value, len(values))
 		for i := range values {
