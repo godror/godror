@@ -247,10 +247,6 @@ const (
 	JSONOptNumberAsString = JSONOption(C.DPI_JSON_OPT_NUMBER_AS_STRING)
 )
 
-var NullJSONObject = JSONObject{}
-var NullJSONArray = JSONArray{}
-var NullJSONScalar = JSONScalar{}
-
 // JSON holds the JSON data to/from Oracle.
 // It is like a root node in JSON tree.
 type JSON struct {
@@ -273,11 +269,11 @@ func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 	var node *C.dpiJsonNode
 	var d Data
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return NullJSONObject, ErrInvalidJSON
+		return JSONObject{}, ErrInvalidJSON
 	}
 	jsonNodeToData(&d, node)
 	if C.dpiOracleTypeNum(node.oracleTypeNum) != C.DPI_ORACLE_TYPE_JSON_OBJECT {
-		return NullJSONObject, ErrInvalidType
+		return JSONObject{}, ErrInvalidType
 	}
 	return JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData))}, nil
 }
@@ -287,12 +283,12 @@ func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return NullJSONArray, ErrInvalidJSON
+		return JSONArray{}, ErrInvalidJSON
 	}
 	var d Data
 	jsonNodeToData(&d, node)
 	if C.dpiOracleTypeNum(node.oracleTypeNum) != C.DPI_ORACLE_TYPE_JSON_ARRAY {
-		return NullJSONArray, ErrInvalidType
+		return JSONArray{}, ErrInvalidType
 	}
 	return JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData))}, nil
 }
@@ -301,7 +297,7 @@ func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return NullJSONScalar, ErrInvalidJSON
+		return JSONScalar{}, ErrInvalidJSON
 	}
 	return JSONScalar{dpiJsonNode: node}, nil
 }

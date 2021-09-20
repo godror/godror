@@ -46,7 +46,7 @@ func TestReadWriteJSONString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf(" JSON Document table  %q): ", tbl)
+	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
 		"DROP TABLE " + tbl, //nolint:gas
@@ -120,7 +120,7 @@ func TestReadWriteJSONString(t *testing.T) {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+			t.Logf("%d. JSON Document read %q: ", id, jsondoc)
 			got := jsondoc.String()
 			if got == "" {
 				t.Errorf("%d. %v", id, err)
@@ -189,7 +189,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf(" JSON Document table  %q): ", tbl)
+	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
 		"DROP TABLE " + tbl, //nolint:gas
@@ -268,7 +268,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
-				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				t.Logf("%d. JSON Document read %q: ", id, jsondoc)
 
 				var gotmap map[string]interface{}
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
@@ -308,7 +308,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf(" JSON Document table  %q): ", tbl)
+	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
 		"DROP TABLE " + tbl, //nolint:gas
@@ -386,7 +386,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			} else {
-				t.Logf("%d. JSON Document read %q): ", id, jsondoc)
+				t.Logf("%d. JSON Document read %q: ", id, jsondoc)
 				var gotarr []interface{}
 				var ok bool
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
@@ -427,7 +427,7 @@ func TestReadJSONScalar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf(" JSON Document table  %q): ", tbl)
+	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
 		"DROP TABLE " + tbl, //nolint:gas
@@ -559,7 +559,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf(" JSON Document table  %q): ", tbl)
+	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
 		"DROP TABLE " + tbl, //nolint:gas
