@@ -687,6 +687,34 @@ dpiLob *dpiData_getLOB(dpiData *data)
     return data->value.asLOB;
 }
 
+//-----------------------------------------------------------------------------
+// dpiData_getJson() [PUBLIC]
+//   Return the Json portion of the data.
+//-----------------------------------------------------------------------------
+dpiJson *dpiData_getJson(dpiData *data)
+{
+    return data->value.asJson;
+}
+
+//-----------------------------------------------------------------------------
+// dpiData_getJsonObject() [PUBLIC]
+//   Return the JsonObject portion of the data.
+//-----------------------------------------------------------------------------
+
+dpiJsonObject *dpiData_getJsonObject(dpiData *data)
+{
+    return &data->value.asJsonObject;
+}
+
+//-----------------------------------------------------------------------------
+// dpiData_getJsonArray() [PUBLIC]
+//   Return the JsonArray portion of the data.
+//-----------------------------------------------------------------------------
+
+dpiJsonArray *dpiData_getJsonArray(dpiData *data)
+{
+    return &data->value.asJsonArray;
+}
 
 //-----------------------------------------------------------------------------
 // dpiData_getJson() [PUBLIC]

@@ -157,11 +157,16 @@ func (d *Data) GetIntervalDS() time.Duration {
 
 // SetIntervalDS sets the duration as interval date-seconds to data.
 func (d *Data) SetIntervalDS(dur time.Duration) {
-	C.dpiData_setIntervalDS(&d.dpiData,
-		C.int32_t(int64(dur.Hours())/24),
-		C.int32_t(int64(dur.Hours())%24), C.int32_t(dur.Minutes()), C.int32_t(dur.Seconds()),
-		C.int32_t(dur.Nanoseconds()),
-	)
+	rem := dur % (24 * time.Hour)
+	days := C.int32_t(dur / (24 * time.Hour))
+	dur, rem = rem, dur%(time.Hour)
+	hrs := C.int32_t(dur / time.Hour)
+	dur, rem = rem, dur%(time.Minute)
+	mins := C.int32_t(dur / time.Minute)
+	dur, rem = rem, dur%time.Second
+	secs := C.int32_t(dur / time.Second)
+	fsecs := C.int32_t(rem)
+	C.dpiData_setIntervalDS(&d.dpiData, days, hrs, mins, secs, fsecs)
 }
 
 // GetIntervalYM gets IntervalYM from the data.
@@ -317,6 +322,10 @@ func (d *Data) Get() interface{} {
 		return d.GetTime()
 	case C.DPI_NATIVE_TYPE_UINT64:
 		return d.GetUint64()
+	case C.DPI_NATIVE_TYPE_JSON_ARRAY:
+		return d.GetJSONArray()
+	case C.DPI_NATIVE_TYPE_JSON_OBJECT:
+		return d.GetJSONObject()
 	default:
 		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
 	}
@@ -525,6 +534,16 @@ func (d *Data) reset() {
 func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiData) }
 func (d *Data) dpiDataGetBytesUnsafe() *C.dpiBytes {
 	return ((*C.dpiBytes)(unsafe.Pointer(&d.dpiData.value)))
+}
+
+func (d *Data) GetJSON() JSON {
+	return JSON{dpiJson: ((*C.dpiJson)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONObject() JSONObject {
+	return JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.dpiData.value)))}
+}
+func (d *Data) GetJSONArray() JSONArray {
+	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
 // For tests

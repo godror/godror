@@ -450,6 +450,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_JZNVAL_OCI_DATE                         33
 #define DPI_JZNVAL_OCI_DATETIME                     34
 #define DPI_JZNVAL_OCI_INTERVAL                     40
+#define DPI_JZNU_PRINT_PRETTY                       1
 
 // define XDK miscellaneous constants
 #define DPI_JZN_ALLOW_SCALAR_DOCUMENTS              0x00000080

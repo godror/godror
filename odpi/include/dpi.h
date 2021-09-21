@@ -381,6 +381,11 @@ typedef uint32_t dpiVisibility;
 #define DPI_VISIBILITY_IMMEDIATE                    1
 #define DPI_VISIBILITY_ON_COMMIT                    2
 
+// JSON String Formats
+
+#define DPI_JSON_USE_EXTENSION_TYPES                 0x00040000
+#define DPI_JSON_BSON_TYPE_PATTERNS                  0x00080000
+#define DPI_JSON_USE_BSON_TYPES                      0x00020000 
 
 //-----------------------------------------------------------------------------
 // Handle Types
@@ -436,7 +441,6 @@ typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
 typedef struct dpiXid dpiXid;
-
 
 //-----------------------------------------------------------------------------
 // Complex Native Data Types (used for transferring data to/from ODPI-C)
@@ -1311,6 +1315,18 @@ DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value,
 // set the value of the JSON object, given a hierarchy of nodes
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
+//parse textual json into json descriptor
+DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value, 
+        uint64_t valueLength, uint32_t flags);
+
+// return the Json portion of the data
+DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
+
+// return the JsonObject portion of the data
+DPI_EXPORT dpiJsonObject *dpiData_getJsonObject(dpiData *data);
+
+// return the JsonArray portion of the data
+DPI_EXPORT dpiJsonArray *dpiData_getJsonArray(dpiData *data);
 
 //-----------------------------------------------------------------------------
 // LOB Methods (dpiLob)
@@ -2099,6 +2115,15 @@ DPI_EXPORT int dpiVar_setFromStmt(dpiVar *var, uint32_t pos, dpiStmt *stmt);
 
 // set the number of elements in a PL/SQL index-by table
 DPI_EXPORT int dpiVar_setNumElementsInArray(dpiVar *var, uint32_t numElements);
+
+
+//set the value from a json descriptor
+DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *js);
+
+
+//set the value from a json string
+DPI_EXPORT int dpiVar_setFromJsonString( dpiVar *var, uint32_t pos, 
+        const char *jstring, uint64_t len, unsigned int flags);
 
 #ifdef __cplusplus
 }

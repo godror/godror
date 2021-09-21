@@ -1637,7 +1637,6 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
     DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
 }
 
-
 #ifdef _WIN32
 
 //-----------------------------------------------------------------------------
