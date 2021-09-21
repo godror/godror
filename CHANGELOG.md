@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Batch type for batching ExecContext calls.
 
+## [v0.25.6]
+### Changed
+- Fix lobReader buffering which caused short reads.
+
 ## [v0.25.4]
 ### Added
 - Implement use of "google.golang.org/protobuf/types/known/timestamppb".Timestamp,
