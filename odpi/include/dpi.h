@@ -56,9 +56,9 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   4
-#define DPI_MINOR_VERSION   2
-#define DPI_PATCH_LEVEL     1
-#define DPI_VERSION_SUFFIX
+#define DPI_MINOR_VERSION   3
+#define DPI_PATCH_LEVEL     0
+#define DPI_VERSION_SUFFIX  "-dev"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -364,6 +364,18 @@ typedef uint32_t dpiSubscrQOS;
 #define DPI_SUBSCR_QOS_QUERY                        0x08
 #define DPI_SUBSCR_QOS_BEST_EFFORT                  0x10
 
+// two-phase commit (flags for dpiConn_tpcBegin())
+typedef uint32_t dpiTpcBeginFlags;
+#define DPI_TPC_BEGIN_JOIN                          0x00000002
+#define DPI_TPC_BEGIN_NEW                           0x00000001
+#define DPI_TPC_BEGIN_PROMOTE                       0x00000008
+#define DPI_TPC_BEGIN_RESUME                        0x00000004
+
+// two-phase commit (flags for dpiConn_tpcEnd())
+typedef uint32_t dpiTpcEndFlags;
+#define DPI_TPC_END_NORMAL                          0
+#define DPI_TPC_END_SUSPEND                         0x00100000
+
 // visibility of messages in advanced queuing
 typedef uint32_t dpiVisibility;
 #define DPI_VISIBILITY_IMMEDIATE                    1
@@ -423,6 +435,7 @@ typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
 typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
+typedef struct dpiXid dpiXid;
 
 
 //-----------------------------------------------------------------------------
@@ -789,6 +802,15 @@ struct dpiVersionInfo {
     uint32_t fullVersionNum;
 };
 
+// structure used for defining two-phase commit transaction ids (XIDs)
+struct dpiXid {
+    long formatId;
+    const char *globalTransactionId;
+    uint32_t globalTransactionIdLength;
+    const char *branchQualifier;
+    uint32_t branchQualifierLength;
+};
+
 
 //-----------------------------------------------------------------------------
 // Context Methods (dpiContext)
@@ -844,9 +866,10 @@ DPI_EXPORT int dpiContext_initSubscrCreateParams(const dpiContext *context,
 DPI_EXPORT int dpiConn_addRef(dpiConn *conn);
 
 // begin a distributed transaction
+// DEPRECATED: use dpiConn_tpcBegin() instead
 DPI_EXPORT int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
-        const char *transactionId, uint32_t transactionIdLength,
-        const char *branchId, uint32_t branchIdLength);
+        const char *globalTransactionId, uint32_t globalTransactionIdLength,
+        const char *branchQualifier, uint32_t branchQualifierLength);
 
 // break execution of the statement running on the connection
 DPI_EXPORT int dpiConn_breakExecution(dpiConn *conn);
@@ -957,6 +980,7 @@ DPI_EXPORT int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
 DPI_EXPORT int dpiConn_ping(dpiConn *conn);
 
 // prepare a distributed transaction for commit
+// DEPRECATED: use dpiConn_tpcPrepare() instead
 DPI_EXPORT int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded);
 
 // prepare a statement and return it for subsequent execution/fetching
@@ -993,6 +1017,10 @@ DPI_EXPORT int dpiConn_setCurrentSchema(dpiConn *conn, const char *value,
 DPI_EXPORT int dpiConn_setDbOp(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
+// set execution context id associated with the connection
+DPI_EXPORT int dpiConn_setEcontextId(dpiConn *conn, const char *value,
+        uint32_t valueLength);
+
 // set external name associated with the connection
 DPI_EXPORT int dpiConn_setExternalName(dpiConn *conn, const char *value,
         uint32_t valueLength);
@@ -1027,6 +1055,25 @@ DPI_EXPORT int dpiConn_startupDatabaseWithPfile(dpiConn *conn,
 DPI_EXPORT int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
         dpiSubscr **subscr);
 
+// begin a TPC (two-phase commit) transaction
+DPI_EXPORT int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid, uint32_t flags);
+
+// commit a TPC (two-phase commit) transaction
+DPI_EXPORT int dpiConn_tpcCommit(dpiConn *conn, dpiXid *xid, int onePhase);
+
+// end (detach from) a TPC (two-phase commit) transaction
+DPI_EXPORT int dpiConn_tpcEnd(dpiConn *conn, dpiXid *xid, uint32_t flags);
+
+// forget a TPC (two-phase commit) transaction
+DPI_EXPORT int dpiConn_tpcForget(dpiConn *conn, dpiXid *xid);
+
+// prepare a TPC (two-phase commit) transaction for commit
+DPI_EXPORT int dpiConn_tpcPrepare(dpiConn *conn, dpiXid *xid,
+        int *commitNeeded);
+
+// rollback a TPC (two-phase commit) transaction
+DPI_EXPORT int dpiConn_tpcRollback(dpiConn *conn, dpiXid *xid);
+
 // unsubscribe from events in the database
 DPI_EXPORT int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
 
@@ -1058,6 +1105,15 @@ DPI_EXPORT dpiIntervalYM *dpiData_getIntervalYM(dpiData *data);
 
 // return whether data value is null or not
 DPI_EXPORT int dpiData_getIsNull(dpiData *data);
+
+// return the JSON portion of the data
+DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
+
+// return the JSON Array portion of the data
+DPI_EXPORT dpiJsonArray *dpiData_getJsonArray(dpiData *data);
+
+// return the JSON Object portion of the data
+DPI_EXPORT dpiJsonObject *dpiData_getJsonObject(dpiData *data);
 
 // return the LOB portion of the data
 DPI_EXPORT dpiLob *dpiData_getLOB(dpiData *data);
@@ -1247,6 +1303,10 @@ DPI_EXPORT int dpiJson_getValue(dpiJson *json, uint32_t options,
 
 // release a reference to the JSON
 DPI_EXPORT int dpiJson_release(dpiJson *json);
+
+// parse textual JSON into JSON handle
+DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value,
+        uint64_t valueLength, uint32_t flags);
 
 // set the value of the JSON object, given a hierarchy of nodes
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
@@ -1957,6 +2017,10 @@ DPI_EXPORT int dpiStmt_setOciAttr(dpiStmt *stmt, uint32_t attribute,
 DPI_EXPORT int dpiStmt_setPrefetchRows(dpiStmt *stmt,
         uint32_t numRows);
 
+// set the flag to exclude the current SQL statement from the statement
+// cache
+DPI_EXPORT int dpiStmt_deleteFromCache(dpiStmt *stmt);
+
 
 //-----------------------------------------------------------------------------
 // Rowid Methods (dpiRowid)
@@ -2017,6 +2081,9 @@ DPI_EXPORT int dpiVar_release(dpiVar *var);
 // set the value of the variable from a byte string
 DPI_EXPORT int dpiVar_setFromBytes(dpiVar *var, uint32_t pos,
         const char *value, uint32_t valueLength);
+
+// set the value of the variable from a JSON handle
+DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *json);
 
 // set the value of the variable from a LOB
 DPI_EXPORT int dpiVar_setFromLob(dpiVar *var, uint32_t pos, dpiLob *lob);

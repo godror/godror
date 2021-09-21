@@ -267,6 +267,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_MODULE                         366
 #define DPI_OCI_ATTR_ACTION                         367
 #define DPI_OCI_ATTR_CLIENT_INFO                    368
+#define DPI_OCI_ATTR_ECONTEXT_ID                    371
 #define DPI_OCI_ATTR_ADMIN_PFILE                    389
 #define DPI_OCI_ATTR_SUBSCR_PORTNO                  390
 #define DPI_OCI_ATTR_CHNF_ROWIDS                    402
@@ -470,7 +471,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SESSRLS_MULTIPROPERTY_TAG           4
 #define DPI_OCI_SERVER_NORMAL                       1
 #define DPI_OCI_TYPEGET_ALL                         1
-#define DPI_OCI_TRANS_NEW                           1
 #define DPI_OCI_LOCK_NONE                           1
 #define DPI_OCI_TEMP_BLOB                           1
 #define DPI_OCI_CRED_RDBMS                          1
@@ -1904,7 +1904,7 @@ int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
 int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
         dpiError *error);
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
-        uint64_t valueLength, dpiError *error);
+        uint64_t valueLength, uint32_t flags, dpiError *error);
 int dpiOci__loadLib(dpiContextCreateParams *params,
         dpiVersionInfo *clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);
@@ -2105,9 +2105,11 @@ int dpiOci__threadKeyInit(void *envHandle, void *errorHandle, void **key,
 int dpiOci__threadKeySet(void *envHandle, void *errorHandle, void *key,
         void *value, dpiError *error);
 int dpiOci__transCommit(dpiConn *conn, uint32_t flags, dpiError *error);
+int dpiOci__transDetach(dpiConn *conn, uint32_t flags, dpiError *error);
+int dpiOci__transForget(dpiConn *conn, dpiError *error);
 int dpiOci__transPrepare(dpiConn *conn, int *commitNeeded, dpiError *error);
 int dpiOci__transRollback(dpiConn *conn, int checkError, dpiError *error);
-int dpiOci__transStart(dpiConn *conn, dpiError *error);
+int dpiOci__transStart(dpiConn *conn, uint32_t flags, dpiError *error);
 int dpiOci__typeByFullName(dpiConn *conn, const char *name,
         uint32_t nameLength, void **tdo, dpiError *error);
 int dpiOci__typeByName(dpiConn *conn, const char *schema,

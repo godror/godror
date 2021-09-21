@@ -1977,3 +1977,19 @@ int dpiStmt_setPrefetchRows(dpiStmt *stmt, uint32_t numRows)
     stmt->prefetchRows = numRows;
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
+
+
+//-----------------------------------------------------------------------------
+// dpiStmt_deleteFromCache() [PUBLIC]
+//   Excludes the associated SQL statement from the statement cache. If the SQL
+// statment was not already in the cache, it will not be added.
+//-----------------------------------------------------------------------------
+int dpiStmt_deleteFromCache(dpiStmt *stmt)
+{
+    dpiError error;
+
+    if (dpiStmt__check(stmt, __func__, &error) < 0)
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    stmt->deleteFromCache = 1;
+    return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
+}

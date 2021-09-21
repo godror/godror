@@ -177,6 +177,7 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
     dpiMsgProps *prop;
     void *payloadTDO;
     uint32_t i;
+    int status;
 
     // create dequeue options, if necessary
     if (!queue->deqOptions && dpiQueue__createDeqOptions(queue, error) < 0)
@@ -220,10 +221,20 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
     // perform dequeue
     if (dpiQueue__getPayloadTDO(queue, &payloadTDO, error) < 0)
         return DPI_FAILURE;
-    if (dpiOci__aqDeqArray(queue->conn, queue->name, queue->deqOptions->handle,
-            numProps, queue->buffer.handles, payloadTDO,
-            queue->buffer.instances, queue->buffer.indicators,
-            queue->buffer.msgIds, error) < 0) {
+    if (*numProps == 1) {
+        status = dpiOci__aqDeq(queue->conn, queue->name,
+                queue->deqOptions->handle, queue->buffer.handles[0],
+                payloadTDO, queue->buffer.instances, queue->buffer.indicators,
+                queue->buffer.msgIds, error);
+        if (status < 0)
+            *numProps = 0;
+    } else {
+        status = dpiOci__aqDeqArray(queue->conn, queue->name,
+                queue->deqOptions->handle, numProps, queue->buffer.handles,
+                payloadTDO, queue->buffer.instances, queue->buffer.indicators,
+                queue->buffer.msgIds, error);
+    }
+    if (status < 0) {
         if (error->buffer->code != 25228)
             return DPI_FAILURE;
         error->buffer->offset = *numProps;

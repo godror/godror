@@ -1777,6 +1777,28 @@ int dpiVar_setFromBytes(dpiVar *var, uint32_t pos, const char *value,
 
 
 //-----------------------------------------------------------------------------
+// dpiVar_setFromJson() [PUBLIC]
+//  Set the value of the variable at the given position from a JSON value.
+// Checks on the array position and the validity of the passed value.
+// A reference to the JSON value is retained by the variable.
+//-----------------------------------------------------------------------------
+int dpiVar_setFromJson( dpiVar *var, uint32_t pos, dpiJson *json)
+{
+    dpiError error;
+    int status;
+
+    if (dpiVar__checkArraySize(var, pos, __func__, &error) < 0)
+        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
+    if (var->nativeTypeNum != DPI_NATIVE_TYPE_JSON) {
+        dpiError__set(&error, "native type", DPI_ERR_NOT_SUPPORTED);
+        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
+    }
+    status = dpiVar__setFromJson(var, pos, json, &error);
+    return dpiGen__endPublicFn(var, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiVar_setFromLob() [PUBLIC]
 //   Set the value of the variable at the given array position from a LOB.
 // Checks on the array position and the validity of the passed handle. A

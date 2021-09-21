@@ -446,6 +446,10 @@ typedef int (*dpiOciFnType__threadKeySet)(void *hndl, void *err, void *key,
 typedef void (*dpiOciFnType__threadProcessInit)(void);
 typedef int (*dpiOciFnType__transCommit)(void *svchp, void *errhp,
         uint32_t flags);
+typedef int (*dpiOciFnType__transDetach)(void *svchp, void *errhp,
+        uint32_t flags);
+typedef int (*dpiOciFnType__transForget)(void *svchp, void *errhp,
+        uint32_t flags);
 typedef int (*dpiOciFnType__transPrepare)(void *svchp, void *errhp,
         uint32_t flags);
 typedef int (*dpiOciFnType__transRollback)(void *svchp, void *errhp,
@@ -645,6 +649,8 @@ static struct {
     dpiOciFnType__threadKeySet fnThreadKeySet;
     dpiOciFnType__threadProcessInit fnThreadProcessInit;
     dpiOciFnType__transCommit fnTransCommit;
+    dpiOciFnType__transDetach fnTransDetach;
+    dpiOciFnType__transForget fnTransForget;
     dpiOciFnType__transPrepare fnTransPrepare;
     dpiOciFnType__transRollback fnTransRollback;
     dpiOciFnType__transStart fnTransStart;
@@ -1617,7 +1623,7 @@ int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
 //   Wrapper for OCIJsonTextBufferParse().
 //-----------------------------------------------------------------------------
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
-        uint64_t valueLength, dpiError *error)
+        uint64_t valueLength, uint32_t flags, dpiError *error)
 {
     int status;
 
@@ -1626,8 +1632,8 @@ int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnJsonTextBufferParse)(json->conn->handle,
             json->handle, (void*) value, valueLength,
-            DPI_JZN_ALLOW_SCALAR_DOCUMENTS, DPI_JZN_INPUT_UTF8, error->handle,
-            DPI_OCI_DEFAULT);
+            (DPI_JZN_ALLOW_SCALAR_DOCUMENTS | flags), DPI_JZN_INPUT_UTF8,
+            error->handle, DPI_OCI_DEFAULT);
     DPI_OCI_CHECK_AND_RETURN(error, status, json->conn, "parse JSON text");
 }
 
@@ -3858,7 +3864,7 @@ int dpiOci__stmtRelease(dpiStmt *stmt, const char *tag, uint32_t tagLength,
         dpiOci__attrGet(stmt->conn->handle, DPI_OCI_HTYPE_SVCCTX,
                 &cacheSize, NULL, DPI_OCI_ATTR_STMTCACHESIZE, NULL, error);
         if (cacheSize > 0)
-            mode = DPI_OCI_STRLS_CACHE_DELETE;
+            mode |= DPI_OCI_STRLS_CACHE_DELETE;
     }
 
     DPI_OCI_LOAD_SYMBOL("OCIStmtRelease", dpiOciSymbols.fnStmtRelease)
@@ -4172,6 +4178,38 @@ int dpiOci__transCommit(dpiConn *conn, uint32_t flags, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
+// dpiOci__transDetach() [INTERNAL]
+//   Wrapper for OCITransDetach().
+//-----------------------------------------------------------------------------
+int dpiOci__transDetach(dpiConn *conn, uint32_t flags, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCITransDetach", dpiOciSymbols.fnTransDetach)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnTransDetach)(conn->handle, error->handle,
+            flags);
+    DPI_OCI_CHECK_AND_RETURN(error, status, conn, "detach TPC transaction");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__transForget() [INTERNAL]
+//   Wrapper for OCITransForget().
+//-----------------------------------------------------------------------------
+int dpiOci__transForget(dpiConn *conn, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCITransForget", dpiOciSymbols.fnTransForget)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnTransForget)(conn->handle, error->handle,
+            DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, conn, "forget TPC transaction");
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiOci__transPrepare() [INTERNAL]
 //   Wrapper for OCITransPrepare().
 //-----------------------------------------------------------------------------
@@ -4210,14 +4248,14 @@ int dpiOci__transRollback(dpiConn *conn, int checkError, dpiError *error)
 // dpiOci__transStart() [INTERNAL]
 //   Wrapper for OCITransStart().
 //-----------------------------------------------------------------------------
-int dpiOci__transStart(dpiConn *conn, dpiError *error)
+int dpiOci__transStart(dpiConn *conn, uint32_t flags, dpiError *error)
 {
     int status;
 
     DPI_OCI_LOAD_SYMBOL("OCITransStart", dpiOciSymbols.fnTransStart)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnTransStart)(conn->handle, error->handle, 0,
-            DPI_OCI_TRANS_NEW);
+            flags);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "start transaction");
 }
 

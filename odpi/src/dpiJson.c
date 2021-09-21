@@ -473,6 +473,18 @@ static int dpiJsonNode__toOracleFromNative(dpiJson *json, dpiJsonNode *node,
             *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
                     DPI_JZNVAL_OCI_NUMBER, &dataBuffer.asNumber);
             return DPI_SUCCESS;
+        case DPI_ORACLE_TYPE_NATIVE_DOUBLE:
+            if (node->nativeTypeNum != DPI_NATIVE_TYPE_DOUBLE)
+                break;
+            *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
+                    DPI_JZNVAL_DOUBLE, node->value->asDouble);
+            return DPI_SUCCESS;
+        case DPI_ORACLE_TYPE_NATIVE_FLOAT:
+            if (node->nativeTypeNum != DPI_NATIVE_TYPE_FLOAT)
+                break;
+            *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
+                    DPI_JZNVAL_FLOAT, node->value->asFloat);
+            return DPI_SUCCESS;
         case DPI_ORACLE_TYPE_RAW:
         case DPI_ORACLE_TYPE_VARCHAR:
             if (node->nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
@@ -588,6 +600,7 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
     dpiJznDomDoc *domDoc;
     void *oracleTopNode;
     int mutable = 1;
+    uint32_t jsonFlags = 0;
 
     // first, set the JSON descriptor as mutable
     if (dpiOci__attrSet(json->handle, DPI_OCI_DTYPE_JSON,
@@ -597,7 +610,7 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
 
     // write a dummy value to the JSON descriptor
     if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue),
-            error) < 0)
+            jsonFlags, error) < 0)
         return DPI_FAILURE;
 
     // acquire the DOM doc which will be used to create the Oracle nodes
@@ -755,6 +768,25 @@ int dpiJson_getValue(dpiJson *json, uint32_t options, dpiJsonNode **topNode)
 int dpiJson_release(dpiJson *json)
 {
     return dpiGen__release(json, DPI_HTYPE_JSON, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiJson_setFromText() [PUBLIC]
+//   Sets the value of the JSON handle, given a JSON string.
+//-----------------------------------------------------------------------------
+int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t valueLength,
+        uint32_t flags)
+{
+    dpiError error;
+    int status;
+
+    if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
+        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(json, value)
+    status = dpiOci__jsonTextBufferParse(json, value, valueLength,
+                flags, &error);
+    return dpiGen__endPublicFn(json, status, &error);
 }
 
 
