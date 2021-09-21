@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -44,6 +45,9 @@ func TestReadWriteJSONString(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -156,6 +160,8 @@ func isEqualJSONString(js1, js2 string) (bool, error) {
 
 }
 
+var birthdate, _ = time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
+
 // It simulates batch insert of JSON Column and single row insert.
 // Go map[string]interface{} type is inserted for JSON Column and
 // then read the JSON Document from DB.
@@ -187,6 +193,9 @@ func TestReadWriteJSONMap(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -203,7 +212,6 @@ func TestReadWriteJSONMap(t *testing.T) {
 	}
 	defer stmt.Close()
 	var travelTime time.Duration = 5*time.Hour + 21*time.Minute + 10*time.Millisecond + 20*time.Nanosecond
-	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 	jmap := map[string]interface{}{
 		"person": map[string]interface{}{
 			"ID":        godror.Number("12"),
@@ -306,6 +314,9 @@ func TestReadWriteJSONArray(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -321,8 +332,6 @@ func TestReadWriteJSONArray(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
-	//birthdate := time.Now()
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
@@ -425,6 +434,9 @@ func TestReadJSONScalar(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -440,8 +452,6 @@ func TestReadJSONScalar(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
-	//birthdate := time.Now()
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
@@ -557,6 +567,9 @@ func TestUpdateJSONScalar(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -572,9 +585,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	birthdate, _ := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 	newBirthDate, _ := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1989")
-	//birthdate := time.Now()
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
@@ -692,4 +703,15 @@ func TestUpdateJSONScalar(t *testing.T) {
 			row1.Close()
 		}
 	}
+}
+
+func errIs(err error, code int, msg string) bool {
+	if err == nil {
+		return false
+	}
+	var ec interface{ Code() int }
+	if errors.As(err, &ec) {
+		return ec.Code() == code
+	}
+	return msg != "" && strings.Contains(err.Error(), msg)
 }

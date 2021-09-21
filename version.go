@@ -10,4 +10,4 @@ package godror
 
 
 // Version of this driver
-const Version = "v0.25.6"
+const Version = "v0.26.0"
