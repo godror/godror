@@ -173,8 +173,14 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	var err error
 	dlr.bufW, err = dlr.read(dlr.buf)
+	if Log != nil {
+		Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
+	}
 	n := copy(p, dlr.buf[:dlr.bufW])
 	dlr.bufR = n
+	if err == io.EOF && dlr.bufW != dlr.bufR {
+		err = nil
+	}
 	return n, err
 }
 

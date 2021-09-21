@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 
 func TestReadLargeLOB(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("LOBAppend"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -44,31 +43,34 @@ END;`
 	}
 	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION test_readlargelob") }()
 
-	qry = "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(32768+1)); END;"
-	var want int64
-	if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &want}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	t.Logf("n=%d", want)
-	qry = "BEGIN :1 := test_readlargelob(32768+1); END;"
-	stmt, err := tx.PrepareContext(ctx, qry)
-	if err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	defer stmt.Close()
+	for _, orig := range []int64{12, 512 + 1, 8132/5 + 1, 8132/2 + 1, 8132 + 1} {
+		qry = "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(:2)); END;"
+		var want int64
+		if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &want}, orig); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		t.Logf("n=%d", want)
+		qry = "BEGIN :1 := test_readlargelob(:2); END;"
+		stmt, err := tx.PrepareContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		defer stmt.Close()
 
-	lob := godror.Lob{IsClob: true}
-	if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &lob}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
+		lob := godror.Lob{IsClob: true}
+		if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &lob}, orig); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
 
-	got, err := io.Copy(ioutil.Discard, lob.Reader)
-	t.Logf("Read %d bytes from LOB: %+v", got, err)
-	if err != nil {
-		t.Error(err)
-	}
-	if got != want {
-		t.Errorf("got %d, wanted %d", got, want)
+		b, err := io.ReadAll(lob)
+		got := int64(len(b))
+		t.Logf("Read %d bytes from LOB: %+v", got, err)
+		if err != nil {
+			t.Error(err)
+		}
+		if got != want {
+			t.Errorf("got %d, wanted %d", got, want)
+		}
 	}
 }
 
