@@ -3831,8 +3831,9 @@ END;`
 }
 
 func TestStmtFetchDeadlineForLOB(t *testing.T) {
+	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(testContext("TestStmtFetchDeadline"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("TestStmtFetchDeadline"), 60*time.Second)
 	defer cancel()
 
 	// Create a table used for fetching clob, blob data
@@ -3847,7 +3848,8 @@ func TestStmtFetchDeadlineForLOB(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 
 	conn.ExecContext(ctx,
-		"CREATE TABLE "+tbl+" (k number, c clob, b blob)")
+		"CREATE TABLE "+tbl+" (k number, c clob, b blob)", //nolint:gas
+	)
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	stmt, err := conn.PrepareContext(ctx,
