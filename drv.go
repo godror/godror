@@ -971,14 +971,6 @@ func (d *drv) getError() error {
 	if dpiContext == nil {
 		return &OraErr{code: 12153, message: driver.ErrBadConn.Error()}
 	}
-	select {
-	case err := <-d.errStack:
-		if Log != nil {
-			Log("msg", "cannedError", "error", err)
-		}
-		return err
-	default:
-	}
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)

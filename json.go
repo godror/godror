@@ -239,8 +239,8 @@ import (
 // DPI_JSON_OPT_DEAFULT - returns value stored as NUMBER in DB as float64.
 type JSONOption uint8
 
-var ErrInvalidJSON = errors.New("Invalid JSON Document")
-var ErrInvalidType = errors.New("Invalid JSON Scalar Type")
+var ErrInvalidJSON = errors.New("invalid JSON Document")
+var ErrInvalidType = errors.New("invalid JSON Scalar Type")
 
 const (
 	JSONOptDefault        = JSONOption(C.DPI_JSON_OPT_DEFAULT)
@@ -707,7 +707,7 @@ func populateJSONNode(jsonnode *C.dpiJsonNode, in interface{}) error {
 		}
 		C.godror_dpiJson_setBool(jsonnode, &(data.dpiData))
 	default:
-		return fmt.Errorf("Unsupported type %T\n", in)
+		return fmt.Errorf("unsupported type %T", in)
 	}
 	return nil
 }
