@@ -79,7 +79,7 @@ func (c *conn) checkExec(f func() C.int) error {
 }
 
 // used before an ODPI call to force it to return within the context deadline
-func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
+func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 	if err := ctx.Err(); err != nil {
 		if Log != nil {
 			Log("msg", "handleDeadline", "error", err)
@@ -93,27 +93,17 @@ func (c *conn) handleDeadline(ctx context.Context, done chan struct{}) error {
 }
 
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
-func (c *conn) ociBreakDone(ctx context.Context, done chan struct{}) {
+func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
 		c.drv.mu.RLock()
 		defer c.drv.mu.RUnlock()
 		if err := c.setCallTimeout(time.Until(dl)); err != nil {
-			if !errors.Is(err, errClientTooOld) {
-				c.drv.pushError(maybeBadConn(err, c))
-			}
+			_ = c.setCallTimeout(0)
 			return
 		}
-		defer func() {
-			err := c.getError()
-			if toErr := c.setCallTimeout(0); toErr != nil && err == nil {
-				err = toErr
-			}
-			if err != nil {
-				c.drv.pushError(err)
-			}
-		}()
+		defer func() { _ = c.setCallTimeout(0) }()
 	}
 	select {
 	case <-done:

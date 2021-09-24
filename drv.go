@@ -189,7 +189,6 @@ type drv struct {
 	pools         map[string]*connPool
 	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
-	errStack      chan error
 	mu            sync.RWMutex
 }
 
@@ -286,7 +285,7 @@ func (d *drv) checkExec(f func() C.int) error {
 
 func (d *drv) init(configDir, libDir string) error {
 	d.mu.RLock()
-	ok := d.pools != nil && d.timezones != nil && d.errStack != nil && d.dpiContext != nil
+	ok := d.pools != nil && d.timezones != nil && d.dpiContext != nil
 	d.mu.RUnlock()
 	if ok {
 		return nil
@@ -298,9 +297,6 @@ func (d *drv) init(configDir, libDir string) error {
 	}
 	if d.timezones == nil {
 		d.timezones = make(map[string]locationWithOffSecs)
-	}
-	if d.errStack == nil {
-		d.errStack = make(chan error, 1)
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -954,40 +950,19 @@ var _ = newErrorInfo
 
 func (d *drv) getError() error {
 	if d == nil {
-		return &OraErr{code: 12153, message: driver.ErrBadConn.Error()}
+		return &OraErr{code: 12153, message: "getError on nil drv: " + driver.ErrBadConn.Error()}
 	}
 	d.mu.RLock()
-	dpiContext, errStack := d.dpiContext, d.errStack
+	dpiContext := d.dpiContext
 	d.mu.RUnlock()
 
-	select {
-	case err := <-errStack:
-		if Log != nil {
-			Log("msg", "cannedError", "error", err)
-		}
-		return err
-	default:
-	}
 	if dpiContext == nil {
-		return &OraErr{code: 12153, message: driver.ErrBadConn.Error()}
+		return &OraErr{code: 12153, message: "getError on in dpiContext: " + driver.ErrBadConn.Error()}
 	}
 	var errInfo C.dpiErrorInfo
 	C.dpiContext_getError(dpiContext, &errInfo)
 	return fromErrorInfo(errInfo)
 }
-func (d *drv) pushError(err error) {
-	if Log != nil {
-		Log("msg", "pushError", "error", err)
-	}
-	if err == nil {
-		return
-	}
-	select {
-	case d.errStack <- err:
-	default:
-	}
-}
-
 func b2i(b bool) uint8 {
 	if b {
 		return 1
