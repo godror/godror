@@ -101,9 +101,9 @@ func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
 		defer c.drv.mu.RUnlock()
 		if err := c.setCallTimeout(time.Until(dl)); err != nil {
 			_ = c.setCallTimeout(0)
-			return
+		} else {
+			defer func() { _ = c.setCallTimeout(0) }()
 		}
-		defer func() { _ = c.setCallTimeout(0) }()
 	}
 	select {
 	case <-done:
