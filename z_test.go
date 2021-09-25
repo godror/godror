@@ -2045,6 +2045,15 @@ func TestNullIntoNum(t *testing.T) {
 
 func TestPing(t *testing.T) {
 	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(testContext("Ping"), 1*time.Second)
+	defer cancel()
+	err := testDb.PingContext(ctx)
+	cancel()
+	if err != nil {
+		t.Error(err)
+	}
+
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -2055,7 +2064,7 @@ func TestPing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("Ping"), 1*time.Second)
+	ctx, cancel = context.WithTimeout(testContext("Ping"), 1*time.Second)
 	defer cancel()
 
 	dl, _ := ctx.Deadline()
