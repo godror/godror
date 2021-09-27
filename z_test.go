@@ -4126,3 +4126,73 @@ func TestNullIssue143(t *testing.T) {
 	// Logic for xmlResponse
 	t.Log(xmlResponse)
 }
+
+func TestForError8192(t *testing.T) {
+	params, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params.StandaloneConnection = true
+	db, err := sql.Open("godror", params.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// prepare table
+	conn.ExecContext(ctx, "DROP TABLE test_date_error")
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts date)"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { conn.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
+
+	// fetch a date from the database
+	selectStmt, err := conn.PrepareContext(ctx, "select to_date('01-01-0001','dd-mm-yyyy') problem_ts from dual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer selectStmt.Close()
+	rows, err := selectStmt.Query()
+	if err != nil {
+		t.Fatalf("Failed to query: %s\n", err)
+	}
+	defer rows.Close()
+
+	var problemT time.Time
+	for rows.Next() {
+		if err = rows.Scan(&problemT); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	// insert the date in the database
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("Failed to beginTx: %s\n", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, "insert into test_date_error(problem_ts) values(:problem_ts)")
+	if err != nil {
+		t.Errorf("Failed to prepare insSQL %s", err)
+		_ = stmt.Close()
+
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(sql.Named("problem_ts", problemT))
+	if err != nil {
+		t.Fatalf("exec failure: %v\n", err)
+	}
+}
