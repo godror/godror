@@ -4166,12 +4166,13 @@ func TestForError8192(t *testing.T) {
 	}
 	defer rows.Close()
 
-	var problemT time.Time
+	var problemT sql.NullTime
 	for rows.Next() {
 		if err = rows.Scan(&problemT); err != nil {
 			t.Fatal(err)
 		}
 	}
+	t.Logf("problemT=%v, valid? %t, zero? %t", problemT.Time, problemT.Valid, problemT.Time.IsZero())
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -4186,12 +4187,11 @@ func TestForError8192(t *testing.T) {
 	stmt, err := tx.PrepareContext(ctx, "insert into test_date_error(problem_ts) values(:problem_ts)")
 	if err != nil {
 		t.Errorf("Failed to prepare insSQL %s", err)
-		_ = stmt.Close()
 
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(sql.Named("problem_ts", problemT))
+	_, err = stmt.Exec(sql.Named("problem_ts", sql.NullTime{Valid: true}))
 	if err != nil {
 		t.Fatalf("exec failure: %v\n", err)
 	}
