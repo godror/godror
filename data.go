@@ -130,8 +130,9 @@ func (d *Data) GetInt64() int64 {
 	}
 	//i := C.dpiData_getInt64(&d.dpiData)
 	i := *((*int64)(unsafe.Pointer(&d.dpiData.value)))
-	if Log != nil {
-		Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
 	}
 	return i
 }
@@ -294,8 +295,9 @@ type IntervalYM struct {
 
 // Get returns the contents of Data.
 func (d *Data) Get() interface{} {
-	if Log != nil {
-		Log("msg", "Get", "data", d, "p", fmt.Sprintf("%p", d))
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "Get", "data", d, "p", fmt.Sprintf("%p", d))
 	}
 	switch d.NativeTypeNum {
 	case C.DPI_NATIVE_TYPE_BOOLEAN:
@@ -412,8 +414,9 @@ func (d *Data) Set(v interface{}) error {
 	default:
 		return fmt.Errorf("%T: %w", v, ErrNotSupported)
 	}
-	if Log != nil {
-		Log("msg", "Set", "data", d)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "Set", "data", d)
 	}
 	return nil
 }

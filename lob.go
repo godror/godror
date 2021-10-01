@@ -143,8 +143,9 @@ func (dlr *dpiLobReader) ChunkSize() int {
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
-	if Log != nil {
-		Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
 	}
 	if dlr.bufW != 0 && cap(dlr.buf) != 0 {
 		if dlr.bufR == dlr.bufW {
@@ -164,8 +165,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		}
 		// If the dest buffer is big enough, avoid copying.
 		if len(p) >= int(dlr.chunkSize) {
-			if Log != nil {
-				Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
+			if logger != nil {
+				logger.Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
 			}
 			return dlr.read(p)
 		}
@@ -173,8 +174,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	var err error
 	dlr.bufW, err = dlr.read(dlr.buf)
-	if Log != nil {
-		Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
+	if logger != nil {
+		logger.Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
 	}
 	n := copy(p, dlr.buf[:dlr.bufW])
 	dlr.bufR = n
@@ -189,8 +190,9 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
-	if Log != nil {
-		Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
 	if dlr.finished || dlr.dpiLob == nil {
 		return 0, io.EOF
@@ -224,24 +226,24 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	}
 	n := C.uint64_t(len(p))
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
-	if Log != nil {
-		Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n)
+	if logger != nil {
+		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n)
 	}
 	if dlr.offset+1 >= dlr.sizePlusOne {
-		if Log != nil {
-			Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
+		if logger != nil {
+			logger.Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
 		}
 		return 0, io.EOF
 	}
 	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
-		if Log != nil {
-			Log("msg", "readBytes", "error", dlr.getError())
+		if logger != nil {
+			logger.Log("msg", "readBytes", "error", dlr.getError())
 		}
 		if err := dlr.getError(); err != nil {
 			C.dpiLob_close(dlr.dpiLob)
 			dlr.dpiLob = nil
-			if Log != nil {
-				Log("msg", "LOB read", "error", err)
+			if logger != nil {
+				logger.Log("msg", "LOB read", "error", err)
 			}
 			var codeErr interface{ Code() int }
 			if dlr.finished = errors.As(err, &codeErr) && codeErr.Code() == 1403; dlr.finished {
@@ -251,8 +253,8 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 			return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
 		}
 	}
-	if Log != nil {
-		Log("msg", "read", "n", n)
+	if logger != nil {
+		logger.Log("msg", "read", "n", n)
 	}
 	if dlr.IsClob {
 		dlr.offset += C.uint64_t(utf8.RuneCount(p[:n]))
@@ -266,8 +268,8 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		dlr.finished = true
 		err = io.EOF
 	}
-	if Log != nil {
-		Log("msg", "LOB", "n", n, "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob, "error", err)
+	if logger != nil {
+		logger.Log("msg", "LOB", "n", n, "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob, "error", err)
 	}
 	return int(n), err
 }

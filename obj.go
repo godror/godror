@@ -60,8 +60,9 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
-	if Log != nil {
-		Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
+    logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
 			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
 			"data", data.dpiData, "p", fmt.Sprintf("%p", data))
@@ -165,8 +166,9 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-	if Log != nil {
-		Log("msg", "Object.Close", "object", obj)
+    logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "Object.Close", "object", obj)
 	}
 	if err := O.conn.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
@@ -419,8 +421,9 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-	if Log != nil {
-		Log("msg", "GetObjectType", "name", name)
+    logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "GetObjectType", "name", name)
 	}
 	cName := C.CString(name)
 	defer func() { C.free(unsafe.Pointer(cName)) }()
@@ -450,8 +453,9 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t *ObjectType) NewObject() (*Object, error) {
-	if Log != nil {
-		Log("msg", "NewObject", "name", t.Name)
+    logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "NewObject", "name", t.Name)
 	}
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
 	t.mu.RLock()
@@ -493,20 +497,21 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 
+    logger := ctxGetLog(nil)
 	if cof != nil {
-		if err := cof.Close(); err != nil && Log != nil {
-			Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
+		if err := cof.Close(); err != nil && logger != nil {
+			logger.Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
 		}
 	}
 
 	for _, attr := range attributes {
-		if err := attr.Close(); err != nil && Log != nil {
-			Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
+		if err := attr.Close(); err != nil && logger != nil {
+			logger.Log("msg", "ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
 		}
 	}
 
-	if Log != nil {
-		Log("msg", "ObjectType.Close", "name", t.Name)
+	if logger != nil {
+		logger.Log("msg", "ObjectType.Close", "name", t.Name)
 	}
 	if err := conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
 		return fmt.Errorf("error on close object type: %w", err)
@@ -580,13 +585,14 @@ func (t *ObjectType) init() error {
 	) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getAttributes: %w", t, t.conn.getError())
 	}
+    logger := ctxGetLog(nil)
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
 			return fmt.Errorf("%v.attr_getInfo: %w", attr, t.conn.getError())
 		}
-		if Log != nil {
-			Log("i", i, "attrInfo", attrInfo)
+		if logger != nil {
+			logger.Log("i", i, "attrInfo", attrInfo)
 		}
 		typ := attrInfo.typeInfo
 		sub, err := objectTypeFromDataTypeInfo(t.conn, typ)
@@ -648,8 +654,9 @@ func (A ObjectAttribute) Close() error {
 	if A.dpiObjectAttr == nil {
 		return nil
 	}
-	if Log != nil {
-		Log("msg", "ObjectAttribute.Close", "name", A.Name)
+    logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "ObjectAttribute.Close", "name", A.Name)
 	}
 	if err := A.ObjectType.conn.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
 		return err

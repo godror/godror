@@ -85,8 +85,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-logfmt/logfmt"
-
 	"github.com/godror/godror/dsn"
 )
 
@@ -157,24 +155,6 @@ func ParseDSN(dataSourceName string) (P ConnectionParams, err error) {
 }
 
 func NewPassword(s string) Password { return dsn.NewPassword(s) }
-
-// Log function. By default, it's nil, and thus logs nothing.
-// If you want to change this, change it to a github.com/go-kit/kit/log.Swapper.Log
-// or analog to be race-free.
-var Log func(...interface{}) error
-
-// NewLogfmtLog returns a function that can be used as the Log variable,
-// and that logs using logfmt, to the given io.Writer.
-func NewLogfmtLog(w io.Writer) func(...interface{}) error {
-	enc := logfmt.NewEncoder(w)
-	return func(keyvals ...interface{}) error {
-		firstErr := enc.EncodeKeyvals(keyvals...)
-		if err := enc.EndRecord(); err != nil && firstErr == nil {
-			return err
-		}
-		return firstErr
-	}
-}
 
 var defaultDrv = &drv{}
 
@@ -311,8 +291,9 @@ func (d *drv) init(configDir, libDir string) error {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
 		}
 	}
-	if Log != nil {
-		Log("msg", "dpiContext_createWithParams", "params", ctxParams)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
 
 	runtime.LockOSThread()
@@ -434,8 +415,9 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 }
 
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
-	if Log != nil {
-		Log("msg", "acquireConn", "pool", pool, "connParams", P)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "acquireConn", "pool", pool, "connParams", P)
 	}
 	// initialize ODPI-C structure for common creation parameters; this is only
 	// used when a standalone connection is being created; when a connection is
@@ -655,8 +637,9 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
-	if Log != nil {
-		Log("msg", "getPool", "key", poolKey)
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("msg", "getPool", "key", poolKey)
 	}
 
 	// if pool already exists, return it immediately; otherwise, create a new
@@ -774,8 +757,9 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// create pool
 	var dp *C.dpiPool
-	if Log != nil {
-		Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
+	logger := ctxGetLog(nil)
+	if logger != nil {
+		logger.Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
 			fmt.Sprintf("%#v", poolCreateParams))
 	}
@@ -1031,22 +1015,6 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 	return tz
 }
 
-type logCtxKey struct{}
-
-type logFunc func(...interface{}) error
-
-func ctxGetLog(ctx context.Context) logFunc {
-	if lgr, ok := ctx.Value(logCtxKey{}).(func(...interface{}) error); ok {
-		return lgr
-	}
-	return Log
-}
-
-// ContextWithLog returns a context with the given log function.
-func ContextWithLog(ctx context.Context, logF func(...interface{}) error) context.Context {
-	return context.WithValue(ctx, logCtxKey{}, logF)
-}
-
 var _ driver.DriverContext = (*drv)(nil)
 var _ driver.Connector = (*connector)(nil)
 var _ io.Closer = (*connector)(nil)
@@ -1097,14 +1065,15 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	params := c.ConnectionParams
+	logger := ctxGetLog(ctx)
 	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
 			if cc.ConnectString == "" {
 				cc.ConnectString = params.ConnectString
 			}
-			if Log != nil {
-				Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
+			if logger != nil {
+				logger.Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
 			}
 			return c.drv.createConnFromParams(dsn.ConnectionParams{
 				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
@@ -1121,8 +1090,8 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 		}
 	}
 
-	if Log != nil {
-		Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
+	if logger != nil {
+		logger.Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
 	return c.drv.createConnFromParams(params)
 }

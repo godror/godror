@@ -65,10 +65,9 @@ func setUp() func() {
 	hsh.Write([]byte(runtime.Version()))
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
 
-	godror.Log = func(...interface{}) error { return nil }
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
-		godror.Log = tl.Log
+		godror.SetLog(tl.Log)
 	}
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
@@ -2180,11 +2179,11 @@ func TestSDO(t *testing.T) {
 	}
 	defer rows.Close()
 	if false {
-		godror.Log = func(kv ...interface{}) error {
+		godror.SetLog(func(kv ...interface{}) error {
 			t.Helper()
 			t.Log(kv)
 			return nil
-		}
+		})
 	}
 	for rows.Next() {
 		var dmp, isNull string

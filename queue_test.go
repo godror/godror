@@ -165,22 +165,13 @@ func TestQueue(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				if godror.Log != nil {
-					godror.Log("msg", "Set F_NUM", "i", i)
-				}
 				if err = obj.Set("F_NUM", int64(i)); err != nil {
 					t.Fatal(err)
-				}
-				if godror.Log != nil {
-					godror.Log("msg", "Get F_NUM", "data", data)
 				}
 				if err = obj.GetAttribute(&data, "F_NUM"); err != nil {
 					t.Fatal(err)
 				}
 				k := int(data.GetFloat64())
-				if godror.Log != nil {
-					godror.Log("msg", "Get F_NUM", "data", data, "k", k)
-				}
 				if k != i {
 					t.Fatalf("got %d, wanted %d", k, i)
 				}

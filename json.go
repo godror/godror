@@ -314,16 +314,17 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 //      string, for VARCHAR2(string)
 func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
 	jScalar, err := j.GetJSONScalar(opts)
+	logger := ctxGetLog(nil)
 	if err != nil {
-		if Log != nil {
-			Log("msg", "JSON.GetValue", "Error", err.Error())
+		if logger != nil {
+			logger.Log("msg", "JSON.GetValue", "Error", err.Error())
 		}
 		return nil, err
 	}
 	val, err := jScalar.GetValue()
 	if err != nil {
-		if Log != nil {
-			Log("msg", "JSON.GetValue", "Error", err.Error())
+		if logger != nil {
+			logger.Log("msg", "JSON.GetValue", "Error", err.Error())
 		}
 		return nil, err
 	}
@@ -337,23 +338,24 @@ func (j JSON) String() string {
 	// Returning empty string for error case, fix?
 
 	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
+    logger := ctxGetLog(nil)
 	if err != nil {
-		if Log != nil {
-			Log("msg", "JSON.String", "Error", err.Error())
+		if logger != nil {
+			logger.Log("msg", "JSON.String", "Error", err.Error())
 		}
 		return ""
 	}
 	jScalarVal, err := jScalar.GetValue()
 	if err != nil {
-		if Log != nil {
-			Log("msg", "JSON.String", "Error", err.Error())
+		if logger != nil {
+			logger.Log("msg", "JSON.String", "Error", err.Error())
 		}
 		return ""
 	}
 	data, err := json.Marshal(jScalarVal)
 	if err != nil {
-		if Log != nil {
-			Log("msg", "JSON.String", "Error", err.Error())
+		if logger != nil {
+			logger.Log("msg", "JSON.String", "Error", err.Error())
 		}
 		return ""
 	}
