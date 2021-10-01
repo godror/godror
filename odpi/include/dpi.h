@@ -386,19 +386,26 @@ typedef uint32_t dpiVisibility;
 // Handle Types
 //-----------------------------------------------------------------------------
 typedef struct dpiConn dpiConn;
-typedef struct dpiPool dpiPool;
-typedef struct dpiStmt dpiStmt;
-typedef struct dpiVar dpiVar;
+typedef struct dpiContext dpiContext;
+typedef struct dpiDeqOptions dpiDeqOptions;
+typedef struct dpiEnqOptions dpiEnqOptions;
 typedef struct dpiJson dpiJson;
 typedef struct dpiLob dpiLob;
+typedef struct dpiMsgProps dpiMsgProps;
 typedef struct dpiObject dpiObject;
 typedef struct dpiObjectAttr dpiObjectAttr;
 typedef struct dpiObjectType dpiObjectType;
+typedef struct dpiPool dpiPool;
+typedef struct dpiQueue dpiQueue;
 typedef struct dpiRowid dpiRowid;
+typedef struct dpiSodaColl dpiSodaColl;
+typedef struct dpiSodaCollCursor dpiSodaCollCursor;
+typedef struct dpiSodaDb dpiSodaDb;
+typedef struct dpiSodaDoc dpiSodaDoc;
+typedef struct dpiSodaDocCursor dpiSodaDocCursor;
+typedef struct dpiStmt dpiStmt;
 typedef struct dpiSubscr dpiSubscr;
-typedef struct dpiDeqOptions dpiDeqOptions;
-typedef struct dpiEnqOptions dpiEnqOptions;
-typedef struct dpiMsgProps dpiMsgProps;
+typedef struct dpiVar dpiVar;
 
 
 //-----------------------------------------------------------------------------
@@ -407,7 +414,6 @@ typedef struct dpiMsgProps dpiMsgProps;
 typedef struct dpiAppContext dpiAppContext;
 typedef struct dpiCommonCreateParams dpiCommonCreateParams;
 typedef struct dpiConnCreateParams dpiConnCreateParams;
-typedef struct dpiContext dpiContext;
 typedef struct dpiContextCreateParams dpiContextCreateParams;
 typedef struct dpiData dpiData;
 typedef union dpiDataBuffer dpiDataBuffer;
@@ -419,14 +425,8 @@ typedef struct dpiObjectAttrInfo dpiObjectAttrInfo;
 typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
 typedef struct dpiPoolCreateParams dpiPoolCreateParams;
 typedef struct dpiQueryInfo dpiQueryInfo;
-typedef struct dpiQueue dpiQueue;
 typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
-typedef struct dpiSodaColl dpiSodaColl;
 typedef struct dpiSodaCollNames dpiSodaCollNames;
-typedef struct dpiSodaCollCursor dpiSodaCollCursor;
-typedef struct dpiSodaDb dpiSodaDb;
-typedef struct dpiSodaDoc dpiSodaDoc;
-typedef struct dpiSodaDocCursor dpiSodaDocCursor;
 typedef struct dpiSodaOperOptions dpiSodaOperOptions;
 typedef struct dpiStmtInfo dpiStmtInfo;
 typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
@@ -928,6 +928,9 @@ DPI_EXPORT int dpiConn_getHandle(dpiConn *conn, void **handle);
 // get internal name associated with the connection
 DPI_EXPORT int dpiConn_getInternalName(dpiConn *conn, const char **value,
         uint32_t *valueLength);
+
+// get the health of a connection
+DPI_EXPORT int dpiConn_getIsHealthy(dpiConn *conn, int *isHealthy);
 
 // get logical transaction id associated with the connection
 DPI_EXPORT int dpiConn_getLTXID(dpiConn *conn, const char **value,
