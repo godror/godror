@@ -6,7 +6,7 @@
 package godror
 
 import (
-        "context"
+	"context"
 	"io"
 	"sync"
 
@@ -70,16 +70,19 @@ func (sw *swapLogger) Log(keyvals ...interface{}) error {
 
 type logCtxKey struct{}
 
-func ctxGetLog(ctx context.Context) Logger {
-    if ctx != nil {
-        if lgr, ok := ctx.Value(logCtxKey{}).(Logger); ok {
-            return lgr
-        }
-    }
+func getLogger() Logger {
 	if globalLogger.IsSet() {
 		return globalLogger
 	}
 	return nil
+}
+func ctxGetLog(ctx context.Context) Logger {
+	if ctx != nil {
+		if lgr, ok := ctx.Value(logCtxKey{}).(Logger); ok {
+			return lgr
+		}
+	}
+	return getLogger()
 }
 
 // ContextWithLogger returns a context with the given logger.

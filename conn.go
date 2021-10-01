@@ -138,7 +138,7 @@ func (c *conn) Break() error {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
@@ -419,7 +419,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
 	}
@@ -480,7 +480,7 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 }
 
 func (c *conn) initTZ() error {
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
 	}
@@ -631,7 +631,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	if (dbTZ == "+00:00" || dbTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
 		return time.UTC, 0, nil
 	}
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
@@ -701,7 +701,7 @@ func (c *conn) setCallTimeout(dur time.Duration) error {
 		return nil
 	}
 	ms := C.uint32_t(dur / time.Millisecond)
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "setCallTimeout", "conn", fmt.Sprintf("%p", c), "ms", ms)
 	}
@@ -722,7 +722,7 @@ func maybeBadConn(err error, c *conn) error {
 		return nil
 	}
 	cl := func() {}
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if c != nil {
 		cl = func() {
 			if logger != nil {
@@ -1122,7 +1122,7 @@ func (c *conn) IsValid() bool {
 	c.mu.RLock()
 	dpiConnOK, released, pooled, tzOK := c.dpiConn != nil, c.released, c.poolKey != "", c.params.Timezone != nil
 	c.mu.RUnlock()
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
 	}

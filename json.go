@@ -314,7 +314,7 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 //      string, for VARCHAR2(string)
 func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
 	jScalar, err := j.GetJSONScalar(opts)
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if err != nil {
 		if logger != nil {
 			logger.Log("msg", "JSON.GetValue", "Error", err.Error())
@@ -338,7 +338,7 @@ func (j JSON) String() string {
 	// Returning empty string for error case, fix?
 
 	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if err != nil {
 		if logger != nil {
 			logger.Log("msg", "JSON.String", "Error", err.Error())

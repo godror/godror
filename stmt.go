@@ -304,7 +304,7 @@ func (st *statement) closeNotLocking() error {
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
 
-	if logger := ctxGetLog(nil); logger != nil {
+	if logger := getLogger(); logger != nil {
 		logger.Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
 		if false {
 			var a [4096]byte
@@ -594,7 +594,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "NumInput", "stmt", fmt.Sprintf("%p", st), "dpiStmt", fmt.Sprintf("%p", st.dpiStmt), "query", st.query)
 	}
@@ -886,7 +886,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 
 func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
 	nilPtr := false
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
 	}
@@ -1361,7 +1361,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 			data[0].isNull = 0
 			times[0] = x.AsTime()
 		}
-		if logger := ctxGetLog(nil); logger != nil {
+		if logger := getLogger(); logger != nil {
 			logger.Log("msg", "dataSetTime", "ts", x, "t", times[0])
 		}
 
@@ -1421,7 +1421,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 }
 
 func (c *conn) dataGetIntervalDS(v interface{}, data []C.dpiData) error {
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "dataGetIntervalDS", "data", data, "v", v)
 	}
@@ -1455,7 +1455,7 @@ func dataGetIntervalDS(t *time.Duration, d *C.dpiData) {
 		time.Duration(ds.minutes)*time.Minute +
 		time.Duration(ds.seconds)*time.Second +
 		time.Duration(ds.fseconds)
-	if logger := ctxGetLog(nil); logger != nil {
+	if logger := getLogger(); logger != nil {
 		logger.Log("msg", "dataGetIntervalDS", "d", *d, "t", *t)
 	}
 }
@@ -1482,7 +1482,7 @@ func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		}
 		return nil
 	}
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "dataSetIntervalDS", "data", data, "times", times)
 	}
@@ -2296,7 +2296,7 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
 
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	var n C.uint32_t
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("dataGetStmtC.getNumQueryColumns: %+v: %w", err, io.EOF)
@@ -2495,7 +2495,7 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 }
 
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	switch out := v.(type) {
 	case *Object:
 		d := Data{
@@ -2728,7 +2728,7 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 			c = Num
 		}
 	}
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "ColumnConverter", "c", c)
 	}
@@ -2750,7 +2750,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	for i := 0; i < colCount; i++ {
 		if C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info) == C.DPI_FAILURE {
 			return nil, fmt.Errorf("getQueryInfo[%d]: %w", i, st.getError())
@@ -2884,7 +2884,7 @@ func stmtSetFinalizer(st *statement, tag string) {
 	stack := a[:runtime.Stack(a[:], false)]
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
-			if logger := ctxGetLog(nil); logger != nil {
+			if logger := getLogger(); logger != nil {
 				logger.Log("msg", "ERROR: statement is not closed!", "stmt", st, "tag", tag, "stack", string(stack))
 			} else {
 				fmt.Printf("ERROR: statement %p of %s is not closed!\n%s\n", st, tag, stack)

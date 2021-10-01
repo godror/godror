@@ -60,7 +60,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
@@ -166,7 +166,7 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "Object.Close", "object", obj)
 	}
@@ -421,7 +421,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "GetObjectType", "name", name)
 	}
@@ -453,7 +453,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t *ObjectType) NewObject() (*Object, error) {
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "NewObject", "name", t.Name)
 	}
@@ -497,7 +497,7 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if cof != nil {
 		if err := cof.Close(); err != nil && logger != nil {
 			logger.Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
@@ -585,7 +585,7 @@ func (t *ObjectType) init() error {
 	) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getAttributes: %w", t, t.conn.getError())
 	}
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
@@ -654,7 +654,7 @@ func (A ObjectAttribute) Close() error {
 	if A.dpiObjectAttr == nil {
 		return nil
 	}
-    logger := ctxGetLog(nil)
+    logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "ObjectAttribute.Close", "name", A.Name)
 	}

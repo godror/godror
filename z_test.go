@@ -4145,13 +4145,14 @@ func TestForError8192(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	// prepare table
-	conn.ExecContext(ctx, "DROP TABLE test_date_error")
+	_, _ = conn.ExecContext(ctx, "DROP TABLE test_date_error")
 	if _, err := conn.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts date)"); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { conn.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
+	defer func() { _, _ = conn.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
 
 	// fetch a date from the database
 	selectStmt, err := conn.PrepareContext(ctx, "select to_date('01-01-0001','dd-mm-yyyy') problem_ts from dual")

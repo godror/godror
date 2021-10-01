@@ -291,7 +291,7 @@ func (d *drv) init(configDir, libDir string) error {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
 		}
 	}
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
@@ -415,7 +415,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 }
 
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "acquireConn", "pool", pool, "connParams", P)
 	}
@@ -637,7 +637,7 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "getPool", "key", poolKey)
 	}
@@ -757,7 +757,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// create pool
 	var dp *C.dpiPool
-	logger := ctxGetLog(nil)
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
