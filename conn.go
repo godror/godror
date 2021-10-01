@@ -681,14 +681,15 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	return tz, off, nil
 }
 
-var errClientTooOld = errors.New("client is too old")
-
 func (c *conn) setCallTimeout(dur time.Duration) error {
+	if dur < 0 {
+		return nil
+	}
 	c.drv.mu.RLock()
 	ok := c.drv.clientVersion.Version >= 18
 	c.drv.mu.RUnlock()
 	if !ok {
-		return errClientTooOld
+		return nil
 	}
 	ms := C.uint32_t(dur / time.Millisecond)
 	if Log != nil {
