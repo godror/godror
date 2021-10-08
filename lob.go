@@ -27,6 +27,9 @@ type Lob struct {
 	IsClob bool
 }
 
+var _ = (io.Reader)((*Lob)(nil))
+var _ = (io.ReaderAt)((*Lob)(nil))
+
 // Hijack the underlying lob reader/writer, and
 // return a DirectLob for reading/writing the lob directly.
 //
@@ -60,6 +63,22 @@ func (lob *Lob) NewBufferedReader(size int) *bufio.Reader {
 		size = 1 << 20
 	}
 	return bufio.NewReaderSize(lob.Reader, size)
+}
+
+// Size exposes the underlying Reader's Size method, if it is supported.
+func (lob *Lob) Size() (int64, error) {
+	if lr, ok := lob.Reader.(interface{ Size() (int64, error) }); ok {
+		return lr.Size()
+	}
+	return 0, ErrNotSupported
+}
+
+// ReadAt exposes the underlying Reader's ReadAt method, if it is supported.
+func (lob *Lob) ReadAt(p []byte, off int64) (int, error) {
+	if lr, ok := lob.Reader.(io.ReaderAt); ok {
+		return lr.ReadAt(p, off)
+	}
+	return 0, ErrNotSupported
 }
 
 // Scan assigns a value from a database driver.
@@ -148,15 +167,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	if logger != nil {
 		logger.Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
 	}
-	if dlr.bufW != 0 && cap(dlr.buf) != 0 {
-		if dlr.bufR == dlr.bufW {
-			dlr.bufR, dlr.bufW = 0, 0
-		} else {
-			n := copy(p, dlr.buf[dlr.bufR:dlr.bufW])
-			dlr.bufR += n
-			return n, nil
-		}
-	} else if dlr.buf == nil {
+	if dlr.buf == nil {
 		if dlr.chunkSize == 0 {
 			runtime.LockOSThread()
 			if C.dpiLob_getChunkSize(dlr.dpiLob, &dlr.chunkSize) == C.DPI_FAILURE {
@@ -172,6 +183,14 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			return dlr.read(p)
 		}
 		dlr.buf = make([]byte, int(dlr.chunkSize))
+	} else if dlr.bufW != 0 && cap(dlr.buf) != 0 {
+		if dlr.bufR == dlr.bufW {
+			dlr.bufR, dlr.bufW = 0, 0
+		} else {
+			n := copy(p, dlr.buf[dlr.bufR:dlr.bufW])
+			dlr.bufR += n
+			return n, nil
+		}
 	}
 	var err error
 	dlr.bufW, err = dlr.read(dlr.buf)

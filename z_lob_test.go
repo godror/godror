@@ -16,6 +16,7 @@ import (
 	"time"
 
 	godror "github.com/godror/godror"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestReadLargeLOB(t *testing.T) {
@@ -34,7 +35,7 @@ func TestReadLargeLOB(t *testing.T) {
 BEGIN
   DBMS_LOB.createtemporary(v_clob, TRUE, DBMS_LOB.session);
   FOR i IN 1..NVL(p_size, 0)/10 + 1 LOOP
-    DBMS_LOB.writeappend(v_clob, 10, LPAD(i, 10, ' ')||CHR(10));
+    DBMS_LOB.writeappend(v_clob, 10, LPAD(i, 9, ' ')||CHR(10));
   END LOOP;
   RETURN(v_clob);
 END;`
@@ -45,11 +46,11 @@ END;`
 
 	for _, orig := range []int64{12, 512 + 1, 8132/5 + 1, 8132/2 + 1, 8132 + 1} {
 		qry = "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(:2)); END;"
-		var want int64
-		if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &want}, orig); err != nil {
+		var wantSize int64
+		if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &wantSize}, orig); err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}
-		t.Logf("n=%d", want)
+		t.Logf("n=%d", wantSize)
 		qry = "BEGIN :1 := test_readlargelob(:2); END;"
 		stmt, err := tx.PrepareContext(ctx, qry)
 		if err != nil {
@@ -61,15 +62,24 @@ END;`
 		if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &lob}, orig); err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}
+		buf := bytes.NewBuffer(make([]byte, 0, wantSize))
+		for i := 0; i < int(wantSize/10); i++ {
+			fmt.Fprintf(buf, "% 9d\n", i+1)
+		}
+		want := buf.Bytes()
 
-		b, err := io.ReadAll(lob)
-		got := int64(len(b))
-		t.Logf("Read %d bytes from LOB: %+v", got, err)
+		got, err := io.ReadAll(lob)
+		gotSize := int64(len(got))
+		t.Logf("Read %d bytes from LOB: %+v", gotSize, err)
 		if err != nil {
 			t.Error(err)
 		}
-		if got != want {
-			t.Errorf("got %d, wanted %d", got, want)
+		if gotSize != wantSize {
+			t.Errorf("got %d, wanted %d", gotSize, wantSize)
+		}
+
+		if d := cmp.Diff(got, want); d != "" {
+			t.Error(d)
 		}
 	}
 }
@@ -133,10 +143,10 @@ END;`
 	}
 }
 
-func TestStatWithLobs(t *testing.T) {
+func TestStatWithLOBs(t *testing.T) {
 	t.Parallel()
 	//defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("StatWithLobs"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("StatWithLOBs"), 30*time.Second)
 	defer cancel()
 
 	ms, err := newMetricSet(ctx, testDb)

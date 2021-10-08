@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.27.1]
+### Added
+- Size, ReadAt methods to dpiLobReader
+
 ## [v0.27.0]
 ### Changed
 - Instead of Log package-level variable, use SetLog or SetLogger.
