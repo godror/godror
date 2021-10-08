@@ -86,6 +86,7 @@ func (dlr *dpiLobReader) Scan(src interface{}) error {
 }
 
 var _ = io.Reader((*dpiLobReader)(nil))
+var _ = io.ReaderAt((*dpiLobReader)(nil))
 
 type dpiLobReader struct {
 	*conn
@@ -185,6 +186,37 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+var ErrNotABlob = errors.New("not a BLOB")
+
+// Size returns the LOB's size. It returns ErrNotABlob for CLOB,
+// (works only for BLOBs), as Oracle reports CLOB size in runes, not in bytes!
+func (dlr *dpiLobReader) Size() (int64, error) {
+	dlr.mu.Lock()
+	err := dlr.getSize()
+	size := dlr.sizePlusOne - 1
+	isClob := dlr.IsClob
+	dlr.mu.Unlock()
+	if err == nil && isClob {
+		err = ErrNotABlob
+	}
+	return int64(size), err
+}
+func (dlr *dpiLobReader) getSize() error {
+	if dlr.sizePlusOne != 0 {
+		return nil
+	}
+	var err error
+	runtime.LockOSThread()
+	if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
+		err = fmt.Errorf("getSize: %w", dlr.getError())
+		C.dpiLob_close(dlr.dpiLob)
+		dlr.dpiLob = nil
+	}
+	runtime.UnlockOSThread()
+	dlr.sizePlusOne++
+	return err
+}
+
 // read does the real LOB reading.
 func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if dlr == nil {
@@ -206,17 +238,13 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
 	if dlr.sizePlusOne == 0 { // first read
 		// never read size before
-		if C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne) == C.DPI_FAILURE {
-			err := dlr.getError()
-			C.dpiLob_close(dlr.dpiLob)
-			dlr.dpiLob = nil
+		if err := dlr.getSize(); err != nil {
 			var coder interface{ Code() int }
 			if errors.As(err, &coder) && coder.Code() == 22922 || strings.Contains(err.Error(), "invalid dpiLob handle") {
 				return 0, io.EOF
 			}
-			return 0, fmt.Errorf("getSize: %w", err)
+			return 0, err
 		}
-		dlr.sizePlusOne++
 
 		var lobType C.dpiOracleTypeNum
 		if C.dpiLob_getType(dlr.dpiLob, &lobType) != C.DPI_FAILURE &&
@@ -271,6 +299,24 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if logger != nil {
 		logger.Log("msg", "LOB", "n", n, "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob, "error", err)
 	}
+	return int(n), err
+}
+
+// ReadAt reads at the specified offset (in bytes).
+// Works only for BLOBs!
+func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	if dlr.IsClob {
+		return 0, ErrNotABlob
+	}
+	var err error
+	n := C.uint64_t(len(p))
+	runtime.LockOSThread()
+	if C.dpiLob_readBytes(dlr.dpiLob, C.uint64_t(off+1), n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
+		err = fmt.Errorf("readBytes at %d for %d: %w", off, n, dlr.getError())
+	}
+	runtime.UnlockOSThread()
 	return int(n), err
 }
 
