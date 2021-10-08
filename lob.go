@@ -176,33 +176,38 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			runtime.UnlockOSThread()
 		}
 		// If the dest buffer is big enough, avoid copying.
-		if len(p) >= int(dlr.chunkSize) {
+		if ulen := C.uint64_t(len(p)); ulen >= C.uint64_t(dlr.chunkSize) || dlr.sizePlusOne != 0 && ulen+1 >= dlr.sizePlusOne {
 			if logger != nil {
 				logger.Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
 			}
 			return dlr.read(p)
 		}
 		dlr.buf = make([]byte, int(dlr.chunkSize))
+		dlr.bufR, dlr.bufW = 0, 0
 	} else if dlr.bufW != 0 && cap(dlr.buf) != 0 {
+		var n int
+		if dlr.bufR < dlr.bufW {
+			n = copy(p, dlr.buf[dlr.bufR:dlr.bufW])
+			dlr.bufR += n
+		}
 		if dlr.bufR == dlr.bufW {
 			dlr.bufR, dlr.bufW = 0, 0
-		} else {
-			n := copy(p, dlr.buf[dlr.bufR:dlr.bufW])
-			dlr.bufR += n
+		}
+		if n != 0 {
 			return n, nil
 		}
 	}
 	var err error
+	// We only read into dlr.buf when it's empty, dlr.bufR == dlr.bufW == 0
 	dlr.bufW, err = dlr.read(dlr.buf)
 	if logger != nil {
 		logger.Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
 	}
-	n := copy(p, dlr.buf[:dlr.bufW])
-	dlr.bufR = n
+	dlr.bufR = copy(p, dlr.buf[:dlr.bufW])
 	if err == io.EOF && dlr.bufW != dlr.bufR {
 		err = nil
 	}
-	return n, err
+	return dlr.bufR, err
 }
 
 var ErrCLOB = errors.New("CLOB is not supported")
@@ -272,9 +277,13 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		}
 	}
 	n := C.uint64_t(len(p))
+	amount := n
+	if dlr.IsClob {
+		amount /= 4 // dpiLob_readBytes' amount is the number of CHARACTERS for CLOBs.
+	}
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
 	if logger != nil {
-		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n)
+		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n, "amount", amount)
 	}
 	if dlr.offset+1 >= dlr.sizePlusOne {
 		if logger != nil {
@@ -282,7 +291,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		}
 		return 0, io.EOF
 	}
-	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
+	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, amount, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
 		if logger != nil {
 			logger.Log("msg", "readBytes", "error", dlr.getError())
 		}
