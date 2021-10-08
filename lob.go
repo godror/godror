@@ -186,9 +186,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-var ErrNotABlob = errors.New("not a BLOB")
+var ErrCLOB = errors.New("CLOB is not supported")
 
-// Size returns the LOB's size. It returns ErrNotABlob for CLOB,
+// Size returns the LOB's size. It returns ErrCLOB for CLOB,
 // (works only for BLOBs), as Oracle reports CLOB size in runes, not in bytes!
 func (dlr *dpiLobReader) Size() (int64, error) {
 	dlr.mu.Lock()
@@ -197,7 +197,7 @@ func (dlr *dpiLobReader) Size() (int64, error) {
 	isClob := dlr.IsClob
 	dlr.mu.Unlock()
 	if err == nil && isClob {
-		err = ErrNotABlob
+		err = ErrCLOB
 	}
 	return int64(size), err
 }
@@ -308,7 +308,7 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
 	if dlr.IsClob {
-		return 0, ErrNotABlob
+		return 0, ErrCLOB
 	}
 	var err error
 	n := C.uint64_t(len(p))
