@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	godror "github.com/godror/godror"
 	"github.com/google/go-cmp/cmp"
@@ -31,21 +32,19 @@ func TestSplitLOB(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	runes := make([]rune, 0xf09f83af-0xf09f80b0)
-	for i := range runes {
-		runes[i] = rune(i + 0xf09f80b0)
-	}
-	want := string(runes)
+	want := "árvíztűrő tükörfúrógép"
 	n := 32767 / len(want)
 	want = strings.Repeat(want, n)
-	t.Logf("%d runes, %d bytes", n*len(runes), len(want))
+	runesLen := utf8.RuneCount([]byte(want))
+	t.Logf("%d runes, %d bytes", runesLen, len(want))
 	const qry = `DECLARE 
   v_text CONSTANT VARCHAR2(32767) := :1; 
+  v_len CONSTANT PLS_INTEGER := :2;
   v_clob CLOB; 
 BEGIN
   DBMS_LOB.createtemporary(v_clob, TRUE, DBMS_LOB.session);
-  DBMS_LOB.writeappend(v_clob, LENGTH(v_text), v_text);
-  :2 := v_clob;
+  DBMS_LOB.writeappend(v_clob, v_len, v_text);
+  :3 := v_clob;
 END;`
 	var lob godror.Lob
 	lob.IsClob = true
@@ -54,7 +53,7 @@ END;`
 		t.Fatalf("%s: %+v", qry, err)
 	}
 	defer stmt.Close()
-	if _, err := stmt.ExecContext(ctx, want, sql.Out{Dest: &lob}); err != nil {
+	if _, err := stmt.ExecContext(ctx, want, runesLen, sql.Out{Dest: &lob}); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
 	t.Log("lob:", lob)
@@ -63,8 +62,10 @@ END;`
 		t.Fatal(err)
 	}
 	got := string(b)
-	if want != got {
-		t.Errorf("mistatch")
+	t.Logf("sent %d bytes, got %d", len(want), len(got))
+	if d := cmp.Diff(want, got); d != "" {
+		//t.Fatal("mismatch")
+		t.Error("mismatch:", d)
 	}
 }
 func TestReadLargeLOB(t *testing.T) {

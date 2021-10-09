@@ -66,6 +66,12 @@ func (lob *Lob) NewBufferedReader(size int) *bufio.Reader {
 }
 
 // Size exposes the underlying Reader's Size method, if it is supported.
+//
+// WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding,
+// regardless of what encoding is otherwise in use by the database.
+// The number of characters, however, is defined by the number of UCS-2 codepoints.
+// For this reason, if a character requires more than one UCS-2 codepoint,
+// the size returned will be inaccurate and care must be taken to account for the difference!
 func (lob *Lob) Size() (int64, error) {
 	if lr, ok := lob.Reader.(interface{ Size() (int64, error) }); ok {
 		return lr.Size()
@@ -165,26 +171,12 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	defer dlr.mu.Unlock()
 	logger := getLogger()
 	if logger != nil {
-		logger.Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
+		logger.Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf), "p", len(p))
 	}
-	if dlr.buf == nil {
-		if dlr.chunkSize == 0 {
-			runtime.LockOSThread()
-			if C.dpiLob_getChunkSize(dlr.dpiLob, &dlr.chunkSize) == C.DPI_FAILURE {
-				return 0, fmt.Errorf("getChunkSize: %w", dlr.getError())
-			}
-			runtime.UnlockOSThread()
-		}
-		// If the dest buffer is big enough, avoid copying.
-		if ulen := C.uint64_t(len(p)); ulen >= C.uint64_t(dlr.chunkSize) || dlr.sizePlusOne != 0 && ulen+1 >= dlr.sizePlusOne {
-			if logger != nil {
-				logger.Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
-			}
-			return dlr.read(p)
-		}
-		dlr.buf = make([]byte, int(dlr.chunkSize))
-		dlr.bufR, dlr.bufW = 0, 0
-	} else if dlr.bufW != 0 && cap(dlr.buf) != 0 {
+	if err := dlr.init(); err != nil {
+		return 0, err
+	}
+	if dlr.bufW != 0 && cap(dlr.buf) != 0 {
 		var n int
 		if dlr.bufR < dlr.bufW {
 			n = copy(p, dlr.buf[dlr.bufR:dlr.bufW])
@@ -196,14 +188,38 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		if n != 0 {
 			return n, nil
 		}
+	} else if dlr.buf == nil {
+		cs := int(dlr.chunkSize)
+		// If the dest buffer is big enough, avoid copying.
+		var noCopy bool
+		if ulen := C.uint64_t(len(p)); dlr.sizePlusOne != 0 && ulen+1 >= dlr.sizePlusOne {
+			noCopy = true
+		} else if ulen >= C.uint64_t(dlr.chunkSize) {
+			noCopy = true
+			p = p[:(len(p)/cs)*cs]
+		}
+		if noCopy {
+			if logger != nil {
+				logger.Log("msg", "direct read", "p", len(p), "chunkSize", dlr.chunkSize)
+			}
+			return dlr.read(p)
+		}
+		n := 1 << 20
+		if dlr.sizePlusOne != 0 && dlr.sizePlusOne <= C.uint64_t(n) {
+			n = int(dlr.sizePlusOne)
+		}
+		dlr.buf = make([]byte, (n/cs+1)*cs)
+		dlr.bufR, dlr.bufW = 0, 0
 	}
 	var err error
 	// We only read into dlr.buf when it's empty, dlr.bufR == dlr.bufW == 0
-	dlr.bufW, err = dlr.read(dlr.buf)
+	if dlr.bufW, err = dlr.read(dlr.buf); dlr.bufW == 0 && err == nil {
+		err = io.EOF
+	}
+	dlr.bufR = copy(p, dlr.buf[:dlr.bufW])
 	if logger != nil {
 		logger.Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
 	}
-	dlr.bufR = copy(p, dlr.buf[:dlr.bufW])
 	if err == io.EOF && dlr.bufW != dlr.bufR {
 		err = nil
 	}
@@ -214,16 +230,24 @@ var ErrCLOB = errors.New("CLOB is not supported")
 
 // Size returns the LOB's size. It returns ErrCLOB for CLOB,
 // (works only for BLOBs), as Oracle reports CLOB size in runes, not in bytes!
+//
+// WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding,
+// regardless of what encoding is otherwise in use by the database.
+// The number of characters, however, is defined by the number of UCS-2 codepoints.
+// For this reason, if a character requires more than one UCS-2 codepoint,
+// the size returned will be inaccurate and care must be taken to account for the difference!
 func (dlr *dpiLobReader) Size() (int64, error) {
 	dlr.mu.Lock()
-	err := dlr.getSize()
+	if err := dlr.init(); err != nil {
+		return 0, err
+	}
 	size := dlr.sizePlusOne - 1
 	isClob := dlr.IsClob
 	dlr.mu.Unlock()
-	if err == nil && isClob {
-		err = ErrCLOB
+	if isClob {
+		return int64(size), ErrCLOB
 	}
-	return int64(size), err
+	return int64(size), nil
 }
 func (dlr *dpiLobReader) getSize() error {
 	if dlr.sizePlusOne != 0 {
@@ -235,10 +259,35 @@ func (dlr *dpiLobReader) getSize() error {
 		err = fmt.Errorf("getSize: %w", dlr.getError())
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
+	} else {
+		dlr.sizePlusOne++
 	}
 	runtime.UnlockOSThread()
-	dlr.sizePlusOne++
 	return err
+}
+func (dlr *dpiLobReader) init() error {
+	if dlr.sizePlusOne != 0 {
+		return nil
+	}
+	var lobType C.dpiOracleTypeNum
+	if C.dpiLob_getType(dlr.dpiLob, &lobType) != C.DPI_FAILURE &&
+		(2017 <= lobType && lobType <= 2019) {
+		dlr.IsClob = lobType == 2017 || lobType == 2018 // CLOB and NCLOB
+	}
+	if err := dlr.getSize(); err != nil {
+		var coder interface{ Code() int }
+		if errors.As(err, &coder) && coder.Code() == 22922 || strings.Contains(err.Error(), "invalid dpiLob handle") {
+			return io.EOF
+		}
+		return err
+	}
+	if err := dlr.checkExec(func() C.int {
+		return C.dpiLob_getChunkSize(dlr.dpiLob, &dlr.chunkSize)
+	}); err != nil {
+		return fmt.Errorf("getChunkSize: %w", err)
+	}
+
+	return nil
 }
 
 // read does the real LOB reading.
@@ -248,7 +297,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	}
 	logger := getLogger()
 	if logger != nil {
-		logger.Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
+		logger.Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "p", len(p), "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
 	if dlr.finished || dlr.dpiLob == nil {
 		return 0, io.EOF
@@ -260,54 +309,45 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	defer runtime.UnlockOSThread()
 	// For CLOB, sizePlusOne and offset counts the CHARACTERS!
 	// See https://oracle.github.io/odpi/doc/public_functions/dpiLob.html dpiLob_readBytes
-	if dlr.sizePlusOne == 0 { // first read
-		// never read size before
-		if err := dlr.getSize(); err != nil {
-			var coder interface{ Code() int }
-			if errors.As(err, &coder) && coder.Code() == 22922 || strings.Contains(err.Error(), "invalid dpiLob handle") {
-				return 0, io.EOF
-			}
-			return 0, err
-		}
-
-		var lobType C.dpiOracleTypeNum
-		if C.dpiLob_getType(dlr.dpiLob, &lobType) != C.DPI_FAILURE &&
-			(2017 <= lobType && lobType <= 2019) {
-			dlr.IsClob = lobType == 2017 || lobType == 2018 // CLOB and NCLOB
-		}
-	}
 	n := C.uint64_t(len(p))
 	amount := n
+	// https://github.com/oracle/odpi/issues/94#issuecomment-460021495
 	if dlr.IsClob {
-		amount /= 4 // dpiLob_readBytes' amount is the number of CHARACTERS for CLOBs.
+		amount = (amount + 3) / 4 // dpiLob_readBytes' amount is the number of CHARACTERS for CLOBs.
+		n = amount * 4
 	}
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
 	if logger != nil {
-		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n, "amount", amount)
+		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n, "amount", amount, "isClob", dlr.IsClob)
 	}
-	if dlr.offset+1 >= dlr.sizePlusOne {
+	if !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
 		if logger != nil {
 			logger.Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
 		}
 		return 0, io.EOF
 	}
-	if C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, amount, (*C.char)(unsafe.Pointer(&p[0])), &n) == C.DPI_FAILURE {
+	err := dlr.checkExecNoLOT(func() C.int {
+		return C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, amount, (*C.char)(unsafe.Pointer(&p[0])), &n)
+	})
+	if logger != nil {
+		logger.Log("msg", "readBytes", "offset", dlr.offset+1, "amount", amount, "n", n, "error", err)
+	}
+	if err == nil || err == io.EOF || n == 0 {
+		if n == 0 {
+			err = io.EOF
+		}
+	} else {
+		var codeErr interface{ Code() int }
+		if dlr.finished = errors.As(err, &codeErr) && codeErr.Code() == 1403; dlr.finished {
+			dlr.offset += n
+			return int(n), io.EOF
+		}
+		C.dpiLob_close(dlr.dpiLob)
+		dlr.dpiLob = nil
 		if logger != nil {
-			logger.Log("msg", "readBytes", "error", dlr.getError())
+			logger.Log("msg", "LOB read", "error", err)
 		}
-		if err := dlr.getError(); err != nil {
-			C.dpiLob_close(dlr.dpiLob)
-			dlr.dpiLob = nil
-			if logger != nil {
-				logger.Log("msg", "LOB read", "error", err)
-			}
-			var codeErr interface{ Code() int }
-			if dlr.finished = errors.As(err, &codeErr) && codeErr.Code() == 1403; dlr.finished {
-				dlr.offset += n
-				return int(n), io.EOF
-			}
-			return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
-		}
+		return int(n), fmt.Errorf("dpiLob_readBytes(lob=%p offset=%d amount=%d n=%d): %w", dlr.dpiLob, dlr.offset+1, amount, n, err)
 	}
 	if logger != nil {
 		logger.Log("msg", "read", "n", n)
@@ -317,8 +357,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	} else {
 		dlr.offset += n
 	}
-	var err error
-	if dlr.offset+1 >= dlr.sizePlusOne {
+	if err == io.EOF || n == 0 || !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
 		dlr.finished = true
