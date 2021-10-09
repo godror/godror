@@ -285,7 +285,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if logger != nil {
 		logger.Log("msg", "Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n, "amount", amount)
 	}
-	if dlr.offset+1 >= dlr.sizePlusOne {
+	if !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
 		if logger != nil {
 			logger.Log("msg", "LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
 		}
@@ -318,7 +318,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		dlr.offset += n
 	}
 	var err error
-	if dlr.offset+1 >= dlr.sizePlusOne {
+	if amount != 0 && n == 0 || !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
 		dlr.finished = true
