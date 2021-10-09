@@ -772,7 +772,8 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 	if logger != nil {
 		logger.Log("doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
 	}
-
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	for i := range args {
 		info := &(infos[i])
 		value := st.dests[i]
@@ -826,7 +827,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 				if logger != nil {
 					logger.Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", 0)
 				}
-				if err := st.checkExec(func() C.int { return C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) }); err != nil {
+				if err := st.checkExecNoLOT(func() C.int { return C.dpiVar_setNumElementsInArray(dv, C.uint32_t(0)) }); err != nil {
 					return fmt.Errorf("setNumElementsInArray[%d](%d): %w", i, 0, err)
 				}
 			}
@@ -849,7 +850,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 			if logger != nil {
 				logger.Log("C", "dpiVar_setNumElementsInArray", "i", i, "n", n)
 			}
-			if err := st.checkExec(func() C.int { return C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) }); err != nil {
+			if err := st.checkExecNoLOT(func() C.int { return C.dpiVar_setNumElementsInArray(dv, C.uint32_t(n)) }); err != nil {
 				return fmt.Errorf("%+v.setNumElementsInArray[%d](%d): %w", dv, i, n, err)
 			}
 		}
@@ -862,7 +863,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 	if !named {
 		for i, v := range st.vars {
 			i, v := i, v
-			if err := st.checkExec(func() C.int { return C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) }); err != nil {
+			if err := st.checkExecNoLOT(func() C.int { return C.dpiStmt_bindByPos(st.dpiStmt, C.uint32_t(i+1), v) }); err != nil {
 				return fmt.Errorf("bindByPos[%d]: %w", i, err)
 			}
 		}
@@ -875,7 +876,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 		}
 		//fmt.Printf("bindByName(%q)\n", name)
 		cName := C.CString(name)
-		err := st.checkExec(func() C.int { return C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i]) })
+		err := st.checkExecNoLOT(func() C.int { return C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i]) })
 		C.free(unsafe.Pointer(cName))
 		if err != nil {
 			return fmt.Errorf("bindByName[%q]: %w", name, err)
@@ -2752,8 +2753,10 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 	var ti C.dpiDataTypeInfo
 	logger := getLogger()
 	for i := 0; i < colCount; i++ {
-		if C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info) == C.DPI_FAILURE {
-			return nil, fmt.Errorf("getQueryInfo[%d]: %w", i, st.getError())
+		if err := st.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info)
+		}); err != nil {
+			return nil, fmt.Errorf("getQueryInfo[%d]: %w", i, err)
 		}
 		ti = info.typeInfo
 		bufSize := int(ti.clientSizeInBytes)
@@ -2808,12 +2811,16 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			return nil, err
 		}
 
-		if C.dpiStmt_define(st.dpiStmt, C.uint32_t(i+1), r.vars[i]) == C.DPI_FAILURE {
-			return nil, fmt.Errorf("define[%d]: %w", i, st.getError())
+		if err = st.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_define(st.dpiStmt, C.uint32_t(i+1), r.vars[i])
+		}); err != nil {
+			return nil, fmt.Errorf("define[%d]: %w", i, err)
 		}
 	}
-	if C.dpiStmt_addRef(st.dpiStmt) == C.DPI_FAILURE {
-		return &r, fmt.Errorf("dpiStmt_addRef: %w", st.getError())
+	if err := st.checkExecNoLOT(func() C.int {
+		return C.dpiStmt_addRef(st.dpiStmt)
+	}); err != nil {
+		return &r, fmt.Errorf("dpiStmt_addRef: %w", err)
 	}
 	st.columns = r.columns
 	return &r, nil

@@ -83,7 +83,7 @@ func (r *rows) Close() error {
 		}
 	}
 	if nextRs != nil {
-		if logger:= getLogger(); logger != nil {
+		if logger := getLogger(); logger != nil {
 			logger.Log("msg", "rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
 		}
 		C.dpiStmt_release(nextRs)
@@ -291,7 +291,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if len(dest) != len(r.columns) {
 		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
-    logger := getLogger()
+	logger := getLogger()
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -330,13 +330,15 @@ func (r *rows) Next(dest []driver.Value) error {
 			fmt.Printf("fetching max=%d\n", maxRows)
 			start = time.Now()
 		}
-		failed := C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows) == C.DPI_FAILURE
+		err := r.statement.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
+		})
+		failed := err != nil
 		if debugRowsNext {
 			fmt.Printf("failed=%t bri=%d fetched=%d more=%d data=%d cols=%d dur=%s\n", failed, r.bufferRowIndex, r.fetched, moreRows, len(r.data), len(r.columns), time.Since(start))
 		}
 		r.statement.Unlock()
 		if failed {
-			err := r.getError()
 			if logger != nil {
 				logger.Log("msg", "fetch", "error", err)
 			}
@@ -361,8 +363,10 @@ func (r *rows) Next(dest []driver.Value) error {
 			for i := range r.columns {
 				var n C.uint32_t
 				var data *C.dpiData
-				if C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data) == C.DPI_FAILURE {
-					return fmt.Errorf("getReturnedData[%d]: %w", i, r.getError())
+				if err = r.statement.checkExecNoLOT(func() C.int {
+					return C.dpiVar_getReturnedData(r.vars[i], 0, &n, &data)
+				}); err != nil {
+					return fmt.Errorf("getReturnedData[%d]: %w", i, err)
 				}
 				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
@@ -445,8 +449,10 @@ func (r *rows) Next(dest []driver.Value) error {
 			cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
 			var cBuf *C.char
 			var cLen C.uint32_t
-			if C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen) == C.DPI_FAILURE {
-				return r.getError()
+			if err := r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen)
+			}); err != nil {
+				return err
 			}
 			dest[i] = C.GoStringN(cBuf, C.int(cLen))
 
@@ -566,8 +572,9 @@ func (r *rows) Next(dest []driver.Value) error {
 				stmtOptions: r.statement.stmtOptions, // inherit parent statement's options
 			}
 			var colCount C.uint32_t
-			if C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount) == C.DPI_FAILURE {
-				err := r.getError()
+			if err := r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
+			}); err != nil {
 				if logger != nil {
 					logger.Log("msg", "Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
@@ -661,7 +668,7 @@ type directRow struct {
 }
 
 func (dr *directRow) Columns() []string {
-    logger := getLogger()
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("directRow", "Columns")
 	}
@@ -687,7 +694,7 @@ func (dr *directRow) Close() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (dr *directRow) Next(dest []driver.Value) error {
-    logger := getLogger()
+	logger := getLogger()
 	if logger != nil {
 		logger.Log("directRow", "Next", "query", dr.query, "dest", dest)
 	}
@@ -740,7 +747,7 @@ func (r *rows) NextResultSet() error {
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
-    logger := getLogger()
+	logger := getLogger()
 	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
 		if logger != nil {
