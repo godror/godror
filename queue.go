@@ -447,7 +447,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 			M.Raw = C.GoBytes(unsafe.Pointer(value), C.int(length))
 		} else {
 			if C.dpiObject_addRef(obj) == C.DPI_FAILURE {
-				return objType.conn.getError()
+				return objType.drv.getError()
 			}
 			M.Object = &Object{dpiObject: obj, ObjectType: objType}
 		}

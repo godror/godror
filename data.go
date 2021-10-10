@@ -214,7 +214,9 @@ func (d *Data) GetObject() *Object {
 		return nil
 	}
 	if !d.implicitObj {
-		if err := d.ObjectType.conn.checkExec(func() C.int { return C.dpiObject_addRef(o) }); err != nil {
+		if err := d.ObjectType.drv.checkExec(func() C.int {
+			return C.dpiObject_addRef(o)
+		}); err != nil {
 			panic(err)
 		}
 	}

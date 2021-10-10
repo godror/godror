@@ -90,6 +90,9 @@ func (r MyRecord) WriteObject() error {
 type MyTable struct {
 	godror.ObjectCollection
 	Items []*MyRecord
+	conn  interface {
+		NewData(baseType interface{}, sliceLen, bufSize int) ([]*godror.Data, error)
+	}
 }
 
 func (t *MyTable) Scan(src interface{}) error {
@@ -140,7 +143,7 @@ func (r MyTable) WriteObject(ctx context.Context) error {
 		return nil
 	}
 
-	data, err := r.NewData(r.Items[0], len(r.Items), 0)
+	data, err := r.conn.NewData(r.Items[0], len(r.Items), 0)
 	if err != nil {
 		return err
 	}
@@ -262,7 +265,7 @@ func dropPackages(ctx context.Context) {
 	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
 }
 
-func TestPLSQLTypes(t *testing.T) {
+func TestPlSqlTypes(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(testContext("PLSQLTypes"), 30*time.Second)
@@ -417,7 +420,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection()}
+			tb := MyTable{ObjectCollection: obj.Collection(), conn: conn}
 			params := []interface{}{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -489,7 +492,7 @@ func TestPLSQLTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items}
+			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items, conn: conn}
 			params := []interface{}{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
