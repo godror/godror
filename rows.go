@@ -548,7 +548,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				}
 				continue
 			}
-			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), conn: r.conn, IsClob: isClob}
+			rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(d), drv: r.drv, IsClob: isClob}
 			if isClob && (r.ClobAsString() || !r.LobAsReader()) {
 				sb := stringBuilders.Get()
 				_, err := io.Copy(sb, rdr)

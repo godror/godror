@@ -253,14 +253,12 @@ func (p *connPool) Close() error {
 
 func (d *drv) checkExec(f func() C.int) error {
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	return d.checkExecNoLOT(f)
+	err := d.checkExecNoLOT(f)
+	runtime.UnlockOSThread()
+	return err
 }
 
 func (d *drv) checkExecNoLOT(f func() C.int) error {
-	if d == nil {
-		return driver.ErrBadConn
-	}
 	if f() != C.DPI_FAILURE {
 		return nil
 	}

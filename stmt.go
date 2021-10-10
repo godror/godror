@@ -2351,7 +2351,7 @@ func (c *conn) dataGetLOBC(L *Lob, data *C.dpiData) {
 	if lob == nil {
 		return
 	}
-	L.Reader = &dpiLobReader{conn: c, dpiLob: lob, IsClob: L.IsClob}
+	L.Reader = &dpiLobReader{drv: c.drv, dpiLob: lob, IsClob: L.IsClob}
 }
 
 func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
@@ -2407,7 +2407,7 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		for chunkSize < minChunkSize {
 			chunkSize <<= 1
 		}
-		lw := &dpiLobWriter{dpiLob: lob, conn: c, isClob: L.IsClob}
+		lw := &dpiLobWriter{dpiLob: lob, drv: c.drv, isClob: L.IsClob}
 		_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
 		//fmt.Printf("%p written %d with chunkSize=%d\n", lob, n, chunkSize)
 		if closeErr := lw.Close(); closeErr != nil {

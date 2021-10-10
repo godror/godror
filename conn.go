@@ -66,7 +66,7 @@ type conn struct {
 }
 
 func (c *conn) getError() error {
-	if c == nil || c.drv == nil {
+	if c == nil {
 		return driver.ErrBadConn
 	}
 	return c.drv.getError()
