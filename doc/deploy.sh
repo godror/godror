@@ -9,6 +9,6 @@ files=$(git show "$version":./doc | sed -ne '/[.]md$/ s,^,./doc/,p'; git show "$
 git checkout "$version" -- $files
 git add $files
 if git status --porcelain | grep -q '^[ MAD]'; then
-	git commit -am "Update gh-pages to $version"
+	git commit -am "Update gh-pages to $version" -n
 	git push origin gh-pages
 fi
