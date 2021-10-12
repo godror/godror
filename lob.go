@@ -181,7 +181,8 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 			}
 			return dlr.read(p)
 		}
-		dlr.buf = make([]byte, int(dlr.chunkSize))
+		cs := int(dlr.chunkSize)
+		dlr.buf = make([]byte, (maxI(len(p), 1<<20-cs)/cs+1)*cs)
 		dlr.bufR, dlr.bufW = 0, 0
 	} else if dlr.bufW != 0 && cap(dlr.buf) != 0 {
 		var n int
@@ -553,4 +554,11 @@ func (dl *DirectLob) GetFileName() (dir, file string, err error) {
 	dir = C.GoStringN(directoryAlias, C.int(directoryAliasLength))
 	file = C.GoStringN(fileName, C.int(fileNameLength))
 	return dir, file, nil
+}
+
+func maxI(a, b int) int {
+	if a < b {
+		return b
+	}
+	return a
 }
