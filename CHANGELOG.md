@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.28.0]
+### Changed
+- Remove ObjectType.NewData, to get rid of the dependency on *conn in ObjectType, for #172
+
+## [v0.27.1]
+### Added
+- Size, ReadAt methods to dpiLobReader
+
+## [v0.27.0]
+### Changed
+- Instead of Log package-level variable, use SetLog or SetLogger.
+
+## [v0.26.0]
+### Added
+- Batch type for batching ExecContext calls.
+- Add support for native JSON type support (for DB21.3)
+
+## [v0.25.6]
+### Changed
+- Fix lobReader buffering which caused short reads.
+
 ## [v0.25.4]
 ### Added
 - Implement use of "google.golang.org/protobuf/types/known/timestamppb".Timestamp,
