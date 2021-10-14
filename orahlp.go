@@ -520,13 +520,16 @@ type Conn interface {
 	Break() error
 	Commit() error
 	Rollback() error
+
 	ClientVersion() (VersionInfo, error)
 	ServerVersion() (VersionInfo, error)
-	GetObjectType(name string) (*ObjectType, error)
-	NewSubscription(string, func(Event), ...SubscriptionOption) (*Subscription, error)
 	Startup(StartupMode) error
 	Shutdown(ShutdownMode) error
+
+	NewSubscription(string, func(Event), ...SubscriptionOption) (*Subscription, error)
+	GetObjectType(name string) (*ObjectType, error)
 	NewData(baseType interface{}, SliceLen, BufSize int) ([]*Data, error)
+	NewTempLob(isClob bool) (*DirectLob, error)
 
 	Timezone() *time.Location
 	GetPoolStats() (PoolStats, error)

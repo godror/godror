@@ -423,9 +423,9 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 
 // DirectLob holds a Lob and allows direct (Read/WriteAt, not streaming Read/Write) operations on it.
 type DirectLob struct {
-	drv    *drv
-	dpiLob *C.dpiLob
-	opened bool
+	drv            *drv
+	dpiLob         *C.dpiLob
+	opened, isClob bool
 }
 
 var _ = io.ReaderAt((*DirectLob)(nil))
@@ -437,7 +437,7 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 	if isClob {
 		typ = C.DPI_ORACLE_TYPE_CLOB
 	}
-	lob := DirectLob{drv: c.drv}
+	lob := DirectLob{drv: c.drv, isClob: isClob}
 	if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) }); err != nil {
 		return nil, fmt.Errorf("newTempLob: %w", err)
 	}
@@ -500,10 +500,25 @@ func (dl *DirectLob) Set(p []byte) error {
 }
 
 // ReadAt reads at most len(p) bytes into p at offset.
+//
+// CLOB's offset must be in amount of characters, and does not work reliably!
+//
+// WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding,
+// regardless of what encoding is otherwise in use by the database.
+// The number of characters, however, is defined by the number of UCS-2 codepoints.
+// For this reason, if a character requires more than one UCS-2 codepoint,
+// the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 	n := C.uint64_t(len(p))
 	if dl.dpiLob == nil {
 		return 0, io.EOF
+	}
+	amount := n
+	if dl.isClob {
+		amount /= 4
+		if amount == 0 {
+			return 0, io.ErrShortBuffer
+		}
 	}
 	if err := dl.drv.checkExec(func() C.int {
 		return C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n)
