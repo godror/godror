@@ -446,6 +446,8 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		if P.Timezone == nil {
 			P.Timezone = time.UTC
 		}
+		//} else if P.Timezone == nil {
+		//P.Timezone = time.Local
 	}
 	for _, task := range []struct {
 		Dest *int

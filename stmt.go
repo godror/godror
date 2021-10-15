@@ -1346,6 +1346,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
 	}
+	var logger Logger
 	times := []time.Time{{}}
 	switch x := vv.(type) {
 	case time.Time:
@@ -1362,7 +1363,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 			data[0].isNull = 0
 			times[0] = x.AsTime()
 		}
-		if logger := getLogger(); logger != nil {
+		if logger = getLogger(); logger != nil {
 			logger.Log("msg", "dataSetTime", "ts", x, "t", times[0])
 		}
 
@@ -1405,6 +1406,9 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 	}
 
 	tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
+	if logger == nil {
+		logger = getLogger()
+	}
 	for i, t := range times {
 		if data[i].isNull == 1 {
 			continue
@@ -1418,6 +1422,9 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 			return fmt.Errorf("%v: %w", t, ErrBadDate)
 		}
 		h, m, s := t.Clock()
+		if logger != nil {
+			logger.Log("msg", "setTimestamp", "time", t, "utc", t.UTC(), "tz", c.Timezone(), "Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", t.Nanosecond(), "tzHour", tzHour, "tzMin", tzMin)
+		}
 		C.dpiData_setTimestamp(&data[i],
 			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
 			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),

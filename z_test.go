@@ -4133,6 +4133,8 @@ func TestForError8192(t *testing.T) {
 		t.Fatal(err)
 	}
 	params.StandaloneConnection = true
+	params.Timezone = time.Local
+	t.Log("params:", params)
 	db, err := sql.Open("godror", params.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)
@@ -4150,7 +4152,7 @@ func TestForError8192(t *testing.T) {
 
 	// prepare table
 	_, _ = conn.ExecContext(ctx, "DROP TABLE test_date_error")
-	if _, err := conn.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts date)"); err != nil {
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts DATE)"); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = conn.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
@@ -4185,24 +4187,31 @@ func TestForError8192(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "insert into test_date_error(problem_ts) values(:problem_ts)")
+	const qry = "insert into test_date_error(problem_ts) values(:problem_ts)"
+	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Errorf("Failed to prepare insSQL %s", err)
-
+		t.Fatalf("%s: %+v", qry, err)
 	}
-	defer stmt.Close()
+	defer func() { stmt.Close() }()
 
-	tim := time.Time{}.In(time.FixedZone("LMT", (+50 * 60)))
-	for i := -70; i < 70; i++ {
+	tim := time.Time{}.UTC() //In(time.FixedZone("LMT", (+50 * 60)))
+	for i := -3*60 + 1; i < 3*60; i++ {
 		tim := tim.Add(time.Duration(i) * time.Minute)
-		_, err = stmt.Exec(sql.Named("problem_ts", sql.NullTime{
+
+		_, err = stmt.ExecContext(ctx, sql.Named("problem_ts", sql.NullTime{
 			Time:  tim,
 			Valid: true}))
 		if err != nil {
 			if errors.Is(err, godror.ErrBadDate) {
 				t.Logf("exec failure for %v: %v\n", tim, err)
 			} else {
-				t.Fatalf("exec failure for %v: %v\n", tim, err)
+				t.Errorf("exec failure for %v: %v\n", tim, err)
+				return
+			}
+			// Close the corrupted stmt and prepare a new one
+			stmt.Close()
+			if stmt, err = tx.PrepareContext(ctx, qry); err != nil {
+				t.Fatalf("%s: %+v", qry, err)
 			}
 		}
 	}
