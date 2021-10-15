@@ -1411,6 +1411,10 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		}
 		t = t.In(c.Timezone())
 		Y, M, D := t.Date()
+		if Y < -4713 || Y == 0 || Y > 9999 { // Against ORA-01841
+			data[i].isNull = 1
+			continue
+		}
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],
 			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
