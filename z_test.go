@@ -4133,32 +4133,44 @@ func TestForError8192(t *testing.T) {
 		t.Fatal(err)
 	}
 	params.StandaloneConnection = true
-	params.Timezone = time.Local
-	t.Log("params:", params)
-	db, err := sql.Open("godror", params.StringWithPassword())
+	params.Timezone = time.UTC
+	t.Log("UTC params:", params)
+	dbUTC, err := sql.Open("godror", params.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer dbUTC.Close()
+	params.Timezone = time.Local
+	t.Log("local params:", params)
+	dbLocal, err := sql.Open("godror", params.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbLocal.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	conn, err := db.Conn(ctx)
+	connUTC, err := dbUTC.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-
-	// prepare table
-	_, _ = conn.ExecContext(ctx, "DROP TABLE test_date_error")
-	if _, err := conn.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts DATE)"); err != nil {
+	defer connUTC.Close()
+	connLocal, err := dbLocal.Conn(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = conn.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
+	defer connLocal.Close()
+
+	// prepare table
+	_, _ = connUTC.ExecContext(ctx, "DROP TABLE test_date_error")
+	if _, err := connUTC.ExecContext(ctx, "CREATE TABLE test_date_error (problem_ts DATE)"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = connUTC.ExecContext(context.Background(), "DROP TABLE test_date_error") }()
 
 	// fetch a date from the database
-	selectStmt, err := conn.PrepareContext(ctx, "select to_date('01-01-0001','dd-mm-yyyy') problem_ts from dual")
+	selectStmt, err := connUTC.PrepareContext(ctx, "select to_date('01-01-0001','dd-mm-yyyy') problem_ts from dual")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4181,7 +4193,7 @@ func TestForError8192(t *testing.T) {
 	}
 
 	// insert the date in the database
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := connLocal.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("Failed to beginTx: %s\n", err)
 	}
@@ -4194,18 +4206,22 @@ func TestForError8192(t *testing.T) {
 	}
 	defer func() { stmt.Close() }()
 
-	tim := time.Time{}.UTC() //In(time.FixedZone("LMT", (+50 * 60)))
-	for i := -3*60 + 1; i < 3*60; i++ {
-		tim := tim.Add(time.Duration(i) * time.Minute)
+	tim := time.Time{}.UTC().Add(-time.Minute) //In(time.FixedZone("LMT", (+50 * 60)))
+	for i := 0; i < 6*60; i++ {
+		tim := tim.Add(time.Duration(-1*(i%2)) * time.Duration(i/2) * time.Minute)
 
-		_, err = stmt.ExecContext(ctx, sql.Named("problem_ts", sql.NullTime{
-			Time:  tim,
-			Valid: true}))
+		param := sql.NullTime{Time: tim, Valid: true}
+		_, err = stmt.ExecContext(ctx, param)
+		// msg=setTimestamp time=0001-01-01T01:15:20+01:16 utc=0000-12-31T23:59:00Z tz=Local Y=1 M=January D=1 h=1 m=15 s=20 t=0 tzHour=2 tzMin=0
+
 		if err != nil {
 			if errors.Is(err, godror.ErrBadDate) {
-				t.Logf("exec failure for %v: %v\n", tim, err)
+				t.Logf("exec failure for Local %v: %v\n", tim, err)
 			} else {
-				t.Errorf("exec failure for %v: %v\n", tim, err)
+				t.Errorf("exec failure for Local %v: %+v\n", tim, err)
+				if _, err = dbUTC.ExecContext(ctx, qry, param); err != nil {
+					t.Fatalf("exec failure for UTC %v: %+v", tim, err)
+				}
 				return
 			}
 			// Close the corrupted stmt and prepare a new one

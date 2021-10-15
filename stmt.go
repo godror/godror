@@ -1405,30 +1405,36 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		return nil
 	}
 
-	tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
+	//tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
 	if logger == nil {
 		logger = getLogger()
 	}
+	tz := c.Timezone()
+	var tzOff int
 	for i, t := range times {
-		if data[i].isNull == 1 {
+		if data[i].isNull == 1 || t.IsZero() {
 			continue
 		}
-		t = t.In(c.Timezone())
+		t := t.In(tz)
 		Y, M, D := t.Date()
 		if Y <= 0 { // Oracle skips year 0, 0001-01-01 follows -0001-12-31 !
 			Y--
 		}
-		if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841, ORA-08192
+		if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841
 			return fmt.Errorf("%v: %w", t, ErrBadDate)
 		}
 		h, m, s := t.Clock()
+		if tz != time.UTC {
+			_, tzOff = t.Zone()
+		}
 		if logger != nil {
-			logger.Log("msg", "setTimestamp", "time", t, "utc", t.UTC(), "tz", c.Timezone(), "Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", t.Nanosecond(), "tzHour", tzHour, "tzMin", tzMin)
+			logger.Log("msg", "setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,
+				"Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", t.Nanosecond(), "tzHour", tzOff/3600, "tzMin", (tzOff%3600)/60)
 		}
 		C.dpiData_setTimestamp(&data[i],
 			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
 			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),
-			tzHour, tzMin,
+			C.int8_t(tzOff/3600), C.int8_t((tzOff%3600)/60),
 		)
 	}
 	return nil
