@@ -101,15 +101,34 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 
 // ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
 func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if dl, hasDeadline := ctx.Deadline(); hasDeadline {
-		c.drv.mu.RLock()
-		defer c.drv.mu.RUnlock()
-		if err := c.setCallTimeout(time.Until(dl)); err != nil {
-			_ = c.setCallTimeout(0)
+	var logger Logger
+	dl, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		c.mu.RLock()
+		if func() bool {
+			c.drv.mu.RLock()
+			old := c.drv.clientVersion.Version < 18
+			c.drv.mu.RUnlock()
+			if old {
+				return false
+			}
+			ms := C.uint32_t(time.Until(dl) / time.Millisecond)
+			logger = ctxGetLog(ctx)
+			if logger != nil {
+				logger.Log("msg", "setCallTimeout", "ms", ms)
+			}
+			if C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE {
+				return true
+			}
+			if logger != nil {
+				logger.Log("msg", "setCallTimeout failed!")
+			}
+			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+			return false
+		}() {
+			defer func() { _ = C.dpiConn_setCallTimeout(c.dpiConn, 0); c.mu.RUnlock() }()
 		} else {
-			defer func() { _ = c.setCallTimeout(0) }()
+			c.mu.RUnlock()
 		}
 	}
 	select {
@@ -122,7 +141,9 @@ func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
 			return
 		default:
 			err := ctx.Err()
-			logger := ctxGetLog(ctx)
+			if logger == nil {
+				logger = ctxGetLog(ctx)
+			}
 			if logger != nil {
 				logger.Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
 			}
@@ -694,30 +715,6 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 		}
 	}
 	return tz, off, nil
-}
-
-func (c *conn) setCallTimeout(dur time.Duration) error {
-	if dur < 0 || c == nil || c.dpiConn == nil {
-		return nil
-	}
-	c.drv.mu.RLock()
-	ok := c.drv.clientVersion.Version >= 18
-	c.drv.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-	ms := C.uint32_t(dur / time.Millisecond)
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "setCallTimeout", "conn", fmt.Sprintf("%p", c), "ms", ms)
-	}
-	runtime.LockOSThread()
-	ok = C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE
-	runtime.UnlockOSThread()
-	if ok {
-		return nil
-	}
-	return c.getError()
 }
 
 // maybeBadConn checks whether the error is because of a bad connection,

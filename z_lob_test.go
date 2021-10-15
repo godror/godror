@@ -139,11 +139,7 @@ func TestLOBAppend(t *testing.T) {
 	defer cancel()
 
 	// To have a valid LOB locator, we have to keep the Stmt around.
-	qry := `DECLARE tmp BLOB;
-BEGIN
-  DBMS_LOB.createtemporary(tmp, TRUE, DBMS_LOB.SESSION);
-  :1 := tmp;
-END;`
+	const qry = `BEGIN DBMS_LOB.createtemporary(:1, TRUE, DBMS_LOB.SESSION); END;`
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +148,7 @@ END;`
 
 	stmt, err := tx.PrepareContext(ctx, qry)
 	if err != nil {
-		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+		t.Fatalf("%q: %+v", qry, err)
 	}
 	defer stmt.Close()
 	var tmp godror.Lob
@@ -169,26 +165,19 @@ END;`
 		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}
 
-	if false {
-		// Either use DBMS_LOB.freetemporary
-		if _, err := tx.ExecContext(ctx, "BEGIN dbms_lob.freetemporary(:1); END;", tmp); err != nil {
-			t.Errorf("Failed to close temporary lob(%v): %+v", tmp, err)
-		}
-	} else {
-		// Or Hijack and Close it.
-		dl, err := tmp.Hijack()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer dl.Close()
-		length, err := dl.Size()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("length: %d", length)
-		if length != int64(len(want)) {
-			t.Errorf("length mismatch: got %d, wanted %d", length, len(want))
-		}
+	// Hijack and Close it.
+	dl, err := tmp.Hijack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dl.Close()
+	length, err := dl.Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("length: %d", length)
+	if length != int64(len(want)) {
+		t.Errorf("length mismatch: got %d, wanted %d", length, len(want))
 	}
 }
 
