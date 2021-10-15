@@ -1411,9 +1411,11 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		}
 		t = t.In(c.Timezone())
 		Y, M, D := t.Date()
-		if Y < -4713 || Y == 0 || Y > 9999 { // Against ORA-01841
-			data[i].isNull = 1
-			continue
+		if Y <= 0 { // Oracle skips year 0, 0001-01-01 follows -0001-12-31 !
+			Y--
+		}
+		if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841, ORA-08192
+			return fmt.Errorf("%v: %w", t, ErrBadDate)
 		}
 		h, m, s := t.Clock()
 		C.dpiData_setTimestamp(&data[i],
@@ -2691,7 +2693,10 @@ func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
 	return nil
 }
 
-var ErrNotImplemented = errors.New("not implemented")
+var (
+	ErrNotImplemented = errors.New("not implemented")
+	ErrBadDate        = errors.New("date out of range (year must be between -4713 and 9999, and must not be 0)")
+)
 
 // CheckNamedValue is called before passing arguments to the driver
 // and is called in place of any ColumnConverter. CheckNamedValue must do type

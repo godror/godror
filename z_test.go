@@ -4127,6 +4127,7 @@ func TestNullIssue143(t *testing.T) {
 }
 
 func TestForError8192(t *testing.T) {
+	t.Parallel()
 	params, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -4191,14 +4192,18 @@ func TestForError8192(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	tim := time.Time{}.UTC() //time.FixedZone("LMT", (+50 * 60)))
+	tim := time.Time{}.In(time.FixedZone("LMT", (+50 * 60)))
 	for i := -70; i < 70; i++ {
 		tim := tim.Add(time.Duration(i) * time.Minute)
 		_, err = stmt.Exec(sql.Named("problem_ts", sql.NullTime{
 			Time:  tim,
 			Valid: true}))
 		if err != nil {
-			t.Fatalf("exec failure for %v: %v\n", tim, err)
+			if errors.Is(err, godror.ErrBadDate) {
+				t.Logf("exec failure for %v: %v\n", tim, err)
+			} else {
+				t.Fatalf("exec failure for %v: %v\n", tim, err)
+			}
 		}
 	}
 }
