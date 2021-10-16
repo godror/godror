@@ -4207,8 +4207,8 @@ func TestForError8192(t *testing.T) {
 	defer func() { stmt.Close() }()
 
 	tim := time.Time{}.UTC().Add(-time.Minute) //In(time.FixedZone("LMT", (+50 * 60)))
-	for i := 0; i < 6*60; i++ {
-		tim := tim.Add(time.Duration(-1*(i%2)) * time.Duration(i/2) * time.Minute)
+	for i := 0; i < 6*30; i++ {
+		tim := tim.Add(time.Duration(-1*(i%2)) * time.Duration(i) * time.Minute)
 
 		param := sql.NullTime{Time: tim, Valid: true}
 		_, err = stmt.ExecContext(ctx, param)

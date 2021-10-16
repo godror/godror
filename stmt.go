@@ -1342,6 +1342,8 @@ func (c *conn) dataGetTimeC(t *time.Time, data *C.dpiData) {
 	)
 }
 
+var date8192begin, date8192end = time.Date(0, time.December, 31, 0, 0, 0, 0, time.UTC), time.Date(1, time.January, 2, 0, 0, 0, 0, time.UTC)
+
 func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 	if vv == nil {
 		return dataSetNull(dv, data, nil)
@@ -1410,12 +1412,21 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		logger = getLogger()
 	}
 	tz := c.Timezone()
-	var tzOff int
 	for i, t := range times {
-		if data[i].isNull == 1 || t.IsZero() {
+		if data[i].isNull == 1 {
 			continue
 		}
-		t := t.In(tz)
+		tz, tzOff := tz, 0
+		if tz != time.UTC && // Against ORA-08192
+			date8192begin.Before(t) && date8192end.After(t) {
+			tz = time.UTC
+		}
+		if t.Location() != tz {
+			t = t.In(tz)
+		}
+		if tz != time.UTC {
+			_, tzOff = t.Zone()
+		}
 		Y, M, D := t.Date()
 		if Y <= 0 { // Oracle skips year 0, 0001-01-01 follows -0001-12-31 !
 			Y--
@@ -1424,9 +1435,6 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 			return fmt.Errorf("%v: %w", t, ErrBadDate)
 		}
 		h, m, s := t.Clock()
-		if tz != time.UTC {
-			_, tzOff = t.Zone()
-		}
 		if logger != nil {
 			logger.Log("msg", "setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,
 				"Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", t.Nanosecond(), "tzHour", tzOff/3600, "tzMin", (tzOff%3600)/60)
