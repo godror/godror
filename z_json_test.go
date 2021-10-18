@@ -705,6 +705,10 @@ func TestUpdateJSONScalar(t *testing.T) {
 	}
 }
 
+// Converts map with different Go-types to godror.JSON type
+// This is bound to the insert fuction and executed
+// For each unique go-type in the map, their corresponding JSON types,
+// as stored in the DB, are fetched and compared with their expected values.
 func TestCompareJSONTypes(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("CompareJSONTypes"),
