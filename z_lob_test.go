@@ -12,14 +12,74 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
 
 	godror "github.com/godror/godror"
+	"github.com/godror/godror/dsn"
 	"github.com/google/go-cmp/cmp"
 )
+
+func TestCloseTempLOB(t *testing.T) {
+	//godror.SetLogger(godror.NewLogfmtLogger(os.Stdout))
+	P, err := dsn.Parse(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if P.StandaloneConnection {
+		t.Skip("TestCloseTempLOB needs pooled connection")
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("CloseTempLOB"), 30*time.Second)
+	defer cancel()
+
+	var wg, start sync.WaitGroup
+	start.Add(1)
+	const maxConn = 2*maxSessions + 1
+	wg.Add(maxConn)
+	for j := 0; j < maxConn; j++ {
+		t.Logf("Run %d\n", j)
+		go func(n int) {
+			start.Wait()
+			err := newTempLob(ctx, testDb)
+			wg.Done()
+			if err != nil {
+				log.Println(err.Error())
+			}
+			t.Logf("Finish %d\n", n)
+		}(j)
+	}
+	start.Done()
+	wg.Wait()
+}
+
+func newTempLob(ctx context.Context, db *sql.DB) error {
+	data := []byte{0, 1, 2, 3, 4, 5}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return godror.Raw(ctx, conn,
+		func(c godror.Conn) error {
+			lob, err := c.(interface {
+				NewTempLob(bool) (*godror.DirectLob, error)
+			}).NewTempLob(false)
+			if err != nil {
+				return err
+			}
+			_, err = lob.WriteAt(data, 0)
+			if closeErr := lob.Close(); closeErr != nil && err == nil {
+				err = closeErr
+			}
+			return err
+		},
+	)
+}
 
 func TestSplitLOB(t *testing.T) {
 	t.Parallel()

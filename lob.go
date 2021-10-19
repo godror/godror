@@ -104,7 +104,7 @@ func (dlr *dpiLobReader) Scan(src interface{}) error {
 	return nil
 }
 
-var _ = io.Reader((*dpiLobReader)(nil))
+var _ = io.ReadCloser((*dpiLobReader)(nil))
 var _ = io.ReaderAt((*dpiLobReader)(nil))
 
 type dpiLobReader struct {
@@ -351,6 +351,14 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	return int(n), err
 }
+func (dlr *dpiLobReader) Close() error {
+	if dlr == nil || dlr.dpiLob == nil {
+		return nil
+	}
+	lob := dlr.dpiLob
+	dlr.dpiLob = nil
+	return closeLob(dlr, lob)
+}
 
 type dpiLobWriter struct {
 	*drv
@@ -418,6 +426,7 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 			}
 		}
 	}
+	C.dpiLob_release(lob)
 	return nil
 }
 

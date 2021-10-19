@@ -171,6 +171,8 @@ func firstLockOSThread(ce []*ast.CallExpr) token.Pos {
 			if id, ok := se.X.(*ast.Ident); ok && id.Name == "runtime" {
 				return true
 			}
+		} else if se.Sel.Name == "checkExec" {
+			return true
 		}
 		return false
 	}) {
