@@ -9,6 +9,8 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -32,7 +34,11 @@ func TestConcurrency(t *testing.T) {
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 	db.SetMaxIdleConns(P.PoolParams.MinSessions)
-	db.SetMaxOpenConns(P.PoolParams.MaxSessions)
+
+	// This limit is needed to avoid sigsegvs acquiring new connections
+	if ok, _ := strconv.ParseBool(os.Getenv("GODROR_CONC_NO_LIMIT")); !ok {
+		db.SetMaxOpenConns(P.PoolParams.MaxSessions)
+	}
 
 	const delQry = "DROP TABLE test_concurrency"
 	db.ExecContext(ctx, delQry)
