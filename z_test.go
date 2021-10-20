@@ -242,7 +242,7 @@ func setUp() func() {
 				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
 				godror.Raw(ctx, testDb, func(c godror.Conn) error {
 					poolStats, err := c.GetPoolStats()
-					fmt.Fprintf(os.Stderr, "testDb: %s %v\n", poolStats, err)
+					fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
 					return err
 				})
 				cancel()
