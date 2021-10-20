@@ -21,7 +21,7 @@ import (
 )
 
 func TestConcurrency(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Concurrenty"), 60*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("Concurrency"), 30*time.Second)
 	defer cancel()
 
 	P, err := dsn.Parse(testConStr)
@@ -33,7 +33,7 @@ func TestConcurrency(t *testing.T) {
 	P.PoolParams.WaitTimeout = 5 * time.Second
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
-	db.SetMaxIdleConns(P.PoolParams.MinSessions)
+	db.SetMaxIdleConns(0)
 
 	// This limit is needed to avoid sigsegvs acquiring new connections
 	if ok, _ := strconv.ParseBool(os.Getenv("GODROR_CONC_NO_LIMIT")); !ok {
@@ -58,7 +58,7 @@ func TestConcurrency(t *testing.T) {
 	grp, grpCtx := errgroup.WithContext(ctx)
 	printConnStats(t, db)
 	start := time.Now()
-	for i := 0; i < 20000; i++ {
+	for i := 0; i < P.PoolParams.MaxSessions*128; i++ {
 		i := i
 		grp.Go(func() error {
 			<-started

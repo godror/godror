@@ -223,9 +223,9 @@ func setUp() func() {
 		}
 	}()
 
+	testDb.SetMaxOpenConns(maxSessions)
 	if P.StandaloneConnection {
 		testDb.SetMaxIdleConns(maxSessions / 2)
-		testDb.SetMaxOpenConns(maxSessions)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
 			for range statTicks {
@@ -235,7 +235,6 @@ func setUp() func() {
 	} else {
 		// Disable Go db connection pooling
 		testDb.SetMaxIdleConns(0)
-		testDb.SetMaxOpenConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
 			for range statTicks {
@@ -3532,10 +3531,10 @@ func TestOpenCloseLOB(t *testing.T) {
 		t.Fatalf("%s: %+v", P, err)
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(poolSize)
 	if P.StandaloneConnection {
 		db.SetMaxIdleConns(poolSize)
 	} else {
-		db.SetMaxOpenConns(0)
 		db.SetMaxIdleConns(0)
 	}
 
