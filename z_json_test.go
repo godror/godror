@@ -706,7 +706,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 }
 
 // Converts map with different Go-types to godror.JSON type
-// This is bound to the insert fuction and executed
+// This is bound to the insert function and executed
 // For each unique go-type in the map, their corresponding JSON types,
 // as stored in the DB, are fetched and compared with their expected values.
 func TestStorageTypes(t *testing.T) {
@@ -719,7 +719,7 @@ func TestStorageTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	tbl := "test_objectcollection_jsonarr" + tblSuffix
+	tbl := "test_objectcollection_jsonmap" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
@@ -744,135 +744,126 @@ func TestStorageTypes(t *testing.T) {
 	birthdate := time.Now()
 
 	// Map with different Go-types, which would be stored as JSON in the DB
-	jsarray := []interface{}{
-		map[string]interface{}{
-			"asObject": map[string]interface{}{
-				"asNumber":    godror.Number("12"),
-				"asString":    "Mary",
-				"asTimestamp": birthdate,
-				"asBoolean":   true,
-				"asByte":      []byte{45, 55},
-				"Other": map[string]interface{}{
-					"asInt32":   int32(98),
-					"asInt64":   int64(99),
-					"asInt8":    int8(10),
-					"asInt16":   int16(20),
-					"asUint64":  uint64(99),
-					"asFloat64": float64(98.11),
-					"asFloat32": float32(97.2),
-				},
-			},
+	jsmap := map[string]interface{}{
+		"asObject": map[string]interface{}{
+			"asNumber":    godror.Number("12"),
+			"asString":    "Mary",
+			"asTimestamp": birthdate,
+			"asBoolean":   true,
+			"asByte":      []byte{45, 51},
+			"asInt32":     int32(98),
+			"asInt64":     int64(99),
+			"asInt8":      int8(10),
+			"asInt16":     int16(20),
+			"asUint64":    uint64(99),
+			"asFloat64":   float64(98.11),
+			"asFloat32":   float32(97.2),
 		},
-		"nodata",
 	}
-	for tN, tC := range []struct {
-		JDOC []interface{}
-	}{
-		{JDOC: jsarray},
-	} {
-		jsonval := godror.JSONValue{Value: tC.JDOC}
-		if _, err = stmt.ExecContext(ctx, tN*2, jsonval); err != nil {
-			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
+
+	jsonval := godror.JSONValue{Value: jsmap}
+	if _, err = stmt.ExecContext(ctx, 0, jsonval); err != nil {
+		t.Errorf("%d/1. (%v): %v", 0, jsmap, err)
+
+	}
+
+	rows, err := conn.QueryContext(ctx,
+		"SELECT id,json_value(jdoc,'$.asObject.type()'),json_value(jdoc,'$.asObject.asString.type()'),json_value(jdoc,'$.asObject.asNumber.type()'),json_value(jdoc,'$.asObject.asBoolean.type()'),json_value(jdoc,'$.asObject.asTimestamp.type()'),json_value(jdoc,'$.asObject.asInt32.type()'),json_value(jdoc,'$.asObject.asInt64.type()'),json_value(jdoc,'$.asObject.asInt8.type()'),json_value(jdoc,'$.asObject.asInt16.type()'),json_value(jdoc,'$.asObject.asUint64.type()'),json_value(jdoc,'$.asObject.asFloat64.type()'),json_value(jdoc,'$.asObject.asFloat32.type()'),json_value(jdoc,'$.asObject.asByte.type()') FROM "+tbl+" c ") //nolint:gas
+	if err != nil {
+		t.Errorf("%d/3. %v", 0, err)
+
+	}
+	for rows.Next() {
+		var id int
+		var asStringtype, asTimestamptype, asObjecttype, asBooleantype, asNumbertype, asInt32type, asInt64type,
+			asInt8type, asInt16type, asUint64type,
+			asFloat64type, asFloat32type, asBytetype string
+
+		if err = rows.Scan(&id, &asObjecttype,
+			&asStringtype, &asNumbertype, &asBooleantype,
+			&asTimestamptype, &asInt32type, &asInt64type,
+			&asInt8type, &asInt16type, &asUint64type,
+			&asFloat64type, &asFloat32type, &asBytetype); err != nil {
+			rows.Close()
+			t.Errorf("%d/3. scan: %v", 0, err)
 			continue
 		}
 
-		rows, err := conn.QueryContext(ctx,
-			"SELECT id,json_value(jdoc,'$.asObject.type()'),json_value(jdoc,'$.asObject.asString.type()'),json_value(jdoc,'$.asObject.asNumber.type()'),json_value(jdoc,'$.asObject.asBoolean.type()'),json_value(jdoc,'$.asObject.asTimestamp.type()'),json_value(jdoc,'$.asObject.Other.asInt32.type()'),json_value(jdoc,'$.asObject.Other.asInt64.type()'),json_value(jdoc,'$.asObject.Other.asInt8.type()'),json_value(jdoc,'$.asObject.Other.asInt16.type()'),json_value(jdoc,'$.asObject.Other.asUint64.type()'),json_value(jdoc,'$.asObject.Other.asFloat64.type()'),json_value(jdoc,'$.asObject.Other.asFloat32.type()'),json_value(jdoc,'$.asObject.asByte.type()') FROM "+tbl+" c ") //nolint:gas
-		if err != nil {
-			t.Errorf("%d/3. %v", tN, err)
-			continue
+		// Valid DB types
+		wantObjectDBtype := "object"
+		wantNumberDBtype := "number"
+		wantStringDBtype := "string"
+		wantTimestampDBtype := "timestamp"
+		wantBooleanDBtype := "boolean"
+		wantBinaryDBtype := "binary"
+
+		// Validate Go-type with corresponding DB type
+		if asObjecttype != wantObjectDBtype {
+			t.Errorf("Got %+v, wanted %+v", asObjecttype,
+				wantObjectDBtype)
 		}
-		for rows.Next() {
-			var id int
-			var asStringtype, asTimestamptype, asObjecttype, asBooleantype, asNumbertype, asInt32type, asInt64type,
-				asInt8type, asInt16type, asUint64type,
-				asFloat64type, asFloat32type, asBytetype string
 
-			if err = rows.Scan(&id, &asObjecttype,
-				&asStringtype, &asNumbertype, &asBooleantype,
-				&asTimestamptype, &asInt32type, &asInt64type,
-				&asInt8type, &asInt16type, &asUint64type,
-				&asFloat64type, &asFloat32type, &asBytetype); err != nil {
-				rows.Close()
-				t.Errorf("%d/3. scan: %v", tN, err)
-				continue
-			}
+		if asStringtype != wantStringDBtype {
+			t.Errorf("Got %+v, wanted %+v", asStringtype,
+				wantStringDBtype)
+		}
 
-			// Valid DB types
-			wantObjectDBtype := "object"
-			wantNumberDBtype := "number"
-			wantStringDBtype := "string"
-			wantTimestampDBtype := "timestamp"
-			wantBooleanDBtype := "boolean"
-			wantBinaryDBtype := "binary"
+		if asTimestamptype != wantTimestampDBtype {
+			t.Errorf("Got %+v, wanted %+v", asTimestamptype,
+				wantTimestampDBtype)
+		}
 
-			// Validate Go-type with corresponding DB type
-			if asObjecttype != wantObjectDBtype {
-				t.Errorf("Got %+v, wanted %+v", asObjecttype,
-					wantObjectDBtype)
-			}
+		if asBooleantype != wantBooleanDBtype {
+			t.Errorf("Got %+v, wanted %+v", asBooleantype,
+				wantBooleanDBtype)
+		}
 
-			if asStringtype != wantStringDBtype {
-				t.Errorf("Got %+v, wanted %+v", asStringtype,
-					wantStringDBtype)
-			}
+		if asNumbertype != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asNumbertype,
+				wantNumberDBtype)
+		}
 
-			if asTimestamptype != wantTimestampDBtype {
-				t.Errorf("Got %+v, wanted %+v", asTimestamptype,
-					wantTimestampDBtype)
-			}
+		if asInt32type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asInt32type,
+				wantNumberDBtype)
+		}
 
-			if asBooleantype != wantBooleanDBtype {
-				t.Errorf("Got %+v, wanted %+v", asBooleantype,
-					wantBooleanDBtype)
-			}
+		if asInt64type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asInt64type,
+				wantNumberDBtype)
+		}
 
-			if asNumbertype != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asNumbertype,
-					wantNumberDBtype)
-			}
+		if asInt8type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asInt8type,
+				wantNumberDBtype)
+		}
 
-			if asInt32type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asInt32type,
-					wantNumberDBtype)
-			}
+		if asInt16type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asInt16type,
+				wantNumberDBtype)
+		}
 
-			if asInt64type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asInt64type,
-					wantNumberDBtype)
-			}
+		if asUint64type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asUint64type,
+				wantNumberDBtype)
+		}
 
-			if asInt8type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asInt8type,
-					wantNumberDBtype)
-			}
+		if asFloat64type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asFloat64type,
+				wantNumberDBtype)
+		}
 
-			if asInt16type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asInt16type,
-					wantNumberDBtype)
-			}
+		if asFloat32type != wantNumberDBtype {
+			t.Errorf("Got %+v, wanted %+v", asFloat32type,
+				wantNumberDBtype)
+		}
 
-			if asUint64type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asUint64type,
-					wantNumberDBtype)
-			}
-
-			if asFloat64type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asFloat64type,
-					wantNumberDBtype)
-			}
-
-			if asFloat32type != wantNumberDBtype {
-				t.Errorf("Got %+v, wanted %+v", asFloat32type,
-					wantNumberDBtype)
-			}
-
-			if asBytetype != wantBinaryDBtype {
-				t.Errorf("Got %+v, wanted %+v", asBytetype,
-					wantBinaryDBtype)
-			}
+		if asBytetype != wantBinaryDBtype {
+			t.Errorf("Got %+v, wanted %+v", asBytetype,
+				wantBinaryDBtype)
 		}
 	}
+
 }
 
 func errIs(err error, code int, msg string) bool {
