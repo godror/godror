@@ -5,12 +5,13 @@ if [ $# -lt 2 ]; then
 	exit 1
 fi
 
-dir="$(cd "$(dirname "$0")"; pwd)"
+dir="$(cd "$(dirname "$0")" || exit $?; pwd)"
 (cd "$dir" && go run ./getzig.go)
 zig="$dir/zig"
 arch="$2"
 case "$arch" in
 	amd64) arch=x86_64 ;;
+    ppc64) arch=powerpc64 ;;
 	386) arch=i386 ;;
 esac
 target="${arch}-${1}-gnu"
