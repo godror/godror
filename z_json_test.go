@@ -797,73 +797,32 @@ func TestStorageTypes(t *testing.T) {
 		wantBooleanDBtype := "boolean"
 		wantBinaryDBtype := "binary"
 
-		// Validate Go-type with corresponding DB type
-		if asObjecttype != wantObjectDBtype {
-			t.Errorf("Got %+v, wanted %+v", asObjecttype,
-				wantObjectDBtype)
-		}
+                for _, tCase := range []struct {
+                       goType string
+                       getType , wantType string
+                }{
+                        {"map" , asObjecttype, wantObjectDBtype},
+                        {"string", asStringtype, wantStringDBtype},
+                        {"godror.number", asNumbertype, wantNumberDBtype},
+                        {"boolean", asBooleantype, wantBooleanDBtype},
+                        { "time.Time", asTimestamptype, wantTimestampDBtype},
+                        {"int32", asInt32type, wantNumberDBtype},
+                        {"int64", asInt64type, wantNumberDBtype},
+                        {"int8", asInt8type, wantNumberDBtype},
+                        {"int16", asInt16type, wantNumberDBtype},
+                        {"uint64", asUint64type, wantNumberDBtype},
+                        {"float64", asFloat64type, wantNumberDBtype},
+                        {"float32", asFloat32type, wantNumberDBtype},
+                        {"[]byte", asBytetype, wantBinaryDBtype},
+               } {
+                        if !(tCase.getType == tCase.wantType) {
+                           t.Errorf("For go-type %+v, got %+v, wanted %+v",
+                                     tCase.goType, tCase.getType, tCase.wantType)
+                        }
+               }
 
-		if asStringtype != wantStringDBtype {
-			t.Errorf("Got %+v, wanted %+v", asStringtype,
-				wantStringDBtype)
-		}
 
-		if asTimestamptype != wantTimestampDBtype {
-			t.Errorf("Got %+v, wanted %+v", asTimestamptype,
-				wantTimestampDBtype)
-		}
-
-		if asBooleantype != wantBooleanDBtype {
-			t.Errorf("Got %+v, wanted %+v", asBooleantype,
-				wantBooleanDBtype)
-		}
-
-		if asNumbertype != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asNumbertype,
-				wantNumberDBtype)
-		}
-
-		if asInt32type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asInt32type,
-				wantNumberDBtype)
-		}
-
-		if asInt64type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asInt64type,
-				wantNumberDBtype)
-		}
-
-		if asInt8type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asInt8type,
-				wantNumberDBtype)
-		}
-
-		if asInt16type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asInt16type,
-				wantNumberDBtype)
-		}
-
-		if asUint64type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asUint64type,
-				wantNumberDBtype)
-		}
-
-		if asFloat64type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asFloat64type,
-				wantNumberDBtype)
-		}
-
-		if asFloat32type != wantNumberDBtype {
-			t.Errorf("Got %+v, wanted %+v", asFloat32type,
-				wantNumberDBtype)
-		}
-
-		if asBytetype != wantBinaryDBtype {
-			t.Errorf("Got %+v, wanted %+v", asBytetype,
-				wantBinaryDBtype)
-		}
-	}
-
+       }
 }
 
 func errIs(err error, code int, msg string) bool {
