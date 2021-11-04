@@ -290,7 +290,17 @@ static const dpiOracleType
         0,                                  // is character data
         0,                                  // can be in array
         1                                   // requires pre-fetch
-    }
+    },
+    {
+        DPI_ORACLE_TYPE_UROWID,             // public Oracle type
+        DPI_NATIVE_TYPE_ROWID,              // default native type
+        DPI_SQLT_RDD,                       // internal Oracle type
+        DPI_SQLCS_IMPLICIT,                 // charset form
+        sizeof(void*),                      // buffer size
+        1,                                  // is character data
+        1,                                  // can be in array
+        1                                   // requires pre-fetch
+    },
 };
 
 

@@ -4248,14 +4248,15 @@ int dpiOci__transRollback(dpiConn *conn, int checkError, dpiError *error)
 // dpiOci__transStart() [INTERNAL]
 //   Wrapper for OCITransStart().
 //-----------------------------------------------------------------------------
-int dpiOci__transStart(dpiConn *conn, uint32_t flags, dpiError *error)
+int dpiOci__transStart(dpiConn *conn, uint32_t transactionTimeout,
+        uint32_t flags, dpiError *error)
 {
     int status;
 
     DPI_OCI_LOAD_SYMBOL("OCITransStart", dpiOciSymbols.fnTransStart)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
-    status = (*dpiOciSymbols.fnTransStart)(conn->handle, error->handle, 0,
-            flags);
+    status = (*dpiOciSymbols.fnTransStart)(conn->handle, error->handle,
+            transactionTimeout, flags);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "start transaction");
 }
 

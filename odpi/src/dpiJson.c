@@ -463,6 +463,10 @@ static int dpiJsonNode__toOracleFromNative(dpiJson *json, dpiJsonNode *node,
                 if (dpiDataBuffer__toOracleNumberFromInteger(node->value,
                         error, &dataBuffer.asNumber) < 0)
                     return DPI_FAILURE;
+            } else if (node->nativeTypeNum == DPI_NATIVE_TYPE_UINT64) {
+                if (dpiDataBuffer__toOracleNumberFromUnsignedInteger(
+                        node->value, error, &dataBuffer.asNumber) < 0)
+                    return DPI_FAILURE;
             } else if (node->nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
                 if (dpiDataBuffer__toOracleNumberFromText(node->value,
                         json->env, error, &dataBuffer.asNumber) < 0)

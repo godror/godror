@@ -105,9 +105,6 @@ extern unsigned long dpiDebugLevel;
 // define subscription grouping repeat count
 #define DPI_SUBSCR_GROUPING_FOREVER                 -1
 
-// define number of rows to prefetch
-#define DPI_PREFETCH_ROWS_DEFAULT                   2
-
 // define default load error URL
 #if defined _WIN32 || defined __CYGWIN__
     #define DPI_ERR_LOAD_URL_FRAGMENT   "#windows"
@@ -2109,7 +2106,8 @@ int dpiOci__transDetach(dpiConn *conn, uint32_t flags, dpiError *error);
 int dpiOci__transForget(dpiConn *conn, dpiError *error);
 int dpiOci__transPrepare(dpiConn *conn, int *commitNeeded, dpiError *error);
 int dpiOci__transRollback(dpiConn *conn, int checkError, dpiError *error);
-int dpiOci__transStart(dpiConn *conn, uint32_t flags, dpiError *error);
+int dpiOci__transStart(dpiConn *conn, uint32_t transactionTimeout,
+        uint32_t flags, dpiError *error);
 int dpiOci__typeByFullName(dpiConn *conn, const char *name,
         uint32_t nameLength, void **tdo, dpiError *error);
 int dpiOci__typeByName(dpiConn *conn, const char *schema,

@@ -1421,7 +1421,7 @@ int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
     xid.globalTransactionIdLength = globalTransactionIdLength;
     xid.branchQualifier = branchQualifier;
     xid.branchQualifierLength = branchQualifierLength;
-    return dpiConn_tpcBegin(conn, &xid, DPI_TPC_BEGIN_NEW);
+    return dpiConn_tpcBegin(conn, &xid, 0, DPI_TPC_BEGIN_NEW);
 }
 
 
@@ -2543,7 +2543,8 @@ int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
 // dpiConn_tpcBegin() [PUBLIC]
 //   Begin a TPC (two-phase commit) transaction.
 //-----------------------------------------------------------------------------
-int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid, uint32_t flags)
+int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid, uint32_t transactionTimeout,
+        uint32_t flags)
 {
     dpiError error;
     int status;
@@ -2553,7 +2554,7 @@ int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid, uint32_t flags)
     DPI_CHECK_PTR_NOT_NULL(conn, xid)
     if (dpiConn__setXid(conn, xid, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    status = dpiOci__transStart(conn, flags, &error);
+    status = dpiOci__transStart(conn, transactionTimeout, flags, &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
 

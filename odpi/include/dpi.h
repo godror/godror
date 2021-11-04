@@ -58,7 +58,7 @@ extern "C" {
 #define DPI_MAJOR_VERSION   4
 #define DPI_MINOR_VERSION   3
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX  "-dev"
+#define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -276,7 +276,8 @@ typedef uint32_t dpiOracleTypeNum;
 #define DPI_ORACLE_TYPE_JSON                        2027
 #define DPI_ORACLE_TYPE_JSON_OBJECT                 2028
 #define DPI_ORACLE_TYPE_JSON_ARRAY                  2029
-#define DPI_ORACLE_TYPE_MAX                         2030
+#define DPI_ORACLE_TYPE_UROWID                      2030
+#define DPI_ORACLE_TYPE_MAX                         2031
 
 // session pool close modes
 typedef uint32_t dpiPoolCloseMode;
@@ -1059,7 +1060,8 @@ DPI_EXPORT int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
         dpiSubscr **subscr);
 
 // begin a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid, uint32_t flags);
+DPI_EXPORT int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid,
+        uint32_t transactionTimeout, uint32_t flags);
 
 // commit a TPC (two-phase commit) transaction
 DPI_EXPORT int dpiConn_tpcCommit(dpiConn *conn, dpiXid *xid, int onePhase);

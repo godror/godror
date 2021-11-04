@@ -66,6 +66,8 @@ int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
     if (versionInfo->versionNum < minVersionNum1 ||
             (versionInfo->versionNum == minVersionNum1 &&
                     versionInfo->releaseNum < minReleaseNum1) ||
+            (versionInfo->versionNum > minVersionNum1 &&
+                    versionInfo->versionNum < minVersionNum2) ||
             (versionInfo->versionNum == minVersionNum2 &&
                     versionInfo->releaseNum < minReleaseNum2))
         return dpiError__set(error, "check Oracle Client version",
