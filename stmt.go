@@ -894,16 +894,17 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	vlr, isValuer := value.(driver.Valuer)
 
 	switch value.(type) {
-	case *driver.Rows, *pbTimestamp, *Object:
+	case *driver.Rows, *Object:
 	default:
-		rv := reflect.ValueOf(value)
-		kind := rv.Kind()
-		if kind == reflect.Ptr {
+		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
 			if nilPtr = rv.IsNil(); nilPtr {
 				info.set = dataSetNull
 				value = reflect.Zero(rv.Type().Elem()).Interface()
 			} else {
 				value = rv.Elem().Interface()
+				if !isValuer {
+					vlr, isValuer = value.(driver.Valuer)
+				}
 			}
 		}
 	}
@@ -1121,23 +1122,6 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			*get = st.conn.dataGetTime
 		}
 
-	case *pbTimestamp:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
-		info.set = st.conn.dataSetTime
-		if info.isOut {
-			*get = st.conn.dataGetTime
-		}
-	case []*pbTimestamp:
-		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
-		// info.Typ should be C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, but it does not work for DATE PL/SQL associative arrays
-		if st.plSQLArrays {
-			info.typ = C.DPI_ORACLE_TYPE_DATE
-		}
-		info.set = st.conn.dataSetTime
-		if info.isOut {
-			*get = st.conn.dataGetTime
-		}
-
 	case time.Duration, []time.Duration:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS
 		info.set = st.conn.dataSetIntervalDS
@@ -1191,11 +1175,15 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 
 	default:
 		if !isValuer {
-			return value, fmt.Errorf("unknown type %T (%T)", value, &pbTimestamp{})
+			return value, fmt.Errorf("unknown type %T", value)
 		}
+		oval := value
 		var err error
 		if value, err = vlr.Value(); err != nil {
 			return value, fmt.Errorf("arg.Value(): %w", err)
+		}
+        if logger != nil {
+			logger.Log("msg", "valuer", "old", fmt.Sprintf("[%T]%#v.Value()", oval, oval), "new", fmt.Sprintf("[%T]%#v", value, value))
 		}
 		return st.bindVarTypeSwitch(info, get, value)
 	}
@@ -1280,15 +1268,6 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 			c.dataGetTimeC(&x.Time, &data[0])
 		}
 
-	case *pbTimestamp:
-		if len(data) == 0 || data[0].isNull == 1 {
-			x.Reset()
-			return nil
-		}
-		var t time.Time
-		c.dataGetTimeC(&t, &data[0])
-		setPbTimestamp(x, t)
-
 	case *[]time.Time:
 		n := len(data)
 		if cap(*x) >= n {
@@ -1312,18 +1291,6 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 			}
 		}
 
-	case *[]*pbTimestamp:
-		n := len(data)
-		if cap(*x) >= n {
-			*x = (*x)[:n]
-		} else {
-			*x = make([]*pbTimestamp, n)
-		}
-		var t time.Time
-		for i := range data {
-			c.dataGetTimeC(&t, &data[i])
-			setPbTimestamp((*x)[i], t)
-		}
 	}
 	return nil
 }
@@ -1358,17 +1325,6 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 		if data[0].isNull = C.int(b2i(!x.Valid)); x.Valid {
 			times[0] = x.Time
 		}
-	case *pbTimestamp:
-		if !x.IsValid() {
-			data[0].isNull = 1
-		} else {
-			data[0].isNull = 0
-			times[0] = x.AsTime()
-		}
-		if logger = getLogger(); logger != nil {
-			logger.Log("msg", "dataSetTime", "ts", x, "t", times[0])
-		}
-
 	case []time.Time:
 		times = x
 		for i, t := range times {
@@ -1385,21 +1341,6 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 				times[i] = x[i].Time
 			}
 		}
-	case []*pbTimestamp:
-		if cap(times) < len(x) {
-			times = make([]time.Time, len(x))
-		} else {
-			times = times[:len(x)]
-		}
-		for i, n := range x {
-			if !n.IsValid() {
-				data[i].isNull = 1
-			} else {
-				data[i].isNull = 0
-				times[i] = n.AsTime()
-			}
-		}
-
 	default:
 		for i := range data {
 			data[i].isNull = 1

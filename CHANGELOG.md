@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Remove pbTimestamp (behind timestamppb tag), github.com/UNO-SOFT/knownpb/timestamppb implements driver.Valuer and sql.Scanner.
 
 ## [v0.28.1]
 ### Changed
