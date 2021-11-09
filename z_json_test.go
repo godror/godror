@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"fmt"
 
 	godror "github.com/godror/godror"
 )
@@ -709,7 +710,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 // This is bound to the insert function and executed
 // For each unique go-type in the map, their corresponding JSON types,
 // as stored in the DB, are fetched and compared with their expected values.
-func TestStorageTypes(t *testing.T) {
+func TestJSONStorageTypes(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
 		30*time.Second)
@@ -725,6 +726,9 @@ func TestStorageTypes(t *testing.T) {
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
 	)
 	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	t.Logf(" JSON Document table  %q: ", tbl)
@@ -740,8 +744,12 @@ func TestStorageTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	//        birthdate, err := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
-	birthdate := time.Now()
+        P, err := godror.ParseDSN(testConStr)
+	timezone := P.CommonParams.Timezone
+	birthdate, err := time.Parse(time.UnixDate, fmt.Sprintf("Wed Feb 25 11:06:39 %s 1990",timezone))
+	if(err != nil) {
+		t.Fatal(err)
+	}
 
 	// Map with different Go-types, which would be stored as JSON in the DB
 	jsmap := map[string]interface{}{
@@ -768,25 +776,26 @@ func TestStorageTypes(t *testing.T) {
 	}
 
 	rows, err := conn.QueryContext(ctx,
-		"SELECT id,json_value(jdoc,'$.asObject.type()'),json_value(jdoc,'$.asObject.asString.type()'),json_value(jdoc,'$.asObject.asNumber.type()'),json_value(jdoc,'$.asObject.asBoolean.type()'),json_value(jdoc,'$.asObject.asTimestamp.type()'),json_value(jdoc,'$.asObject.asInt32.type()'),json_value(jdoc,'$.asObject.asInt64.type()'),json_value(jdoc,'$.asObject.asInt8.type()'),json_value(jdoc,'$.asObject.asInt16.type()'),json_value(jdoc,'$.asObject.asUint64.type()'),json_value(jdoc,'$.asObject.asFloat64.type()'),json_value(jdoc,'$.asObject.asFloat32.type()'),json_value(jdoc,'$.asObject.asByte.type()') FROM "+tbl+" c ") //nolint:gas
+		"SELECT id, json_value(jdoc,'$.asObject.type()'), json_value(jdoc,'$.asObject.asString.type()'), json_value(jdoc,'$.asObject.asNumber.type()'), json_value(jdoc,'$.asObject.asBoolean.type()'), json_value(jdoc,'$.asObject.asTimestamp.type()'), json_value(jdoc,'$.asObject.asInt32.type()'), json_value(jdoc,'$.asObject.asInt64.type()'), json_value(jdoc,'$.asObject.asInt8.type()'), json_value(jdoc,'$.asObject.asInt16.type()'), json_value(jdoc,'$.asObject.asUint64.type()'), json_value(jdoc,'$.asObject.asFloat64.type()'), json_value(jdoc,'$.asObject.asFloat32.type()'), json_value(jdoc,'$.asObject.asByte.type()') FROM "+tbl+" c ") //nolint:gas
 	if err != nil {
 		t.Errorf("%d/3. %v", 0, err)
 
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var id int
 		var asStringtype, asTimestamptype, asObjecttype, asBooleantype, asNumbertype, asInt32type, asInt64type,
 			asInt8type, asInt16type, asUint64type,
 			asFloat64type, asFloat32type, asBytetype string
 
-		if err = rows.Scan(&id, &asObjecttype,
+		err = rows.Scan(&id, &asObjecttype,
 			&asStringtype, &asNumbertype, &asBooleantype,
 			&asTimestamptype, &asInt32type, &asInt64type,
 			&asInt8type, &asInt16type, &asUint64type,
-			&asFloat64type, &asFloat32type, &asBytetype); err != nil {
-			rows.Close()
+			&asFloat64type, &asFloat32type, &asBytetype)
+		if err != nil {
 			t.Errorf("%d/3. scan: %v", 0, err)
-			continue
+			break
 		}
 
 		// Valid DB types
@@ -797,32 +806,31 @@ func TestStorageTypes(t *testing.T) {
 		wantBooleanDBtype := "boolean"
 		wantBinaryDBtype := "binary"
 
-                for _, tCase := range []struct {
-                       goType string
-                       getType , wantType string
-                }{
-                        {"map" , asObjecttype, wantObjectDBtype},
-                        {"string", asStringtype, wantStringDBtype},
-                        {"godror.number", asNumbertype, wantNumberDBtype},
-                        {"boolean", asBooleantype, wantBooleanDBtype},
-                        { "time.Time", asTimestamptype, wantTimestampDBtype},
-                        {"int32", asInt32type, wantNumberDBtype},
-                        {"int64", asInt64type, wantNumberDBtype},
-                        {"int8", asInt8type, wantNumberDBtype},
-                        {"int16", asInt16type, wantNumberDBtype},
-                        {"uint64", asUint64type, wantNumberDBtype},
-                        {"float64", asFloat64type, wantNumberDBtype},
-                        {"float32", asFloat32type, wantNumberDBtype},
-                        {"[]byte", asBytetype, wantBinaryDBtype},
-               } {
-                        if !(tCase.getType == tCase.wantType) {
-                           t.Errorf("For go-type %+v, got %+v, wanted %+v",
-                                     tCase.goType, tCase.getType, tCase.wantType)
-                        }
-               }
+		for _, tCase := range []struct {
+			goType            string
+			getType, wantType string
+		}{
+			{"map", asObjecttype, wantObjectDBtype},
+			{"string", asStringtype, wantStringDBtype},
+			{"godror.number", asNumbertype, wantNumberDBtype},
+			{"boolean", asBooleantype, wantBooleanDBtype},
+			{"time.Time", asTimestamptype, wantTimestampDBtype},
+			{"int32", asInt32type, wantNumberDBtype},
+			{"int64", asInt64type, wantNumberDBtype},
+			{"int8", asInt8type, wantNumberDBtype},
+			{"int16", asInt16type, wantNumberDBtype},
+			{"uint64", asUint64type, wantNumberDBtype},
+			{"float64", asFloat64type, wantNumberDBtype},
+			{"float32", asFloat32type, wantNumberDBtype},
+			{"[]byte", asBytetype, wantBinaryDBtype},
+		} {
+			if (tCase.getType != tCase.wantType) {
+				t.Errorf("For go-type %+v, got %+v, wanted %+v",
+					tCase.goType, tCase.getType, tCase.wantType)
+			}
+		}
 
-
-       }
+	}
 }
 
 func errIs(err error, code int, msg string) bool {
