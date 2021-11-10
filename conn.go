@@ -497,11 +497,14 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 	c.released = false
 	logger := ctxGetLog(ctx)
 	if logger != nil {
-		logger.Log("msg", "init connection", "conn", c, "onInit", onInit)
+		logger.Log("msg", "init connection", "params", c.params)
 	}
 
 	if err := c.initTZ(); err != nil || onInit == nil || !c.newSession {
 		return err
+	}
+	if logger != nil {
+		logger.Log("msg", "connection initialized", "conn", c, "haveOnInit", onInit != nil)
 	}
 	return onInit(ctx, c)
 }

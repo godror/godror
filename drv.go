@@ -1137,7 +1137,15 @@ func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext)
 		buf.WriteString("ALTER SESSION SET")
 		for _, kv := range P.AlterSession {
 			buf.WriteByte(' ')
-			fmt.Fprintf(&buf, "%s=q'(%s)'", kv[0], strings.Replace(kv[1], "'", "''", -1))
+			buf.WriteString(kv[0])
+			buf.WriteByte('=')
+			if strings.EqualFold(kv[0], "CURRENT_SCHEMA") {
+				buf.WriteString(kv[1])
+			} else {
+				buf.WriteString("q(")
+				buf.WriteString(strings.Replace(kv[1], "'", "''", -1))
+				buf.WriteByte(')')
+			}
 		}
 		stmts = append(stmts, buf.String())
 	}
