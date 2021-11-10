@@ -1142,9 +1142,9 @@ func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext)
 			if strings.EqualFold(kv[0], "CURRENT_SCHEMA") {
 				buf.WriteString(kv[1])
 			} else {
-				buf.WriteString("q(")
+				buf.WriteByte('\'')
 				buf.WriteString(strings.Replace(kv[1], "'", "''", -1))
-				buf.WriteByte(')')
+				buf.WriteByte('\'')
 			}
 		}
 		stmts = append(stmts, buf.String())
