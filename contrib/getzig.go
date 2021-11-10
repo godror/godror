@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -22,8 +23,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/mholt/archiver/v3"
 	"golang.org/x/mod/semver"
 )
 
@@ -37,13 +38,18 @@ func Main() error {
 	flagForce := flag.Bool("force", false, "force fresh download")
 	flag.Parse()
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
 	var zig string
 	if !*flagForce {
 		var err error
 		if zig, err = findZig("zig"); err != nil {
 			log.Println(err)
 		} else if err = checkZig(zig); err == nil {
-			fmt.Println(zig)
+			fmt.Println(filepath.Join(cwd, zig))
 			return nil
 		}
 	}
@@ -67,15 +73,18 @@ func Main() error {
 	}
 	defer os.RemoveAll(filepath.Dir(fn))
 
-	if err = archiver.Unarchive(fn, "zig"); err != nil {
+	//log.Println("fn:", fn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	err = exec.CommandContext(ctx, "tar", "xaf", fn, "--one-top-level=zig").Run()
+	cancel()
+	if err != nil {
 		return err
 	}
-	bn := filepath.Base(fn)
-	for ext := filepath.Ext(bn); ext != "" && len(ext) <= 5 && strings.IndexAny(ext, "+-") < 0; {
-		bn = bn[:len(bn)-len(ext)]
-		ext = filepath.Ext(bn)
+	bn := strings.TrimSuffix(filepath.Base(fn), ".tar")
+	if i := strings.Index(bn, ".tar."); i >= 0 {
+		bn = bn[:i]
 	}
-	zig = filepath.Join("zig", bn, "zig")
+	zig = filepath.Join(cwd, "zig", bn, "zig")
 	fmt.Println(zig)
 
 	return nil

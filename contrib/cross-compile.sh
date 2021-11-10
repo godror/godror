@@ -6,8 +6,7 @@ if [ $# -lt 2 ]; then
 fi
 
 dir="$(cd "$(dirname "$0")" || exit $?; pwd)"
-(cd "$dir" && go run ./getzig.go)
-zig="$dir/zig"
+zig=$(cd "$dir" && go run ./getzig.go)
 arch="$2"
 case "$arch" in
 	amd64) arch=x86_64 ;;
