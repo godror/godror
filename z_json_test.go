@@ -10,12 +10,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-	"fmt"
 
 	godror "github.com/godror/godror"
 )
@@ -715,12 +715,43 @@ func TestJSONStorageTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
 		30*time.Second)
 	defer cancel()
+
+	tbl := "test_objectcollection_jsonmap" + tblSuffix
+	testData := []struct {
+		Key   string
+		Value interface{}
+	}{
+		{"asNumber", godror.Number("12")},
+		{"asString", "Mary"},
+		{"asTimestamp", birthdate},
+		{"asBoolean", true},
+		{"asByte", []byte{45, 51}},
+		{"asInt32", int32(98)},
+		{"asInt64", int64(99)},
+		{"asInt8", int8(10)},
+		{"asInt16", int16(20)},
+		{"asUint64", uint64(99)},
+		{"asFloat64", float64(98.11)},
+		{"asFloat32", float32(97.2)},
+	}
+	// Map with different Go-types, which would be stored as JSON in the DB
+	obj := make(map[string]interface{}, len(testData))
+	var buf strings.Builder
+	buf.WriteString("SELECT id, json_value(jdoc,'$.asObject.type()')")
+	for _, elt := range testData {
+		obj[elt.Key] = elt.Value
+		fmt.Fprintf(&buf, ",\n\tjson_value(jdoc,'$.asObject.%s.type()')", elt.Key)
+	}
+	buf.WriteString("\nFROM " + tbl + " c ")
+	qry := buf.String()
+	jsmap := map[string]interface{}{"asObject": obj}
+	t.Log("qry:", qry)
+
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	tbl := "test_objectcollection_jsonmap" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
@@ -744,59 +775,15 @@ func TestJSONStorageTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-        P, err := godror.ParseDSN(testConStr)
-	timezone := P.CommonParams.Timezone
-	birthdate, err := time.Parse(time.UnixDate, fmt.Sprintf("Wed Feb 25 11:06:39 %s 1990",timezone))
-	if(err != nil) {
-		t.Fatal(err)
-	}
-
-	// Map with different Go-types, which would be stored as JSON in the DB
-	jsmap := map[string]interface{}{
-		"asObject": map[string]interface{}{
-			"asNumber":    godror.Number("12"),
-			"asString":    "Mary",
-			"asTimestamp": birthdate,
-			"asBoolean":   true,
-			"asByte":      []byte{45, 51},
-			"asInt32":     int32(98),
-			"asInt64":     int64(99),
-			"asInt8":      int8(10),
-			"asInt16":     int16(20),
-			"asUint64":    uint64(99),
-			"asFloat64":   float64(98.11),
-			"asFloat32":   float32(97.2),
-		},
-	}
 
 	jsonval := godror.JSONValue{Value: jsmap}
 	if _, err = stmt.ExecContext(ctx, 0, jsonval); err != nil {
 		t.Errorf("%d/1. (%v): %v", 0, jsmap, err)
-
 	}
-        // Adding a slice to parse keys in order, since it can't be done in
-        // an unordered map.
-	keys := []string{ "asNumber",
-                  "asString",
-                  "asTimestamp",
-                  "asBoolean",
-                  "asByte",
-                  "asInt32",
-                  "asInt64",
-                  "asInt8",
-                  "asInt16",
-                  "asUint64",
-                  "asFloat64",
-                  "asFloat32"}
 
-	stmt_str := "SELECT id, json_value(jdoc,'$.asObject.type()')"
-	for _, key := range keys {
-		stmt_str +=  fmt.Sprintf(", json_value(jdoc,'$.asObject.%s.type()')", key)
-	}
-	stmt_str += " FROM "+tbl+ " c "
-	rows, err := conn.QueryContext(ctx,stmt_str)
+	rows, err := conn.QueryContext(ctx, qry)
 	if err != nil {
-		t.Errorf("%d/3. %v", 0, err)
+		t.Errorf("%d/3. %s: %+v", 0, qry, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -841,7 +828,7 @@ func TestJSONStorageTypes(t *testing.T) {
 			{"float32", asFloat32type, wantNumberDBtype},
 			{"[]byte", asBytetype, wantBinaryDBtype},
 		} {
-			if (tCase.getType != tCase.wantType) {
+			if tCase.getType != tCase.wantType {
 				t.Errorf("For go-type %+v, got %+v, wanted %+v",
 					tCase.goType, tCase.getType, tCase.wantType)
 			}
