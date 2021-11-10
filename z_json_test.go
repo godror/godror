@@ -774,12 +774,27 @@ func TestJSONStorageTypes(t *testing.T) {
 		t.Errorf("%d/1. (%v): %v", 0, jsmap, err)
 
 	}
+	keys := []string{ "asNumber",
+                  "asString",
+                  "asTimestamp",
+                  "asBoolean",
+                  "asByte",
+                  "asInt32",
+                  "asInt64",
+                  "asInt8",
+                  "asInt16",
+                  "asUint64",
+                  "asFloat64",
+                  "asFloat32"}
 
-	rows, err := conn.QueryContext(ctx,
-		"SELECT id, json_value(jdoc,'$.asObject.type()'), json_value(jdoc,'$.asObject.asString.type()'), json_value(jdoc,'$.asObject.asNumber.type()'), json_value(jdoc,'$.asObject.asBoolean.type()'), json_value(jdoc,'$.asObject.asTimestamp.type()'), json_value(jdoc,'$.asObject.asInt32.type()'), json_value(jdoc,'$.asObject.asInt64.type()'), json_value(jdoc,'$.asObject.asInt8.type()'), json_value(jdoc,'$.asObject.asInt16.type()'), json_value(jdoc,'$.asObject.asUint64.type()'), json_value(jdoc,'$.asObject.asFloat64.type()'), json_value(jdoc,'$.asObject.asFloat32.type()'), json_value(jdoc,'$.asObject.asByte.type()') FROM "+tbl+" c ") //nolint:gas
+	stmt_str := "SELECT id, json_value(jdoc,'$.asObject.type()')"
+	for _, key := range keys {
+		stmt_str +=  fmt.Sprintf(", json_value(jdoc,'$.asObject.%s.type()')", key)
+	}
+	stmt_str += " FROM "+tbl+ " c "
+	rows, err := conn.QueryContext(ctx,stmt_str)
 	if err != nil {
 		t.Errorf("%d/3. %v", 0, err)
-
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -789,10 +804,10 @@ func TestJSONStorageTypes(t *testing.T) {
 			asFloat64type, asFloat32type, asBytetype string
 
 		err = rows.Scan(&id, &asObjecttype,
-			&asStringtype, &asNumbertype, &asBooleantype,
-			&asTimestamptype, &asInt32type, &asInt64type,
-			&asInt8type, &asInt16type, &asUint64type,
-			&asFloat64type, &asFloat32type, &asBytetype)
+			&asNumbertype, &asStringtype, &asTimestamptype,
+			&asBooleantype, &asBytetype, &asInt32type,
+			&asInt64type, &asInt8type, &asInt16type,
+			&asUint64type, &asFloat64type, &asFloat32type)
 		if err != nil {
 			t.Errorf("%d/3. scan: %v", 0, err)
 			break
