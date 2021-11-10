@@ -774,6 +774,8 @@ func TestJSONStorageTypes(t *testing.T) {
 		t.Errorf("%d/1. (%v): %v", 0, jsmap, err)
 
 	}
+        // Adding a slice to parse keys in order, since it can't be done in
+        // an unordered map.
 	keys := []string{ "asNumber",
                   "asString",
                   "asTimestamp",
