@@ -97,10 +97,7 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 	if hasDeadline {
 		c.mu.RLock()
 		if func() bool {
-			c.drv.mu.RLock()
-			old := c.drv.clientVersion.Version < 18
-			c.drv.mu.RUnlock()
-			if old {
+			if c.drv.clientVersion.Version < 18 {
 				return false
 			}
 			dur := time.Until(dl)
@@ -121,7 +118,10 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
 			return false
 		}() {
-			defer func() { _ = C.dpiConn_setCallTimeout(c.dpiConn, 0); c.mu.RUnlock() }()
+			defer func() {
+				_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+				c.mu.RUnlock()
+			}()
 		} else {
 			c.mu.RUnlock()
 		}
