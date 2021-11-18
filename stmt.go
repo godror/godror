@@ -1265,10 +1265,6 @@ func dataSetBool(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 var _ = sql.Scanner((*NullTime)(nil))
 
 func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "dataGetTime", "v", fmt.Sprintf("%[1]T %[1]#v", v))
-	}
 	switch x := v.(type) {
 	case *time.Time:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -1286,11 +1282,7 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 		if t.IsZero() {
 			x.Reset()
 		} else {
-			if x == nil {
-				x = timestamppb.New(t)
-			} else {
-				*x = *timestamppb.New(t)
-			}
+			*x = *timestamppb.New(t)
 		}
 
 	case *NullTime:
@@ -1343,9 +1335,6 @@ func (c *conn) dataGetTime(v interface{}, data []C.dpiData) error {
 
 	default:
 		return fmt.Errorf("dataGetTime(%T): %w", v, errUnknownType)
-	}
-	if logger != nil {
-		logger.Log("msg", "dataGetTime", "v", fmt.Sprintf("%[1]T %[1]#v", v))
 	}
 	return nil
 }

@@ -93,15 +93,6 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		}
 		return err
 	}
-	if _, hasDeadline := ctx.Deadline(); hasDeadline {
-		go c.ociBreakDone(ctx, done)
-	}
-	return nil
-}
-
-// ociBreakDone calls OCIBreak if ctx.Done is finished before done chan is closed
-func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
-	var logger Logger
 	dl, hasDeadline := ctx.Deadline()
 	if hasDeadline {
 		c.mu.RLock()
@@ -112,8 +103,12 @@ func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
 			if old {
 				return false
 			}
-			ms := C.uint32_t(time.Until(dl) / time.Millisecond)
-			logger = ctxGetLog(ctx)
+			dur := time.Until(dl)
+			const minDur = 100 * time.Millisecond
+			if dur < minDur {
+				dur = 100 * time.Millisecond
+			}
+			ms := C.uint32_t(dur / time.Millisecond)
 			if logger != nil {
 				logger.Log("msg", "setCallTimeout", "ms", ms)
 			}
@@ -131,26 +126,27 @@ func (c *conn) ociBreakDone(ctx context.Context, done <-chan struct{}) {
 			c.mu.RUnlock()
 		}
 	}
-	select {
-	case <-done:
-		return
-	case <-ctx.Done():
-		// select again to avoid race condition if both are done
+
+	go func() {
 		select {
 		case <-done:
 			return
-		default:
-			err := ctx.Err()
-			if logger == nil {
-				logger = ctxGetLog(ctx)
+		case <-ctx.Done():
+			// select again to avoid race condition if both are done
+			select {
+			case <-done:
+				return
+			default:
+				err := ctx.Err()
+				if logger != nil {
+					logger.Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
+				}
+				_ = c.Break()
+				return
 			}
-			if logger != nil {
-				logger.Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
-			}
-			_ = c.Break()
-			return
 		}
-	}
+	}()
+	return nil
 }
 
 // Break signals the server to stop the execution on the connection.
