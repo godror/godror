@@ -338,7 +338,7 @@ func (j JSON) String() string {
 	// Returning empty string for error case, fix?
 
 	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
-    logger := getLogger()
+	logger := getLogger()
 	if err != nil {
 		if logger != nil {
 			logger.Log("msg", "JSON.String", "Error", err.Error())
