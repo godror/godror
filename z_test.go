@@ -4231,3 +4231,75 @@ func TestForError8192(t *testing.T) {
 		}
 	}
 }
+
+func TestObjType_Issue198(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip")
+	}
+	ctx, cancel := context.WithTimeout(testContext("ObjType_Issue198"), 10*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	testCon, err := godror.DriverConn(ctx, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testCon.Close()
+	if err = testCon.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("dbstats: %#v", testDb.Stats())
+
+	cleanup := func() {
+		testDb.Exec("DROP TYPE test_obj198_t")
+	}
+	cleanup()
+	const crea = `CREATE OR REPLACE TYPE test_obj198_t AS OBJECT (L VARCHAR2(10), T NUMBER);`
+	if _, err = testDb.ExecContext(ctx, crea); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", crea, err))
+	}
+
+	defer cleanup()
+
+	oT, err := testCon.GetObjectType(strings.ToUpper("test_obj198_t"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(oT)
+
+	pid := os.Getpid()
+	var start uint64
+	const N = 1_000_000
+	for i := 0; i < N; i++ {
+		obj, err := oT.NewObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		obj.Close()
+		if i%1000 == 0 {
+			s, err := readSmaps(pid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Log(s)
+			if start == 0 {
+				start = s
+			}
+		}
+	}
+	s, err := readSmaps(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(s)
+	if start < s {
+		per100Iteration := (s - start) * 100 / N
+		t.Logf("Memory: start=%d end=%d (%.03f%% gain), %d bytes per 100 iteration", start, s, float64((s-start)*100)/float64(s), per100Iteration)
+		if per100Iteration >= 100 {
+			t.Errorf("memory leak - try with libjemalloc (LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1)")
+		}
+	}
+}

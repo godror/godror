@@ -347,6 +347,6 @@ func readSmaps(pid int) (uint64, error) {
 			}
 		}
 	}
-	fmt.Println(m)
+	//fmt.Println(m)
 	return rss, nil
 }
