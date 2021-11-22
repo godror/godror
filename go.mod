@@ -3,7 +3,6 @@ module github.com/godror/godror
 go 1.14
 
 require (
-	github.com/UNO-SOFT/knownpb v0.0.2 // indirect
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/godror/knownpb v0.1.0
 	github.com/google/go-cmp v0.5.6

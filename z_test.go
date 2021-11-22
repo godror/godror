@@ -4303,3 +4303,49 @@ func TestObjType_Issue198(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopInLoop_199(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short")
+	}
+	ctx, cancel := context.WithTimeout(testContext("LoopInLoop_199"), 1*time.Minute)
+	defer cancel()
+	var first, last, avg time.Duration
+	const cnt = 20
+	for i := 0; i < cnt; i++ {
+		start := time.Now()
+		rows, err := testDb.QueryContext(ctx, "SELECT 1 FROM DUAL")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			for i := 0; i < cnt; i++ {
+				rows2, err := testDb.QueryContext(ctx, "SELECT 1 FROM DUAL")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for rows2.Next() {
+				}
+				//rows2.Close()
+			}
+			//rows.Close()
+			if i == 0 { // The first is very cold (slow)
+				continue
+			}
+			last = time.Since(start)
+			if first == 0 {
+				first = last
+			}
+			avg += last
+			t.Log(last)
+		}
+	}
+	avg /= cnt
+	t.Log("first:", first, "last:", last, "avg:", avg)
+	if first*11 < last*10 {
+		t.Error("last > 110% of first")
+	}
+	if !(avg*8/10 < last && last < avg*12/10) || first*11 < last*10 {
+		t.Error("last does differ from the avg more than 20%")
+	}
+}
