@@ -6,6 +6,7 @@
 package godror_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -65,7 +66,7 @@ func TestQueue(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`,
 				qTblName, qName,
 			)
@@ -98,8 +99,10 @@ func TestQueue(t *testing.T) {
 			}
 		}()
 
+		t.Log("notexist")
 		if func() error {
 			q, err := godror.NewQueue(ctx, tx, qName, "")
+			t.Log("q:", q, "err:", err)
 			if err != nil {
 				return err
 			}
@@ -113,10 +116,18 @@ func TestQueue(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			opts.MsgID = string(b)
+			opts.MsgID = b
 			opts.Wait = 1 * time.Second
+			t.Logf("opts: %#v", opts)
 			if err = q.SetDeqOptions(opts); err != nil {
 				return err
+			}
+			if opts, err = q.DeqOptions(); err != nil {
+				return err
+			}
+			t.Logf("opts: %#v", opts)
+			if !bytes.Equal(opts.MsgID, b) {
+				t.Fatalf("set %x, got %x as DeqOptions.MsgID", b, opts.MsgID)
 			}
 			msgs := make([]godror.Message, 1)
 			n, err := q.Dequeue(msgs[:1])
@@ -165,7 +176,7 @@ func TestQueue(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`,
 					qTblName, qName,
 				)

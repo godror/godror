@@ -532,7 +532,8 @@ func (Q *Queue) SetEnqOptions(E EnqOptions) error {
 // DeqOptions are the options used to dequeue a message.
 type DeqOptions struct {
 	Condition, Consumer, Correlation string
-	MsgID, Transformation            string
+	MsgID                            []byte
+	Transformation                   string
 	Mode                             DeqMode
 	DeliveryMode                     DeliveryMode
 	Navigation                       DeqNavigation
@@ -580,9 +581,11 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	if OK(C.dpiDeqOptions_getMode(opts, &mode), "getMode") {
 		D.Mode = DeqMode(mode)
 	}
-	D.MsgID = ""
+	D.MsgID = nil
 	if OK(C.dpiDeqOptions_getMsgId(opts, &value, &length), "getMsgId") {
-		D.MsgID = C.GoStringN(value, C.int(length))
+		if length != 0 {
+			D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length)]
+		}
 	}
 	var nav C.dpiDeqNavigation
 	if OK(C.dpiDeqOptions_getNavigation(opts, &nav), "getNavigation") {
@@ -634,9 +637,12 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 	OK(C.dpiDeqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(D.DeliveryMode)), "setDeliveryMode")
 	OK(C.dpiDeqOptions_setMode(opts, C.dpiDeqMode(D.Mode)), "setMode")
 
-	cs = C.CString(D.MsgID)
-	OK(C.dpiDeqOptions_setMsgId(opts, cs, C.uint(len(D.MsgID))), "setMsgId")
-	C.free(unsafe.Pointer(cs))
+	if D.MsgID == nil {
+		var a [1]byte
+		OK(C.dpiDeqOptions_setMsgId(opts, (*C.char)(unsafe.Pointer(&a[0])), 0), "setMsgId")
+	} else {
+		OK(C.dpiDeqOptions_setMsgId(opts, (*C.char)(unsafe.Pointer(&D.MsgID[0])), C.uint(len(D.MsgID))), "setMsgId")
+	}
 
 	OK(C.dpiDeqOptions_setNavigation(opts, C.dpiDeqNavigation(D.Navigation)), "setNavigation")
 
