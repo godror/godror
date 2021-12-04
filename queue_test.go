@@ -8,6 +8,7 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -32,6 +33,104 @@ func TestQueue(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
+
+	t.Run("notexist", func(t *testing.T) {
+		const qName = "TEST_Q"
+		const qTblName = qName + "_TBL"
+		setUp := func(ctx context.Context, db execer, user string) error {
+			qry := `DECLARE
+		tbl CONSTANT VARCHAR2(61) := '` + user + "." + qTblName + `';
+		q CONSTANT VARCHAR2(61) := '` + user + "." + qName + `';
+	BEGIN
+		BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+
+		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, 'RAW');
+		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
+		SYS.DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
+		SYS.DBMS_AQADM.start_queue(q);
+	END;`
+			_, err := db.ExecContext(ctx, qry)
+			return err
+		}
+
+		tearDown := func(ctx context.Context, db execer, user string) error {
+			db.ExecContext(
+				ctx,
+				`DECLARE
+			tbl CONSTANT VARCHAR2(61) := USER||'.'||:1;
+			q CONSTANT VARCHAR2(61) := USER||'.'||:2;
+		BEGIN
+			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL;
+		END;`,
+				qTblName, qName,
+			)
+			return nil
+		}
+
+		tx, err := testDb.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+
+		var user string
+		if err := testDb.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
+			t.Fatal(err)
+		}
+
+		if err = tearDown(ctx, tx, user); err != nil {
+			t.Log(err)
+		}
+		if err = setUp(ctx, tx, user); err != nil {
+			if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
+				t.Skip(err.Error())
+			}
+			t.Fatalf("%+v", err)
+		}
+		defer func() {
+			if err = tearDown(testContext("queue-teardown"), testDb, user); err != nil {
+				t.Log(err)
+			}
+		}()
+
+		if func() error {
+			q, err := godror.NewQueue(ctx, tx, qName, "")
+			if err != nil {
+				return err
+			}
+			defer q.Close()
+			opts, err := q.DeqOptions()
+			if err != nil {
+				return err
+			}
+			opts.Mode = godror.DeqBrowse
+			b, err := hex.DecodeString("7BA3FC69817C6F60E0540208202FCAE4")
+			if err != nil {
+				return err
+			}
+			opts.MsgID = string(b)
+			opts.Wait = 1 * time.Second
+			if err = q.SetDeqOptions(opts); err != nil {
+				return err
+			}
+			msgs := make([]godror.Message, 1)
+			n, err := q.Dequeue(msgs[:1])
+			t.Logf("nonexisting: %d %v", n, err)
+			if err != nil {
+				return fmt.Errorf("dequeue nonexisting message: %+v", err)
+			} else if n != 0 {
+				return fmt.Errorf("dequeued nonexisting message found %v", msgs[:n])
+			}
+			return nil
+		}(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	t.Run("raw", func(t *testing.T) {
 		const qName = "TEST_Q"
@@ -313,8 +412,10 @@ func testQueue(
 				t.Fatal(err)
 			}
 			defer q.Close()
+
 			//t.Logf("name=%q q=%#v", q.Name(), q)
 			n, err := q.Dequeue(msgs)
+			t.Logf("%d. received %d message(s)", i, n)
 			if err != nil {
 				t.Error("dequeue:", err)
 			}
@@ -357,4 +458,5 @@ func testQueue(
 	if len(notSeen) != 0 {
 		t.Errorf("not seen: %v", notSeen)
 	}
+
 }

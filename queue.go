@@ -211,6 +211,8 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 				return 0, nil
 			case 24010: // 0RA-24010: Queue does not exist
 				Q.Close()
+				//case 25263: // ORA-25263: no message in queue with message ID
+				//return 0, nil
 			}
 		}
 		return 0, fmt.Errorf("dequeue: %w", err)
