@@ -3518,6 +3518,7 @@ func TestSelectROWID(t *testing.T) {
 }
 
 func TestOpenCloseLOB(t *testing.T) {
+	t.Parallel()
 	const poolSize = 2
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
