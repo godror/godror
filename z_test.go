@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -3542,9 +3543,22 @@ func TestOpenCloseLOB(t *testing.T) {
 	defer cancel()
 
 	const qry = "DECLARE v_lob BLOB; BEGIN DBMS_LOB.CREATETEMPORARY(v_lob, TRUE); DBMS_LOB.WRITEAPPEND(v_lob, 4, HEXTORAW('DEADBEEF')); :1 := v_lob; END;"
-	for i := 0; i < 10*poolSize; i++ {
+	const shortTimeout = 5 * time.Second
+	var breakLoop int32
+	for i := 0; i < 10*poolSize && atomic.LoadInt32(&breakLoop) != 0; i++ {
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-done:
+			case <-time.After(2 * shortTimeout):
+				t.Log("SKIP for timeout")
+				atomic.StoreInt32(&breakLoop, 1)
+				t.Skip()
+			}
+		}()
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
+			defer close(done)
+			shortCtx, shortCancel := context.WithTimeout(ctx, shortTimeout)
 			defer shortCancel()
 			tx, err := db.BeginTx(shortCtx, nil)
 			if err != nil {
@@ -3558,6 +3572,11 @@ func TestOpenCloseLOB(t *testing.T) {
 			defer stmt.Close()
 			var lob godror.Lob
 			if _, err = stmt.ExecContext(shortCtx, sql.Out{Dest: &lob}); err != nil {
+				var ec interface{ Code() int }
+				if errors.As(err, &ec) && (ec.Code() == 3146) {
+					t.Log(err)
+					return
+				}
 				t.Error(err)
 				return
 			}
