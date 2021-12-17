@@ -220,9 +220,9 @@ func TestLOBAppend(t *testing.T) {
 	want := [...]byte{1, 2, 3, 4, 5}
 	if _, err := tx.ExecContext(ctx,
 		"BEGIN dbms_lob.append(:1, :2); END;",
-		tmp, godror.Lob{Reader: bytes.NewReader(want[:])},
+		tmp, godror.Lob{Reader: bytes.NewReader(want[:])}, godror.LobAsReader(),
 	); err != nil {
-		t.Errorf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
+		t.Fatalf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}
 
 	// Hijack and Close it.

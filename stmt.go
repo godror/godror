@@ -636,6 +636,25 @@ func (st *statement) NumInput() int {
 		return int(cnt)
 	}
 
+	var prevColon bool
+	var mayHaveBoundName bool
+	for _, r := range st.query {
+		if r == ':' {
+			prevColon = true
+			continue
+		}
+		if prevColon {
+			prevColon = false
+			if 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' {
+				mayHaveBoundName = true
+				break
+			}
+		}
+	}
+	if !mayHaveBoundName {
+		return int(cnt)
+	}
+
 	names := make([]*C.char, int(cnt))
 	lengths := make([]C.uint32_t, int(cnt))
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) }); err != nil {
