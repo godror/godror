@@ -2935,10 +2935,11 @@ func (c *conn) ResetSession(ctx context.Context) error {
 */
 
 func stmtSetFinalizer(st *statement, tag string) {
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
+
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
+			var a [4096]byte
+			stack := a[:runtime.Stack(a[:], false)]
 			if logger := getLogger(); logger != nil {
 				logger.Log("msg", "ERROR: statement is not closed!", "stmt", st, "tag", tag, "stack", string(stack))
 			} else {
