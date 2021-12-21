@@ -27,11 +27,6 @@ type execer interface {
 const msgCount = 3 * maxSessions
 
 func TestQueue(t *testing.T) {
-	P, _ := godror.ParseConnString(testConStr)
-	if P.IsStandalone() {
-		// Sometimes it fails with pooled sessions.
-		t.Parallel()
-	}
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 
@@ -129,15 +124,22 @@ func TestQueue(t *testing.T) {
 			if !bytes.Equal(opts.MsgID, b) {
 				t.Fatalf("set %x, got %x as DeqOptions.MsgID", b, opts.MsgID)
 			}
-			msgs := make([]godror.Message, 1)
-			n, err := q.Dequeue(msgs[:1])
-			t.Logf("nonexisting: %d %v", n, err)
-			if err != nil {
-				return fmt.Errorf("dequeue nonexisting message: %+v", err)
-			} else if n != 0 {
-				return fmt.Errorf("dequeued nonexisting message found %v", msgs[:n])
-			}
-			return nil
+			return func() error {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("dequeue nonexisting message PANIC: %+v", r)
+					}
+				}()
+				msgs := make([]godror.Message, 1)
+				n, err := q.Dequeue(msgs[:1])
+				t.Logf("nonexisting: %d %v", n, err)
+				if err != nil {
+					return fmt.Errorf("dequeue nonexisting message: %+v", err)
+				} else if n != 0 {
+					return fmt.Errorf("dequeued nonexisting message found %v", msgs[:n])
+				}
+				return nil
+			}()
 		}(); err != nil {
 			t.Error(err)
 		}
