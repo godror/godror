@@ -248,7 +248,8 @@ static void dpiStmt__clearBindVars(dpiStmt *stmt, dpiError *error)
 
     if (stmt->bindVars) {
         for (i = 0; i < stmt->numBindVars; i++) {
-            dpiGen__setRefCount(stmt->bindVars[i].var, error, -1);
+            if (stmt->bindVars[i].var)
+                dpiGen__setRefCount(stmt->bindVars[i].var, error, -1);
             if (stmt->bindVars[i].name)
                 dpiUtils__freeMemory( (void*) stmt->bindVars[i].name);
         }

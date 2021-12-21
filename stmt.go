@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -2934,9 +2935,24 @@ func (c *conn) ResetSession(ctx context.Context) error {
 }
 */
 
+var maxStackSize uint32 = 2048
+
 func stmtSetFinalizer(st *statement, tag string) {
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
+	// Store the current stack for printing later.
+	n := atomic.LoadUint32(&maxStackSize)
+	var stack []byte
+	for {
+		stack = make([]byte, n)
+		stack = stack[:runtime.Stack(stack, false)]
+		if len(stack) < cap(stack) {
+			break
+		}
+		n *= 2
+	}
+	if atomic.LoadUint32(&maxStackSize) < n {
+		atomic.StoreUint32(&maxStackSize, n)
+	}
+
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
 			if logger := getLogger(); logger != nil {
