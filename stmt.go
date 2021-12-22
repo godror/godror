@@ -355,6 +355,12 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 	return st.QueryContext(context.Background(), nargs)
 }
 
+func newDoneCh() (<-chan struct{}, func()) {
+	done := make(chan struct{})
+	var once sync.Once
+	return done, func() { once.Do(func() { close(done) }) }
+}
+
 // ExecContext executes a query that doesn't return rows, such as an INSERT or UPDATE.
 //
 // ExecContext must honor the context timeout and return when it is canceled.
@@ -384,7 +390,15 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 
+	// HandleDeadline for all ODPI calls called below
+	done, closeDone := newDoneCh()
+	defer closeDone()
+	if err := st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
+	var err error
 	closeIfBadConn := func(err error) error {
+		closeDone()
 		if err == nil {
 			return nil
 		}
@@ -393,15 +407,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return maybeBadConn(err, c)
 	}
 
-	// HandleDeadline for all ODPI calls called below
-	done := make(chan struct{})
-	defer close(done)
-	if err := st.handleDeadline(ctx, done); err != nil {
-		return nil, err
-	}
-
 	// bind variables
-	if err := st.bindVars(args, logger); err != nil {
+	if err = st.bindVars(args, logger); err != nil {
 		return nil, closeIfBadConn(err)
 	}
 
@@ -421,7 +428,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	} else {
 		f = func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, nil) }
 	}
-	var err error
 	for i := 0; i < 3; i++ {
 		if logger != nil {
 			logger.Log("C", "dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
@@ -540,7 +546,14 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return args[0].Value.(driver.Rows), nil
 	}
 
+	done, closeDone := newDoneCh()
+	defer closeDone()
+	if err := st.handleDeadline(ctx, done); err != nil {
+		return nil, err
+	}
+	var err error
 	closeIfBadConn := func(err error) error {
+		closeDone()
 		if err == nil {
 			return nil
 		}
@@ -548,13 +561,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
-	var err error
-	done := make(chan struct{})
-	defer close(done)
 	// HandleDeadline for all ODPI calls called below
-	if err = st.handleDeadline(ctx, done); err != nil {
-		return nil, err
-	}
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
 	// bind variables

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
@@ -191,34 +192,37 @@ END;`
 }
 
 func TestLOBAppend(t *testing.T) {
-	t.Skip("does not work")
 	ctx, cancel := context.WithTimeout(testContext("LOBAppend"), 30*time.Second)
 	defer cancel()
 
 	// To have a valid LOB locator, we have to keep the Stmt around.
 	const qry = `BEGIN DBMS_LOB.createtemporary(:1, TRUE, DBMS_LOB.SESSION); END;`
-	tx, err := testDb.BeginTx(ctx, nil)
+	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer conn.Close()
 
-	stmt, err := tx.PrepareContext(ctx, qry)
+	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%q: %+v", qry, err)
 	}
 	defer stmt.Close()
 	var tmp godror.Lob
-	if _, err := stmt.ExecContext(ctx, godror.LobAsReader(), sql.Out{Dest: &tmp}); err != nil {
+	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &tmp}); err != nil {
 		t.Fatalf("Failed to create temporary lob: %+v", err)
 	}
 	t.Logf("tmp: %#v", tmp)
 
 	want := [...]byte{1, 2, 3, 4, 5}
-	if _, err := tx.ExecContext(ctx,
+	if _, err := conn.ExecContext(ctx,
 		"BEGIN dbms_lob.append(:1, :2); END;",
-		tmp, godror.Lob{Reader: bytes.NewReader(want[:])}, godror.LobAsReader(),
+		tmp, godror.Lob{Reader: bytes.NewReader(want[:])},
 	); err != nil {
+		var ec interface{ Code() int }
+		if errors.As(err, &ec) && ec.Code() == 3106 || errors.Is(err, driver.ErrBadConn) {
+			t.Skip(err)
+		}
 		t.Fatalf("Failed to write buffer(%v) to lob(%v): %+v", want, tmp, err)
 	}
 
