@@ -82,7 +82,7 @@ func newTempLob(ctx context.Context, db *sql.DB) error {
 }
 
 func TestSplitLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("SplitLOB"), 30*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestSplitLOB(t *testing.T) {
 	runesLen := utf8.RuneCount([]byte(want))
 	t.Logf("%d runes, %d bytes", runesLen, len(want))
 	const qry = `DECLARE 
-  v_text CONSTANT VARCHAR2(32767) := :1; 
+  v_text CONSTANT VARCHAR2(32767) := SUBSTR(:1, 1, 32767); 
   v_len CONSTANT PLS_INTEGER := :2;
   v_clob CLOB; 
 BEGIN
@@ -127,7 +127,6 @@ END;`
 	}
 }
 func TestReadLargeLOB(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
@@ -240,7 +239,6 @@ func TestLOBAppend(t *testing.T) {
 }
 
 func TestStatWithLOBs(t *testing.T) {
-	t.Parallel()
 	//defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("StatWithLOBs"), 30*time.Second)
 	defer cancel()
