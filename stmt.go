@@ -2560,6 +2560,16 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
 		}
 		*out = *d.GetObject()
+	case *ObjectCollection:
+		d := Data{
+			ObjectType: out.Collection().ObjectType,
+			dpiData:    data[0],
+		}
+		if logger != nil {
+			logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+		}
+		obj := *d.GetObject() // copy the underlying object
+		*out = ObjectCollection{Object: &obj}
 	case ObjectScanner:
 		d := Data{
 			ObjectType: out.ObjectRef().ObjectType,

@@ -1178,7 +1178,10 @@ END;`},
 		for _, obj := range objects {
 			qry := "DROP " + obj.Type + " " + obj.Name
 			if _, err := testDb.ExecContext(ctx, qry); err != nil {
-				t.Logf("%s: %+v", qry, err)
+				var ec interface{ Code() int }
+				if !(errors.As(err, &ec) && ec.Code() == 4043) {
+					t.Logf("%s: %+v", qry, err)
+				}
 			}
 		}
 	}
@@ -1225,7 +1228,26 @@ END;`},
 	}
 	t.Logf("rs: %#v", rs)
 
-	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: rs}); err != nil {
+	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
+	}
+	length, err := rs.Len()
+	t.Logf("length: %d", length)
+	if err != nil {
+		t.Fatal(err)
+	} else if length != 1 {
+		t.Errorf("length=%d wanted 1", length)
+	}
+
+	for i, err := rs.First(); err == nil; i, err = rs.Next(i) {
+		elt, err := rs.Get(i)
+		t.Logf("%d. %v (%+v)", i, elt, err)
+		o := elt.(*godror.Object)
+		yearI, err := o.Get("CONS_YEAR")
+		t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
+		year := yearI.(float64)
+		if !(err == nil && year == 2021) {
+			t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
+		}
 	}
 }
