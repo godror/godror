@@ -1157,3 +1157,75 @@ func TestSubObjectTypeClose(t *testing.T) {
 		}
 	}
 }
+
+func TestObjectGetList(t *testing.T) {
+	objects := []struct {
+		Name, Type, Create string
+	}{
+		{"TEST_CHECK_BLOCKED_REV_BEC" + tblSuffix, "PROCEDURE",
+			`(p_id IN NUMBER, p_list OUT test_consolidation_rev_bec_list` + tblSuffix + `) IS 
+BEGIN 
+  p_list := test_consolidation_rev_bec_list` + tblSuffix + `();
+  p_list.extend;
+  p_list(1) := test_consolidation_rev_bec_rec` + tblSuffix + `(cons_year=>2021, cons_01=>p_id);
+END;`},
+		{"TEST_CONSOLIDATION_REV_BEC_LIST" + tblSuffix, "TYPE", " IS TABLE OF test_consolidation_rev_bec_rec" + tblSuffix},
+		{"TEST_CONSOLIDATION_REV_BEC_REC" + tblSuffix, "TYPE", ` IS OBJECT (
+         cons_year       number,
+         cons_01         number)`},
+	}
+	drop := func(ctx context.Context) {
+		for _, obj := range objects {
+			qry := "DROP " + obj.Type + " " + obj.Name
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				t.Logf("%s: %+v", qry, err)
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("ObjectGetList"), 30*time.Second)
+	defer cancel()
+
+	drop(ctx)
+	defer drop(context.Background())
+	for i := len(objects) - 1; i >= 0; i-- {
+		obj := objects[i]
+		qry := "CREATE OR REPLACE " + obj.Type + " " + obj.Name + obj.Create
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+		t.Fatal(err)
+	} else if len(ces) != 0 {
+		t.Fatal(ces)
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	qry := "CALL " + objects[0].Name + "(:1, :2)"
+	stmt, err := conn.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	rt, err := godror.GetObjectType(ctx, conn, objects[1].Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	rs, err := rt.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("rs: %#v", rs)
+
+	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: rs}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+}

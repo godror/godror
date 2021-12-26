@@ -755,7 +755,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 		st.dests[i] = value
 		rv := reflect.ValueOf(value)
 		if info.isOut {
-			if rv.IsNil() {
+			if false && rv.IsNil() {
 				fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
 			}
 			if rv.Kind() == reflect.Ptr {
