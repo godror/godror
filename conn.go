@@ -1091,7 +1091,6 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		logger.Log("msg", "ResetSession re-acquire session", "pool", pool.key)
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
@@ -1099,7 +1098,9 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	}
 	var err error
 	var newSession bool
-	if c.dpiConn, newSession, err = c.drv.acquireConn(pool, P); err != nil {
+	c.dpiConn, newSession, err = c.drv.acquireConn(pool, P)
+	c.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
