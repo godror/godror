@@ -1168,6 +1168,8 @@ BEGIN
   p_list := test_consolidation_rev_bec_list` + tblSuffix + `();
   p_list.extend;
   p_list(1) := test_consolidation_rev_bec_rec` + tblSuffix + `(cons_year=>2021, cons_01=>p_id);
+  p_list.extend;
+  p_list(2) := NULL;
 END;`},
 		{"TEST_CONSOLIDATION_REV_BEC_LIST" + tblSuffix, "TYPE", " IS TABLE OF test_consolidation_rev_bec_rec" + tblSuffix},
 		{"TEST_CONSOLIDATION_REV_BEC_REC" + tblSuffix, "TYPE", ` IS OBJECT (
@@ -1235,14 +1237,17 @@ END;`},
 	t.Logf("length: %d", length)
 	if err != nil {
 		t.Fatal(err)
-	} else if length != 1 {
-		t.Errorf("length=%d wanted 1", length)
+	} else if want := 2; length != want {
+		t.Errorf("length=%d wanted %d", length, want)
 	}
 
 	for i, err := rs.First(); err == nil; i, err = rs.Next(i) {
 		elt, err := rs.Get(i)
 		t.Logf("%d. %v (%+v)", i, elt, err)
 		o := elt.(*godror.Object)
+		if o == nil {
+			continue
+		}
 		yearI, err := o.Get("CONS_YEAR")
 		t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
 		year := yearI.(float64)

@@ -35,8 +35,8 @@ var ErrNoSuchKey = errors.New("no such key")
 
 // GetAttribute gets the i-th attribute into data.
 func (O *Object) GetAttribute(data *Data, name string) error {
-	if O == nil || O.dpiObject == nil {
-		panic("nil dpiObject")
+	if O == nil {
+		panic("nil Object")
 	}
 	attr, ok := O.Attributes[name]
 	if !ok {
@@ -47,6 +47,10 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	data.NativeTypeNum = attr.NativeTypeNum
 	data.ObjectType = attr.ObjectType
 	data.implicitObj = true
+	if O.dpiObject == nil {
+		data.SetNull()
+		return nil
+	}
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
 	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
