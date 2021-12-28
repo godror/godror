@@ -181,6 +181,24 @@ func (O *Object) Close() error {
 	return nil
 }
 
+// AsMap is a convenience function that returns the object's attributes as a map[string]interface{}.
+// It allocates, so use it as a guide how to implement your own converter function.
+func (O *Object) AsMap() (map[string]interface{}, error) {
+	if O == nil || O.dpiObject == nil {
+		return nil, nil
+	}
+	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
+	var data Data
+	for a := range O.ObjectType.Attributes {
+		data.reset()
+		if err := O.GetAttribute(&data, a); err != nil {
+			return m, fmt.Errorf("%q: %w", a, err)
+		}
+		m[a] = data.Get()
+	}
+	return m, nil
+}
+
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
 	*Object
