@@ -107,7 +107,8 @@ func (O *Object) ResetAttributes() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	var data Data
+	data := scratch.Get()
+	defer scratch.Put(data)
 	for _, attr := range O.Attributes {
 		data.reset()
 		data.NativeTypeNum = attr.NativeTypeNum
@@ -140,7 +141,7 @@ func (O *Object) Get(name string) (interface{}, error) {
 		return v, nil
 	}
 	sub := v.(*Object)
-	if sub != nil && sub.CollectionOf != nil {
+	if sub != nil && sub.ObjectType.CollectionOf != nil {
 		return &ObjectCollection{Object: sub}, nil
 	}
 	return sub, nil
@@ -183,18 +184,35 @@ func (O *Object) Close() error {
 
 // AsMap is a convenience function that returns the object's attributes as a map[string]interface{}.
 // It allocates, so use it as a guide how to implement your own converter function.
-func (O *Object) AsMap() (map[string]interface{}, error) {
+//
+// If recursive is true, then the embedded objects are converted, too, recursively.
+func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 	if O == nil || O.dpiObject == nil {
 		return nil, nil
 	}
 	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
-	var data Data
+	data := scratch.Get()
+	defer scratch.Put(data)
 	for a := range O.ObjectType.Attributes {
-		data.reset()
-		if err := O.GetAttribute(&data, a); err != nil {
+		if err := O.GetAttribute(data, a); err != nil {
 			return m, fmt.Errorf("%q: %w", a, err)
 		}
-		m[a] = data.Get()
+		d := data.Get()
+		m[a] = d
+		if recursive {
+			switch sub := d.(type) {
+			case *Object:
+				var err error
+				if m[a], err = sub.AsMap(recursive); err != nil {
+					return m, fmt.Errorf("%q.AsMap: %w", a, err)
+				}
+			case *ObjectCollection:
+				var err error
+				if m[a], err = sub.AsSlice(nil); err != nil {
+					return m, fmt.Errorf("%q.AsSlice: %w", a, err)
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -301,9 +319,11 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 		return ErrNotExist
 	}
 	data.reset()
-	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 	data.ObjectType = O.CollectionOf
-	data.implicitObj = true
+	if O.CollectionOf != nil {
+		data.NativeTypeNum = O.CollectionOf.NativeTypeNum
+		data.implicitObj = true
+	}
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
 	}
@@ -312,8 +332,9 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 
 // Get the i-th element of the collection.
 func (O ObjectCollection) Get(i int) (interface{}, error) {
-	var data Data
-	err := O.GetItem(&data, i)
+	data := scratch.Get()
+	defer scratch.Put(data)
+	err := O.GetItem(data, i)
 	return data.Get(), err
 }
 

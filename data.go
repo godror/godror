@@ -302,6 +302,8 @@ func (d *Data) Get() interface{} {
 		logger.Log("msg", "Get", "data", d, "p", fmt.Sprintf("%p", d))
 	}
 	switch d.NativeTypeNum {
+	case 0:
+		return nil
 	case C.DPI_NATIVE_TYPE_BOOLEAN:
 		return d.GetBool()
 	case C.DPI_NATIVE_TYPE_BYTES:
