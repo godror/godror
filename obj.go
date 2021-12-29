@@ -217,6 +217,28 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 	return m, nil
 }
 
+func (o *Object) ObjAsMap() (map[string]interface{}, error) {
+	m := make(map[string]interface{}, len(o.ObjectType.Attributes))
+	for a := range o.ObjectType.Attributes {
+		var err error
+		if m[a], err = o.Get(a); err != nil {
+			return m, fmt.Errorf("%q: %w", a, err)
+		}
+		if sub, ok := m[a].(*Object); ok {
+			if m[a], err = sub.ObjAsMap(); err != nil {
+				return m, fmt.Errorf("%q sub: %w", a, err)
+			}
+		} else if subs, ok := m[a].(*ObjectCollection); ok {
+			if r, err := subs.CollAsArrayMap(); err != nil {
+				return m, fmt.Errorf("%q: %w", a, err)
+			} else {
+				m[a] = r
+			}
+		}
+	}
+	return m, nil
+}
+
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
 	*Object
@@ -418,6 +440,21 @@ func (O ObjectCollection) Len() (int, error) {
 // Trim the collection to n.
 func (O ObjectCollection) Trim(n int) error {
 	return O.drv.checkExec(func() C.int { return C.dpiObject_trim(O.dpiObject, C.uint32_t(n)) })
+}
+
+func (O ObjectCollection) CollAsArrayMap() ([]map[string]interface{}, error) {
+	var array []map[string]interface{}
+	for curr, err := O.First(); err == nil; curr, err = O.Next(curr) {
+		if value, err := O.Get(curr); err != nil {
+			return nil, err
+		} else if value == nil {
+			continue
+		} else {
+			r, _ := value.(*Object).ObjAsMap()
+			array = append(array, r)
+		}
+	}
+	return array, nil
 }
 
 // ObjectType holds type info of an Object.
