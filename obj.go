@@ -11,12 +11,17 @@ package godror
 */
 import "C"
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"unsafe"
@@ -241,6 +246,58 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 	return m, nil
 }
 
+// ToJSON writes the Object as JSON into the io.Writer.
+func (O *Object) ToJSON(w io.Writer) error {
+	if O == nil || O.ObjectType == nil {
+		_, err := io.WriteString(w, "nil")
+		return err
+	}
+	if O.ObjectType.CollectionOf != nil {
+		return O.Collection().ToJSON(w)
+	}
+	bw := bufio.NewWriter(w)
+	defer bw.Flush()
+	if err := bw.WriteByte('{'); err != nil {
+		return err
+	}
+	data := scratch.Get()
+	defer scratch.Put(data)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	keys := make([]string, 0, len(O.ObjectType.Attributes))
+	for a := range O.ObjectType.Attributes {
+		keys = append(keys, a)
+	}
+	sort.Strings(keys)
+	for i, a := range keys {
+		if err := O.GetAttribute(data, a); err != nil {
+			return fmt.Errorf("%q: %w", a, err)
+		}
+		if i != 0 {
+			if err := bw.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		fmt.Fprintf(bw, "%q:", a)
+		d := data.Get()
+		if data.IsObject() {
+			if err := d.(*Object).ToJSON(bw); err != nil {
+				return fmt.Errorf("%q: %w", a, err)
+			}
+			continue
+		}
+		d = maybeString(d, O.ObjectType.Attributes[a].ObjectType)
+		buf.Reset()
+		if err := enc.Encode(d); err != nil {
+			return fmt.Errorf("%q: %#v: %w", a, d, err)
+		}
+		if _, err := bw.Write(bytes.TrimSpace(buf.Bytes())); err != nil {
+			return fmt.Errorf("%q: %w", a, err)
+		}
+	}
+	return bw.WriteByte('}')
+}
+
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
 	*Object
@@ -310,6 +367,37 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 		dr = reflect.Append(dr, vr)
 	}
 	return dr.Interface(), nil
+}
+
+// ToJSON writes the ObjectCollection as JSON to the io.Writer.
+func (O ObjectCollection) ToJSON(w io.Writer) error {
+	var notFirst bool
+	bw := bufio.NewWriter(w)
+	defer bw.Flush()
+	if err := bw.WriteByte('['); err != nil {
+		return err
+	}
+	for curr, err := O.First(); err == nil; curr, err = O.Next(curr) {
+		if notFirst {
+			if err = bw.WriteByte(','); err != nil {
+				return err
+			}
+		} else {
+			notFirst = true
+		}
+		if v, err := O.Get(curr); err != nil {
+			return fmt.Errorf("Get(%v): %w", curr, err)
+		} else if v == nil {
+			if _, err = bw.WriteString("nil"); err != nil {
+				return err
+			}
+		} else if o, ok := v.(*Object); ok {
+			if err = o.ToJSON(bw); err != nil {
+				return err
+			}
+		}
+	}
+	return bw.WriteByte(']')
 }
 
 // AppendData to the collection.

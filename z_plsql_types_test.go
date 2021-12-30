@@ -1279,6 +1279,17 @@ END;`},
 			t.Errorf(d)
 		}
 	})
+
+	t.Run("ToJSON", func(t *testing.T) {
+		var buf strings.Builder
+		if err := rs.ToJSON(&buf); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(buf.String())
+		if got, want := buf.String(), `[{"CONS_01":10212,"CONS_YEAR":2021},nil]`; got != want {
+			t.Errorf("got %q, wanted %q", got, want)
+		}
+	})
 }
 
 func TestObjectInObject(t *testing.T) {
@@ -1353,11 +1364,11 @@ END;`},
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
 
 	t.Run("direct", func(t *testing.T) {
-		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
-		}
 		textI, err := rs.Get("STRING")
 		t.Logf("text: %T(%#v) (%+v)", textI, textI, err)
 		text := textI.(string)
@@ -1398,9 +1409,6 @@ END;`},
 	})
 
 	t.Run("AsMap", func(t *testing.T) {
-		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
-		}
 		m, err := rs.AsMap(true)
 		if err != nil {
 			t.Fatal(err)
@@ -1414,6 +1422,17 @@ END;`},
 		}
 		if d := cmp.Diff(m, want); d != "" {
 			t.Errorf(d)
+		}
+	})
+
+	t.Run("ToJSON", func(t *testing.T) {
+		var buf strings.Builder
+		if err := rs.ToJSON(&buf); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(buf.String())
+		if got, want := buf.String(), `{"HISTORY":[{"STATUS":"happyEND"}],"STRING":"some nice string"}`; want != got {
+			t.Errorf("got %q, wanted %q", got, want)
 		}
 	})
 }
