@@ -138,6 +138,17 @@ func (O *Object) Get(name string) (interface{}, error) {
 	}
 	v := d.Get()
 	if !isObject {
+		switch d.ObjectType.OracleTypeNum {
+		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
+			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
+			C.DPI_ORACLE_TYPE_NUMBER,
+			C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
+			C.DPI_ORACLE_TYPE_LONG_VARCHAR:
+
+			if b, ok := v.([]byte); ok {
+				return string(b), nil
+			}
+		}
 		return v, nil
 	}
 	sub := v.(*Object)
