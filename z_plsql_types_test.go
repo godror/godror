@@ -1230,31 +1230,44 @@ END;`},
 	}
 	t.Logf("rs: %#v", rs)
 
-	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	length, err := rs.Len()
-	t.Logf("length: %d", length)
-	if err != nil {
-		t.Fatal(err)
-	} else if want := 2; length != want {
-		t.Errorf("length=%d wanted %d", length, want)
-	}
+	t.Run("direct", func(t *testing.T) {
+		if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		length, err := rs.Len()
+		t.Logf("length: %d", length)
+		if err != nil {
+			t.Fatal(err)
+		} else if want := 2; length != want {
+			t.Errorf("length=%d wanted %d", length, want)
+		}
 
-	for i, err := rs.First(); err == nil; i, err = rs.Next(i) {
-		elt, err := rs.Get(i)
-		t.Logf("%d. %v (%+v)", i, elt, err)
-		o := elt.(*godror.Object)
-		if o == nil {
-			continue
+		for i, err := rs.First(); err == nil; i, err = rs.Next(i) {
+			elt, err := rs.Get(i)
+			t.Logf("%d. %v (%+v)", i, elt, err)
+			o := elt.(*godror.Object)
+			if o == nil {
+				continue
+			}
+			yearI, err := o.Get("CONS_YEAR")
+			t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
+			year := yearI.(float64)
+			if !(err == nil && year == 2021) {
+				t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
+			}
 		}
-		yearI, err := o.Get("CONS_YEAR")
-		t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
-		year := yearI.(float64)
-		if !(err == nil && year == 2021) {
-			t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
+	})
+
+	t.Run("AsMap", func(t *testing.T) {
+		if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
 		}
-	}
+		m, err := rs.AsMap(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("AsMap:", m)
+	})
 }
 
 func TestObjectInObject(t *testing.T) {
@@ -1330,44 +1343,57 @@ END;`},
 		t.Fatal(err)
 	}
 
-	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	textI, err := rs.Get("STRING")
-	t.Logf("text: %T(%#v) (%+v)", textI, textI, err)
-	text := textI.(string)
-	if !(err == nil && text == "some nice string") {
-		t.Errorf("got (%#v, %+v), wanted ('some nice string', nil)", text, err)
-	}
+	t.Run("direct", func(t *testing.T) {
+		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		textI, err := rs.Get("STRING")
+		t.Logf("text: %T(%#v) (%+v)", textI, textI, err)
+		text := textI.(string)
+		if !(err == nil && text == "some nice string") {
+			t.Errorf("got (%#v, %+v), wanted ('some nice string', nil)", text, err)
+		}
 
-	hc, err := rs.Get("HISTORY")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hs := hc.(*godror.ObjectCollection)
-	length, err := hs.Len()
-	t.Logf("length: %d", length)
-	if err != nil {
-		t.Fatal(err)
-	} else if want := 1; length != want {
-		t.Errorf("length=%d wanted %d", length, want)
-	}
-
-	for i, err := hs.First(); err == nil; i, err = hs.Next(i) {
-		elt, err := hs.Get(i)
+		hc, err := rs.Get("HISTORY")
 		if err != nil {
-			t.Fatalf("%d. %+v", i, err)
+			t.Fatal(err)
 		}
-		t.Logf("%d. %v (%+v)", i, elt, err)
-		o := elt.(*godror.Object)
-		if o == nil {
-			continue
-		}
-		statusI, err := o.Get("STATUS")
+		hs := hc.(*godror.ObjectCollection)
+		length, err := hs.Len()
+		t.Logf("length: %d", length)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
+		} else if want := 1; length != want {
+			t.Errorf("length=%d wanted %d", length, want)
 		}
-		t.Logf("%d. status: %+v", i, statusI)
 
-	}
+		for i, err := hs.First(); err == nil; i, err = hs.Next(i) {
+			elt, err := hs.Get(i)
+			if err != nil {
+				t.Fatalf("%d. %+v", i, err)
+			}
+			t.Logf("%d. %v (%+v)", i, elt, err)
+			o := elt.(*godror.Object)
+			if o == nil {
+				continue
+			}
+			statusI, err := o.Get("STATUS")
+			if err != nil {
+				t.Error(err)
+			}
+			t.Logf("%d. status: %+v", i, statusI)
+
+		}
+	})
+
+	t.Run("AsMap", func(t *testing.T) {
+		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		m, err := rs.AsMap(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("AsMap:", m)
+	})
 }
