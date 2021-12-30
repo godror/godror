@@ -1256,3 +1256,118 @@ END;`},
 		}
 	}
 }
+
+func TestObjectInObject(t *testing.T) {
+	objects := []struct {
+		Name, Type, Create string
+	}{
+		{"TEST_GET_CARD_DETAIL" + tblSuffix, "PROCEDURE",
+			`(p_detail           OUT TEST_DETAIL_REC` + tblSuffix + `) IS
+BEGIN
+  p_detail := test_detail_rec` + tblSuffix + `(
+    string=>'some nice string',
+    history=>TEST_CARD_HISTORY_LIST` + tblSuffix + `(
+      TEST_CARD_HISTORY_REC` + tblSuffix + `(status=>'happyEND'))
+  );
+END;`},
+		{"TEST_DETAIL_REC" + tblSuffix, "TYPE", ` IS OBJECT
+  (string      varchar2(2000),
+   history TEST_CARD_HISTORY_LIST` + tblSuffix + `);`},
+		{"TEST_CARD_HISTORY_LIST" + tblSuffix, `TYPE`, ` IS TABLE OF TEST_CARD_HISTORY_REC` + tblSuffix + `;`},
+		{"TEST_CARD_HISTORY_REC" + tblSuffix, `TYPE`, ` IS OBJECT
+  (status varchar2(200));`},
+	}
+	drop := func(ctx context.Context) {
+		for _, obj := range objects {
+			qry := "DROP " + obj.Type + " " + obj.Name
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				var ec interface{ Code() int }
+				if !(errors.As(err, &ec) && ec.Code() == 4043) {
+					t.Logf("%s: %+v", qry, err)
+				}
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("ObjectInObject"), 30*time.Second)
+	defer cancel()
+
+	drop(ctx)
+	defer drop(context.Background())
+	for i := len(objects) - 1; i >= 0; i-- {
+		obj := objects[i]
+		qry := "CREATE OR REPLACE " + obj.Type + " " + obj.Name + obj.Create
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+		t.Fatal(err)
+	} else if len(ces) != 0 {
+		t.Fatal(ces)
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	qry := "CALL " + objects[0].Name + "(:1)"
+	stmt, err := conn.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	rt, err := godror.GetObjectType(ctx, conn, objects[1].Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	rs, err := rt.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	textI, err := rs.Get("STRING")
+	t.Logf("text: %T(%#v) (%+v)", textI, textI, err)
+	text := textI.(string)
+	if !(err == nil && text == "some nice string") {
+		t.Errorf("got (%#v, %+v), wanted ('some nice string', nil)", text, err)
+	}
+
+	hc, err := rs.Get("HISTORY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hs := hc.(*godror.ObjectCollection)
+	length, err := hs.Len()
+	t.Logf("length: %d", length)
+	if err != nil {
+		t.Fatal(err)
+	} else if want := 1; length != want {
+		t.Errorf("length=%d wanted %d", length, want)
+	}
+
+	for i, err := hs.First(); err == nil; i, err = hs.Next(i) {
+		elt, err := hs.Get(i)
+		if err != nil {
+			t.Fatalf("%d. %+v", i, err)
+		}
+		t.Logf("%d. %v (%+v)", i, elt, err)
+		o := elt.(*godror.Object)
+		if o == nil {
+			continue
+		}
+		statusI, err := o.Get("STATUS")
+		if err != nil {
+			t.Error(err)
+		}
+		t.Logf("%d. status: %+v", i, statusI)
+
+	}
+}
