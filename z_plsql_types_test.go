@@ -19,6 +19,7 @@ import (
 	"time"
 
 	godror "github.com/godror/godror"
+	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -1230,10 +1231,10 @@ END;`},
 	}
 	t.Logf("rs: %#v", rs)
 
+	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
 	t.Run("direct", func(t *testing.T) {
-		if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
-		}
 		length, err := rs.Len()
 		t.Logf("length: %d", length)
 		if err != nil {
@@ -1255,18 +1256,28 @@ END;`},
 			if !(err == nil && year == 2021) {
 				t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
 			}
+
+			m, err := o.AsMap(true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%d. %v", i, m)
 		}
 	})
 
-	t.Run("AsMap", func(t *testing.T) {
-		if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
-		}
-		m, err := rs.AsMap(true)
+	t.Run("AsMapSlice", func(t *testing.T) {
+		m, err := rs.AsMapSlice(true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log("AsMap:", m)
+		t.Log("mapSlice:", m)
+		want := []map[string]interface{}{
+			{"CONS_YEAR": float64(2021), "CONS_01": float64(10212)},
+			nil,
+		}
+		if d := cmp.Diff(m, want); d != "" {
+			t.Errorf(d)
+		}
 	})
 }
 
@@ -1395,5 +1406,14 @@ END;`},
 			t.Fatal(err)
 		}
 		t.Log("AsMap:", m)
+		want := map[string]interface{}{
+			"STRING": "some nice string",
+			"HISTORY": []map[string]interface{}{
+				{"STATUS": "happyEND"},
+			},
+		}
+		if d := cmp.Diff(m, want); d != "" {
+			t.Errorf(d)
+		}
 	})
 }

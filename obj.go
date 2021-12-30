@@ -207,6 +207,7 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 		return nil, nil
 	}
 	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
+	logger := getLogger()
 	data := scratch.Get()
 	defer scratch.Put(data)
 	for a, ot := range O.ObjectType.Attributes {
@@ -218,41 +219,22 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 			d = maybeString(d, ot.ObjectType)
 		}
 		m[a] = d
+		if logger != nil {
+			logger.Log("msg", "AsMap", "attribute", a, "data", d, "type", fmt.Sprintf("%T", d), "recursive", recursive)
+		}
 		if !recursive {
 			continue
 		}
-		switch sub := d.(type) {
-		case *Object:
+		if sub, ok := d.(*Object); ok {
 			var err error
-			if m[a], err = sub.AsMap(recursive); err != nil {
-				return m, fmt.Errorf("%q.AsMap: %w", a, err)
-			}
-		case *ObjectCollection:
-			var err error
-			if sub.ObjectType.NativeTypeNum != C.DPI_NATIVE_TYPE_OBJECT {
-				if m[a], err = sub.AsSlice(nil); err != nil {
-					return m, fmt.Errorf("%q.AsSlice: %w", a, err)
+			if sub.ObjectType.CollectionOf == nil {
+				if m[a], err = sub.AsMap(recursive); err != nil {
+					return m, fmt.Errorf("%q.AsMap: %w", a, err)
 				}
 				continue
 			}
-
-			length, err := sub.Len()
-			if err != nil {
-				return m, fmt.Errorf("%q.Len: %w", a, err)
-			}
-			subm := make([]map[string]interface{}, 0, length)
-			for curr, err := sub.First(); err == nil; curr, err = sub.Next(curr) {
-				if v, err := sub.Get(curr); err != nil {
-					return m, fmt.Errorf("%q.Get(%v): %w", a, curr, err)
-				} else if v == nil {
-					subm = append(subm, nil)
-				} else if o, ok := v.(*Object); ok {
-					r, err := o.AsMap(recursive)
-					if err != nil {
-						return m, fmt.Errorf("%q[%v].AsMap: %w", a, curr, err)
-					}
-					subm = append(subm, r)
-				}
+			if m[a], err = sub.Collection().AsMapSlice(recursive); err != nil {
+				return m, fmt.Errorf("%q.AsMapSlice: %w", a, err)
 			}
 		}
 	}
@@ -269,6 +251,32 @@ var ErrNotCollection = errors.New("not collection")
 
 // ErrNotExist is returned when the collection's requested element does not exist.
 var ErrNotExist = errors.New("not exist")
+
+// AsMapSlice retrieves the collection into a []map[string]interface{}.
+// If recursive is true, then all subsequent Objects/ObjectsCollections are translated.
+//
+// This is horrendously inefficient, use it only as a guide!
+func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, error) {
+	length, err := O.Len()
+	if err != nil {
+		return nil, fmt.Errorf("Len: %w", err)
+	}
+	m := make([]map[string]interface{}, 0, length)
+	for curr, err := O.First(); err == nil; curr, err = O.Next(curr) {
+		if v, err := O.Get(curr); err != nil {
+			return m, fmt.Errorf("Get(%v): %w", curr, err)
+		} else if v == nil {
+			m = append(m, nil)
+		} else if o, ok := v.(*Object); ok {
+			r, err := o.AsMap(recursive)
+			if err != nil {
+				return m, fmt.Errorf("[%d](%v).AsMap: %w", curr, v, err)
+			}
+			m = append(m, r)
+		}
+	}
+	return m, nil
+}
 
 // AsSlice retrieves the collection into a slice.
 func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
