@@ -133,29 +133,34 @@ func (O *Object) Get(name string) (interface{}, error) {
 		return nil, err
 	}
 	isObject := d.IsObject()
+	ot := O.Attributes[name].ObjectType
 	if isObject {
-		d.ObjectType = O.Attributes[name].ObjectType
+		d.ObjectType = ot
 	}
 	v := d.Get()
 	if !isObject {
-		switch d.ObjectType.OracleTypeNum {
-		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
-			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_NUMBER,
-			C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR:
-
-			if b, ok := v.([]byte); ok {
-				return string(b), nil
-			}
-		}
-		return v, nil
+		return maybeString(v, ot), nil
 	}
 	sub := v.(*Object)
 	if sub != nil && sub.ObjectType.CollectionOf != nil {
 		return &ObjectCollection{Object: sub}, nil
 	}
 	return sub, nil
+}
+
+func maybeString(v interface{}, ot *ObjectType) interface{} {
+	switch ot.OracleTypeNum {
+	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
+		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
+		C.DPI_ORACLE_TYPE_NUMBER,
+		C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
+		C.DPI_ORACLE_TYPE_LONG_VARCHAR:
+
+		if b, ok := v.([]byte); ok {
+			return string(b)
+		}
+	}
+	return v
 }
 
 // ObjectRef implements userType interface.
@@ -204,23 +209,49 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
 	data := scratch.Get()
 	defer scratch.Put(data)
-	for a := range O.ObjectType.Attributes {
+	for a, ot := range O.ObjectType.Attributes {
 		if err := O.GetAttribute(data, a); err != nil {
 			return m, fmt.Errorf("%q: %w", a, err)
 		}
 		d := data.Get()
+		if !data.IsObject() {
+			d = maybeString(d, ot.ObjectType)
+		}
 		m[a] = d
-		if recursive {
-			switch sub := d.(type) {
-			case *Object:
-				var err error
-				if m[a], err = sub.AsMap(recursive); err != nil {
-					return m, fmt.Errorf("%q.AsMap: %w", a, err)
-				}
-			case *ObjectCollection:
-				var err error
+		if !recursive {
+			continue
+		}
+		switch sub := d.(type) {
+		case *Object:
+			var err error
+			if m[a], err = sub.AsMap(recursive); err != nil {
+				return m, fmt.Errorf("%q.AsMap: %w", a, err)
+			}
+		case *ObjectCollection:
+			var err error
+			if sub.ObjectType.NativeTypeNum != C.DPI_NATIVE_TYPE_OBJECT {
 				if m[a], err = sub.AsSlice(nil); err != nil {
 					return m, fmt.Errorf("%q.AsSlice: %w", a, err)
+				}
+				continue
+			}
+
+			length, err := sub.Len()
+			if err != nil {
+				return m, fmt.Errorf("%q.Len: %w", a, err)
+			}
+			subm := make([]map[string]interface{}, 0, length)
+			for curr, err := sub.First(); err == nil; curr, err = sub.Next(curr) {
+				if v, err := sub.Get(curr); err != nil {
+					return m, fmt.Errorf("%q.Get(%v): %w", a, curr, err)
+				} else if v == nil {
+					subm = append(subm, nil)
+				} else if o, ok := v.(*Object); ok {
+					r, err := o.AsMap(recursive)
+					if err != nil {
+						return m, fmt.Errorf("%q[%v].AsMap: %w", a, curr, err)
+					}
+					subm = append(subm, r)
 				}
 			}
 		}
@@ -255,7 +286,11 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 		if err = O.GetItem(d, i); err != nil {
 			return dest, err
 		}
-		vr := reflect.ValueOf(d.Get())
+		v := d.Get()
+		if !d.IsObject() {
+			v = maybeString(v, O.CollectionOf)
+		}
+		vr := reflect.ValueOf(v)
 		if needsInit {
 			needsInit = false
 			length, lengthErr := O.Len()
