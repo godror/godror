@@ -12,6 +12,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -1438,4 +1439,86 @@ END;`},
 			t.Errorf("got %q, wanted %q", got, want)
 		}
 	})
+}
+
+func TestFromMap(t *testing.T) {
+	m := make(map[string]interface{})
+	m["STRING"] = "String value"
+	arrM := make([]map[string]interface{}, 2)
+	for i := 0; i < 2; i++ {
+		app := make(map[string]interface{})
+		var stat string
+		if i%2 == 0 {
+			stat = "even"
+		} else {
+			stat = "odd"
+		}
+		app["STATUS"] = stat
+		arrM = append(arrM, app)
+	}
+	m["TEST_CARD_HISTORY_LIST"] = arrM
+
+	objects := []struct {
+		Name, Type, Create string
+	}{
+		{"TEST_DETAIL_REC" + tblSuffix, "TYPE", ` IS OBJECT (string varchar2(2000),history TEST_CARD_HISTORY_LIST` + tblSuffix + `);`},
+		{"TEST_CARD_HISTORY_LIST" + tblSuffix, `TYPE`, ` IS TABLE OF TEST_CARD_HISTORY_REC` + tblSuffix + `;`},
+		{"TEST_CARD_HISTORY_REC" + tblSuffix, `TYPE`, ` IS OBJECT (status varchar2(200));`},
+	}
+
+	drop := func(ctx context.Context) {
+		for _, obj := range objects {
+			qry := "DROP " + obj.Type + " " + obj.Name
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				var ec interface{ Code() int }
+				if !(errors.As(err, &ec) && ec.Code() == 4043) {
+					t.Logf("%s: %+v", qry, err)
+				}
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(testContext("ObjectInObject"), 30*time.Second)
+	defer cancel()
+
+	drop(ctx)
+	defer drop(context.Background())
+	for i := len(objects) - 1; i >= 0; i-- {
+		obj := objects[i]
+		qry := "CREATE OR REPLACE " + obj.Type + " " + obj.Name + obj.Create
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+		t.Fatal(err)
+	} else if len(ces) != 0 {
+		t.Fatal(ces)
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	rt, err := godror.GetObjectType(ctx, conn, objects[0].Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	rs, err := rt.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rs.FromMap(true, m)
+
+	m2, _ := rs.AsMap(true)
+
+	if !reflect.DeepEqual(m, m2) {
+		t.Fatal(fmt.Errorf("Conversion not correct"))
+	} else {
+		t.Logf("Success")
+	}
 }

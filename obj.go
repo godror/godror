@@ -345,7 +345,7 @@ func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, 
 	return m, nil
 }
 
-//Populate the Object starting from a map, according to the Object's Attributes.
+//FromMap populates the Object starting from a map, according to the Object's Attributes.
 func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	if O == nil || O.dpiObject == nil {
 		return nil
@@ -396,7 +396,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	return nil
 }
 
-//Populate the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
+//FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
 func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{}) error {
 	if O.dpiObject == nil {
 		return nil
