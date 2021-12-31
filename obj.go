@@ -345,6 +345,80 @@ func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, 
 	return m, nil
 }
 
+//Populate the Object starting from a map, according to the Object's Attributes.
+func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
+	if O == nil || O.dpiObject == nil {
+		return nil
+	}
+	logger := getLogger()
+
+	var attrs map[string]ObjectAttribute
+	if O.ObjectType.Attributes != nil {
+		attrs = O.ObjectType.Attributes
+	} else if O.ObjectType.CollectionOf.Attributes != nil {
+		attrs = O.ObjectType.CollectionOf.Attributes
+	}
+
+	for a, ot := range attrs {
+		v := m[a]
+		if logger != nil {
+			logger.Log("msg", "FromMap", "attribute", a, "value", v, "type", fmt.Sprintf("%T", v), "recursive", recursive)
+		}
+		if !recursive {
+			continue
+		}
+		if ot.ObjectType.CollectionOf != nil { //Collection case
+			arr := v.([]interface{})
+			mArr := make([]map[string]interface{}, 0, len(arr))
+			for _, el := range arr {
+				mArr = append(mArr, el.(map[string]interface{}))
+			}
+
+			if newO, err := ot.NewCollection(); err != nil {
+				return fmt.Errorf("%q.FromMap: %w", a, err)
+			} else if err := newO.FromMapSlice(recursive, mArr); err != nil {
+				return fmt.Errorf("%q.FromMapSlice: %w", a, err)
+			} else {
+				O.Set(a, newO)
+			}
+		} else if ot.ObjectType.Attributes != nil { //Object case
+			if newO, err := ot.NewObject(); err != nil {
+				return fmt.Errorf("%q.FromMap: %w", a, err)
+			} else if err := newO.FromMap(recursive, v.(map[string]interface{})); err != nil {
+				return fmt.Errorf("%q.FromMap: %w", a, err)
+			} else {
+				O.Set(a, newO)
+			}
+		} else { //Plain type case
+			O.Set(a, v)
+		}
+	}
+	return nil
+}
+
+//Populate the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
+func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{}) error {
+	if O.dpiObject == nil {
+		return nil
+	}
+	logger := getLogger()
+
+	for i := 0; i < len(m); i++ {
+		if logger != nil {
+			logger.Log("msg", "FromMapSlice", "index", i, "recursive", recursive)
+		}
+		if newO, err := O.ObjectType.CollectionOf.NewObject(); err != nil {
+			return fmt.Errorf("%d.FromMapSlice: %w", i, err)
+		} else {
+			if err := O.FromMap(recursive, m[i]); err != nil {
+				return fmt.Errorf("%d.FromMapSlice: %w", i, err)
+			}
+			O.Append(newO)
+		}
+	}
+	return nil
+}
+
 // AsSlice retrieves the collection into a slice.
 func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	var dr reflect.Value
