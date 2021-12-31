@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Object{,Collection}.{AsMap,ToJSON}
+
 ### Changed
 - DeqOptions.MsgID changed from string to []byte
 
