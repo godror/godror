@@ -298,6 +298,16 @@ func (O *Object) ToJSON(w io.Writer) error {
 	return bw.WriteByte('}')
 }
 
+func (O *Object) String() string {
+	if O == nil {
+		return ""
+	}
+	var buf strings.Builder
+	_, _ = buf.WriteString(O.ObjectType.String())
+	_ = O.ToJSON(&buf)
+	return buf.String()
+}
+
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
 	*Object
@@ -398,6 +408,16 @@ func (O ObjectCollection) ToJSON(w io.Writer) error {
 		}
 	}
 	return bw.WriteByte(']')
+}
+
+func (O ObjectCollection) String() string {
+	if O.Object == nil {
+		return ""
+	}
+	var buf strings.Builder
+	_, _ = buf.WriteString(O.Object.ObjectType.String())
+	_ = O.ToJSON(&buf)
+	return buf.String()
 }
 
 // AppendData to the collection.

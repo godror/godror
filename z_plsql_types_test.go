@@ -1234,6 +1234,8 @@ END;`},
 	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
+	t.Log("rs:", rs.String())
+
 	t.Run("direct", func(t *testing.T) {
 		length, err := rs.Len()
 		t.Logf("length: %d", length)
@@ -1367,6 +1369,7 @@ END;`},
 	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
+	t.Log("rs:", rs.String())
 
 	t.Run("direct", func(t *testing.T) {
 		textI, err := rs.Get("STRING")

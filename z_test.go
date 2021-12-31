@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,7 +64,17 @@ func TestMain(m *testing.M) {
 
 func setUp() func() {
 	hsh := fnv.New32()
-	hsh.Write([]byte(runtime.Version()))
+	bi, ok := debug.ReadBuildInfo()
+	if ok {
+		if b, err := bi.MarshalText(); err != nil {
+			ok = false
+		} else {
+			hsh.Write(b)
+		}
+	}
+	if !ok {
+		hsh.Write([]byte(runtime.Version()))
+	}
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
 
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
