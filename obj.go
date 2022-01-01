@@ -355,14 +355,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	}
 	logger := getLogger()
 
-	var attrs map[string]ObjectAttribute
-	if O.ObjectType.Attributes != nil {
-		attrs = O.ObjectType.Attributes
-	} else if O.ObjectType.CollectionOf.Attributes != nil {
-		attrs = O.ObjectType.CollectionOf.Attributes
-	}
-
-	for a, ot := range attrs {
+	for a, ot := range O.ObjectType.Attributes {
 		v := m[a]
 		if v == nil {
 			continue
