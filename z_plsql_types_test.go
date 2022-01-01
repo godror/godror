@@ -12,7 +12,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -1442,22 +1441,6 @@ END;`},
 }
 
 func TestFromMap(t *testing.T) {
-	m := make(map[string]interface{})
-	m["STRING"] = "String value"
-	arrM := make([]map[string]interface{}, 2)
-	for i := 0; i < 2; i++ {
-		app := make(map[string]interface{})
-		var stat string
-		if i%2 == 0 {
-			stat = "even"
-		} else {
-			stat = "odd"
-		}
-		app["STATUS"] = stat
-		arrM = append(arrM, app)
-	}
-	m["TEST_CARD_HISTORY_LIST"] = arrM
-
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1512,13 +1495,32 @@ func TestFromMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rs.FromMap(true, m)
+	m := make(map[string]interface{})
+	m["STRING"] = "String value"
+	arrM := make([]map[string]interface{}, 0, 2)
+	for i := 0; i < 2; i++ {
+		app := make(map[string]interface{})
+		var stat string
+		if i%2 == 0 {
+			stat = "even"
+		} else {
+			stat = "odd"
+		}
+		app["STATUS"] = stat
+		arrM = append(arrM, app)
+	}
+	m["HISTORY"] = arrM
 
-	m2, _ := rs.AsMap(true)
+	if err := rs.FromMap(true, m); err != nil {
+		t.Fatal(err)
+	}
 
-	if !reflect.DeepEqual(m, m2) {
-		t.Fatal(fmt.Errorf("Conversion not correct"))
-	} else {
-		t.Logf("Success")
+	got, err := rs.AsMap(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if d := cmp.Diff(m, got); d != "" {
+		t.Fatal(d)
 	}
 }
