@@ -52,7 +52,7 @@ func (r *MyRecord) Scan(src interface{}) error {
 	if err != nil {
 		return err
 	}
-	r.Txt = string(txt.([]byte))
+	r.Txt = txt.(string)
 
 	return nil
 }
