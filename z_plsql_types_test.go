@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -1513,17 +1514,22 @@ func TestObjectFromMap(t *testing.T) {
 		arrM = append(arrM, app)
 	}
 	m["HISTORY"] = arrM
-
 	if err := rs.FromMap(true, m); err != nil {
 		t.Fatal(err)
 	}
 
+	var want map[string]interface{}
+	if err := json.Unmarshal([]byte(
+		`{"HISTORY": [{"STATUS":"even"},{"STATUS":"odd"}],"STRING":"String value"}`,
+	), &want); err != nil {
+		t.Fatal(err)
+	}
 	got, err := rs.AsMap(true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if d := cmp.Diff(m, got); d != "" {
+	if d := cmp.Diff(fmt.Sprintf("%v", want), fmt.Sprintf("%v", got)); d != "" {
 		t.Fatal(d)
 	}
 }

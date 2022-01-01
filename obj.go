@@ -380,14 +380,12 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 				if logger != nil {
 					logger.Log("msg", "Append")
 				}
-				for _, v := range v {
-					if elt, err := ot.NewObject(); err != nil {
-						return fmt.Errorf("%s.NewObject: %w", ot, err)
-					} else if err = elt.Set(a, v); err != nil {
-						return err
-					} else if err = coll.Append(elt); err != nil {
-						return err
-					}
+				m := make([]map[string]interface{}, 0, len(v))
+				for _, e := range v {
+					m = append(m, e.(map[string]interface{}))
+				}
+				if err := coll.FromMapSlice(recursive, m); err != nil {
+					return fmt.Errorf("%q.FromMapSlice: %w", a, err)
 				}
 			default:
 				return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
