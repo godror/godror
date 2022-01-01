@@ -297,9 +297,8 @@ type IntervalYM struct {
 
 // Get returns the contents of Data.
 func (d *Data) Get() interface{} {
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "Get", "data", d, "p", fmt.Sprintf("%p", d))
+	if logger := getLogger(); logger != nil {
+		logger.Log("msg", "Get", "data", fmt.Sprintf("%#v", d), "p", fmt.Sprintf("%p", d))
 	}
 	switch d.NativeTypeNum {
 	case 0:
@@ -406,6 +405,10 @@ func (d *Data) Set(v interface{}) error {
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
 		d.ObjectType = x.ObjectType
 		d.SetObject(x)
+	case ObjectCollection:
+		d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+		d.ObjectType = x.Object.ObjectType
+		d.SetObject(x.Object)
 	//case *stmt:
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
 	//d.SetStmt(x)

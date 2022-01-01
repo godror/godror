@@ -1160,6 +1160,7 @@ func TestSubObjectTypeClose(t *testing.T) {
 }
 
 func TestObjectGetList(t *testing.T) {
+	t.Parallel()
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1295,6 +1296,7 @@ END;`},
 }
 
 func TestObjectInObject(t *testing.T) {
+	t.Parallel()
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1440,7 +1442,8 @@ END;`},
 	})
 }
 
-func TestFromMap(t *testing.T) {
+func TestObjectFromMap(t *testing.T) {
+	t.Parallel()
 	objects := []struct {
 		Name, Type, Create string
 	}{

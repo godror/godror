@@ -228,7 +228,7 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 		}
 		m[a] = d
 		if logger != nil {
-			logger.Log("msg", "AsMap", "attribute", a, "data", d, "type", fmt.Sprintf("%T", d), "recursive", recursive)
+			logger.Log("msg", "AsMap", "attribute", a, "data", fmt.Sprintf("%#v", d), "type", fmt.Sprintf("%T", d), "recursive", recursive)
 		}
 		if !recursive {
 			continue
@@ -368,7 +368,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			continue
 		}
 		if logger != nil {
-			logger.Log("msg", "FromMap", "attribute", a, "value", v, "type", fmt.Sprintf("%T", v), "recursive", recursive)
+			logger.Log("msg", "FromMap", "attribute", a, "value", v, "type", fmt.Sprintf("%T", v), "recursive", recursive, "ot", ot.ObjectType)
 		}
 		if ot.ObjectType.CollectionOf != nil { // Collection case
 			coll, err := ot.NewCollection()
@@ -377,10 +377,16 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			}
 			switch v := v.(type) {
 			case []map[string]interface{}:
+				if logger != nil {
+					logger.Log("msg", "FromMapSlice")
+				}
 				if err := coll.FromMapSlice(recursive, v); err != nil {
 					return fmt.Errorf("%q.FromMapSlice: %w", a, err)
 				}
 			case []interface{}:
+				if logger != nil {
+					logger.Log("msg", "Append")
+				}
 				for _, v := range v {
 					if elt, err := ot.NewObject(); err != nil {
 						return fmt.Errorf("%s.NewObject: %w", ot, err)
@@ -393,13 +399,16 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			default:
 				return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
 			}
+			if err := O.Set(a, coll); err != nil {
+				return fmt.Errorf("%q.Set(%v): %w", a, coll, err)
+			}
 		} else if ot.ObjectType.Attributes != nil { // Object case
 			if newO, err := ot.NewObject(); err != nil {
 				return fmt.Errorf("%q.FromMap: %w", a, err)
 			} else if err := newO.FromMap(recursive, v.(map[string]interface{})); err != nil {
 				return fmt.Errorf("%q.FromMap: %w", a, err)
 			} else if err := O.Set(a, newO); err != nil {
-				return err
+				return fmt.Errorf("%q.Set(%v): %w", a, newO.ObjectType, err)
 			}
 		} else if err := O.Set(a, v); err != nil { // Plain type case
 			return err
