@@ -408,6 +408,77 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	return nil
 }
 
+func (O *Object) FromJSON(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	logger := getLogger()
+	wantDelim := tok == json.Delim('{')
+	first := true
+	for {
+		if first && wantDelim || !first {
+			first = false
+			if tok, err = dec.Token(); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
+		}
+		k, ok := tok.(string)
+		if !ok {
+			return fmt.Errorf("wanted key (string), got %v (%T)", tok, tok)
+		}
+		k = strings.ToUpper(k)
+		a, ok := O.ObjectType.Attributes[k]
+		if logger != nil {
+			logger.Log("attribute", k, "a", a)
+		}
+		if !ok {
+			return fmt.Errorf("key %q not found", k)
+		}
+		var v interface{}
+		if a.ObjectType.CollectionOf != nil {
+			coll, err := a.ObjectType.NewCollection()
+			if err != nil {
+				return fmt.Errorf("%q.%s.NewCollection: %w", k, a.ObjectType, err)
+			}
+			if err = coll.FromJSON(dec); err != nil {
+				return fmt.Errorf("%q.FromJSON: %w", k, err)
+			}
+			v = coll
+		} else if a.ObjectType.IsObject() {
+			obj, err := a.ObjectType.NewObject()
+			if err != nil {
+				return fmt.Errorf("%q.%s.NewObject: %w", k, a.ObjectType, err)
+			}
+			if err = obj.FromJSON(dec); err != nil {
+				return fmt.Errorf("%q.FromJSON: %w", k, err)
+			}
+			v = obj
+		} else {
+			if tok, err = dec.Token(); err != nil {
+				return err
+			}
+			v = tok
+		}
+		if err = O.Set(k, v); err != nil {
+			return fmt.Errorf("%q.Set(%v): %w", k, v, err)
+		}
+		if !dec.More() {
+			break
+		}
+	}
+	if wantDelim {
+		_, err = dec.Token()
+	}
+	return nil
+}
+
 // FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
 func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{}) error {
 	if O.dpiObject == nil {
@@ -433,6 +504,36 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{
 	return nil
 }
 
+func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	wantDelim := tok == json.Delim('[')
+	for {
+		elt, err := O.ObjectType.CollectionOf.NewObject()
+		if err != nil {
+			return err
+		}
+		if err = elt.FromJSON(dec); err != nil {
+			return err
+		}
+		if err = O.Append(elt); err != nil {
+			return err
+		}
+		if !dec.More() {
+			break
+		}
+	}
+	if wantDelim {
+		_, err = dec.Token()
+	}
+	return err
+}
+
 // AsSlice retrieves the collection into a slice.
 func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	var dr reflect.Value
@@ -443,7 +544,7 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	d := scratch.Get()
 	defer scratch.Put(d)
 	for i, err := O.First(); err == nil; i, err = O.Next(i) {
-		if O.CollectionOf.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT {
+		if O.CollectionOf.IsObject() {
 			d.ObjectType = O.CollectionOf
 		}
 		if err = O.GetItem(d, i); err != nil {
@@ -692,6 +793,8 @@ func (t *ObjectType) String() string {
 	}
 	return t.Schema + "." + t.Name
 }
+
+func (t *ObjectType) IsObject() bool { return t != nil && t.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT }
 
 // FullName returns the object's name with the schame prepended.
 func (t *ObjectType) FullName() string {

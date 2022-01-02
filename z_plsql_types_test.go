@@ -1369,6 +1369,7 @@ END;`},
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rs.Close()
 	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
@@ -1498,6 +1499,7 @@ func TestObjectFromMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rs.Close()
 
 	m := make(map[string]interface{})
 	m["STRING"] = "String value"
@@ -1518,10 +1520,9 @@ func TestObjectFromMap(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	const jsonString = `{"HISTORY":[{"STATUS":"even"},{"STATUS":"odd"}],"STRING":"String value"}`
 	var want map[string]interface{}
-	if err := json.Unmarshal([]byte(
-		`{"HISTORY": [{"STATUS":"even"},{"STATUS":"odd"}],"STRING":"String value"}`,
-	), &want); err != nil {
+	if err := json.Unmarshal([]byte(jsonString), &want); err != nil {
 		t.Fatal(err)
 	}
 	got, err := rs.AsMap(true)
@@ -1531,5 +1532,21 @@ func TestObjectFromMap(t *testing.T) {
 
 	if d := cmp.Diff(fmt.Sprintf("%v", want), fmt.Sprintf("%v", got)); d != "" {
 		t.Fatal(d)
+	}
+
+	obj, err := rt.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer obj.Close()
+	if err = obj.FromJSON(json.NewDecoder(strings.NewReader(jsonString))); err != nil {
+		t.Fatalf("FromJSON: %+v", err)
+	}
+	var buf strings.Builder
+	if err = obj.ToJSON(&buf); err != nil {
+		t.Fatalf("ToJSON: %+v", err)
+	}
+	if d := cmp.Diff(jsonString, buf.String()); d != "" {
+		t.Errorf("ToJSON: %s", d)
 	}
 }
