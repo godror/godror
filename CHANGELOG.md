@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Object{,Collection}.{AsMap,ToJSON}
+
+### Changed
+- DeqOptions.MsgID changed from string to []byte
+
+## [v0.29.0]
+### Added
+- Add github.com/godror/knownpb/timestamppb.Timestamp
+### Changed
+- Remove pbTimestamp (behind timestamppb tag), github.com/UNO-SOFT/knownpb/timestamppb implements driver.Valuer and sql.Scanner.
+
+## [v0.28.1]
+### Changed
+- ODPI-C v4.3.0
+### Added 
+- Add NewTempLob to the Conn interface for #189.
 
 ## [v0.28.0]
 ### Changed

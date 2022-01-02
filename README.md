@@ -40,10 +40,17 @@ the [Godror User Guide](https://godror.github.io/godror/doc/contents.html).
 Run:
 
 ```bash
-go get github.com/godror/godror
+go get github.com/godror/godror@latest
 ```
 
 Then install Oracle Client libraries and you're ready to go!
+
+godror is cgo package. 
+If you want to build your app using godror, you need gcc (a C compiler).
+
+Important: because this is a CGO enabled package, 
+you are required to set the environment variable `CGO_ENABLED=1` 
+and have a gcc compile present within your path.
 
 See [Godror
 Installation](https://godror.github.io/godror/doc/installation.html) for more information.
