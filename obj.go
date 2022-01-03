@@ -1,4 +1,4 @@
-// Copyright 2017, 2020 The Godror Authors
+// Copyright 2017, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -370,22 +370,29 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			}
 			switch v := v.(type) {
 			case []map[string]interface{}:
-				if logger != nil {
-					logger.Log("msg", "FromMapSlice")
-				}
 				if err := coll.FromMapSlice(recursive, v); err != nil {
 					return fmt.Errorf("%q.FromMapSlice: %w", a, err)
 				}
 			case []interface{}:
-				if logger != nil {
-					logger.Log("msg", "Append")
-				}
-				m := make([]map[string]interface{}, 0, len(v))
-				for _, e := range v {
-					m = append(m, e.(map[string]interface{}))
-				}
-				if err := coll.FromMapSlice(recursive, m); err != nil {
-					return fmt.Errorf("%q.FromMapSlice: %w", a, err)
+				if ot.IsObject() {
+					m := make([]map[string]interface{}, 0, len(v))
+					for _, e := range v {
+						m = append(m, e.(map[string]interface{}))
+					}
+					if err := coll.FromMapSlice(recursive, m); err != nil {
+						return fmt.Errorf("%q.FromMapSlice: %w", a, err)
+					}
+				} else {
+					data := scratch.Get()
+					defer scratch.Put(data)
+					for _, e := range v {
+						if err := data.Set(e); err != nil {
+							return err
+						}
+						if err := coll.AppendData(data); err != nil {
+							return err
+						}
+					}
 				}
 			default:
 				return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
