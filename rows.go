@@ -134,7 +134,7 @@ func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 // Type names should be uppercase.
 // Examples of returned types: "VARCHAR", "NVARCHAR", "VARCHAR2", "CHAR", "TEXT", "DECIMAL", "SMALLINT", "INT", "BIGINT", "BOOL", "[]BIGINT", "JSONB", "XML", "TIMESTAMP".
 func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
-	switch r.columns[index].OracleType {
+	switch r.columns[index].OrigOracleType {
 	case C.DPI_ORACLE_TYPE_VARCHAR:
 		return "VARCHAR2"
 	case C.DPI_ORACLE_TYPE_NVARCHAR:

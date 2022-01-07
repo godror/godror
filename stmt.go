@@ -2841,7 +2841,8 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			logger.Log("msg", "openRows", "col", i, "info", ti)
 		}
 		//if logger != nil {Log("dNTN", int(ti.defaultNativeTypeNum), "number", C.DPI_ORACLE_TYPE_NUMBER) }
-		switch ti.oracleTypeNum {
+		effTypeNum := ti.oracleTypeNum
+		switch effTypeNum {
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			switch ti.defaultNativeTypeNum {
 			case C.DPI_NATIVE_TYPE_FLOAT, C.DPI_NATIVE_TYPE_DOUBLE:
@@ -2854,31 +2855,32 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 		case C.DPI_ORACLE_TYPE_BLOB:
 			if !st.LobAsReader() {
-				ti.oracleTypeNum = C.DPI_ORACLE_TYPE_LONG_RAW
+				effTypeNum = C.DPI_ORACLE_TYPE_LONG_RAW
 				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 			}
 		case C.DPI_ORACLE_TYPE_CLOB:
 			if !st.LobAsReader() {
-				ti.oracleTypeNum = C.DPI_ORACLE_TYPE_LONG_VARCHAR
+				effTypeNum = C.DPI_ORACLE_TYPE_LONG_VARCHAR
 				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 			}
 		}
 		r.columns[i] = Column{
-			Name:        C.GoStringN(info.name, C.int(info.nameLength)),
-			OracleType:  ti.oracleTypeNum,
-			NativeType:  ti.defaultNativeTypeNum,
-			Size:        ti.clientSizeInBytes,
-			Precision:   ti.precision,
-			Scale:       ti.scale,
-			Nullable:    info.nullOk == 1,
-			ObjectType:  ti.objectType,
-			SizeInChars: ti.sizeInChars,
-			DBSize:      ti.dbSizeInBytes,
+			Name:           C.GoStringN(info.name, C.int(info.nameLength)),
+			OracleType:     effTypeNum,
+			OrigOracleType: ti.oracleTypeNum,
+			NativeType:     ti.defaultNativeTypeNum,
+			Size:           ti.clientSizeInBytes,
+			Precision:      ti.precision,
+			Scale:          ti.scale,
+			Nullable:       info.nullOk == 1,
+			ObjectType:     ti.objectType,
+			SizeInChars:    ti.sizeInChars,
+			DBSize:         ti.dbSizeInBytes,
 		}
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
 		vi := varInfo{
-			Typ:        ti.oracleTypeNum,
+			Typ:        effTypeNum,
 			NatTyp:     ti.defaultNativeTypeNum,
 			ObjectType: ti.objectType,
 			BufSize:    bufSize,
@@ -2905,14 +2907,14 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 // Column holds the info from a column.
 type Column struct {
-	ObjectType                *C.dpiObjectType
-	Name                      string
-	OracleType                C.dpiOracleTypeNum
-	NativeType                C.dpiNativeTypeNum
-	Size, SizeInChars, DBSize C.uint32_t
-	Precision                 C.int16_t
-	Scale                     C.int8_t
-	Nullable                  bool
+	ObjectType                 *C.dpiObjectType
+	Name                       string
+	OracleType, OrigOracleType C.dpiOracleTypeNum
+	NativeType                 C.dpiNativeTypeNum
+	Size, SizeInChars, DBSize  C.uint32_t
+	Precision                  C.int16_t
+	Scale                      C.int8_t
+	Nullable                   bool
 }
 
 func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {

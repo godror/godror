@@ -4380,3 +4380,35 @@ func TestLoopInLoop_199(t *testing.T) {
 		t.Error("last does differ from the avg more than 20%")
 	}
 }
+func TestLobAsStringTypeName(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("LobAsStringTypeName"), 10*time.Second)
+	defer cancel()
+
+	tbl := "test_lobasstring" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (f_id NUMBER, f_blob BLOB)"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer func() { _, _ = testDb.Exec("DROP TABLE " + tbl) }()
+
+	qry = "SELECT F_id, F_blob FROM " + tbl
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	cols, err := rows.ColumnTypes()
+	rows.Close()
+	want := map[string]string{"F_ID": "NUMBER", "F_BLOB": "BLOB"}
+	got := make(map[string]string, len(cols))
+	for _, c := range cols {
+		got[c.Name()] = c.DatabaseTypeName()
+	}
+	t.Log("got:", got)
+	if err != nil {
+		t.Error(err)
+	}
+	if d := cmp.Diff(want, got); d != "" {
+		t.Error(d)
+	}
+}
