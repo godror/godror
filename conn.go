@@ -1038,6 +1038,9 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	c.mu.RLock()
 	key, drv, params, dpiConnOK := c.poolKey, c.drv, c.params, c.dpiConn != nil
 	c.mu.RUnlock()
+	if dpiConnOK {
+		dpiConnOK = c.isHealthy()
+	}
 	if key == "" {
 		// not pooled connection
 		if !dpiConnOK {
@@ -1122,6 +1125,9 @@ func (c *conn) IsValid() bool {
 	c.mu.RLock()
 	dpiConnOK, released, pooled, tzOK := c.dpiConn != nil, c.released, c.poolKey != "", c.params.Timezone != nil
 	c.mu.RUnlock()
+	if dpiConnOK {
+		dpiConnOK = c.isHealthy()
+	}
 	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
@@ -1148,6 +1154,19 @@ func (c *conn) IsValid() bool {
 	c.closeNotLocking()
 	c.released = true
 	return true
+}
+
+func (c *conn) isHealthy() bool {
+	dpiConnOK := true
+	c.mu.Lock()
+	var isHealthy C.int
+	if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) == C.DPI_FAILURE {
+		dpiConnOK = false
+	} else {
+		dpiConnOK = isHealthy == 1
+	}
+	c.mu.Unlock()
+	return dpiConnOK
 }
 
 func (c *conn) String() string {
