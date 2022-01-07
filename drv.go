@@ -34,6 +34,7 @@
 //     configDir=
 //     libDir=
 //     stmtCacheSize=
+//     charset=UTF-8
 //
 // These are the defaults.
 // For external authentication, user and password should be empty
@@ -60,6 +61,8 @@
 //
 // If you specify server_type as POOLED in sid, DRCP is used.
 // For what can be used as "sid", see https://www.oracle.com/pls/topic/lookup?ctx=dblatest&id=GUID-E5358DEA-D619-4B7B-A799-3D2F802500F1
+//
+// Go strings are UTF-8, so the default charset should be used unless there's a really good reason to interfere with Oracle's character set conversion.
 package godror
 
 /*
@@ -337,7 +340,7 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 // initCommonCreateParams initializes ODPI-C common creation parameters used for creating pools and
 // standalone connections. The C strings for the encoding and driver name are
 // defined at the package level for convenience.
-func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool, stmtCacheSize int) error {
+func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool, stmtCacheSize int, charset string) error {
 	// initialize ODPI-C structure for common creation parameters
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initCommonCreateParams(d.dpiContext, P)
@@ -345,9 +348,9 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 		return fmt.Errorf("initCommonCreateParams: %w", err)
 	}
 
-	// assign encoding and national encoding (always use UTF-8)
-	P.encoding = cUTF8
-	P.nencoding = cUTF8
+	// assign encoding and national encoding
+	P.encoding = C.CString(charset)
+	P.nencoding = C.CString(charset)
 
 	// assign driver name
 	P.driverName = cDriverName
@@ -427,7 +430,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	var commonCreateParamsPtr *C.dpiCommonCreateParams
 	var commonCreateParams C.dpiCommonCreateParams
 	if pool == nil {
-		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize); err != nil {
+		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize, P.Charset); err != nil {
 			return nil, false, err
 		}
 		commonCreateParamsPtr = &commonCreateParams
@@ -680,7 +683,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// set up common creation parameters
 	var commonCreateParams C.dpiCommonCreateParams
-	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize); err != nil {
+	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize, P.Charset); err != nil {
 		return nil, err
 	}
 
