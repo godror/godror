@@ -417,9 +417,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
-	//if st.DeleteFromCache() {
-	//	C.dpiStmt_deleteFromCache(st.dpiStmt)
-	//}
+	if st.DeleteFromCache() {
+		C.dpiStmt_deleteFromCache(st.dpiStmt)
+	}
 	// execute
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
