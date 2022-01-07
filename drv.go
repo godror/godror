@@ -78,7 +78,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -159,16 +158,8 @@ func NewPassword(s string) Password { return dsn.NewPassword(s) }
 
 var defaultDrv = &drv{}
 
-// UTF-8 is a shortcut name for AL32UTF8 in ODPI-C (and not the same as the botched UTF8).
-var cCharset, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
-
 func init() {
 	sql.Register("godror", defaultDrv)
-
-	nlsLang := os.Getenv("NLS_LANG")
-	if idx := strings.LastIndex(nlsLang, "."); idx > -1 {
-		cCharset = C.CString(nlsLang[idx+1:])
-	}
 }
 
 var _ driver.Driver = (*drv)(nil)
@@ -293,7 +284,7 @@ func (d *drv) init(configDir, libDir string) error {
 		return nil
 	}
 	ctxParams := new(C.dpiContextCreateParams)
-	ctxParams.defaultDriverName, ctxParams.defaultEncoding = cDriverName, cCharset
+	ctxParams.defaultDriverName, ctxParams.defaultEncoding = cDriverName, cUTF8
 	if !(configDir == "" && libDir == "") {
 		if configDir != "" {
 			ctxParams.oracleClientConfigDir = C.CString(configDir)
@@ -340,6 +331,9 @@ func (d *drv) ClientVersion() (VersionInfo, error) {
 	return d.clientVersion, nil
 }
 
+// UTF-8 is a shortcut name for AL32UTF8 in ODPI-C (and not the same as the botched UTF8).
+var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
+
 // initCommonCreateParams initializes ODPI-C common creation parameters used for creating pools and
 // standalone connections. The C strings for the encoding and driver name are
 // defined at the package level for convenience.
@@ -352,8 +346,8 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 	}
 
 	// assign encoding and national encoding (always use UTF-8)
-	P.encoding = cCharset
-	P.nencoding = cCharset
+	P.encoding = cUTF8
+	P.nencoding = cUTF8
 
 	// assign driver name
 	P.driverName = cDriverName
