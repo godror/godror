@@ -780,7 +780,15 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	// set statement cache
-	C.dpiPool_setStmtCacheSize(dp, 40)
+	stmtCacheSize := C.uint32_t(40)
+	if P.StmtCacheSize != 0 {
+		if P.StmtCacheSize < 0 {
+			stmtCacheSize = 0
+		} else {
+			stmtCacheSize = C.uint32_t(P.StmtCacheSize)
+		}
+	}
+	C.dpiPool_setStmtCacheSize(dp, stmtCacheSize)
 
 	return &connPool{dpiPool: dp, params: P}, nil
 }
