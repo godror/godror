@@ -43,8 +43,6 @@ const (
 	DefaultMaxLifeTime = 1 * time.Hour
 	//DefaultStandaloneConnection holds the default for standaloneConnection.
 	DefaultStandaloneConnection = false
-	// DefaultCharset holds the default client character set. UTF-8 is a shortcut name for AL32UTF8 in ODPI-C (and not the same as the botched UTF8)
-	DefaultCharset = "UTF-8"
 )
 
 // CommonParams holds the common parameters for pooled or standalone connections.
@@ -96,7 +94,9 @@ func (P CommonParams) String() string {
 	if P.StmtCacheSize != 0 {
 		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
 	}
-	q.Add("charset", P.Charset)
+	if P.Charset != "" {
+		q.Add("charset", P.Charset)
+	}
 
 	return q.String()
 }
@@ -263,7 +263,9 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	if P.StmtCacheSize != 0 {
 		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
 	}
-	q.Add("charset", P.Charset)
+	if P.Charset != "" {
+		q.Add("charset", P.Charset)
+	}
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	if P.MaxSessionsPerShard != 0 {
@@ -302,9 +304,6 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	P := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
 		//CommonParams: CommonParams{ Timezone: time.Local, },
-		CommonParams: CommonParams{
-			Charset: DefaultCharset,
-		},
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
 		},
