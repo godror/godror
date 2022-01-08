@@ -349,8 +349,11 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 	}
 
 	// assign encoding and national encoding
-	P.encoding = C.CString(charset)
-	P.nencoding = C.CString(charset)
+	P.encoding, P.nencoding = cUTF8, cUTF8
+	if charset != "" {
+		P.encoding = C.CString(charset)
+		P.nencoding = P.encoding
+	}
 
 	// assign driver name
 	P.driverName = cDriverName
