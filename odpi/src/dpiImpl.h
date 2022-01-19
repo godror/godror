@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -1413,6 +1413,7 @@ struct dpiDeqOptions {
     dpiType_HEAD
     dpiConn *conn;                      // connection which created this
     void *handle;                       // OCI dequeue options handle
+    void *msgIdRaw;                     // Message ID to be dequeued
 };
 
 // represents the available options for enqueueing messages when using advanced

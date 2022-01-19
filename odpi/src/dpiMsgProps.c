@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -256,13 +256,7 @@ int dpiMsgProps_getMsgId(dpiMsgProps *props, const char **value,
         return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(props, value)
     DPI_CHECK_PTR_NOT_NULL(props, valueLength)
-    if (!props->msgIdRaw) {
-        *value = NULL;
-        *valueLength = 0;
-    } else {
-        dpiOci__rawPtr(props->env->handle, props->msgIdRaw, (void**) value);
-        dpiOci__rawSize(props->env->handle, props->msgIdRaw, valueLength);
-    }
+    dpiMsgProps__extractMsgId(props, value, valueLength);
     return dpiGen__endPublicFn(props, DPI_SUCCESS, &error);
 }
 

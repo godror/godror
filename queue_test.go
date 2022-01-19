@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -30,8 +29,8 @@ func TestQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 
-	t.Run("notexist", func(t *testing.T) {
-		const qName = "TEST_Q"
+	t.Run("deqbymsgid", func(t *testing.T) {
+		const qName = "TEST_MSGID_Q"
 		const qTblName = qName + "_TBL"
 		setUp := func(ctx context.Context, db execer, user string) error {
 			qry := `DECLARE
@@ -94,52 +93,67 @@ func TestQueue(t *testing.T) {
 			}
 		}()
 
-		t.Log("notexist")
-		if func() error {
+		t.Log("deqbymsgid")
+		if err = func() error {
 			q, err := godror.NewQueue(ctx, tx, qName, "")
 			t.Log("q:", q, "err:", err)
 			if err != nil {
 				return err
 			}
 			defer q.Close()
+
+			msgs := make([]godror.Message, 1)
+			msgs[0] = godror.Message{Raw: []byte("msg to be dequeued")}
+			msgs[0].Expiration = 60 * time.Second
+
+			if err = q.Enqueue(msgs); err != nil {
+				var ec interface{ Code() int }
+				if errors.As(err, &ec) && ec.Code() == 24444 {
+					t.Skip(err)
+				}
+				return err
+			}
+			if err = tx.Commit(); err != nil {
+				return err
+			}
+
+			b := msgs[0].MsgID[:]
+
+			tx, err := testDb.BeginTx(ctx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+
 			opts, err := q.DeqOptions()
 			if err != nil {
 				return err
 			}
-			opts.Mode = godror.DeqBrowse
-			b, err := hex.DecodeString("7BA3FC69817C6F60E0540208202FCAE4")
-			if err != nil {
-				return err
-			}
+
+			opts.Mode = godror.DeqRemove
 			opts.MsgID = b
 			opts.Wait = 1 * time.Second
 			t.Logf("opts: %#v", opts)
+
 			if err = q.SetDeqOptions(opts); err != nil {
 				return err
 			}
-			if opts, err = q.DeqOptions(); err != nil {
+			t.Logf("opts: %#v", opts)
+
+			n, err := q.Dequeue(msgs[:1])
+			if err != nil || n == 0 {
+				return fmt.Errorf("dequeue by msgid: %d/%+v", n, err)
+			}
+
+			if err = tx.Commit(); err != nil {
 				return err
 			}
-			t.Logf("opts: %#v", opts)
-			if !bytes.Equal(opts.MsgID, b) {
-				t.Fatalf("set %x, got %x as DeqOptions.MsgID", b, opts.MsgID)
+
+			if !bytes.Equal(msgs[0].MsgID[:], b) {
+				return fmt.Errorf("set %v, got %v as msgs[0].MsgID", b, msgs[0].MsgID)
 			}
-			return func() error {
-				defer func() {
-					if r := recover(); r != nil {
-						t.Errorf("dequeue nonexisting message PANIC: %+v", r)
-					}
-				}()
-				msgs := make([]godror.Message, 1)
-				n, err := q.Dequeue(msgs[:1])
-				t.Logf("nonexisting: %d %v", n, err)
-				if err != nil {
-					return fmt.Errorf("dequeue nonexisting message: %+v", err)
-				} else if n != 0 {
-					return fmt.Errorf("dequeued nonexisting message found %v", msgs[:n])
-				}
-				return nil
-			}()
+
+			return nil
 		}(); err != nil {
 			t.Error(err)
 		}

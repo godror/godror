@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -37,6 +37,10 @@ int dpiDeqOptions__create(dpiDeqOptions *options, dpiConn *conn,
 //-----------------------------------------------------------------------------
 void dpiDeqOptions__free(dpiDeqOptions *options, dpiError *error)
 {
+    if (options->msgIdRaw) {
+        dpiOci__rawResize(options->env->handle, &options->msgIdRaw, 0, error);
+        options->msgIdRaw = NULL;
+    }
     if (options->handle) {
         dpiOci__descriptorFree(options->handle, DPI_OCI_DTYPE_AQDEQ_OPTIONS);
         options->handle = NULL;
@@ -305,7 +309,6 @@ int dpiDeqOptions_setMode(dpiDeqOptions *options, dpiDeqMode value)
 int dpiDeqOptions_setMsgId(dpiDeqOptions *options, const char *value,
         uint32_t valueLength)
 {
-    void *rawValue = NULL;
     dpiError error;
     int status;
 
@@ -314,12 +317,11 @@ int dpiDeqOptions_setMsgId(dpiDeqOptions *options, const char *value,
         return dpiGen__endPublicFn(options, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(options, value)
     if (dpiOci__rawAssignBytes(options->env->handle, value, valueLength,
-            &rawValue, &error) < 0)
+            &options->msgIdRaw, &error) < 0)
         return dpiGen__endPublicFn(options, DPI_FAILURE, &error);
     status = dpiOci__attrSet(options->handle, DPI_OCI_DTYPE_AQDEQ_OPTIONS,
-            (void*) &rawValue, valueLength, DPI_OCI_ATTR_DEQ_MSGID,
+            (void*) &options->msgIdRaw, valueLength, DPI_OCI_ATTR_DEQ_MSGID,
             "set value", &error);
-    dpiOci__rawResize(options->env->handle, &rawValue, 0, &error);
     return dpiGen__endPublicFn(options, status, &error);
 }
 

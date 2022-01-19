@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -277,7 +277,8 @@ typedef uint32_t dpiOracleTypeNum;
 #define DPI_ORACLE_TYPE_JSON_OBJECT                 2028
 #define DPI_ORACLE_TYPE_JSON_ARRAY                  2029
 #define DPI_ORACLE_TYPE_UROWID                      2030
-#define DPI_ORACLE_TYPE_MAX                         2031
+#define DPI_ORACLE_TYPE_LONG_NVARCHAR               2031
+#define DPI_ORACLE_TYPE_MAX                         2032
 
 // session pool close modes
 typedef uint32_t dpiPoolCloseMode;

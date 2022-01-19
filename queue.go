@@ -281,6 +281,16 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		return fmt.Errorf("enqueue %#v: %w", messages, err)
 	}
 
+	// Read back the MsgIDs
+	for i, p := range props {
+		var value *C.char
+		var length C.uint
+		if C.dpiMsgProps_getMsgId(p, &value, &length) == C.DPI_FAILURE {
+			return fmt.Errorf("getMsgID: %w", Q.conn.getError())
+		}
+		messages[i].writeMsgID(value, length)
+	}
+
 	return nil
 }
 
@@ -414,11 +424,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 
 	M.MsgID = zeroMsgID
 	if OK(C.dpiMsgProps_getMsgId(props, &value, &length), "getMsgId") {
-		n := C.int(length)
-		if n > MsgIDLength {
-			n = MsgIDLength
-		}
-		copy(M.MsgID[:], C.GoBytes(unsafe.Pointer(value), n))
+		M.writeMsgID(value, length)
 	}
 
 	M.OriginalMsgID = zeroMsgID
@@ -455,6 +461,17 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 		}
 	}
 	return nil
+}
+
+func (M *Message) writeMsgID(value *C.char, length C.uint) {
+	n := C.int(length)
+	if n > MsgIDLength {
+		n = MsgIDLength
+	}
+	copy(M.MsgID[:], C.GoBytes(unsafe.Pointer(value), n))
+	for i := n; i < MsgIDLength; i++ {
+		M.MsgID[i] = 0
+	}
 }
 
 // EnqOptions are the options used to enqueue a message.

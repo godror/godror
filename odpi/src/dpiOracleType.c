@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
 // This program is free software: you can modify it and/or redistribute it
 // under the terms of:
 //
@@ -300,6 +300,16 @@ static const dpiOracleType
         1,                                  // is character data
         1,                                  // can be in array
         1                                   // requires pre-fetch
+    },
+    {
+        DPI_ORACLE_TYPE_LONG_NVARCHAR,      // public Oracle type
+        DPI_NATIVE_TYPE_BYTES,              // default native type
+        DPI_SQLT_CHR,                       // internal Oracle type
+        DPI_SQLCS_NCHAR,                    // charset form
+        DPI_MAX_BASIC_BUFFER_SIZE + 1,      // buffer size
+        1,                                  // is character data
+        0,                                  // can be in array
+        0                                   // requires pre-fetch
     },
 };
 
