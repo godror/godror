@@ -5,10 +5,16 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- NumberAsString option
+### Changed
+- By default, return Number for numbers (not string)
+
+## [v0.30.2]
 ### Changed
 - Fix Queue.Dequeue to work with non-existing MsgID (#201).
 
-### [v0.30.1]
+## [v0.30.1]
 ### Added
 - Object{,Collection}.FromJSON
 
