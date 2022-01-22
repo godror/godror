@@ -160,6 +160,10 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 		return fmt.Sprintf("%d", x), nil
 	case float32, float64:
 		return fmt.Sprintf("%f", x), nil
+	case decimalDecompose:
+		var n Number
+		err := n.Compose(x.Decompose(nil))
+		return string(n), err
 	default:
 		return nil, fmt.Errorf("unknown type %T", v)
 	}
@@ -192,6 +196,8 @@ func (n *Number) Scan(v interface{}) error {
 		*n = Number(fmt.Sprintf("%d", x))
 	case float32, float64:
 		*n = Number(fmt.Sprintf("%f", x))
+	case decimalDecompose:
+		return n.Compose(x.Decompose(nil))
 	default:
 		return fmt.Errorf("unknown type %T", v)
 	}

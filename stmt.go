@@ -56,6 +56,7 @@ type stmtOptions struct {
 	lobAsReader        bool
 	nullDateAsZeroTime bool
 	deleteFromCache    bool
+	numberAsString     bool
 }
 
 type boolString struct {
@@ -125,6 +126,7 @@ func (o stmtOptions) NullDate() interface{} {
 	return nullTime
 }
 func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
+func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
 
 // Option holds statement options.
 type Option func(*stmtOptions)
@@ -248,6 +250,9 @@ func NullDateAsZeroTime() Option { return func(o *stmtOptions) { o.nullDateAsZer
 
 // DeleteFromCache is an option to delete the statement from the statement cache.
 func DeleteFromCache() Option { return func(o *stmtOptions) { o.deleteFromCache = true } }
+
+// NumberAsString is an option to return numbers a string, not Number.
+func NumberAsString() Option { return func(o *stmtOptions) { o.numberAsString = true } }
 
 const minChunkSize = 1 << 16
 
@@ -1828,6 +1833,9 @@ func dataGetNumber(v interface{}, data []C.dpiData) error {
 			}
 		}
 
+	case *Number, *[]Number, decimalCompose, *[]decimalCompose:
+		return dataGetBytes(x, data)
+
 	default:
 		return fmt.Errorf("unknown number [%T] %#v", v, v)
 	}
@@ -1982,6 +1990,9 @@ func dataSetNumber(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			C.dpiData_setDouble(&data[i], C.double(x))
 		}
 
+	case Number, []Number, decimalDecompose, []decimalDecompose, string, []string:
+		return dataSetBytes(dv, data, vv)
+
 	default:
 		return fmt.Errorf("unknown number slice [%T] %#v", vv, vv)
 	}
@@ -2040,6 +2051,31 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			//b := C.dpiData_getBytes(&data[i])
 			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			*x = append(*x, Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
+		}
+	case decimalCompose:
+		if len(data) == 0 || data[0].isNull == 1 {
+			x = nil
+			return nil
+		}
+		//b := C.dpiData_getBytes(&data[0])
+		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
+		return x.Compose(Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]).Decompose(nil))
+	case *[]decimalCompose:
+		*x = (*x)[:0]
+		et := reflect.TypeOf(*x).Elem()
+		var a [22]byte
+		for i := range data {
+			if data[i].isNull == 1 {
+				*x = append(*x, nil)
+				continue
+			}
+			//b := C.dpiData_getBytes(&data[i])
+			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
+			z := reflect.Zero(et).Interface().(decimalCompose)
+			if err := z.Compose(Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]).Decompose(a[:0])); err != nil {
+				return err
+			}
+			*x = append(*x, z)
 		}
 
 	case *string:
@@ -2218,6 +2254,33 @@ func dataSetBytes(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
 			}
 			data[i].isNull = 0
 			dpiSetFromString(dv, C.uint32_t(i), string(x))
+		}
+
+	case decimalDecompose:
+		i, x := 0, slice
+		if x == nil {
+			data[i].isNull = 1
+			return nil
+		}
+		var n Number
+		if err := n.Compose(x.Decompose(nil)); err != nil {
+			return err
+		}
+		data[i].isNull = 0
+		dpiSetFromString(dv, C.uint32_t(i), string(n))
+	case []decimalDecompose:
+		var n Number
+		var a [22]byte
+		for i, x := range slice {
+			if x == nil {
+				data[i].isNull = 1
+				continue
+			}
+			if err := n.Compose(x.Decompose(a[:0])); err != nil {
+				return err
+			}
+			data[i].isNull = 0
+			dpiSetFromString(dv, C.uint32_t(i), string(n))
 		}
 
 	case string:

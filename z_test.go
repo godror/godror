@@ -2786,11 +2786,34 @@ func TestConnParamsTimezone(t *testing.T) {
 	}
 }
 
-func TestNumberBool(t *testing.T) {
+func TestNumberAsStringBool(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
+	rows, err := testDb.QueryContext(ctx, qry, godror.NumberAsString())
+	if err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+	}
+
+	for rows.Next() {
+		var id int
+		var status bool
+		if err := rows.Scan(&id, &status); err != nil {
+			t.Errorf("failed to scan data: %s\n", err)
+		}
+		t.Logf("Source id=%d, status=%t\n", id, status)
+		if !status {
+			t.Errorf("wanted true, got %t", status)
+		}
+	}
+}
+
+func TestNumberBool(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
+	defer cancel()
+	const qry = "SELECT 181 id, '1' status FROM DUAL"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
@@ -2803,6 +2826,9 @@ func TestNumberBool(t *testing.T) {
 			t.Errorf("failed to scan data: %s\n", err)
 		}
 		t.Logf("Source id=%d, status=%t\n", id, status)
+		if !status {
+			t.Errorf("wanted true, got %t", status)
+		}
 	}
 }
 

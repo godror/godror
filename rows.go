@@ -377,6 +377,10 @@ func (r *rows) Next(dest []driver.Value) error {
 	//fmt.Printf("data=%#v\n", r.data)
 
 	nullDate := r.statement.NullDate()
+	mkNumber := func(s string) interface{} { return Number(s) }
+	if r.statement.NumberAsString() {
+		mkNumber = func(s string) interface{} { return s }
+	}
 
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
@@ -426,11 +430,14 @@ func (r *rows) Next(dest []driver.Value) error {
 				//dest[i] = float64(C.dpiData_getDouble(d))
 				//dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
 				dest[i] = printFloat(*((*float64)(unsafe.Pointer(&d.value))))
+			case C.DPI_NATIVE_TYPE_BOOLEAN:
+				dest[i] = d.isNull != 0 && C.dpiData_getBool(d) != 0
 			default:
 				//b := C.dpiData_getBytes(d)
 				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 				s := C.GoStringN(b.ptr, C.int(b.length))
-				dest[i] = s
+
+				dest[i] = mkNumber(s)
 				if false && logger != nil {
 					logger.Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 				}
