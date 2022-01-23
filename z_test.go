@@ -3584,18 +3584,7 @@ func TestOpenCloseLOB(t *testing.T) {
 	const shortTimeout = 5 * time.Second
 	var breakLoop int32
 	for i := 0; i < 10*poolSize && atomic.LoadInt32(&breakLoop) != 0; i++ {
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-done:
-			case <-time.After(2 * shortTimeout):
-				t.Log("SKIP for timeout")
-				atomic.StoreInt32(&breakLoop, 1)
-				t.Skip()
-			}
-		}()
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			defer close(done)
 			shortCtx, shortCancel := context.WithTimeout(ctx, shortTimeout)
 			defer shortCancel()
 			tx, err := db.BeginTx(shortCtx, nil)

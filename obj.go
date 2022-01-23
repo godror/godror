@@ -159,7 +159,7 @@ func maybeString(v interface{}, ot *ObjectType) interface{} {
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
 		C.DPI_ORACLE_TYPE_NUMBER,
 		C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
-		C.DPI_ORACLE_TYPE_LONG_VARCHAR:
+		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 
 		if b, ok := v.([]byte); ok {
 			return string(b)
@@ -483,7 +483,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 	if wantDelim {
 		_, err = dec.Token()
 	}
-	return nil
+	return err
 }
 
 // FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.

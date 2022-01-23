@@ -116,7 +116,7 @@ func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 		return int64(10), true
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-		C.DPI_ORACLE_TYPE_LONG_VARCHAR,
+		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
 		C.DPI_NATIVE_TYPE_BYTES:
 		return int64(col.Size), true
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
@@ -143,7 +143,7 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 		return "CHAR"
 	case C.DPI_ORACLE_TYPE_NCHAR:
 		return "NCHAR"
-	case C.DPI_ORACLE_TYPE_LONG_VARCHAR:
+	case C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 		return "LONG"
 	case C.DPI_NATIVE_TYPE_BYTES, C.DPI_ORACLE_TYPE_RAW:
 		return "RAW"
@@ -396,7 +396,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR:
+			C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 			//fmt.Printf("CHAR\n")
 			if isNull {
 				dest[i] = ""
