@@ -241,7 +241,11 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 				}
 				continue
 			}
-			if m[a], err = sub.Collection().AsMapSlice(recursive); err != nil {
+			if sub.ObjectType.CollectionOf.Attributes == nil {
+				if m[a], err = sub.Collection().AsSlice(nil); err != nil {
+					return m, fmt.Errorf("%q.AsSlice: %w", a, err)
+				}
+			} else if m[a], err = sub.Collection().AsMapSlice(recursive); err != nil {
 				return m, fmt.Errorf("%q.AsMapSlice: %w", a, err)
 			}
 		}
