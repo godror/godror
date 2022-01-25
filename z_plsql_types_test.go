@@ -1550,3 +1550,86 @@ func TestObjectFromMap(t *testing.T) {
 		t.Errorf("ToJSON: %s", d)
 	}
 }
+
+func TestObjectWithNativeSlice(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("ObjectWithNativeSlice"), 10*time.Second)
+	defer cancel()
+	t.Logf("dbstats: %#v", testDb.Stats())
+	name := "test_ons" + tblSuffix
+
+	cleanup := func() {
+		testDb.Exec("DROP PROCEDURE " + name + "_proc")
+		testDb.Exec("DROP TYPE " + name + "_obj")
+		testDb.Exec("DROP TYPE " + name + "_at")
+	}
+	cleanup()
+	crea := []string{
+		`CREATE OR REPLACE TYPE ` + name + `_at AS TABLE OF varchar2(4000);`,
+		`CREATE OR REPLACE TYPE ` + name + `_obj AS OBJECT (dt ` + name + `_at);`,
+		`CREATE OR REPLACE PROCEDURE ` + name + `_proc(p_oo out ` + name + `_obj) IS
+  v_arr ` + name + `_at := ` + name + `_at();
+BEGIN
+  v_arr.EXTEND;
+  v_arr(1) := 'let it work';
+  p_oo := ` + name + `_obj(v_arr);
+END;`,
+	}
+
+	for _, q := range crea {
+		if _, err := testDb.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %+v", q, err)
+		}
+	}
+	defer cleanup()
+	if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+		t.Fatal(err)
+	} else if len(ces) != 0 {
+		t.Fatal(ces)
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	testCon, err := godror.DriverConn(ctx, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testCon.Close()
+	if err = testCon.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	qry := "CALL " + name + "_proc(:1)"
+	stmt, err := conn.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	cOt, err := testCon.GetObjectType(strings.ToUpper(name + "_obj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("ObjectType:", cOt)
+
+	cO, err := cOt.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(cOt)
+
+	if _, err = stmt.ExecContext(ctx,
+		sql.Out{Dest: cO},
+	); err != nil {
+		t.Errorf("%s: %+v", qry, err)
+	}
+
+	if cO.ObjectType != nil {
+		m, err := cO.AsMap(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("map:", m)
+	}
+}
