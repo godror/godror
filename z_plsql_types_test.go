@@ -1162,6 +1162,7 @@ func TestSubObjectTypeClose(t *testing.T) {
 
 func TestObjectGetList(t *testing.T) {
 	t.Parallel()
+	tblSuffix := "_OL_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1298,6 +1299,7 @@ END;`},
 
 func TestObjectInObject(t *testing.T) {
 	t.Parallel()
+	tblSuffix := "_OO_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1320,6 +1322,9 @@ END;`},
 	drop := func(ctx context.Context) {
 		for _, obj := range objects {
 			qry := "DROP " + obj.Type + " " + obj.Name
+			if obj.Type == "TYPE" {
+				qry += " FORCE"
+			}
 			if _, err := testDb.ExecContext(ctx, qry); err != nil {
 				var ec interface{ Code() int }
 				if !(errors.As(err, &ec) && ec.Code() == 4043) {
@@ -1446,6 +1451,7 @@ END;`},
 
 func TestObjectFromMap(t *testing.T) {
 	t.Parallel()
+	tblSuffix := "_OM_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string
 	}{
@@ -1457,6 +1463,9 @@ func TestObjectFromMap(t *testing.T) {
 	drop := func(ctx context.Context) {
 		for _, obj := range objects {
 			qry := "DROP " + obj.Type + " " + obj.Name
+			if obj.Type == "TYPE" {
+				qry += " FORCE"
+			}
 			if _, err := testDb.ExecContext(ctx, qry); err != nil {
 				var ec interface{ Code() int }
 				if !(errors.As(err, &ec) && ec.Code() == 4043) {
