@@ -453,14 +453,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	}); err != nil {
 		return nil, nil, fmt.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, err)
 	}
-	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
-	/*
-		var theCArray *C.YourType = C.getTheArray()
-		length := C.getTheArrayLength()
-		slice := (*[maxArraySize]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
-	*/
-	data := ((*[maxArraySize]C.dpiData)(unsafe.Pointer(dataArr)))[:vi.SliceLen:vi.SliceLen]
-	return v, data, nil
+	return v, dpiDataSlice(dataArr, C.uint(vi.SliceLen)), nil
 }
 
 var _ = driver.Tx((*conn)(nil))
@@ -480,7 +473,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = string(bytes.Replace(
-		((*[maxArraySize]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
+		((*[1024]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
 		[]byte{'\n'}, []byte{';', ' '}, -1))
 
 	return c.Server, nil

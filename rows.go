@@ -368,7 +368,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				}); err != nil {
 					return fmt.Errorf("getReturnedData[%d]: %w", i, err)
 				}
-				r.data[i] = (*[maxArraySize]C.dpiData)(unsafe.Pointer(data))[:n:n]
+				r.data[i] = dpiDataSlice(data, n)
 				//fmt.Printf("data %d=%+v\n%+v\n", n, data, r.data[i][0])
 			}
 		}

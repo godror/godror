@@ -469,8 +469,7 @@ func (j JSONArray) Len() int { return int(j.dpiJsonArray.numElements) }
 
 // GetElement returns the ith element in JSONArray as data.
 func (j JSONArray) GetElement(i int) Data {
-	n := int(j.dpiJsonArray.numElements)
-	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
+	elts := jsonArraySlice(j.dpiJsonArray)
 	var d Data
 	jsonNodeToData(&d, &elts[i])
 	return d
@@ -479,9 +478,8 @@ func (j JSONArray) GetElement(i int) Data {
 
 // Get returns the data array from JSONArray
 func (j JSONArray) Get(nodes []Data) []Data {
-	n := int(j.dpiJsonArray.numElements)
-	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
-	for i := 0; i < n; i++ {
+	elts := jsonArraySlice(j.dpiJsonArray)
+	for i := range elts {
 		var d Data
 		jsonNodeToData(&d, &elts[i])
 		nodes = append(nodes, d)
@@ -491,9 +489,8 @@ func (j JSONArray) Get(nodes []Data) []Data {
 
 // GetValue converts native DB type, array into []interface{}.
 func (j JSONArray) GetValue() (nodes []interface{}, err error) {
-	n := int(j.dpiJsonArray.numElements)
-	elts := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonArray.elements)))[:n:n]
-	for i := 0; i < n; i++ {
+	elts := jsonArraySlice(j.dpiJsonArray)
+	for i := range elts {
 		var d Data
 		jsonNodeToData(&d, &elts[i])
 		if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_OBJECT {
@@ -529,6 +526,11 @@ func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 	return nodes, nil
 }
 
+func jsonArraySlice(arr *C.dpiJsonArray) []C.dpiJsonNode {
+	n := int(arr.numElements)
+	return ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(arr.elements)))[:n:n]
+}
+
 // JSONObject represents the map input.
 type JSONObject struct {
 	dpiJsonObject *C.dpiJsonObject
@@ -539,15 +541,12 @@ func (j JSONObject) Len() int { return int(j.dpiJsonObject.numFields) }
 
 // Get returns the map, map[string]Data from JSONObject
 func (j JSONObject) Get() map[string]Data {
-	n := int(j.dpiJsonObject.numFields)
-	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(j.dpiJsonObject.fieldNames)))[:n:n]
-	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(j.dpiJsonObject.fieldNameLengths)))[:n:n]
-	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonObject.fields)))[:n:n]
-	m := make(map[string]Data, n)
-	for i := 0; i < n; i++ {
+	ff := jsonObjectFields(j.dpiJsonObject)
+	m := make(map[string]Data, len(ff))
+	for _, f := range ff {
 		var d Data
-		jsonNodeToData(&d, &fields[i])
-		m[C.GoStringN(names[i], C.int(nameLengths[i]))] = d
+		jsonNodeToData(&d, f.Value)
+		m[f.Name] = d
 	}
 	return m
 }
@@ -555,38 +554,34 @@ func (j JSONObject) Get() map[string]Data {
 // GetValue converts native DB type, array into map[string]interface{}.
 func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
 	m = make(map[string]interface{})
-	n := int(j.dpiJsonObject.numFields)
-	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(j.dpiJsonObject.fieldNames)))[:n:n]
-	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(j.dpiJsonObject.fieldNameLengths)))[:n:n]
-	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonObject.fields)))[:n:n]
-	for i := 0; i < n; i++ {
+	for _, f := range jsonObjectFields(j.dpiJsonObject) {
 		var d Data
-		jsonNodeToData(&d, &fields[i])
+		jsonNodeToData(&d, f.Value)
 		if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_OBJECT {
 			jsobj := JSONObject{dpiJsonObject: C.dpiData_getJsonObject(&(d.dpiData))}
 			um, err := jsobj.GetValue()
 			if err != nil {
 				return nil, err
 			}
-			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = um
+			m[f.Name] = um
 		} else if d.NativeTypeNum == C.DPI_NATIVE_TYPE_JSON_ARRAY {
 			jsobj := JSONArray{dpiJsonArray: C.dpiData_getJsonArray(&(d.dpiData))}
 			ua, err := jsobj.GetValue()
 			if err != nil {
 				return nil, err
 			}
-			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = ua
-		} else if fields[i].oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
+			m[f.Name] = ua
+		} else if f.Value.oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
 			keyval, err := getJSONScalarString(d)
 			if err == nil {
-				m[C.GoStringN(names[i], C.int(nameLengths[i]))] = keyval
+				m[f.Name] = keyval
 			} else {
 				return nil, err
 			}
-		} else if fields[i].oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = getJSONScalarNumber(d)
+		} else if f.Value.oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
+			m[f.Name] = getJSONScalarNumber(d)
 		} else {
-			m[C.GoStringN(names[i], C.int(nameLengths[i]))] = d.Get()
+			m[f.Name] = d.Get()
 		}
 	}
 	return m, nil
@@ -597,15 +592,31 @@ func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
 // not the struct json tags.
 func (j JSONObject) GetInto(v interface{}) {
 	rv := reflect.ValueOf(v).Elem()
-	n := int(j.dpiJsonObject.numFields)
-	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(j.dpiJsonObject.fieldNames)))[:n:n]
-	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(j.dpiJsonObject.fieldNameLengths)))[:n:n]
-	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(j.dpiJsonObject.fields)))[:n:n]
-	for i := 0; i < n; i++ {
+	for _, f := range jsonObjectFields(j.dpiJsonObject) {
 		var d Data
-		jsonNodeToData(&d, &fields[i])
-		rv.FieldByName(C.GoStringN(names[i], C.int(nameLengths[i]))).Set(reflect.ValueOf(d.Get()))
+		jsonNodeToData(&d, f.Value)
+		rv.FieldByName(f.Name).Set(reflect.ValueOf(d.Get()))
 	}
+}
+
+type jsonField struct {
+	Name  string
+	Value *C.dpiJsonNode
+}
+
+func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
+	n := int(obj.numFields)
+	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(obj.fieldNames)))[:n:n]
+	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(obj.fieldNameLengths)))[:n:n]
+	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(obj.fields)))[:n:n]
+	ff := make([]jsonField, n)
+	for i := range fields {
+		ff[i] = jsonField{
+			Name:  C.GoStringN(names[i], C.int(nameLengths[i])),
+			Value: &fields[i],
+		}
+	}
+	return ff
 }
 
 // populateJSONNode populates dpiJsonNode from user inputs.

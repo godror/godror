@@ -469,7 +469,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				st.data[i] = st.data[i][:0]
 			} else {
 				//st.data[i] = unsafe.Slice(data, n) // go1.17
-				st.data[i] = (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+				st.data[i] = dpiDataSlice(data, n)
 			}
 		}
 		dest := st.dests[i]
@@ -2008,11 +2008,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = nil
 			return nil
 		}
-		//db := C.dpiData_getBytes(&data[0])
-		db := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
-		// b must be copied
-		*x = append((*x)[:0], b...)
+		// must be copied
+		*x = append((*x)[:0], dpiData_getBytes(&data[0])...)
 
 	case *[][]byte:
 		maX := (*x)[:cap(*x)]
@@ -2022,9 +2019,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, nil)
 				continue
 			}
-			//db := C.dpiData_getBytes(&data[i])
-			db := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
-			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+			b := dpiData_getBytes(&data[i])
 			// b must be copied
 			if i < len(maX) {
 				*x = append(*x, append(maX[i][:0], b...))
@@ -2038,9 +2033,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = ""
 			return nil
 		}
-		//b := C.dpiData_getBytes(&data[0])
-		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		*x = Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+		*x = Number(dpiData_getBytes(&data[0]))
 	case *[]Number:
 		*x = (*x)[:0]
 		for i := range data {
@@ -2048,18 +2041,14 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, "")
 				continue
 			}
-			//b := C.dpiData_getBytes(&data[i])
-			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
-			*x = append(*x, Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
+			*x = append(*x, Number(dpiData_getBytes(&data[i])))
 		}
 	case decimalCompose:
 		if len(data) == 0 || data[0].isNull == 1 {
 			x = nil
 			return nil
 		}
-		//b := C.dpiData_getBytes(&data[0])
-		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		return x.Compose(Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]).Decompose(nil))
+		return x.Compose(Number(dpiData_getBytes(&data[0])).Decompose(nil))
 	case *[]decimalCompose:
 		*x = (*x)[:0]
 		et := reflect.TypeOf(*x).Elem()
@@ -2069,10 +2058,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, nil)
 				continue
 			}
-			//b := C.dpiData_getBytes(&data[i])
-			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
 			z := reflect.Zero(et).Interface().(decimalCompose)
-			if err := z.Compose(Number(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]).Decompose(a[:0])); err != nil {
+			if err := z.Compose(Number(dpiData_getBytes(&data[i])).Decompose(a[:0])); err != nil {
 				return err
 			}
 			*x = append(*x, z)
@@ -2083,9 +2070,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			*x = ""
 			return nil
 		}
-		//b := C.dpiData_getBytes(&data[0])
-		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		*x = string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length])
+		*x = string(dpiData_getBytes(&data[0]))
 	case *[]string:
 		*x = (*x)[:0]
 		for i := range data {
@@ -2093,9 +2078,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, "")
 				continue
 			}
-			//b := C.dpiData_getBytes(&data[i])
-			b := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
-			*x = append(*x, string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]))
+			*x = append(*x, string(dpiData_getBytes(&data[i])))
 		}
 
 	case *sql.NullInt32:
@@ -2103,8 +2086,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			x.Int32, x.Valid = 0, false
 			return nil
 		}
-		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 32)
+		v, err := strconv.ParseInt(string(dpiData_getBytes(&data[0])), 10, 32)
 		if err != nil {
 			return err
 		}
@@ -2117,8 +2099,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, sql.NullInt32{})
 				continue
 			}
-			b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-			v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 32)
+			v, err := strconv.ParseInt(string(dpiData_getBytes(&data[i])), 10, 32)
 			if err != nil {
 				return err
 			}
@@ -2129,8 +2110,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			x.Int64, x.Valid = 0, false
 			return nil
 		}
-		b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 64)
+		v, err := strconv.ParseInt(string(dpiData_getBytes(&data[0])), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -2143,8 +2123,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, sql.NullInt64{})
 				continue
 			}
-			b := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-			v, err := strconv.ParseInt(string(((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]), 10, 64)
+			v, err := strconv.ParseInt(string(dpiData_getBytes(&data[i])), 10, 64)
 			if err != nil {
 				return err
 			}
@@ -2314,10 +2293,7 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 			*x = false
 			return nil
 		}
-		//db := C.dpiData_getBytes(&data[0])
-		db := ((*C.dpiBytes)(unsafe.Pointer(&data[0].value)))
-		b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
-		*x = st.stmtOptions.boolString.FromString(string(b))
+		*x = st.stmtOptions.boolString.FromString(string(dpiData_getBytes(&data[0])))
 
 	case *[]bool:
 		*x = (*x)[:0]
@@ -2326,10 +2302,7 @@ func (st *statement) dataGetBoolBytes(v interface{}, data []C.dpiData) error {
 				*x = append(*x, false)
 				continue
 			}
-			//db := C.dpiData_getBytes(&data[i])
-			db := ((*C.dpiBytes)(unsafe.Pointer(&data[i].value)))
-			b := ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
-			*x = append(*x, st.stmtOptions.boolString.FromString(string(b)))
+			*x = append(*x, st.stmtOptions.boolString.FromString(string(dpiData_getBytes(&data[i]))))
 		}
 
 	case *interface{}:
@@ -3056,4 +3029,19 @@ func stmtSetFinalizer(st *statement, tag string) {
 			st.closeNotLocking()
 		}
 	})
+}
+
+func dpiDataSlice(data *C.dpiData, n C.uint) []C.dpiData {
+	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
+	/*
+		var theCArray *C.YourType = C.getTheArray()
+		length := C.getTheArrayLength()
+		slice := (*[maxArraySize]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
+	*/
+	return (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
+}
+
+func dpiData_getBytes(data *C.dpiData) []byte {
+	db := ((*C.dpiBytes)(unsafe.Pointer(&data.value)))
+	return ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
 }
