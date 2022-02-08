@@ -102,6 +102,11 @@ const (
 	DefaultArraySize = 1 << 10
 )
 
+// DriverName is set on the connection to be seen in the DB
+//
+// It cannot be longer than 30 bytes !
+var DriverName = "godror : " + Version
+
 const (
 	// DpiMajorVersion is the wanted major version of the underlying ODPI-C library.
 	DpiMajorVersion = C.DPI_MAJOR_VERSION
@@ -111,11 +116,6 @@ const (
 	DpiPatchLevel = C.DPI_PATCH_LEVEL
 	// DpiVersionNumber is the underlying ODPI-C version as one number (Major * 10000 + Minor * 100 + Patch)
 	DpiVersionNumber = C.DPI_VERSION_NUMBER
-
-	// DriverName is set on the connection to be seen in the DB
-	//
-	// It cannot be longer than 30 bytes !
-	DriverName = "godror : " + Version
 
 	// DefaultPoolMinSessions specifies the default value for minSessions for pool creation.
 	DefaultPoolMinSessions = dsn.DefaultPoolMinSessions
@@ -163,6 +163,10 @@ var defaultDrv = &drv{}
 
 func init() {
 	sql.Register("godror", defaultDrv)
+	// It cannot be longer than 30 bytes !
+	if len(DriverName) > 30 {
+		DriverName = DriverName[:30]
+	}
 }
 
 var _ driver.Driver = (*drv)(nil)
