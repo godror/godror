@@ -4427,3 +4427,109 @@ func TestLobAsStringTypeName(t *testing.T) {
 		t.Error(d)
 	}
 }
+
+func TestTTCIssue215(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("TestBreakingOracle12"), 10*time.Second)
+	defer cancel()
+	cleanup := func() {
+		for _, qry := range []string{
+			"DROP PROCEDURE test_get_menu_bec" + tblSuffix,
+			"DROP TYPE test_MENU_REC" + tblSuffix,
+			"DROP TYPE test_MENU" + tblSuffix,
+		} {
+			testDb.Exec(qry)
+		}
+	}
+
+	cleanup()
+	defer cleanup()
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	//Creating Types and Procedure
+	for _, qry := range []string{
+		`CREATE OR REPLACE TYPE test_MENU_REC` + tblSuffix + ` IS OBJECT(
+        menudesc   VARCHAR2(200),
+        menufather NUMBER,
+        menulevel  NUMBER,
+        menuurl    VARCHAR2(200),
+        menuid     NUMBER,
+        menuorder  NUMBER,
+        menueventlist char(1))`,
+		`CREATE OR REPLACE TYPE test_MENU` + tblSuffix + ` IS table OF test_menu_rec` + tblSuffix,
+		`CREATE OR REPLACE PROCEDURE test_get_menu_bec` + tblSuffix + `(
+  p_userid in varchar2,
+  p_language in integer,
+  p_message out varchar2,
+  p_menu out test_menu` + tblSuffix + `,
+  p_imagefile out varchar2,
+  p_lastname out varchar2,
+  p_firstname out varchar2,
+  p_profile out varchar2,
+  p_company out varchar2) IS
+BEGIN
+  p_message := 'Oracle is breaking version 12';
+  p_imagefile := 'amazing_summer.jpg';
+  p_lastname := 'Rossi';
+  p_firstname := 'Mario';
+  p_profile := 'Photo';
+  p_company := 'GitHub';
+  p_menu := test_menu` + tblSuffix + `();
+  p_menu.extend();
+  p_menu(1) := test_menu_rec` + tblSuffix + `(
+    'Awesome',
+    0,
+    0,
+    '/github',
+    1,
+    1,
+    'Y');
+END;`,
+	} {
+		if _, err := conn.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	if errs, err := godror.GetCompileErrors(ctx, conn, false); err != nil {
+		t.Fatal(err)
+	} else if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	var message, imageFile, lastName, firstName, profile, company string
+
+	stmt, err := conn.PrepareContext(ctx, "call test_GET_MENU_BEC"+tblSuffix+"(:P_USERID,:P_LANGUAGE,:P_MESSAGE,:P_MENU,:P_IMAGEFILE,:P_LASTNAME,:P_FIRSTNAME,:P_PROFILE,:P_COMPANY)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+	resType, err := godror.GetObjectType(ctx, conn, "test_MENU"+tblSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resType.Close()
+	res, err := resType.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stmt.ExecContext(ctx,
+		sql.Named("P_USERID", "n.one"),
+		sql.Named("P_LANGUAGE", 0),
+
+		sql.Named("P_MESSAGE", sql.Out{Dest: &message}),
+		sql.Named("P_MENU", sql.Out{Dest: &res}),
+		sql.Named("P_IMAGEFILE", sql.Out{Dest: &imageFile}),
+		sql.Named("P_LASTNAME", sql.Out{Dest: &lastName}),
+		sql.Named("P_FIRSTNAME", sql.Out{Dest: &firstName}),
+		sql.Named("P_PROFILE", sql.Out{Dest: &profile}),
+		sql.Named("P_COMPANY", sql.Out{Dest: &company}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(res.AsMapSlice(true))
+}
