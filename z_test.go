@@ -65,12 +65,8 @@ func TestMain(m *testing.M) {
 func setUp() func() {
 	hsh := fnv.New32()
 	bi, ok := debug.ReadBuildInfo()
-	if ok {
-		if b, err := bi.MarshalText(); err != nil {
-			ok = false
-		} else {
-			hsh.Write(b)
-		}
+	if ok && bi != nil {
+		ok = json.NewEncoder(hsh).Encode(*bi) == nil
 	}
 	if !ok {
 		hsh.Write([]byte(runtime.Version()))
