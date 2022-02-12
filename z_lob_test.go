@@ -128,14 +128,6 @@ END;`
 	}
 }
 func TestReadLargeLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
-	defer cancel()
-	tx, err := testDb.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-
 	qry := `CREATE OR REPLACE FUNCTION test_readlargelob(p_size IN PLS_INTEGER) RETURN CLOB IS
   v_clob CLOB;
   i PLS_INTEGER;
@@ -146,13 +138,21 @@ BEGIN
   END LOOP;
   RETURN(v_clob);
 END;`
-	if _, err := tx.ExecContext(ctx, qry); err != nil {
+	if _, err := testDb.ExecContext(context.Background(), qry); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
 	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION test_readlargelob") }()
 
-	for _, orig := range []int64{12, 512 + 1, 8132/5 + 1, 8132/2 + 1, 8132 + 1} {
-		qry = "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(:2)); END;"
+	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
+	defer cancel()
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	for _, orig := range []int64{12, 512 + 1, 8132/5 + 1, 8132/2 + 1, 8132 + 1, 32768} {
+		qry := "BEGIN :1 := DBMS_LOB.getlength(test_readlargelob(:2)); END;"
 		var wantSize int64
 		if _, err = tx.ExecContext(ctx, qry, sql.Out{Dest: &wantSize}, orig); err != nil {
 			t.Fatalf("%s: %+v", qry, err)
@@ -167,7 +167,7 @@ END;`
 
 		lob := godror.Lob{IsClob: true}
 		if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &lob}, orig); err != nil {
-			t.Fatalf("%s: %+v", qry, err)
+			t.Fatalf("%s [CLOB %d]: %+v", qry, orig, err)
 		}
 		buf := bytes.NewBuffer(make([]byte, 0, wantSize))
 		for i := 0; i < int(wantSize/10); i++ {
@@ -177,7 +177,7 @@ END;`
 
 		got, err := io.ReadAll(lob)
 		gotSize := int64(len(got))
-		t.Logf("Read %d bytes from LOB: %+v", gotSize, err)
+		t.Logf("Read %d bytes from CLOB: %+v", gotSize, err)
 		if err != nil {
 			t.Error(err)
 		}
@@ -185,6 +185,23 @@ END;`
 			t.Errorf("got %d, wanted %d", gotSize, wantSize)
 		}
 
+		if d := cmp.Diff(got, want); d != "" {
+			t.Error(d)
+		}
+
+		var gotS string
+		if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &gotS}, orig); err != nil {
+			if orig > 32767 {
+				t.Logf("%s [string %d]: %+v", qry, orig, err)
+				continue
+			}
+			t.Fatalf("%s [string %d]: %+v", qry, orig, err)
+		}
+		gotSize = int64(len(gotS))
+		t.Logf("Read %d bytes from LOB as string: %+v", gotSize, err)
+		if gotSize != wantSize {
+			t.Errorf("got %d, wanted %d", gotSize, wantSize)
+		}
 		if d := cmp.Diff(got, want); d != "" {
 			t.Error(d)
 		}

@@ -134,6 +134,8 @@ For `PLS_INTEGER` and `BINARY_INTEGER` (PL/SQL data types) you can use `int32`.
 From 2.9.0, LOBs are returned as string/[]byte by default (before it needed the `ClobAsString()` option).
 Now it's reversed, and the default is string, to get a Lob reader, give the `LobAsReader()` option.
 
+Watch out, Oracle will error out if the CLOB is too large, and you have to use `godror.Lob` in such cases!
+
 If you return Lob as a reader, watch out with `sql.QueryRow`, `sql.QueryRowContext` !
 They close the statement right after you `Scan` from the returned `*Row`, the returned `Lob` will be invalid, producing
 `getSize: ORA-00000: DPI-1002: invalid dpiLob handle`.
