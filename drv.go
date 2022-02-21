@@ -412,7 +412,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	c.init(ctx, getOnInit(&P.CommonParams))
+	c.init(ctx, getOnInit(&c.params.CommonParams))
 	cancel()
 
 	var a [4096]byte
@@ -613,11 +613,11 @@ func (d *drv) createConnFromParams(P dsn.ConnectionParams) (*conn, error) {
 	if err != nil {
 		return conn, err
 	}
-	onInit := getOnInit(&P.CommonParams)
+	onInit := getOnInit(&conn.params.CommonParams)
 	if onInit == nil {
 		return conn, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), nvlD(P.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(context.Background(), nvlD(conn.params.WaitTimeout, time.Minute))
 	err = onInit(ctx, conn)
 	cancel()
 	if err != nil {
@@ -1178,7 +1178,11 @@ func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext)
 // mkExecMany returns a function that applies the queries to the connection.
 func mkExecMany(qrys []string) func(context.Context, driver.ConnPrepareContext) error {
 	return func(ctx context.Context, conn driver.ConnPrepareContext) error {
+		logger := ctxGetLog(ctx)
 		for _, qry := range qrys {
+			if logger != nil {
+				logger.Log("msg", "execMany", "qry", qry)
+			}
 			st, err := conn.PrepareContext(ctx, qry)
 			if err == nil {
 				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)

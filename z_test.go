@@ -3108,17 +3108,31 @@ func TestOnInit(t *testing.T) {
 	}
 	defer db.Close()
 
-	const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
-	var v, n string
-	if err = db.QueryRowContext(ctx, qry).Scan(&v, &n); err != nil {
-		t.Error(err)
-	}
-	t.Logf("v=%q n=%q", v, n)
-	if v != numChars {
-		t.Errorf("got %q wanted %q", v, numChars)
-	}
-	if n != "12#3" {
-		t.Errorf("got %q wanted 12#3", n)
+	conns := make([]*sql.Conn, 3)
+	defer func() {
+		for _, c := range conns {
+			if c != nil {
+				c.Close()
+			}
+		}
+	}()
+	for i := range conns {
+		if conns[i], err = db.Conn(ctx); err != nil {
+			t.Fatal(err)
+		}
+
+		const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
+		var v, n string
+		if err = conns[i].QueryRowContext(ctx, qry).Scan(&v, &n); err != nil {
+			t.Errorf("%d. %+v", i, err)
+		}
+		t.Logf("%d. v=%q n=%q", i, v, n)
+		if v != numChars {
+			t.Errorf("%d. got %q wanted %q", i, v, numChars)
+		}
+		if n != "12#3" {
+			t.Errorf("%d. got %q wanted 12#3", i, n)
+		}
 	}
 }
 
