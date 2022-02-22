@@ -3092,6 +3092,7 @@ func TestConnClass(t *testing.T) {
 }
 
 func TestOnInit(t *testing.T) {
+	t.Parallel()
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -3133,6 +3134,53 @@ func TestOnInit(t *testing.T) {
 		if n != "12#3" {
 			t.Errorf("%d. got %q wanted 12#3", i, n)
 		}
+	}
+}
+
+func TestOnInitParallel(t *testing.T) {
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const numChars = "#@"
+	P.SetSessionParamOnInit("nls_numeric_characters", numChars)
+	t.Log(P.String())
+	ctx, cancel := context.WithTimeout(testContext("OnInit"), 1*time.Minute)
+	defer cancel()
+
+	db, err := sql.Open("godror", P.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	const want = "12#3"
+	const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
+	for j := 0; j < 10; j++ {
+		var wg sync.WaitGroup
+		for i := 0; i < maxSessions*1; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				var v, n string
+				if err := db.QueryRowContext(ctx, qry).Scan(&v, &n); err != nil {
+					var ec interface{ Code() int }
+					if errors.As(err, &ec) && ec.Code() == 28547 || ec.Code() == 18 {
+						return
+					}
+					t.Errorf("%d. %+v", i, err)
+					return
+				}
+				t.Logf("%d. v=%q n=%q", i, v, n)
+				if v != numChars {
+					t.Errorf("%d. got %q wanted %q", i, v, numChars)
+				}
+				if n != want {
+					t.Errorf("%d. got %q wanted %q", i, n, want)
+				}
+			}(i)
+		}
+		wg.Wait()
 	}
 }
 
