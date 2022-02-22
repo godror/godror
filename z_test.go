@@ -3156,29 +3156,30 @@ func TestOnInitParallel(t *testing.T) {
 
 	const want = "12#3"
 	const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
-	for j := 0; j < 10; j++ {
+	for i := 0; i < 4; i++ {
 		var wg sync.WaitGroup
-		for i := 0; i < maxSessions*1; i++ {
+		for j := 0; j < maxSessions*2; j++ {
 			wg.Add(1)
-			go func(i int) {
+			go func(i, j int) {
 				defer wg.Done()
 				var v, n string
 				if err := db.QueryRowContext(ctx, qry).Scan(&v, &n); err != nil {
+					if errors.Is(err, context.Canceled) {
+						return
+					}
 					var ec interface{ Code() int }
 					if errors.As(err, &ec) && ec.Code() == 28547 || ec.Code() == 18 {
 						return
 					}
-					t.Errorf("%d. %+v", i, err)
+					t.Errorf("%d*%d. %+v", i, j, err)
 					return
 				}
-				t.Logf("%d. v=%q n=%q", i, v, n)
-				if v != numChars {
-					t.Errorf("%d. got %q wanted %q", i, v, numChars)
+				//t.Logf("%d. v=%q n=%q", i, v, n)
+				if v != numChars || n != want {
+					t.Errorf("%d*%d. got %q(%q) wanted %q(%q)", i, j, v, n, numChars, want)
+					cancel()
 				}
-				if n != want {
-					t.Errorf("%d. got %q wanted %q", i, n, want)
-				}
-			}(i)
+			}(i, j)
 		}
 		wg.Wait()
 	}

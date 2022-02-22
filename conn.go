@@ -60,7 +60,6 @@ type conn struct {
 	tzOffSecs     int
 	mu            sync.RWMutex
 	inTransaction bool
-	newSession    bool
 	released      bool
 	tzValid       bool
 }
@@ -486,7 +485,7 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 		logger.Log("msg", "init connection", "params", c.params)
 	}
 
-	if err := c.initTZ(); err != nil || onInit == nil || !c.newSession {
+	if err := c.initTZ(); err != nil || onInit == nil {
 		return err
 	}
 	if logger != nil {
@@ -1090,14 +1089,14 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		c.closeNotLocking()
 	}
 	var err error
-	var newSession bool
-	c.dpiConn, newSession, err = c.drv.acquireConn(pool, P)
+	c.dpiConn, err = c.drv.acquireConn(pool, P)
 	c.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	if paramsFromCtx || newSession || !c.tzValid || c.params.Timezone == nil {
+	//if paramsFromCtx || newSession || !c.tzValid || c.params.Timezone == nil {
+	if true {
 		c.init(ctx, P.OnInit)
 	}
 	return nil
@@ -1164,6 +1163,6 @@ func (c *conn) isHealthy() bool {
 
 func (c *conn) String() string {
 	currentTT, _ := c.currentTT.Load().(TraceTag)
-	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d&new=%t",
-		currentTT, c.params, c.Server.String(), c.tzOffSecs, c.newSession)
+	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d",
+		currentTT, c.params, c.Server.String(), c.tzOffSecs)
 }
