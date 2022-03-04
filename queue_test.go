@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strconv"
@@ -367,6 +368,9 @@ func testQueue(
 	defer q.Close()
 
 	t.Logf("name=%q obj=%q q=%#v", q.Name(), objName, q)
+	if err = q.PurgeExpired(ctx); err != nil {
+		t.Errorf("%q.PurgeExpired: %+v", q.Name(), err)
+	}
 	enqOpts, err := q.EnqOptions()
 	if err != nil {
 		t.Fatal(err)
@@ -471,6 +475,9 @@ func testQueue(
 		if n == 0 {
 			break
 		}
+	}
+	if err = q.PurgeExpired(ctx); err != nil && !errors.Is(err, driver.ErrBadConn) {
+		t.Errorf("%q.PurgeExpired: %+v", q.Name(), err)
 	}
 
 	PrintConnStats()

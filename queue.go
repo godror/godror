@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -12,6 +12,7 @@ package godror
 import "C"
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"runtime"
@@ -149,6 +150,27 @@ func (Q *Queue) Close() error {
 	}
 	if c != nil && Q.connIsOwned {
 		c.Close()
+	}
+	return nil
+}
+
+// Purge the expired messages from the queue.
+func (Q *Queue) PurgeExpired(ctx context.Context) error {
+	const qry = `BEGIN 
+  FOR row IN (
+    SELECT queue_table FROM all_queues
+	  WHERE name = :1
+  ) LOOP
+    dbms_aqadm.purge_queue_table(row.queue_table, 'qtview.msg_state = ''EXPIRED''', NULL);
+  END LOOP;
+END;`
+	stmt, err := Q.conn.PrepareContext(ctx, qry)
+	if err != nil {
+		return fmt.Errorf("%s: %w", qry, err)
+	}
+	defer stmt.Close()
+	if _, err = stmt.(driver.StmtExecContext).ExecContext(ctx, []driver.NamedValue{{Ordinal: 2, Value: Q.name}}); err != nil {
+		return fmt.Errorf("%s [%q]: %w", qry, Q.name, err)
 	}
 	return nil
 }
