@@ -3,7 +3,7 @@ module github.com/godror/godror
 go 1.15
 
 require (
-	github.com/go-logfmt/logfmt v0.5.0
+	github.com/go-logfmt/logfmt v0.5.1
 	github.com/godror/knownpb v0.1.0
 	github.com/google/go-cmp v0.5.6
 	github.com/oklog/ulid/v2 v2.0.2
