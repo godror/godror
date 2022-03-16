@@ -37,7 +37,7 @@ func (N Number) Decompose(buf []byte) (form byte, negative bool, coefficient []b
 	} else {
 		buf = make([]byte, c)
 	}
-	return 0, negative, fillBytes(&i, buf), exponent
+	return 0, negative, i.FillBytes(buf), exponent
 }
 
 // Compose sets the internal decimal value from parts. If the value cannot be

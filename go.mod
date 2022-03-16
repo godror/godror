@@ -1,6 +1,6 @@
 module github.com/godror/godror
 
-go 1.14
+go 1.15
 
 require (
 	github.com/go-logfmt/logfmt v0.5.0

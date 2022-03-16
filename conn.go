@@ -43,6 +43,7 @@ var _ driver.Conn = (*conn)(nil)
 var _ driver.ConnBeginTx = (*conn)(nil)
 var _ driver.ConnPrepareContext = (*conn)(nil)
 var _ driver.Pinger = (*conn)(nil)
+var _ driver.Validator = (*conn)(nil)
 
 //
 //var _ driver.ExecerContext = (*conn)(nil)

@@ -11,7 +11,7 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
 ## Build-time Requirements
-  - Go 1.14
+  - Go 1.15
   - C compiler with `CGO_ENABLED=1` - so cross-compilation is hard
 
 ## Run-time Requirements
