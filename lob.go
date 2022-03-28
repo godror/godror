@@ -1,4 +1,4 @@
-// Copyright 2017, 2021 The Godror Authors
+// Copyright 2017, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0

@@ -26,7 +26,7 @@ import (
 )
 
 func TestInsertLargeLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 60*time.Second)
 	defer cancel()
 
 	tbl := "test_insert_large_lob" + tblSuffix
@@ -40,15 +40,32 @@ func TestInsertLargeLOB(t *testing.T) {
 
 	const str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
 	insQry := "INSERT INTO " + tbl + " (F_size, F_data) VALUES (:1, :2)"
-	for _, size := range []int{2049, 1<<20 - 1, 1 << 20, 1<<20 + 1, 2017371, 16<<20 + 1} {
+	shortCtx, shortCancel := context.WithTimeout(ctx, 30*time.Second)
+	dl, _ := shortCtx.Deadline()
+	var n int64
+	now := time.Now()
+	for _, size := range []int{2049, 1<<20 - 1, 1<<20 + 1, 2017371, 16<<20 + 1, 1_073_741_822 + 1} {
+		if n > 1<<20 {
+			if est := (time.Since(now) / time.Duration(n)) * time.Duration(size); est > time.Until(dl) {
+				t.Log("SKIP", size, "est", est)
+				break
+			}
+		}
 		data := (strings.Repeat(str, (size+len(str)-1)/len(str)) + str[:size%(len(str))])[:size]
 		t.Log(size, len(data))
-		if _, err := testDb.ExecContext(ctx, insQry, size, godror.Lob{Reader: strings.NewReader(data), IsClob: true}); err != nil {
+		if _, err := testDb.ExecContext(shortCtx, insQry, size, godror.Lob{Reader: strings.NewReader(data), IsClob: true}); err != nil {
+			var ec interface{ Code() int }
+			if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ec) && ec.Code() == 1013 {
+				t.Log(err)
+				break
+			}
 			t.Fatalf("%s [%d, %d]: %+v", insQry, size, len(data), err)
 		}
+		n += int64(len(data))
 	}
+	shortCancel()
 
-	qry := "SELECT F_size, DBMS_LOB.getlength(F_data) FROM " + tbl
+	qry := "SELECT F_size, DBMS_LOB.getlength(F_data) FROM " + tbl + " ORDER BY 1"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatal(qry, err)

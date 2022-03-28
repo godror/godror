@@ -2467,14 +2467,20 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		}
 		data[i].isNull = 0
 		if r, ok := L.Reader.(*dpiLobReader); ok {
-			C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob)
+			if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("dpiVar_setFromLob(%d. %p): %w", i, r.dpiLob, err)
+			}
 			continue
 		}
 
 		// For small reads it is faster to set it as byte slice
 		n, _ := io.ReadFull(L.Reader, a[:])
 		if n < cap(a) {
-			C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(n))
+			if err := c.checkExec(func() C.int {
+				return C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(n))
+			}); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("dpiVar_setFromBytes(%d. %d): %w", i, n, err)
+			}
 			continue
 		}
 
@@ -2486,7 +2492,10 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 
 		var lob *C.dpiLob
 		if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob) }); err != nil {
-			return fmt.Errorf("newTempLob(typ=%d): %w", typ, err)
+			if firstErr != nil {
+				firstErr = fmt.Errorf("newTempLob(typ=%d): %w", typ, err)
+			}
+			continue
 		}
 		var chunkSize C.uint32_t
 		_ = C.dpiLob_getChunkSize(lob, &chunkSize)
@@ -2505,7 +2514,11 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 			}
 			//fmt.Printf("close %p: %+v\n", lob, closeErr)
 		}
-		C.dpiVar_setFromLob(dv, C.uint32_t(i), lob)
+		if err == nil {
+			if err = c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), lob) }); err != nil {
+				err = fmt.Errorf("dpiVar_setFromLob(%d. %p): %w", i, lob, err)
+			}
+		}
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
