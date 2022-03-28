@@ -25,6 +25,47 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestInsertLargeLOB(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 30*time.Second)
+	defer cancel()
+
+	tbl := "test_insert_large_lob" + tblSuffix
+	drQry := "DROP TABLE " + tbl
+	_, _ = testDb.ExecContext(ctx, drQry)
+	crQry := "CREATE TABLE " + tbl + " (F_size NUMBER(9) NOT NULL, F_data CLOB NOT NULL)"
+	if _, err := testDb.ExecContext(ctx, crQry); err != nil {
+		t.Fatal(crQry, err)
+	}
+	defer func() { _, _ = testDb.ExecContext(context.Background(), drQry) }()
+
+	const str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
+	insQry := "INSERT INTO " + tbl + " (F_size, F_data) VALUES (:1, :2)"
+	for _, size := range []int{2049, 1<<20 - 1, 1 << 20, 1<<20 + 1, 2017371, 16<<20 + 1} {
+		data := (strings.Repeat(str, (size+len(str)-1)/len(str)) + str[:size%(len(str))])[:size]
+		t.Log(size, len(data))
+		if _, err := testDb.ExecContext(ctx, insQry, size, godror.Lob{Reader: strings.NewReader(data), IsClob: true}); err != nil {
+			t.Fatalf("%s [%d, %d]: %+v", insQry, size, len(data), err)
+		}
+	}
+
+	qry := "SELECT F_size, DBMS_LOB.getlength(F_data) FROM " + tbl
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(qry, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var size, length int64
+		if err := rows.Scan(&size, &length); err != nil {
+			t.Fatal(qry, err)
+		}
+		t.Log(size, length)
+		if size != length {
+			t.Fatal(size, length)
+		}
+	}
+}
+
 func TestCloseTempLOB(t *testing.T) {
 	//godror.SetLogger(godror.NewLogfmtLogger(os.Stdout))
 	P, err := dsn.Parse(testConStr)
