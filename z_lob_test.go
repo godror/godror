@@ -25,6 +25,72 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestInsertLargeLOB(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 60*time.Second)
+	defer cancel()
+
+	tbl := "test_insert_large_lob" + tblSuffix
+	drQry := "DROP TABLE " + tbl
+	_, _ = testDb.ExecContext(ctx, drQry)
+	crQry := "CREATE TABLE " + tbl + " (F_size NUMBER(9) NOT NULL, F_data CLOB NOT NULL)"
+	if _, err := testDb.ExecContext(ctx, crQry); err != nil {
+		t.Fatal(crQry, err)
+	}
+	defer func() { _, _ = testDb.ExecContext(context.Background(), drQry) }()
+
+	const str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
+	insQry := "INSERT INTO " + tbl + " (F_size, F_data) VALUES (:1, :2)"
+	selQry := "SELECT DBMS_LOB.getlength(F_data) FROM " + tbl + " WHERE F_size = :1"
+	selStmt, err := testDb.PrepareContext(ctx, selQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", selQry, err)
+	}
+	defer selStmt.Close()
+
+	shortCtx, shortCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer shortCancel()
+	dl, _ := shortCtx.Deadline()
+	var n int64
+	now := time.Now()
+	for _, size := range []int{
+		2049,
+		1<<20 - 1, 1<<20 + 1,
+		2017371,
+		16<<20 + 1,
+		//1_073_741_822 + 1,
+	} {
+		if testing.Short() && size > 1<<21 {
+			break
+		}
+		if n > 1<<20 {
+			if est := (time.Since(now) / time.Duration(n)) * time.Duration(size); est > time.Until(dl) {
+				t.Log("SKIP", size, "est", est)
+				break
+			}
+		}
+		data := (strings.Repeat(str, (size+len(str)-1)/len(str)) + str[:size%(len(str))])[:size]
+		t.Log(size, len(data))
+		if _, err := testDb.ExecContext(shortCtx, insQry, size, godror.Lob{Reader: strings.NewReader(data), IsClob: true}); err != nil {
+			var ec interface{ Code() int }
+			if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ec) && ec.Code() == 1013 {
+				t.Log(err)
+				break
+			}
+			t.Fatalf("%s [%d, %d]: %+v", insQry, size, len(data), err)
+		}
+		n += int64(len(data))
+
+		var got int
+		if err := selStmt.QueryRowContext(ctx, size).Scan(&got); err != nil {
+			t.Fatalf("%s [%d]: %+v", selQry, size, err)
+		}
+		if got != size {
+			t.Errorf("got %d wanted %d", got, size)
+			break
+		}
+	}
+}
+
 func TestCloseTempLOB(t *testing.T) {
 	//godror.SetLogger(godror.NewLogfmtLogger(os.Stdout))
 	P, err := dsn.Parse(testConStr)
