@@ -2458,72 +2458,90 @@ func (c *conn) dataSetLOB(dv *C.dpiVar, data []C.dpiData, vv interface{}) error 
 		lobs = vv.([]Lob)
 	}
 	var firstErr error
-	var a [1 << 20]byte
 	for i, L := range lobs {
-		//fmt.Printf("dataSetLob[%d]=(%T) %#v\n", i, L, L)
-		if L.Reader == nil {
-			data[i].isNull = 1
-			continue
-		}
-		data[i].isNull = 0
-		if r, ok := L.Reader.(*dpiLobReader); ok {
-			if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("dpiVar_setFromLob(%d. %p): %w", i, r.dpiLob, err)
+		if err := c.dataSetLOBOne(dv, data, i, L); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%d. %w", i, err)
 			}
-			continue
-		}
-
-		// For small reads it is faster to set it as byte slice
-		n, _ := io.ReadFull(L.Reader, a[:])
-		if n < cap(a) {
-			if err := c.checkExec(func() C.int {
-				return C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(n))
-			}); err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("dpiVar_setFromBytes(%d. %d): %w", i, n, err)
-			}
-			continue
-		}
-
-		L.Reader = io.MultiReader(bytes.NewReader(a[:n]), L.Reader)
-		typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
-		if L.IsClob {
-			typ = C.DPI_ORACLE_TYPE_CLOB
-		}
-
-		var lob *C.dpiLob
-		if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob) }); err != nil {
-			if firstErr != nil {
-				firstErr = fmt.Errorf("newTempLob(typ=%d): %w", typ, err)
-			}
-			continue
-		}
-		var chunkSize C.uint32_t
-		_ = C.dpiLob_getChunkSize(lob, &chunkSize)
-		if chunkSize == 0 {
-			chunkSize = 8192
-		}
-		for chunkSize < minChunkSize {
-			chunkSize <<= 1
-		}
-		lw := &dpiLobWriter{dpiLob: lob, drv: c.drv, isClob: L.IsClob}
-		_, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
-		//fmt.Printf("%p written %d with chunkSize=%d\n", lob, n, chunkSize)
-		if closeErr := lw.Close(); closeErr != nil {
-			if err == nil {
-				err = closeErr
-			}
-			//fmt.Printf("close %p: %+v\n", lob, closeErr)
-		}
-		if err == nil {
-			if err = c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), lob) }); err != nil {
-				err = fmt.Errorf("dpiVar_setFromLob(%d. %p): %w", i, lob, err)
-			}
-		}
-		if err != nil && firstErr == nil {
-			firstErr = err
 		}
 	}
 	return firstErr
+}
+func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error {
+	if L.Reader == nil {
+		data[i].isNull = 1
+		return nil
+	}
+	data[i].isNull = 0
+	if r, ok := L.Reader.(*dpiLobReader); ok {
+		if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil {
+			return fmt.Errorf("dpiVar_setFromLob(%p): %w", r.dpiLob, err)
+		}
+	}
+	logger := getLogger()
+
+	// For small reads it is faster to set it as byte slice
+	var a [1 << 20]byte
+	n, _ := io.ReadFull(L.Reader, a[:])
+	if logger != nil {
+		logger.Log("msg", "setLob", "n", n)
+	}
+	if n < cap(a) {
+		if err := c.checkExec(func() C.int {
+			return C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(n))
+		}); err != nil {
+			return fmt.Errorf("dpiVar_setFromBytes(%d): %w", n, err)
+		}
+		return nil
+	}
+
+	L.Reader = io.MultiReader(bytes.NewReader(a[:n]), L.Reader)
+	typ := C.dpiOracleTypeNum(C.DPI_ORACLE_TYPE_BLOB)
+	if L.IsClob {
+		typ = C.DPI_ORACLE_TYPE_CLOB
+	}
+
+	var lob *C.dpiLob
+	if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob) }); err != nil {
+		return fmt.Errorf("newTempLob(typ=%d): %w", typ, err)
+	}
+	var chunkSize C.uint32_t
+	_ = C.dpiLob_getChunkSize(lob, &chunkSize)
+	if chunkSize == 0 {
+		chunkSize = 8192
+	}
+	for chunkSize < minChunkSize {
+		chunkSize <<= 1
+	}
+	lw := &dpiLobWriter{dpiLob: lob, drv: c.drv, isClob: L.IsClob}
+	defer lw.Close() // Do NOT close before dpiVar_setFromLob !
+	written, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
+	if logger != nil {
+		logger.Log("msg", "setLOB", "written", n, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
+	}
+	if err != nil {
+		return err
+	}
+	{
+		var lobType C.dpiOracleTypeNum
+		var lobSize C.uint64_t
+		err := c.checkExec(func() C.int {
+			if rc := C.dpiLob_getType(lob, &lobType); rc != 0 {
+				return rc
+			}
+			return C.dpiLob_getSize(lob, &lobSize)
+		})
+		if logger != nil {
+			logger.Log("msg", "setLOB", "type", lobType, "size", lobSize, "error", err)
+		}
+		if int64(lobSize) != int64(written) {
+			return fmt.Errorf("lobSize=%d, wanted %d", lobSize, written)
+		}
+	}
+	if err = c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), lob) }); err != nil {
+		return fmt.Errorf("dpiVar_setFromLob(%d. %p): %w", i, lob, err)
+	}
+	return nil
 }
 
 type userType interface {

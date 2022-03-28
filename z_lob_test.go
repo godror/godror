@@ -40,11 +40,28 @@ func TestInsertLargeLOB(t *testing.T) {
 
 	const str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
 	insQry := "INSERT INTO " + tbl + " (F_size, F_data) VALUES (:1, :2)"
+	selQry := "SELECT DBMS_LOB.getlength(F_data) FROM " + tbl + " WHERE F_size = :1"
+	selStmt, err := testDb.PrepareContext(ctx, selQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", selQry, err)
+	}
+	defer selStmt.Close()
+
 	shortCtx, shortCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer shortCancel()
 	dl, _ := shortCtx.Deadline()
 	var n int64
 	now := time.Now()
-	for _, size := range []int{2049, 1<<20 - 1, 1<<20 + 1, 2017371, 16<<20 + 1, 1_073_741_822 + 1} {
+	for _, size := range []int{
+		2049,
+		1<<20 - 1, 1<<20 + 1,
+		2017371,
+		16<<20 + 1,
+		//1_073_741_822 + 1,
+	} {
+		if testing.Short() && size > 1<<21 {
+			break
+		}
 		if n > 1<<20 {
 			if est := (time.Since(now) / time.Duration(n)) * time.Duration(size); est > time.Until(dl) {
 				t.Log("SKIP", size, "est", est)
@@ -62,23 +79,14 @@ func TestInsertLargeLOB(t *testing.T) {
 			t.Fatalf("%s [%d, %d]: %+v", insQry, size, len(data), err)
 		}
 		n += int64(len(data))
-	}
-	shortCancel()
 
-	qry := "SELECT F_size, DBMS_LOB.getlength(F_data) FROM " + tbl + " ORDER BY 1"
-	rows, err := testDb.QueryContext(ctx, qry)
-	if err != nil {
-		t.Fatal(qry, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var size, length int64
-		if err := rows.Scan(&size, &length); err != nil {
-			t.Fatal(qry, err)
+		var got int
+		if err := selStmt.QueryRowContext(ctx, size).Scan(&got); err != nil {
+			t.Fatalf("%s [%d]: %+v", selQry, size, err)
 		}
-		t.Log(size, length)
-		if size != length {
-			t.Fatal(size, length)
+		if got != size {
+			t.Errorf("got %d wanted %d", got, size)
+			break
 		}
 	}
 }
