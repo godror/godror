@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Changed
+- SetLogger accept github.com/go-logr/logr.Logger
+
+## [v0.32.0]
 - Update to Go 1.15 as minimal required version.
 
 ## [v0.31.0]
