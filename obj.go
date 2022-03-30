@@ -67,7 +67,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_getAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
-		return fmt.Errorf("getAttributeValue(%q, obj=%+v, attr=%+v, typ=%d): %w", name, O, attr.dpiObjectAttr, data.NativeTypeNum, err)
+		return fmt.Errorf("getAttributeValue(%q, obj=%s, attr=%+v, typ=%d): %w", name, O.Name, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
 	logger := getLogger()
 	if logger != nil {
