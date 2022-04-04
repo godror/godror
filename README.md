@@ -26,8 +26,8 @@ needed at run time.  Download the free Basic or Basic Light package from
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored
 procedures with OUT parameters, or sending/retrieving PL/SQL array types - just
-give a `godror.PlSQLArrays` Option within the parameters of `Exec`!  For
-example, the array size of the returned PL/SQL arrays can be set with
+give a `godror.PlSQLArrays` Option within the parameters of `Exec` (but not in sql.Named)! 
+For example, the array size of the returned PL/SQL arrays can be set with
 `godror.ArraySize(2000)` (default value is 1024).
 
 ## Documentation

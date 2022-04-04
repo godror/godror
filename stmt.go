@@ -129,6 +129,8 @@ func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
 
 // Option holds statement options.
+//
+// Use it "naked", without sql.Named!
 type Option func(*stmtOptions)
 
 // BoolToString is an option that governs convertsion from bool to string in the database.
@@ -157,16 +159,22 @@ func BoolToString(trueVal, falseVal string) Option {
 
 // PlSQLArrays is to signal that the slices given in arguments of Exec to
 // be left as is - the default is to treat them as arguments for ExecMany.
+//
+// Use it "naked", without sql.Named!
 var PlSQLArrays Option = func(o *stmtOptions) { o.plSQLArrays = true }
 
 // FetchRowCount is DEPRECATED, use FetchArraySize.
 //
 // It returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
+//
+// Use it "naked", without sql.Named!
 func FetchRowCount(rowCount int) Option { return FetchArraySize(rowCount) }
 
 // FetchArraySize returns an option to set the rows to be fetched, overriding DefaultFetchRowCount.
 //
 // For choosing FetchArraySize and PrefetchCount, see https://cx-oracle.readthedocs.io/en/latest/user_guide/tuning.html#choosing-values-for-arraysize-and-prefetchrows
+//
+// Use it "naked", without sql.Named!
 func FetchArraySize(rowCount int) Option {
 	return func(o *stmtOptions) {
 		if rowCount > 0 {
@@ -182,6 +190,8 @@ func FetchArraySize(rowCount int) Option {
 // For choosing FetchArraySize and PrefetchCount, see https://cx-oracle.readthedocs.io/en/latest/user_guide/tuning.html#choosing-values-for-arraysize-and-prefetchrows
 //
 // WARNING: If you will take a REF CURSOR, the driver will start prefetching, so if you give that cursor to a stored procedure, that won't see the prefetched rows!
+//
+// Use it "naked", without sql.Named!
 func PrefetchCount(rowCount int) Option {
 	return func(o *stmtOptions) {
 		if rowCount > 0 {
@@ -193,6 +203,8 @@ func PrefetchCount(rowCount int) Option {
 }
 
 // ArraySize returns an option to set the array size to be used, overriding DefaultArraySize.
+//
+// Use it "naked", without sql.Named!
 func ArraySize(arraySize int) Option {
 	if arraySize <= 0 {
 		return nil
@@ -202,6 +214,8 @@ func ArraySize(arraySize int) Option {
 func parseOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_PARSE_ONLY }
 
 // ParseOnly returns an option to set the ExecMode to only Parse.
+//
+// Use it "naked", without sql.Named!
 func ParseOnly() Option {
 	return parseOnly
 }
@@ -212,6 +226,8 @@ func describeOnly(o *stmtOptions) { o.execMode = C.DPI_MODE_EXEC_DESCRIBE_ONLY }
 //
 // Deprecated: CLOBs are returned as string by default - for CLOB, use LobAsReader.
 // EXCEPT for Object attributes, those are returned as-is - as lobReader.
+//
+// Use it "naked", without sql.Named!
 func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false } }
 
 // LobAsReader is an option to set query columns of CLOB/BLOB to be returned as a Lob.
@@ -235,6 +251,8 @@ func ClobAsString() Option { return func(o *stmtOptions) { o.lobAsReader = false
 // performance penalty!
 //
 // EXCEPT for Object attributes, those are returned as-is - as lobReader.
+//
+// Use it "naked", without sql.Named!
 func LobAsReader() Option { return func(o *stmtOptions) { o.lobAsReader = true } }
 
 // CallTimeout sets the round-trip timeout (OCI_ATTR_CALL_TIMEOUT).
