@@ -1110,56 +1110,59 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 
 	case []byte, [][]byte:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_RAW, C.DPI_NATIVE_TYPE_BYTES
-		switch v := v.(type) {
-		case []byte:
-			info.bufSize = len(v)
-		case [][]byte:
-			for _, b := range v {
-				if n := len(b); n > info.bufSize {
-					info.bufSize = n
-				}
-			}
-		}
 		info.set = dataSetBytes
 		if info.isOut {
 			info.bufSize = 32767
 			*get = dataGetBytes
+		} else {
+			switch v := v.(type) {
+			case []byte:
+				info.bufSize = len(v)
+			case [][]byte:
+				for _, b := range v {
+					if n := len(b); n > info.bufSize {
+						info.bufSize = n
+					}
+				}
+			}
 		}
 
 	case Number, []Number:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_BYTES
-		switch v := v.(type) {
-		case Number:
-			info.bufSize = len(v)
-		case []Number:
-			for _, s := range v {
-				if n := len(s); n > info.bufSize {
-					info.bufSize = n
-				}
-			}
-		}
 		info.set = dataSetBytes
 		if info.isOut {
 			info.bufSize = 32767
 			*get = dataGetBytes
+		} else {
+			switch v := v.(type) {
+			case Number:
+				info.bufSize = len(v)
+			case []Number:
+				for _, s := range v {
+					if n := len(s); n > info.bufSize {
+						info.bufSize = n
+					}
+				}
+			}
 		}
 
 	case string, []string, nil:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
-		switch v := v.(type) {
-		case string:
-			info.bufSize = 4 * len(v)
-		case []string:
-			for _, s := range v {
-				if n := 4 * len(s); n > info.bufSize {
-					info.bufSize = n
-				}
-			}
-		}
 		info.set = dataSetBytes
 		if info.isOut {
 			info.bufSize = 32767
 			*get = dataGetBytes
+		} else {
+			switch v := v.(type) {
+			case string:
+				info.bufSize = 4 * len(v)
+			case []string:
+				for _, s := range v {
+					if n := 4 * len(s); n > info.bufSize {
+						info.bufSize = n
+					}
+				}
+			}
 		}
 
 	case time.Time, NullTime, *timestamppb.Timestamp:

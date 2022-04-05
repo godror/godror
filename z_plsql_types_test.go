@@ -1642,3 +1642,103 @@ END;`,
 		t.Log("map:", m)
 	}
 }
+
+func TestPlSQLNumSlice(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("PlSQLNumSlice"), 30*time.Second)
+	defer cancel()
+
+	name := "test_plsql_numslice" + tblSuffix
+	dropQry := `DROP PACKAGE ` + name
+	_, _ = testDb.ExecContext(ctx, dropQry)
+	defer func() { _, _ = testDb.ExecContext(context.Background(), dropQry) }()
+
+	for _, creQry := range []string{
+		`CREATE OR REPLACE PACKAGE ` + name + ` IS
+subtype type_Product_Code is varchar2(6);
+subtype type_Number_String is varchar2(20);
+type type_Product_Code_Array is table of type_Product_Code index by pls_integer;
+type type_Number_String_Array is table of type_Number_String index by pls_integer;
+
+FUNCTION Basket_Add_Product(
+  pProductCodeTable  in type_Product_Code_Array,
+  pVolumeTable       in type_Number_String_Array,
+  pCollectionIdTable in type_Number_String_Array
+) RETURN VARCHAR2;
+END;`,
+		`CREATE OR REPLACE PACKAGE BODY ` + name + ` IS
+
+FUNCTION Basket_Add_Product(
+  pProductCodeTable  in type_Product_Code_Array,
+  pVolumeTable       in type_Number_String_Array,
+  pCollectionIdTable in type_Number_String_Array
+) RETURN VARCHAR2 IS
+  v_out VARCHAR2(4000);
+BEGIN
+  v_out := pProductCodeTable.COUNT||','||pVolumeTable.COUNT||','||pCollectionIdTable.COUNT||CHR(10);
+  FOR i IN pProductCodeTable.FIRST .. pProductCodeTable.LAST LOOP
+    v_out := v_out||'pProductCodeTable('||i||')='||pProductCodeTable(i)||CHR(10);
+  END LOOP;
+
+  FOR i IN pVolumeTable.FIRST .. pVolumeTable.LAST LOOP
+    v_out := v_out||'pVolumeTable('||i||')='||pVolumeTable(i)||CHR(10);
+  END LOOP;
+
+  FOR i IN pCollectionIdTable.FIRST .. pCollectionIdTable.LAST LOOP
+    v_out := v_out||'pCollectionIdTable('||i||')='||pCollectionIdTable(i)||CHR(10);
+  END LOOP;
+   
+  RETURN(v_out);
+
+END;
+END;`,
+	} {
+		if _, err := testDb.ExecContext(ctx, creQry); err != nil {
+			t.Fatalf("%s: %+v", creQry, err)
+		}
+	}
+	errs, gcErr := godror.GetCompileErrors(ctx, testDb, false)
+	if gcErr != nil {
+		t.Error(gcErr)
+	} else if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	ExecProcedureVarChar := func(ctx context.Context, params ...interface{}) (result string, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println(r)
+				var ok bool
+				if err, ok = r.(error); !ok {
+					err = fmt.Errorf("Recover from ExecProcedure: %v", r)
+				}
+			}
+		}()
+
+		db := testDb
+
+		ctx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+
+		var out string
+		requestParams := make([]interface{}, 0, 2+len(params))
+		requestParams = append(requestParams, godror.PlSQLArrays)
+		requestParams = append(requestParams, sql.Out{Dest: &out})
+		requestParams = append(requestParams, params...)
+		qry := "BEGIN :1 := " + name + ".basket_add_product(:2, :3, :4); END;"
+		_, err = db.ExecContext(ctx, qry, requestParams...)
+		if err != nil {
+			return "", fmt.Errorf("%s [%v]: %w", qry, requestParams, err)
+		}
+
+		return out, err
+	}
+
+	s, err := ExecProcedureVarChar(ctx,
+		[]string{"012345", "abcdef"},
+		[]string{"A", "B", "C"},
+		[]string{"f56d430cxx123", "le;ri';ghr", "asdasf", "rretwrt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(s, len(s))
+}
