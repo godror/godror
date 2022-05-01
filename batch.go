@@ -1,4 +1,4 @@
-// Copyright 2017, 2020 The Godror Authors
+// Copyright 2017, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -52,6 +52,9 @@ func (b *Batch) Size() int { return b.size }
 
 // Flush executes the statement is and the clears the storage.
 func (b *Batch) Flush(ctx context.Context) error {
+	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
+		return nil
+	}
 	if b.values == nil {
 		b.values = make([]interface{}, len(b.rValues))
 	}
