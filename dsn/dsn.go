@@ -9,8 +9,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/url"
 	"sort"
@@ -561,7 +563,7 @@ func NewPassword(secret string) Password {
 }
 
 // String returns the secret obfuscated irreversibly.
-func (P Password) String() string { return P.obfuscated }
+func (P Password) String() string { return "SECRET-" + P.obfuscated }
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -577,7 +579,15 @@ func (P *Password) Reset() { P.secret, P.obfuscated = "", "" }
 
 // Set the password.
 func (P *Password) Set(secret string) {
-	P.secret, P.obfuscated = secret, strings.Repeat("*", len(secret))
+	P.secret = secret
+	if secret == "" {
+		P.obfuscated = secret
+	} else {
+		hsh := fnv.New32()
+		hsh.Write([]byte(secret))
+		P.obfuscated = base64.URLEncoding.WithPadding(base64.NoPadding).
+			EncodeToString(hsh.Sum(nil))
+	}
 }
 
 var ErrCannotMarshal = errors.New("cannot be marshaled")
