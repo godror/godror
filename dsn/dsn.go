@@ -8,9 +8,9 @@ package dsn
 import (
 	"context"
 	"database/sql/driver"
-	"encoding/base64"
+	"encoding"
+	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net/url"
 	"sort"
@@ -208,13 +208,13 @@ func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
 }
 
 // String returns the string representation of ConnectionParams.
-// The password is replaced with a "SECRET" string!
+// The password is replaced with a "***" string!
 func (P ConnectionParams) String() string {
 	return P.string(true, false)
 }
 
 // StringNoClass returns the string representation of ConnectionParams, without class info.
-// The password is replaced with a "SECRET" string!
+// The password is replaced with a "***" string!
 func (P ConnectionParams) StringNoClass() string {
 	return P.string(false, false)
 }
@@ -330,7 +330,8 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		if usr := u.User; usr != nil {
 			P.Username = usr.Username()
-			P.Password.secret, _ = usr.Password()
+			passw, _ := usr.Password()
+			P.Password.Set(passw)
 		}
 		P.ConnectString = u.Hostname()
 		// IPv6 literal address brackets are removed by u.Hostname,
@@ -353,7 +354,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	} else {
 		// Not URL, not logfmt-ed - an old styled DSN
 		// Old, or Easy Connect, or anything
-		P.Username, P.Password.secret, dataSourceName = parseUserPassw(dataSourceName)
+		var passw string
+		P.Username, passw, dataSourceName = parseUserPassw(dataSourceName)
+		P.Password.Set(passw)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
 		uSid := strings.ToUpper(dataSourceName)
 		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
@@ -385,7 +388,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 				case "user":
 					P.Username = value
 				case "password":
-					P.Password.secret = value
+					P.Password.Set(value)
 				case "charset":
 					P.Charset = value
 				case "alterSession", "onInit", "shardingKey", "superShardingKey":
@@ -533,7 +536,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	P.ShardingKey = strToIntf(q["shardingKey"])
 	P.SuperShardingKey = strToIntf(q["superShardingKey"])
 
-	P.NewPassword.secret = q.Get("newPassword")
+	P.NewPassword.Set(q.Get("newPassword"))
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
 
@@ -547,21 +550,18 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 
 // Password is printed obfuscated with String, use Secret to reveal the secret.
 type Password struct {
-	secret string
+	secret, obfuscated string
 }
 
 // NewPassword creates a new Password, containing the given secret.
-func NewPassword(secret string) Password { return Password{secret: secret} }
+func NewPassword(secret string) Password {
+	var P Password
+	P.Set(secret)
+	return P
+}
 
 // String returns the secret obfuscated irreversibly.
-func (P Password) String() string {
-	if P.secret == "" {
-		return ""
-	}
-	hsh := fnv.New64()
-	io.WriteString(hsh, P.secret)
-	return "SECRET-" + base64.URLEncoding.EncodeToString(hsh.Sum(nil))
-}
+func (P Password) String() string { return P.obfuscated }
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -573,13 +573,24 @@ func (P Password) IsZero() bool { return P.secret == "" }
 func (P Password) Len() int { return len(P.secret) }
 
 // Reset the password.
-func (P *Password) Reset() { P.secret = "" }
+func (P *Password) Reset() { P.secret, P.obfuscated = "", "" }
 
 // Set the password.
-func (P *Password) Set(secret string) { P.secret = secret }
+func (P *Password) Set(secret string) {
+	P.secret, P.obfuscated = secret, strings.Repeat("*", len(secret))
+}
+
+var ErrCannotMarshal = errors.New("cannot be marshaled")
+
+func (P *Password) MarshalText() ([]byte, error)   { return nil, ErrCannotMarshal }
+func (P *Password) MarshalJSON() ([]byte, error)   { return nil, ErrCannotMarshal }
+func (P *Password) MarshalBinary() ([]byte, error) { return nil, ErrCannotMarshal }
+
+var _ encoding.TextMarshaler = ((*Password)(nil))
+var _ encoding.BinaryMarshaler = ((*Password)(nil))
 
 // CopyFrom another password.
-func (P *Password) CopyFrom(Q Password) { P.secret = Q.secret }
+func (P *Password) CopyFrom(Q Password) { *P = Q }
 
 // ParamsArray is an url.Values for holding parameters,
 // and logfmt-formatting them with the String() method.
