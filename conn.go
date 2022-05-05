@@ -380,7 +380,7 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 			(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)))
 	})
 	if err != nil {
-		return nil, maybeBadConn(fmt.Errorf("Prepare: %s: %w", query, err), c)
+		return nil, maybeBadConn(fmt.Errorf("prepare: %s: %w", query, err), c)
 	}
 	if err := c.checkExec(func() C.int { return C.dpiStmt_getInfo(st.dpiStmt, &st.dpiStmtInfo) }); err != nil {
 		err = maybeBadConn(fmt.Errorf("getStmtInfo: %w", err), c)
@@ -544,7 +544,7 @@ func (c *conn) initTZ() error {
 	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
-		return fmt.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("prepare %s: %w", qry, err)
 	}
 	defer st.Close()
 	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
@@ -560,7 +560,7 @@ func (c *conn) initTZ() error {
 	vals := []driver.Value{dbTZ, dbOSTZ}
 	if err = rows.Next(vals); err != nil && err != io.EOF {
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
-		return fmt.Errorf("%s: %w", qry, err)
+		return fmt.Errorf("%s.Next: %w", qry, err)
 	}
 	dbTZ = vals[0].(string)
 	dbOSTZ = vals[1].(string)
@@ -682,10 +682,10 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	var err error
 	if dbOSTZ != "" {
 		if off, err = dsn.ParseTZ(dbOSTZ); err != nil {
-			return tz, off, fmt.Errorf("%s: %w", dbOSTZ, err)
+			return tz, off, fmt.Errorf("ParseTZ(%q): %w", dbOSTZ, err)
 		}
 	} else if off, err = dsn.ParseTZ(dbTZ); err != nil {
-		return tz, off, fmt.Errorf("%s: %w", dbTZ, err)
+		return tz, off, fmt.Errorf("ParseTZ(%q): %w", dbTZ, err)
 	}
 	// This is dangerous, but I just cannot get whether the DB time zone
 	// setting has DST or not - DBTIMEZONE returns just a fixed offset.
@@ -847,7 +847,7 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 			C.free(unsafe.Pointer(s))
 		}
 		if res == C.DPI_FAILURE {
-			return fmt.Errorf("%s: %w", f[0], c.getError())
+			return fmt.Errorf("setTraceTag(%q, %q): %w", f[0], f[1], c.getError())
 		}
 	}
 	return nil
@@ -928,6 +928,10 @@ type (
 		ConnClass string
 	}
 )
+
+func (up UserPasswdConnClassTag) String() string {
+	return fmt.Sprintf("user=%q passw=%q class=%q", up.Username, up.Password, up.ConnClass)
+}
 
 // ContextWithParams returns a context with the specified parameters. These parameters are used
 // to modify the session acquired from the pool.

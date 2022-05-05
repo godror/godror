@@ -196,10 +196,23 @@ func TestContextWithUserPassw(t *testing.T) {
 		t.Fatal(fmt.Errorf("%s: %w", testHeterogeneousConStr, err))
 	}
 	defer testHeterogeneousDB.Close()
+	testHeterogeneousDB.SetMaxIdleConns(0)
 
-	ctx = godror.ContextWithUserPassw(ctx, username, password.Secret(), "")
-	if err := testHeterogeneousDB.PingContext(ctx); err != nil {
-		t.Fatal(err)
+	{
+		ctx := godror.ContextWithUserPassw(ctx, username, password.Secret(), "")
+		if err := testHeterogeneousDB.PingContext(ctx); err != nil {
+			t.Fatal(err)
+		}
+		t.Log(ctx)
 	}
-	t.Log(ctx)
+
+	{
+		ctx := godror.ContextWithUserPassw(ctx, username, password.String(), "")
+		err := testHeterogeneousDB.PingContext(ctx)
+		t.Logf("Ping with wrong password (%q): %+v", password.String(), err)
+		if err == nil {
+			t.Log(ctx)
+			t.Fatal("success with wrong password")
+		}
+	}
 }

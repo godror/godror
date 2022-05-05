@@ -318,7 +318,7 @@ func (d *drv) init(configDir, libDir string) error {
 
 	var v C.dpiVersionInfo
 	if C.dpiContext_getClientVersion(d.dpiContext, &v) == C.DPI_FAILURE {
-		return fmt.Errorf("%s: %w", "getClientVersion", d.getError())
+		return fmt.Errorf("getClientVersion: %w", d.getError())
 	}
 	d.clientVersion.set(&v)
 	return nil
@@ -582,11 +582,11 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, er
 	}); err != nil {
 		if pool != nil {
 			stats, _ := d.getPoolStats(pool)
-			return nil, fmt.Errorf("user=%q ConnectString=%q stats=%s params=%+v: %w",
-				username, P.ConnectString, stats, connCreateParams, err)
+			return nil, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
+				pool.dpiPool, stats, connCreateParams, err)
 		}
-		return nil, fmt.Errorf("user=%q ConnectString=%q standalone params=%+v: %w",
-			username, P.ConnectString, connCreateParams, err)
+		return nil, fmt.Errorf("userFNVB64=%q standalone params=%+v: %w",
+			dsn.FNVB64(username), connCreateParams, err)
 	}
 	return dc, nil
 }
@@ -785,7 +785,9 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 			(**C.dpiPool)(unsafe.Pointer(&dp)),
 		)
 	}); err != nil {
-		return nil, fmt.Errorf("params=%s extAuth=%v: %w", P, poolCreateParams.externalAuth, err)
+		return nil, fmt.Errorf("dpoPool_create userFNVB64=%s passwFNVB64=%s connectStringFNVB64=%s extAuth=%v: %w",
+			dsn.FNVB64(P.Username), P.Password.String(), dsn.FNVB64(P.ConnectString), poolCreateParams.externalAuth,
+			err)
 	}
 
 	// set statement cache

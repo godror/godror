@@ -563,7 +563,7 @@ func NewPassword(secret string) Password {
 }
 
 // String returns the secret obfuscated irreversibly.
-func (P Password) String() string { return "SECRET-" + P.obfuscated }
+func (P Password) String() string { return "FNVB64-" + P.obfuscated }
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -583,10 +583,7 @@ func (P *Password) Set(secret string) {
 	if secret == "" {
 		P.obfuscated = secret
 	} else {
-		hsh := fnv.New32()
-		hsh.Write([]byte(secret))
-		P.obfuscated = base64.URLEncoding.WithPadding(base64.NoPadding).
-			EncodeToString(hsh.Sum(nil))
+		P.obfuscated = FNVB64(secret)
 	}
 }
 
@@ -861,4 +858,11 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	n, err := cw.W.Write(p)
 	cw.N += int64(n)
 	return n, err
+}
+
+func FNVB64(s string) string {
+	hsh := fnv.New32()
+	hsh.Write([]byte(s))
+	return base64.URLEncoding.WithPadding(base64.NoPadding).
+		EncodeToString(hsh.Sum(nil))
 }
