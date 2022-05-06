@@ -158,7 +158,8 @@ func (Q *Queue) Close() error {
 func (Q *Queue) PurgeExpired(ctx context.Context) error {
 	const qry = `BEGIN 
   FOR row IN (
-    SELECT queue_table FROM all_queues
+    SELECT sys_context('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
+	  FROM user_queues
 	  WHERE name = :1
   ) LOOP
     dbms_aqadm.purge_queue_table(row.queue_table, 'qtview.msg_state = ''EXPIRED''', NULL);
