@@ -8,12 +8,12 @@ package godror_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"io/ioutil"
 	"math"
@@ -63,7 +63,7 @@ func TestMain(m *testing.M) {
 }
 
 func setUp() func() {
-	hsh := fnv.New32()
+	hsh := sha256.New()
 	bi, ok := debug.ReadBuildInfo()
 	if ok && bi != nil {
 		ok = json.NewEncoder(hsh).Encode(*bi) == nil
@@ -71,7 +71,7 @@ func setUp() func() {
 	if !ok {
 		hsh.Write([]byte(runtime.Version()))
 	}
-	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil))
+	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil)[:4])
 
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)

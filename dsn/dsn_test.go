@@ -87,15 +87,15 @@ func TestParse(t *testing.T) {
 	}
 
 	setP := func(s, p string) string {
-		if i := strings.Index(s, ":FNVB64-"); i >= 0 {
+		if i := strings.Index(s, ":SHA256-"); i >= 0 {
 			if j := strings.Index(s[i:], "@"); j >= 0 {
 				return s[:i+1] + p + s[i+j:]
 			}
-		} else if i := strings.Index(s, "=\"FNVB64-"); i >= 0 {
+		} else if i := strings.Index(s, "=\"SHA256-"); i >= 0 {
 			if j := strings.Index(s[i+2:], "\" "); j >= 0 {
 				return s[:i+2] + p + s[i+2+j:]
 			}
-		} else if i := strings.Index(s, "=FNVB64-"); i >= 0 {
+		} else if i := strings.Index(s, "=SHA256-"); i >= 0 {
 			if j := strings.Index(s[i+1:], " "); j >= 0 {
 				return s[:i+1] + p + s[i+1+j:]
 			}

@@ -7,12 +7,12 @@ package dsn
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql/driver"
 	"encoding"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net/url"
 	"sort"
@@ -563,7 +563,10 @@ func NewPassword(secret string) Password {
 }
 
 // String returns the secret obfuscated irreversibly.
-func (P Password) String() string { return "FNVB64-" + P.obfuscated }
+//
+// You can check that it's the same as "mypassword" with
+//   echo -n 'mypassword' | sha25sum | xxd -r -p | base64
+func (P Password) String() string { return "SHA256-" + P.obfuscated }
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -583,7 +586,7 @@ func (P *Password) Set(secret string) {
 	if secret == "" {
 		P.obfuscated = secret
 	} else {
-		P.obfuscated = FNVB64(secret)
+		P.obfuscated = SHA256(secret)
 	}
 }
 
@@ -860,8 +863,9 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func FNVB64(s string) string {
-	hsh := fnv.New32()
+// SHA256 returns the string's sha256 hash as base64 string, without padding.
+func SHA256(s string) string {
+	hsh := sha256.New()
 	hsh.Write([]byte(s))
 	return base64.URLEncoding.WithPadding(base64.NoPadding).
 		EncodeToString(hsh.Sum(nil))
