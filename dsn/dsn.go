@@ -7,10 +7,8 @@ package dsn
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql/driver"
 	"encoding"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -552,7 +550,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 
 // Password is printed obfuscated with String, use Secret to reveal the secret.
 type Password struct {
-	secret, obfuscated string
+	secret string
 }
 
 // NewPassword creates a new Password, containing the given secret.
@@ -562,11 +560,10 @@ func NewPassword(secret string) Password {
 	return P
 }
 
+const obfuscatedPassword = "SECRET-***"
+
 // String returns the secret obfuscated irreversibly.
-//
-// You can check that it's the same as "mypassword" with
-//   echo -n 'mypassword' | sha25sum | xxd -r -p | base64
-func (P Password) String() string { return "SHA256-" + P.obfuscated }
+func (P Password) String() string { return obfuscatedPassword }
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -578,16 +575,11 @@ func (P Password) IsZero() bool { return P.secret == "" }
 func (P Password) Len() int { return len(P.secret) }
 
 // Reset the password.
-func (P *Password) Reset() { P.secret, P.obfuscated = "", "" }
+func (P *Password) Reset() { P.secret = "" }
 
 // Set the password.
 func (P *Password) Set(secret string) {
 	P.secret = secret
-	if secret == "" {
-		P.obfuscated = secret
-	} else {
-		P.obfuscated = SHA256(secret)
-	}
 }
 
 var ErrCannotMarshal = errors.New("cannot be marshaled")
@@ -861,12 +853,4 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	n, err := cw.W.Write(p)
 	cw.N += int64(n)
 	return n, err
-}
-
-// SHA256 returns the string's sha256 hash as base64 string, without padding.
-func SHA256(s string) string {
-	hsh := sha256.New()
-	hsh.Write([]byte(s))
-	return base64.URLEncoding.WithPadding(base64.NoPadding).
-		EncodeToString(hsh.Sum(nil))
 }

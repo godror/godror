@@ -585,8 +585,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, er
 			return nil, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
 				pool.dpiPool, stats, connCreateParams, err)
 		}
-		return nil, fmt.Errorf("userSHA256=%q standalone params=%+v: %w",
-			dsn.SHA256(username), connCreateParams, err)
+		return nil, fmt.Errorf("user=%q standalone params=%+v: %w",
+			username, connCreateParams, err)
 	}
 	return dc, nil
 }
@@ -785,9 +785,8 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 			(**C.dpiPool)(unsafe.Pointer(&dp)),
 		)
 	}); err != nil {
-		return nil, fmt.Errorf("dpoPool_create userSHA256=%s passwSHA256=%s connectStringSHA256=%s extAuth=%v: %w",
-			dsn.SHA256(P.Username), P.Password.String(), dsn.SHA256(P.ConnectString), poolCreateParams.externalAuth,
-			err)
+		return nil, fmt.Errorf("dpoPool_create user=%s extAuth=%v: %w",
+			P.Username, poolCreateParams.externalAuth, err)
 	}
 
 	// set statement cache
