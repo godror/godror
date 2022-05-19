@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -121,6 +134,37 @@ static int dpiMsgProps__setAttrValue(dpiMsgProps *props, uint32_t attribute,
             (void*) value, valueLength, attribute, "set attribute value",
             &error);
     return dpiGen__endPublicFn(props, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiMsgProps__setRecipients() [INTERNAL]
+//   Set the recipients value in OCI.
+//-----------------------------------------------------------------------------
+int dpiMsgProps__setRecipients(dpiMsgProps *props,
+        dpiMsgRecipient *recipients, uint32_t numRecipients,
+        void **aqAgents, dpiError *error)
+{
+    uint32_t i;
+
+    for (i = 0; i < numRecipients; i++) {
+        if (dpiOci__descriptorAlloc(props->env->handle, &aqAgents[i],
+                DPI_OCI_DTYPE_AQAGENT, "allocate agent descriptor",
+                error) < 0)
+            return DPI_FAILURE;
+        if (recipients[i].name && recipients[i].nameLength > 0) {
+            if (dpiOci__attrSet(aqAgents[i], DPI_OCI_DTYPE_AQAGENT,
+                    (void*) recipients[i].name, recipients[i].nameLength,
+                    DPI_OCI_ATTR_AGENT_NAME, "set agent name", error) < 0)
+                return DPI_FAILURE;
+        }
+    }
+    if (dpiOci__attrSet(props->handle, DPI_OCI_DTYPE_AQMSG_PROPERTIES,
+            aqAgents, numRecipients, DPI_OCI_ATTR_RECIPIENT_LIST,
+            "set recipient list", error) < 0)
+        return DPI_FAILURE;
+
+    return DPI_SUCCESS;
 }
 
 
@@ -478,4 +522,34 @@ int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_PRIORITY, __func__,
             &value, 0);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiMsgProps_setRecipients() [PUBLIC]
+//   Set recipients associated with the message.
+//-----------------------------------------------------------------------------
+int dpiMsgProps_setRecipients(dpiMsgProps *props,
+        dpiMsgRecipient *recipients, uint32_t numRecipients)
+{
+    void **aqAgents;
+    dpiError error;
+    uint32_t i;
+    int status;
+
+    if (dpiGen__startPublicFn(props, DPI_HTYPE_MSG_PROPS, __func__,
+            &error) < 0)
+        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(props, recipients)
+    if (dpiUtils__allocateMemory(numRecipients, sizeof(void*), 1,
+            "allocate memory for agents", (void**) &aqAgents, &error) < 0)
+        return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
+    status = dpiMsgProps__setRecipients(props, recipients, numRecipients,
+            aqAgents, &error);
+    for (i = 0; i < numRecipients; i++) {
+        if (aqAgents[i])
+            dpiOci__descriptorFree(aqAgents[i], DPI_OCI_DTYPE_AQAGENT);
+    }
+    dpiUtils__freeMemory(aqAgents);
+    return dpiGen__endPublicFn(props, status, &error);
 }

@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -474,6 +487,13 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
     if (dpiUtils__setAttributesFromCommonCreateParams(conn->sessionHandle,
             DPI_OCI_HTYPE_SESSION, commonParams, error) < 0)
         return DPI_FAILURE;
+
+    // set dbToken and dbTokenPrivateKey for token based authentication
+    if (commonParams->dbTokenInfo) {
+        if (dpiUtils__setDbTokenAttributes(conn->sessionHandle,
+                commonParams->dbTokenInfo, conn->env->versionInfo, error) < 0)
+            return DPI_FAILURE;
+    }
 
     // populate attributes on the session handle
     if (dpiConn__setAttributesFromCreateParams(conn, conn->sessionHandle,
@@ -1341,10 +1361,10 @@ static int dpiConn__setXid(dpiConn *conn, dpiXid *xid, dpiError *error)
     ociXid.gtrid_length = xid->globalTransactionIdLength;
     ociXid.bqual_length = xid->branchQualifierLength;
     if (xid->globalTransactionIdLength > 0)
-        strncpy(ociXid.data, xid->globalTransactionId,
+        memcpy(ociXid.data, xid->globalTransactionId,
                 xid->globalTransactionIdLength);
     if (xid->branchQualifierLength > 0)
-        strncpy(&ociXid.data[xid->globalTransactionIdLength],
+        memcpy(&ociXid.data[xid->globalTransactionIdLength],
                 xid->branchQualifier, xid->branchQualifierLength);
     if (dpiOci__attrSet(conn->transactionHandle, DPI_OCI_HTYPE_TRANS,
             &ociXid, sizeof(dpiOciXID), DPI_OCI_ATTR_XID, "set XID",
@@ -1593,6 +1613,18 @@ int dpiConn_create(const dpiContext *context, const char *userName,
         dpiError__set(&error, "verify proxy user name with external auth",
                 DPI_ERR_EXT_AUTH_INVALID_PROXY);
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error );
+    }
+
+    if (commonParams->dbTokenInfo) {
+        // externalAuth must be set to true for token based authentication
+        if (!createParams->externalAuth)
+            return dpiError__set(&error, "check externalAuth value",
+                    DPI_ERR_STANDALONE_TOKEN_BASED_AUTH);
+
+        // cannot set username for token based authentication
+        if (userName && userNameLength > 0)
+            return dpiError__set(&error, "verify user in token based auth",
+                DPI_ERR_EXT_AUTH_WITH_CREDENTIALS);
     }
 
     // connectionClass and edition cannot be specified at the same time

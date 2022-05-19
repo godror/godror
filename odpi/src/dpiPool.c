@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -61,6 +74,34 @@ static int dpiPool__checkConnected(dpiPool *pool, const char *fnName,
 }
 
 
+//----------------------------------------------------------------------------
+// dpiPool__tokenRefreshCallback() [INTERNAL]
+//   Callback used to execute the registered callback when the authentication
+// token expires and the connection pool needs to create a new connection.
+// -----------------------------------------------------------------------------
+int dpiPool__dbTokenRefreshCallback(dpiPool *pool, void *authInfo,
+        UNUSED uint32_t mode)
+{
+    dpiDbTokenInfo dbTokenInfo;
+    dpiError error;
+
+    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    memset(&dbTokenInfo, 0, sizeof(dpiDbTokenInfo));
+
+    if ((*pool->dbTokenCallback)(pool->dbTokenCallbackContext,
+            &dbTokenInfo) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    if (dpiUtils__setDbTokenAttributes(authInfo, &dbTokenInfo,
+               pool->env->versionInfo, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
+}
+
+
 //-----------------------------------------------------------------------------
 // dpiPool__create() [INTERNAL]
 //   Internal method for creating a session pool.
@@ -101,6 +142,33 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
     if (dpiUtils__setAttributesFromCommonCreateParams(authInfo,
             DPI_OCI_HTYPE_AUTHINFO, commonParams, error) < 0)
         return DPI_FAILURE;
+
+    // set token based authentication attributes
+    if (commonParams->dbTokenInfo) {
+        // homogeneous must be set to true for token based authentication
+        if (!createParams->homogeneous || !createParams->externalAuth)
+            return dpiError__set(error, "check homogeneous and externalAuth",
+                    DPI_ERR_POOL_TOKEN_BASED_AUTH);
+
+        if (dpiUtils__setDbTokenAttributes(authInfo, commonParams->dbTokenInfo,
+                pool->env->versionInfo, error) < 0)
+            return DPI_FAILURE;
+
+        if (createParams->dbTokenCallback) {
+            // set IAM context callback on session handle
+            if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
+                    (void*) pool, 0, DPI_OCI_ATTR_IAM_CBKCTX,
+                    "set token callback context", error) < 0)
+                return DPI_FAILURE;
+
+            // set IAM callback on session handle
+            if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
+                    (void*) dpiPool__dbTokenRefreshCallback,
+                    0, DPI_OCI_ATTR_IAM_CBK,
+                    "set token callback", error) < 0)
+                return DPI_FAILURE;
+        }
+    }
 
     // set PL/SQL session state fixup callback, if applicable
     if (createParams->plsqlFixupCallback &&
@@ -177,12 +245,23 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             error) < 0)
         return DPI_FAILURE;
 
-    // set reamining attributes directly
+    // set remaining attributes directly
     pool->homogeneous = createParams->homogeneous;
     pool->externalAuth = createParams->externalAuth;
     pool->pingInterval = createParams->pingInterval;
     pool->pingTimeout = createParams->pingTimeout;
     pool->stmtCacheSize = commonParams->stmtCacheSize;
+
+    if (commonParams->dbTokenInfo) {
+        if (createParams->dbTokenCallback) {
+            // assigning dbTokenCallback and dbTokenCallbackContext
+            // to the pool parameter used for token based authentication
+            pool->dbTokenCallback = createParams->dbTokenCallback;
+            pool->dbTokenCallbackContext = createParams->dbTokenCallbackContext;
+        }
+        // set externalAuth to false for token based authentication
+        pool->externalAuth = 0;
+    }
 
     return DPI_SUCCESS;
 }
@@ -622,6 +701,32 @@ int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value)
 {
     return dpiPool__setAttributeUint(pool, DPI_OCI_ATTR_SPOOL_GETMODE, value,
             __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiPool_setDbToken() [PUBLIC]
+//   Sets the token and private key for token based authentication
+//-----------------------------------------------------------------------------
+int dpiPool_setDbToken(dpiPool *pool, dpiDbTokenInfo *dbTokenInfo)
+{
+    dpiError error;
+    void * authInfo;
+
+    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(pool, dbTokenInfo)
+
+    if (dpiOci__attrGet(pool->handle, DPI_OCI_HTYPE_SPOOL, (void *)&authInfo,
+            NULL, DPI_OCI_ATTR_SPOOL_AUTH,
+            "get attribute value", &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    if (dpiUtils__setDbTokenAttributes(authInfo,
+            dbTokenInfo, pool->env->versionInfo, &error) < 0)
+        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+
+    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
 }
 
 

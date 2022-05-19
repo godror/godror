@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -293,10 +306,13 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
 
-    // size changed in version 4.2; local structure and check can be dropped
-    // once version 5 released
-    if (context->dpiMinorVersion > 1) {
+    // size changed in version 4.2 and 4.4; local structure and checks can
+    // be dropped once version 5 released
+    if (context->dpiMinorVersion > 3) {
         dpiContext__initCommonCreateParams(context, params);
+    } else if (context->dpiMinorVersion > 1) {
+        dpiContext__initCommonCreateParams(context, &localParams);
+        memcpy(params, &localParams, sizeof(dpiCommonCreateParams__v43));
     } else {
         dpiContext__initCommonCreateParams(context, &localParams);
         memcpy(params, &localParams, sizeof(dpiCommonCreateParams__v41));
@@ -332,6 +348,7 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params)
 {
+    dpiPoolCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
@@ -339,7 +356,15 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
 
-    dpiContext__initPoolCreateParams(params);
+    // size changed in version 4.4; local structure and checks
+    // can be dropped once version 5 released
+    if (context->dpiMinorVersion > 3) {
+        dpiContext__initPoolCreateParams(params);
+    } else {
+        dpiContext__initPoolCreateParams(&localParams);
+        memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v43));
+    }
+
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

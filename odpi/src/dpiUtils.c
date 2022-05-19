@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -504,6 +517,48 @@ int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
             dpiOci__attrSet(handle, handleType,
                     (void*) params->edition, params->editionLength,
                     DPI_OCI_ATTR_EDITION, "set edition", error) < 0)
+        return DPI_FAILURE;
+
+    return DPI_SUCCESS;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// dpiUtils__setDbTokenAttributes() [INTERNAL]
+//   Set the dbToken and dbTokenPrivateKey for token based authentication on
+//the Auth handle
+//-----------------------------------------------------------------------------
+int dpiUtils__setDbTokenAttributes(void *handle, dpiDbTokenInfo *dbTokenInfo,
+        dpiVersionInfo *versionInfo, dpiError *error)
+{
+    // only available in Oracle Client 19.14+ and 21.5+ libraries
+    if (dpiUtils__checkClientVersionMulti(versionInfo,
+            19, 14, 21, 5, error) < 0)
+        return DPI_FAILURE;
+
+    // check validity of dbToken and dbTokenPrivateKey params
+    if (!dbTokenInfo->dbToken ||
+            dbTokenInfo->dbTokenLength == 0 ||
+            !dbTokenInfo->dbTokenPrivateKey ||
+            dbTokenInfo->dbTokenPrivateKeyLength == 0)
+        return dpiError__set(error,
+                "check token based authentication parameters",
+                DPI_ERR_TOKEN_BASED_AUTH);
+
+    // set dbToken on Auth handle
+    if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
+            (void*) dbTokenInfo->dbToken,
+            dbTokenInfo->dbTokenLength,
+            DPI_OCI_ATTR_IAM_TOKEN, "set DB token", error) < 0)
+        return DPI_FAILURE;
+
+    // set dbTokenPrivateKey on Auth handle
+    if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
+            (void*) dbTokenInfo->dbTokenPrivateKey,
+            dbTokenInfo->dbTokenPrivateKeyLength,
+            DPI_OCI_ATTR_IAM_PRIVKEY,
+            "set DB token private key", error) < 0)
         return DPI_FAILURE;
 
     return DPI_SUCCESS;

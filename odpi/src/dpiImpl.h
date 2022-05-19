@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -158,6 +171,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DTYPE_AQENQ_OPTIONS                 57
 #define DPI_OCI_DTYPE_AQDEQ_OPTIONS                 58
 #define DPI_OCI_DTYPE_AQMSG_PROPERTIES              59
+#define DPI_OCI_DTYPE_AQAGENT                       60
 #define DPI_OCI_DTYPE_INTERVAL_YM                   62
 #define DPI_OCI_DTYPE_INTERVAL_DS                   63
 #define DPI_OCI_DTYPE_AQNFY_DESCRIPTOR              64
@@ -209,11 +223,14 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_EXPIRATION                     57
 #define DPI_OCI_ATTR_CORRELATION                    58
 #define DPI_OCI_ATTR_ATTEMPTS                       59
+#define DPI_OCI_ATTR_RECIPIENT_LIST                 60
 #define DPI_OCI_ATTR_EXCEPTION_QUEUE                61
 #define DPI_OCI_ATTR_ENQ_TIME                       62
 #define DPI_OCI_ATTR_MSG_STATE                      63
+#define DPI_OCI_ATTR_AGENT_NAME                     64
 #define DPI_OCI_ATTR_ORIGINAL_MSGID                 69
 #define DPI_OCI_ATTR_QUEUE_NAME                     70
+#define DPI_OCI_ATTR_NFY_MSGID                      71
 #define DPI_OCI_ATTR_NUM_DML_ERRORS                 73
 #define DPI_OCI_ATTR_DML_ROW_OFFSET                 74
 #define DPI_OCI_ATTR_SUBSCR_NAME                    94
@@ -326,6 +343,10 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
 #define DPI_OCI_ATTR_SODA_METADATA_CACHE            624
 #define DPI_OCI_ATTR_SODA_HINT                      627
+#define DPI_OCI_ATTR_IAM_TOKEN                      636
+#define DPI_OCI_ATTR_IAM_PRIVKEY                    637
+#define DPI_OCI_ATTR_IAM_CBK                        638
+#define DPI_OCI_ATTR_IAM_CBKCTX                     639
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -602,6 +623,9 @@ typedef enum {
     DPI_ERR_UNHANDLED_CONVERSION_TO_JSON,
     DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI,
     DPI_ERR_CONN_CLOSED,
+    DPI_ERR_TOKEN_BASED_AUTH,
+    DPI_ERR_POOL_TOKEN_BASED_AUTH,
+    DPI_ERR_STANDALONE_TOKEN_BASED_AUTH,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -680,6 +704,20 @@ typedef struct {
     uint32_t driverNameLength;
 } dpiCommonCreateParams__v41;
 
+// structure used for common parameters used for creating standalone
+// connections and session pools
+typedef struct {
+    dpiCreateMode createMode;
+    const char *encoding;
+    const char *nencoding;
+    const char *edition;
+    uint32_t editionLength;
+    const char *driverName;
+    uint32_t driverNameLength;
+    int sodaMetadataCache;
+    uint32_t stmtCacheSize;
+} dpiCommonCreateParams__v43;
+
 // structure used for SODA operations (find/replace/remove)
 typedef struct {
     uint32_t numKeys;
@@ -695,6 +733,26 @@ typedef struct {
     uint32_t limit;
     uint32_t fetchArraySize;
 } dpiSodaOperOptions__v41;
+
+// structure used for creating pools
+typedef struct {
+    uint32_t minSessions;
+    uint32_t maxSessions;
+    uint32_t sessionIncrement;
+    int pingInterval;
+    int pingTimeout;
+    int homogeneous;
+    int externalAuth;
+    dpiPoolGetMode getMode;
+    const char *outPoolName;
+    uint32_t outPoolNameLength;
+    uint32_t timeout;
+    uint32_t waitTimeout;
+    uint32_t maxLifetimeSession;
+    const char *plsqlFixupCallback;
+    uint32_t plsqlFixupCallbackLength;
+    uint32_t maxSessionsPerShard;
+} dpiPoolCreateParams__v43;
 
 
 //-----------------------------------------------------------------------------
@@ -1209,6 +1267,8 @@ struct dpiPool {
     int pingTimeout;                    // timeout (milliseconds) for ping
     int homogeneous;                    // homogeneous pool?
     int externalAuth;                   // use external authentication?
+    dpiDbTokenCallback dbTokenCallback; // callback when event is propagated
+    void *dbTokenCallbackContext;       // context pointer for callback
 };
 
 // represents connections to the database and is exposed publicly as a handle
@@ -2123,7 +2183,9 @@ int dpiMsgProps__allocate(dpiConn *conn, dpiMsgProps **props, dpiError *error);
 void dpiMsgProps__extractMsgId(dpiMsgProps *props, const char **msgId,
         uint32_t *msgIdLength);
 void dpiMsgProps__free(dpiMsgProps *props, dpiError *error);
-
+int dpiMsgProps__setRecipients(dpiMsgProps *props,
+        dpiMsgRecipient *recipients, uint32_t numRecipients,
+        void **aqAgents, dpiError *error);
 
 //-----------------------------------------------------------------------------
 // definition of internal dpiHandlePool methods
@@ -2177,6 +2239,8 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
 int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
         uint32_t handleType, const dpiCommonCreateParams *params,
         dpiError *error);
+int dpiUtils__setDbTokenAttributes(void *handle, dpiDbTokenInfo *dbTokenInfo,
+        dpiVersionInfo *versionInfo, dpiError *error);
 
 
 //-----------------------------------------------------------------------------

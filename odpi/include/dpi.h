@@ -1,12 +1,25 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
-// This program is free software: you can modify it and/or redistribute it
-// under the terms of:
+// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
 //
-// (i)  the Universal Permissive License v 1.0 or at your option, any
-//      later version (http://oss.oracle.com/licenses/upl); and/or
+// This software is dual-licensed to you under the Universal Permissive License
+// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
+// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
+// either license.
 //
-// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
+// If you elect to accept the software under the Apache License, Version 2.0,
+// the following applies:
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -420,9 +433,11 @@ typedef struct dpiContextCreateParams dpiContextCreateParams;
 typedef struct dpiData dpiData;
 typedef union dpiDataBuffer dpiDataBuffer;
 typedef struct dpiDataTypeInfo dpiDataTypeInfo;
+typedef struct dpiDbTokenInfo dpiDbTokenInfo;
 typedef struct dpiEncodingInfo dpiEncodingInfo;
 typedef struct dpiErrorInfo dpiErrorInfo;
 typedef struct dpiJsonNode dpiJsonNode;
+typedef struct dpiMsgRecipient dpiMsgRecipient;
 typedef struct dpiObjectAttrInfo dpiObjectAttrInfo;
 typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
 typedef struct dpiPoolCreateParams dpiPoolCreateParams;
@@ -438,6 +453,13 @@ typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
 typedef struct dpiXid dpiXid;
+
+
+//-----------------------------------------------------------------------------
+// Declaration for function pointers
+//-----------------------------------------------------------------------------
+typedef int (*dpiDbTokenCallback)(void *context,
+        dpiDbTokenInfo *dbTokenInfo);
 
 
 //-----------------------------------------------------------------------------
@@ -554,6 +576,7 @@ struct dpiCommonCreateParams {
     uint32_t driverNameLength;
     int sodaMetadataCache;
     uint32_t stmtCacheSize;
+    dpiDbTokenInfo *dbTokenInfo;
 };
 
 // structure used for creating connections
@@ -609,6 +632,14 @@ struct dpiDataTypeInfo {
     int8_t scale;
     uint8_t fsPrecision;
     dpiObjectType *objectType;
+};
+
+// structure used for storing token authentication data
+struct dpiDbTokenInfo {
+    const char *dbToken;
+    uint32_t dbTokenLength;
+    const char *dbTokenPrivateKey;
+    uint32_t dbTokenPrivateKeyLength;
 };
 
 // structure used for transferring encoding information from ODPI-C
@@ -670,6 +701,8 @@ struct dpiPoolCreateParams {
     const char *plsqlFixupCallback;
     uint32_t plsqlFixupCallbackLength;
     uint32_t maxSessionsPerShard;
+    dpiDbTokenCallback dbTokenCallback;
+    void *dbTokenCallbackContext;
 };
 
 // structure used for transferring query metadata from ODPI-C
@@ -678,6 +711,12 @@ struct dpiQueryInfo {
     uint32_t nameLength;
     dpiDataTypeInfo typeInfo;
     int nullOk;
+};
+
+// structure used for recipients list
+struct dpiMsgRecipient {
+    const char *name;
+    uint32_t nameLength;
 };
 
 // structure used for sharding key columns
@@ -765,6 +804,8 @@ struct dpiSubscrMessage {
     uint32_t queueNameLength;
     const char *consumerName;
     uint32_t consumerNameLength;
+    const void *aqMsgId;
+    uint32_t aqMsgIdLength;
 };
 
 // structure used for transferring query information in messages in
@@ -1468,6 +1509,9 @@ DPI_EXPORT int dpiMsgProps_setPayloadObject(dpiMsgProps *props,
 // set the priority of the message
 DPI_EXPORT int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value);
 
+// set recipients associated with the message
+DPI_EXPORT int dpiMsgProps_setRecipients(dpiMsgProps *props,
+        dpiMsgRecipient *recipients, uint32_t numRecipients);
 
 //-----------------------------------------------------------------------------
 // Object Methods (dpiObject)
@@ -1627,6 +1671,10 @@ DPI_EXPORT int dpiPool_getPingInterval(dpiPool *pool, int *value);
 
 // release a reference to the pool
 DPI_EXPORT int dpiPool_release(dpiPool *pool);
+
+// set token parameter for token based authentication
+DPI_EXPORT int dpiPool_setDbToken(dpiPool *pool,
+        dpiDbTokenInfo *params);
 
 // set the pool's "get" mode
 DPI_EXPORT int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
