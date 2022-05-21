@@ -1267,8 +1267,8 @@ struct dpiPool {
     int pingTimeout;                    // timeout (milliseconds) for ping
     int homogeneous;                    // homogeneous pool?
     int externalAuth;                   // use external authentication?
-    dpiDbTokenCallback dbTokenCallback; // callback when event is propagated
-    void *dbTokenCallbackContext;       // context pointer for callback
+    dpiAccessTokenCallback accessTokenCallback; // access token callback
+    void *accessTokenCallbackContext;   // context pointer for callback
 };
 
 // represents connections to the database and is exposed publicly as a handle
@@ -2239,8 +2239,9 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
 int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
         uint32_t handleType, const dpiCommonCreateParams *params,
         dpiError *error);
-int dpiUtils__setDbTokenAttributes(void *handle, dpiDbTokenInfo *dbTokenInfo,
-        dpiVersionInfo *versionInfo, dpiError *error);
+int dpiUtils__setAccessTokenAttributes(void *handle,
+        dpiAccessToken *accessToken, dpiVersionInfo *versionInfo,
+        dpiError *error);
 
 
 //-----------------------------------------------------------------------------

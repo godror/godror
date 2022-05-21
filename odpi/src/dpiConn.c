@@ -488,10 +488,10 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
             DPI_OCI_HTYPE_SESSION, commonParams, error) < 0)
         return DPI_FAILURE;
 
-    // set dbToken and dbTokenPrivateKey for token based authentication
-    if (commonParams->dbTokenInfo) {
-        if (dpiUtils__setDbTokenAttributes(conn->sessionHandle,
-                commonParams->dbTokenInfo, conn->env->versionInfo, error) < 0)
+    // set access token for token based authentication
+    if (commonParams->accessToken) {
+        if (dpiUtils__setAccessTokenAttributes(conn->sessionHandle,
+                commonParams->accessToken, conn->env->versionInfo, error) < 0)
             return DPI_FAILURE;
     }
 
@@ -1615,7 +1615,8 @@ int dpiConn_create(const dpiContext *context, const char *userName,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error );
     }
 
-    if (commonParams->dbTokenInfo) {
+    if (commonParams->accessToken) {
+
         // externalAuth must be set to true for token based authentication
         if (!createParams->externalAuth)
             return dpiError__set(&error, "check externalAuth value",

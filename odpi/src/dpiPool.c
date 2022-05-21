@@ -75,26 +75,26 @@ static int dpiPool__checkConnected(dpiPool *pool, const char *fnName,
 
 
 //----------------------------------------------------------------------------
-// dpiPool__tokenRefreshCallback() [INTERNAL]
+// dpiPool__accessTokenCallback() [INTERNAL]
 //   Callback used to execute the registered callback when the authentication
 // token expires and the connection pool needs to create a new connection.
 // -----------------------------------------------------------------------------
-int dpiPool__dbTokenRefreshCallback(dpiPool *pool, void *authInfo,
+int dpiPool__accessTokenCallback(dpiPool *pool, void *authInfo,
         UNUSED uint32_t mode)
 {
-    dpiDbTokenInfo dbTokenInfo;
+    dpiAccessToken accessToken;
     dpiError error;
 
     if (dpiPool__checkConnected(pool, __func__, &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
 
-    memset(&dbTokenInfo, 0, sizeof(dpiDbTokenInfo));
+    memset(&accessToken, 0, sizeof(dpiAccessToken));
 
-    if ((*pool->dbTokenCallback)(pool->dbTokenCallbackContext,
-            &dbTokenInfo) < 0)
+    if ((*pool->accessTokenCallback)(pool->accessTokenCallbackContext,
+            &accessToken) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
 
-    if (dpiUtils__setDbTokenAttributes(authInfo, &dbTokenInfo,
+    if (dpiUtils__setAccessTokenAttributes(authInfo, &accessToken,
                pool->env->versionInfo, &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
 
@@ -144,17 +144,18 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
         return DPI_FAILURE;
 
     // set token based authentication attributes
-    if (commonParams->dbTokenInfo) {
+    if (commonParams->accessToken) {
+
         // homogeneous must be set to true for token based authentication
         if (!createParams->homogeneous || !createParams->externalAuth)
             return dpiError__set(error, "check homogeneous and externalAuth",
                     DPI_ERR_POOL_TOKEN_BASED_AUTH);
 
-        if (dpiUtils__setDbTokenAttributes(authInfo, commonParams->dbTokenInfo,
-                pool->env->versionInfo, error) < 0)
+        if (dpiUtils__setAccessTokenAttributes(authInfo,
+                commonParams->accessToken, pool->env->versionInfo, error) < 0)
             return DPI_FAILURE;
 
-        if (createParams->dbTokenCallback) {
+        if (createParams->accessTokenCallback) {
             // set IAM context callback on session handle
             if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
                     (void*) pool, 0, DPI_OCI_ATTR_IAM_CBKCTX,
@@ -163,9 +164,8 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
 
             // set IAM callback on session handle
             if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
-                    (void*) dpiPool__dbTokenRefreshCallback,
-                    0, DPI_OCI_ATTR_IAM_CBK,
-                    "set token callback", error) < 0)
+                    (void*) dpiPool__accessTokenCallback, 0,
+                    DPI_OCI_ATTR_IAM_CBK, "set token callback", error) < 0)
                 return DPI_FAILURE;
         }
     }
@@ -252,14 +252,11 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
     pool->pingTimeout = createParams->pingTimeout;
     pool->stmtCacheSize = commonParams->stmtCacheSize;
 
-    if (commonParams->dbTokenInfo) {
-        if (createParams->dbTokenCallback) {
-            // assigning dbTokenCallback and dbTokenCallbackContext
-            // to the pool parameter used for token based authentication
-            pool->dbTokenCallback = createParams->dbTokenCallback;
-            pool->dbTokenCallbackContext = createParams->dbTokenCallbackContext;
-        }
-        // set externalAuth to false for token based authentication
+    if (commonParams->accessToken) {
+        pool->accessTokenCallback = createParams->accessTokenCallback;
+        pool->accessTokenCallbackContext =
+                createParams->accessTokenCallbackContext;
+        // force externalAuth to false for token based authentication
         pool->externalAuth = 0;
     }
 
@@ -705,25 +702,25 @@ int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value)
 
 
 //-----------------------------------------------------------------------------
-// dpiPool_setDbToken() [PUBLIC]
+// dpiPool_setAccessToken() [PUBLIC]
 //   Sets the token and private key for token based authentication
 //-----------------------------------------------------------------------------
-int dpiPool_setDbToken(dpiPool *pool, dpiDbTokenInfo *dbTokenInfo)
+int dpiPool_setAccessToken(dpiPool *pool, dpiAccessToken *accessToken)
 {
     dpiError error;
     void * authInfo;
 
     if (dpiPool__checkConnected(pool, __func__, &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(pool, dbTokenInfo)
+    DPI_CHECK_PTR_NOT_NULL(pool, accessToken)
 
     if (dpiOci__attrGet(pool->handle, DPI_OCI_HTYPE_SPOOL, (void *)&authInfo,
             NULL, DPI_OCI_ATTR_SPOOL_AUTH,
             "get attribute value", &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
 
-    if (dpiUtils__setDbTokenAttributes(authInfo,
-            dbTokenInfo, pool->env->versionInfo, &error) < 0)
+    if (dpiUtils__setAccessTokenAttributes(authInfo, accessToken,
+            pool->env->versionInfo, &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
 
     return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);

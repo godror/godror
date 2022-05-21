@@ -525,40 +525,36 @@ int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
 
 
 //-----------------------------------------------------------------------------
-// dpiUtils__setDbTokenAttributes() [INTERNAL]
-//   Set the dbToken and dbTokenPrivateKey for token based authentication on
-//the Auth handle
+// dpiUtils__setAccessTokenAttributes() [INTERNAL]
+//   Set the token and private key for token based authentication on the auth
+// handle.
 //-----------------------------------------------------------------------------
-int dpiUtils__setDbTokenAttributes(void *handle, dpiDbTokenInfo *dbTokenInfo,
-        dpiVersionInfo *versionInfo, dpiError *error)
+int dpiUtils__setAccessTokenAttributes(void *handle,
+        dpiAccessToken *accessToken, dpiVersionInfo *versionInfo,
+        dpiError *error)
 {
     // only available in Oracle Client 19.14+ and 21.5+ libraries
     if (dpiUtils__checkClientVersionMulti(versionInfo,
             19, 14, 21, 5, error) < 0)
         return DPI_FAILURE;
 
-    // check validity of dbToken and dbTokenPrivateKey params
-    if (!dbTokenInfo->dbToken ||
-            dbTokenInfo->dbTokenLength == 0 ||
-            !dbTokenInfo->dbTokenPrivateKey ||
-            dbTokenInfo->dbTokenPrivateKeyLength == 0)
+    // check validity of access token
+    if (!accessToken->token || accessToken->tokenLength == 0 ||
+            !accessToken->privateKey || accessToken->privateKeyLength == 0)
         return dpiError__set(error,
                 "check token based authentication parameters",
                 DPI_ERR_TOKEN_BASED_AUTH);
 
-    // set dbToken on Auth handle
+    // set token on auth handle
     if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
-            (void*) dbTokenInfo->dbToken,
-            dbTokenInfo->dbTokenLength,
+            (void*) accessToken->token, accessToken->tokenLength,
             DPI_OCI_ATTR_IAM_TOKEN, "set DB token", error) < 0)
         return DPI_FAILURE;
 
-    // set dbTokenPrivateKey on Auth handle
+    // set private key on auth handle
     if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
-            (void*) dbTokenInfo->dbTokenPrivateKey,
-            dbTokenInfo->dbTokenPrivateKeyLength,
-            DPI_OCI_ATTR_IAM_PRIVKEY,
-            "set DB token private key", error) < 0)
+            (void*) accessToken->privateKey, accessToken->privateKeyLength,
+            DPI_OCI_ATTR_IAM_PRIVKEY, "set DB token private key", error) < 0)
         return DPI_FAILURE;
 
     return DPI_SUCCESS;
