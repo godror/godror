@@ -38,7 +38,7 @@ See [CONTRIBUTING](https://github.com/oracle/odpi/blob/main/CONTRIBUTING.md).
 ## Drivers Using ODPI-C
 
 Oracle Drivers:
-* [cx_Oracle](https://oracle.github.io/python-cx_Oracle) Python interface.
+* [python-oracledb](https://oracle.github.io/python-oracledb) Python interface (previously known as [cx_Oracle](https://oracle.github.io/python-cx_Oracle)).
 * [node-oracledb](https://oracle.github.io/node-oracledb) Node.js module.
 
 Third-party Drivers:

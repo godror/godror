@@ -305,6 +305,26 @@ static const dpiOracleType
         1                                   // requires pre-fetch
     },
     {
+        DPI_ORACLE_TYPE_JSON_OBJECT,        // public Oracle type
+        DPI_NATIVE_TYPE_JSON_OBJECT,        // default native type
+        0,                                  // internal Oracle type
+        DPI_SQLCS_IMPLICIT,                 // charset form
+        sizeof(dpiJsonObject),              // buffer size
+        0,                                  // is character data
+        0,                                  // can be in array
+        0                                   // requires pre-fetch
+    },
+    {
+        DPI_ORACLE_TYPE_JSON_ARRAY,         // public Oracle type
+        DPI_NATIVE_TYPE_JSON_ARRAY,         // default native type
+        0,                                  // internal Oracle type
+        DPI_SQLCS_IMPLICIT,                 // charset form
+        sizeof(dpiJsonArray),               // buffer size
+        0,                                  // is character data
+        0,                                  // can be in array
+        0                                   // requires pre-fetch
+    },
+    {
         DPI_ORACLE_TYPE_UROWID,             // public Oracle type
         DPI_NATIVE_TYPE_ROWID,              // default native type
         DPI_SQLT_RDD,                       // internal Oracle type

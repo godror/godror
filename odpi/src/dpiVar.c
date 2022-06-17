@@ -755,6 +755,7 @@ int dpiVar__getValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
                 case DPI_ORACLE_TYPE_ROWID:
                 case DPI_ORACLE_TYPE_RAW:
                 case DPI_ORACLE_TYPE_LONG_VARCHAR:
+                case DPI_ORACLE_TYPE_LONG_NVARCHAR:
                 case DPI_ORACLE_TYPE_LONG_RAW:
                     if (buffer->dynamicBytes)
                         return dpiVar__setBytesFromDynamicBytes(bytes,

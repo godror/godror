@@ -9,3 +9,4 @@
 5. [Godror Logging and Tracing](./logging.md)
 6. [Cross-compilation](./cross-compile.md)
 7. [Time zones](./timezone.md)
+8. [Videos](./video.md)
