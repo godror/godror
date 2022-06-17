@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.33.0]
+### Changed
+- SetLogger accept github.com/go-logr/logr.Logger
+
+## [v0.32.0]
+- Update to Go 1.15 as minimal required version.
+
+## [v0.31.0]
+### Added
+- NumberAsString option
+- Queue.PurgeExpired
+### Changed
+- By default, return Number for numbers (not string)
+- Always run session Init functions
+
+## [v0.30.2]
+### Changed
+- Fix Queue.Dequeue to work with non-existing MsgID (#201).
+
+## [v0.30.1]
+### Added
+- Object{,Collection}.FromJSON
+
+## [v0.30.0]
 ### Added
 - Object{,Collection}.{AsMap,ToJSON}
 

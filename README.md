@@ -11,7 +11,7 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
 ## Build-time Requirements
-  - Go 1.14
+  - Go 1.15
   - C compiler with `CGO_ENABLED=1` - so cross-compilation is hard
 
 ## Run-time Requirements
@@ -26,8 +26,8 @@ needed at run time.  Download the free Basic or Basic Light package from
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored
 procedures with OUT parameters, or sending/retrieving PL/SQL array types - just
-give a `godror.PlSQLArrays` Option within the parameters of `Exec`!  For
-example, the array size of the returned PL/SQL arrays can be set with
+give a `godror.PlSQLArrays` Option within the parameters of `Exec` (but not in sql.Named)! 
+For example, the array size of the returned PL/SQL arrays can be set with
 `godror.ArraySize(2000)` (default value is 1024).
 
 ## Documentation
@@ -133,6 +133,8 @@ For `PLS_INTEGER` and `BINARY_INTEGER` (PL/SQL data types) you can use `int32`.
 
 From 2.9.0, LOBs are returned as string/[]byte by default (before it needed the `ClobAsString()` option).
 Now it's reversed, and the default is string, to get a Lob reader, give the `LobAsReader()` option.
+
+Watch out, Oracle will error out if the CLOB is too large, and you have to use `godror.Lob` in such cases!
 
 If you return Lob as a reader, watch out with `sql.QueryRow`, `sql.QueryRowContext` !
 They close the statement right after you `Scan` from the returned `*Row`, the returned `Lob` will be invalid, producing
