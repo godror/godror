@@ -798,6 +798,15 @@ type ObjectType struct {
 	FsPrecision                         uint8
 }
 
+// AttributeNames returns the Attributes' names ordered as on the database (by ObjectAttribute.Sequence).
+func (t *ObjectType) AttributeNames() []string {
+	names := make([]string, len(t.Attributes))
+	for k, v := range t.Attributes {
+		names[v.Sequence] = k
+	}
+	return names
+}
+
 func (t *ObjectType) String() string {
 	if t.Schema == "" {
 		return t.Name
@@ -1005,6 +1014,7 @@ func (t *ObjectType) init() error {
 			dpiObjectAttr: attr,
 			Name:          C.GoStringN(attrInfo.name, C.int(attrInfo.nameLength)),
 			ObjectType:    sub,
+			Sequence:      uint32(i),
 		}
 		if sub.dpiObjectType != nil {
 			C.dpiObjectType_addRef(sub.dpiObjectType)
@@ -1049,6 +1059,7 @@ type ObjectAttribute struct {
 	*ObjectType
 	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
+	Sequence      uint32
 }
 
 // Close the ObjectAttribute.

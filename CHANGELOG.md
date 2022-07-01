@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.33.3]
+### Added
+- ObjectType.AttributeNames() returns the attribute names in DB order.
+
 ## [v0.33.0]
 ### Changed
 - SetLogger accept github.com/go-logr/logr.Logger

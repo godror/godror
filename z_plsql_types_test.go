@@ -755,7 +755,7 @@ END;`
 		elt = data.GetObject()
 
 		t.Logf("elt[%d]: %s", i, elt)
-		for attr := range elt.Attributes {
+		for _, attr := range elt.AttributeNames() {
 			val, err := elt.Get(attr)
 			if err != nil {
 				if godror.DpiVersionNumber <= 30201 {
