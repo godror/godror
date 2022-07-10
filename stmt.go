@@ -41,6 +41,7 @@ import (
 	"github.com/godror/knownpb/timestamppb"
 )
 
+// NullTime is an alias for sql.NullTime
 type NullTime = sql.NullTime
 
 var nullTime interface{} = nil
@@ -109,11 +110,11 @@ func (o stmtOptions) PrefetchCount() int {
 	}
 }
 func (o stmtOptions) FetchArraySize() int {
-	if n := o.fetchArraySize; n <= 0 {
+	n := o.fetchArraySize
+	if n <= 0 {
 		return DefaultFetchArraySize
-	} else {
-		return n
 	}
+	return n
 }
 func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
@@ -2763,7 +2764,35 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		if err := obj.GetAttribute(&ad, nm); err != nil {
 			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
 		}
-		rv.Field(i).Set(reflect.ValueOf(ad.Get()))
+		rf := rv.FieldByIndex(f.Index)
+		v := ad.Get()
+		switch x := v.(type) {
+		case string:
+			if rf.Kind() == reflect.String {
+				rf.SetString(x)
+			} else {
+				rf.SetBytes([]byte(x))
+			}
+		case []byte:
+			if rf.Kind() == reflect.String {
+				rf.SetString(string(x))
+			} else {
+				rf.SetBytes(x)
+			}
+		default:
+			switch vv := reflect.ValueOf(v); vv.Kind() {
+			case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				rf.SetUint(ad.GetUint64())
+			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
+				rf.SetInt(ad.GetInt64())
+			case reflect.Float32:
+				rf.SetFloat(float64(ad.GetFloat32()))
+			case reflect.Float64:
+				rf.SetFloat(ad.GetFloat64())
+			default:
+				rf.Set(vv)
+			}
+		}
 	}
 	return nil
 }
@@ -2955,8 +2984,10 @@ func (c *conn) dataGetJSONString(v interface{}, data []C.dpiData) error {
 }
 
 var (
+	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
-	ErrBadDate        = errors.New("date out of range (year must be between -4713 and 9999, and must not be 0)")
+	// ErrBadDate is returned when the date is not assignable to Oracle DATE type
+	ErrBadDate = errors.New("date out of range (year must be between -4713 and 9999, and must not be 0)")
 )
 
 // CheckNamedValue is called before passing arguments to the driver

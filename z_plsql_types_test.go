@@ -268,7 +268,7 @@ func dropPackages(ctx context.Context) {
 }
 
 type objectStruct struct {
-	godror.ObjectTypeName `db_object:"test_pkg_types.my_other_record"`
+	godror.ObjectTypeName `db_object:"test_pkg_types.my_record"`
 	ID                    int32  `db_object:"ID"`
 	Txt                   string `db_object:"TXT"`
 }
