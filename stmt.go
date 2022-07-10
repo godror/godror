@@ -1249,10 +1249,8 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			} else {
 				info.objType = ot.dpiObjectType
 				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-				if false {
-					info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-						return st.dataSetObjectStruct(ot, dv, data, vv)
-					}
+				info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+					return st.dataSetObjectStruct(ot, dv, data, vv)
 				}
 				if info.isOut {
 					*get = func(v interface{}, data []C.dpiData) error {
@@ -2659,15 +2657,60 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	return nil
 }
 func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	// Pointer to a struct with ObjectTypeName field and optional "db_object" struct tags for struct field-object attribute mapping.
-	rvp := reflect.ValueOf(vv)
-	if rvp.Type().Kind() != reflect.Ptr || rvp.Elem().Type().Kind() != reflect.Struct {
+	logger := getLogger()
+	rv := reflect.ValueOf(vv)
+	if rv.Type().Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Type().Kind() != reflect.Struct {
 		return fmt.Errorf("not a pointer to a struct: %w", errUnknownType)
 	}
-	rv := rvp.Elem()
 	rvt := rv.Type()
-	_ = rvt
-	return fmt.Errorf("dataSetObjectStruct is not implemented")
+
+	if logger != nil {
+		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", vv))
+	}
+	objs := []Object{{}}
+	if vv == nil || rv.IsZero() {
+		rv.Set(reflect.Zero(rvt))
+		return nil
+	}
+
+	obj, err := ot.NewObject()
+	if err != nil {
+		return err
+	}
+	var ad Data
+	for i, n := 0, rvt.NumField(); i < n; i++ {
+		f := rvt.Field(i)
+		if !f.IsExported() || f.Name == "ObjectTypeName" {
+			continue
+		}
+		nm := f.Tag.Get("db_object")
+		if nm == "-" {
+			continue
+		}
+		if nm == "" {
+			nm = strings.ToUpper(f.Name)
+		}
+		rf := rv.FieldByIndex(f.Index)
+		ad.Set(rf.Interface())
+		if err := obj.SetAttribute(nm, &ad); err != nil {
+			return fmt.Errorf("SetAttribute(%q): %w", nm, err)
+		}
+	}
+	objs[0] = *obj
+	for i, obj := range objs {
+		if obj.dpiObject == nil {
+			data[i].isNull = 1
+			continue
+		}
+		data[i].isNull = 0
+		if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) }); err != nil {
+			return fmt.Errorf("setFromObject: %w", err)
+		}
+	}
+	return nil
 }
 
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
