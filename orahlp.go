@@ -81,7 +81,7 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseInt(string(*x), 10, 64)
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 
@@ -128,7 +128,7 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseFloat(string(*x), 64)
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 
@@ -165,7 +165,7 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 		err := n.Compose(x.Decompose(nil))
 		return string(n), err
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 func (n Number) String() string { return string(n) }
@@ -199,7 +199,7 @@ func (n *Number) Scan(v interface{}) error {
 	case decimalDecompose:
 		return n.Compose(x.Decompose(nil))
 	default:
-		return fmt.Errorf("unknown type %T", v)
+		return fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 	return nil
 }

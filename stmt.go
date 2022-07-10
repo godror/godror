@@ -1238,7 +1238,29 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			logger.Log("msg", "bindVarTypeSwitch default", "value", value)
 		}
 		if !isValuer {
-			return value, fmt.Errorf("unknown type %T", value)
+			if ot, err := getStructObjectTypeName(st.conn, value); err != nil {
+				if logger != nil {
+					logger.Log("msg", "getStructObjectTypeName", "value", fmt.Sprintf("%T", value), "error", err)
+				}
+				if !errors.Is(err, errUnknownType) {
+					return value, err
+				}
+			} else {
+				info.objType = ot.dpiObjectType
+				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+				if false {
+					info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+						return st.dataSetObjectStruct(ot, dv, data, vv)
+					}
+				}
+				if info.isOut {
+					*get = func(v interface{}, data []C.dpiData) error {
+						return st.dataGetObjectStruct(ot, v, data)
+					}
+				}
+				return value, nil
+			}
+			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}
 		oval := value
 		var err error
@@ -2635,6 +2657,17 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	}
 	return nil
 }
+func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	// Pointer to a struct with ObjectTypeName field and optional "db_object" struct tags for struct field-object attribute mapping.
+	rvp := reflect.ValueOf(vv)
+	if rvp.Type().Kind() != reflect.Ptr || rvp.Elem().Type().Kind() != reflect.Struct {
+		return fmt.Errorf("not a pointer to a struct: %w", errUnknownType)
+	}
+	rv := rvp.Elem()
+	rvt := rv.Type()
+	_ = rvt
+	return fmt.Errorf("dataSetObjectStruct is not implemented")
+}
 
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	logger := getLogger()
@@ -2681,12 +2714,84 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 		err := out.Scan(obj)
 		obj.Close()
 		return err
-	default:
 
+	default:
 		return fmt.Errorf("dataGetObject not implemented for type %T (maybe you need to implement the Scan method)", v)
 	}
 
 	return nil
+}
+
+func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
+	logger := getLogger()
+	// Pointer to a struct with ObjectTypeName field and optional "db_object" struct tags for struct field-object attribute mapping.
+	rv := reflect.ValueOf(v)
+	if rv.Type().Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Type().Kind() != reflect.Struct {
+		return fmt.Errorf("not a struct: %w", errUnknownType)
+	}
+	rvt := rv.Type()
+
+	d := Data{
+		ObjectType: ot,
+		dpiData:    data[0],
+	}
+	if logger != nil {
+		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+	}
+	obj := d.GetObject()
+	if obj == nil {
+		rv.Set(reflect.Zero(rvt))
+		return nil
+	}
+
+	var ad Data
+	for i, n := 0, rvt.NumField(); i < n; i++ {
+		f := rvt.Field(i)
+		if !f.IsExported() || f.Name == "ObjectTypeName" {
+			continue
+		}
+		nm := f.Tag.Get("db_object")
+		if nm == "-" {
+			continue
+		}
+		if nm == "" {
+			nm = strings.ToUpper(f.Name)
+		}
+		if err := obj.GetAttribute(&ad, nm); err != nil {
+			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
+		}
+		rv.Field(i).Set(reflect.ValueOf(ad.Get()))
+	}
+	return nil
+}
+
+// ObjectTypeName is for allowing reflection-based Object - struct mapping.
+//
+// Include an ObjectTypeName in your struct, and either set the value to the DB object type name,
+// or the "db_object" struct tag.
+type ObjectTypeName string
+
+func getStructObjectTypeName(c *conn, v interface{}) (*ObjectType, error) {
+	rv := reflect.ValueOf(v)
+	if rv.Type().Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Type().Kind() != reflect.Struct {
+		return nil, fmt.Errorf("%T: not a struct: %w", v, errUnknownType)
+	}
+	rvt := rv.Type()
+	otFt, ok := rvt.FieldByName("ObjectTypeName")
+	if !ok {
+		return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
+	}
+	otName := rv.FieldByIndex(otFt.Index).String()
+	if otName == "" {
+		otName = otFt.Tag.Get("db_object")
+	}
+	return c.GetObjectType(otName)
 }
 
 func (c *conn) dataGetJSON(v interface{}, data []C.dpiData) error {

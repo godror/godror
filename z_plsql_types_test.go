@@ -267,9 +267,13 @@ func dropPackages(ctx context.Context) {
 	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
 }
 
-func TestPlSqlTypes(t *testing.T) {
-	t.Parallel()
+type objectStruct struct {
+	godror.ObjectTypeName `db_object:"test_pkg_types.my_other_record"`
+	ID                    int32  `db_object:"ID"`
+	Txt                   string `db_object:"TXT"`
+}
 
+func TestPlSqlTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PLSQLTypes"), 30*time.Second)
 	defer cancel()
 
@@ -310,6 +314,16 @@ func TestPlSqlTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("Struct", func(t *testing.T) {
+		var s objectStruct
+		const qry = `begin test_pkg_sample.test_record(:1, :2, :3); end;`
+		_, err := cx.ExecContext(ctx, qry, 42, "abraka dabra", sql.Out{Dest: &s})
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		t.Logf("struct: %+v", s)
+	})
 
 	t.Run("Record", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
