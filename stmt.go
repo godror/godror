@@ -2866,19 +2866,38 @@ func getStructObjectTypeName(c *conn, v interface{}) (*ObjectType, error) {
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
 	}
-	if rv.Type().Kind() != reflect.Struct {
+	rvt := rv.Type()
+	switch rvt.Kind() {
+	case reflect.Slice:
+		var elem reflect.Value
+		if rv.Len() != 0 {
+			elem = rv.Index(0)
+		} else {
+			elem = reflect.Zero(rvt.Elem())
+		}
+		ot, err := getStructObjectTypeName(c, elem.Interface())
+		if err != nil {
+			return nil, err
+		}
+		return &ObjectType{CollectionOf: ot}, nil
+
+	case reflect.Struct:
+		otFt, ok := rvt.FieldByName("ObjectTypeName")
+		if !ok {
+			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
+		}
+		otName := rv.FieldByIndex(otFt.Index).String()
+		if otName == "" {
+			otName = otFt.Tag.Get("db_object")
+		}
+		if otName == "" {
+			return nil, fmt.Errorf("%T: no ObjectTypeName specified: %w", v, errUnknownType)
+		}
+		return c.GetObjectType(otName)
+
+	default:
 		return nil, fmt.Errorf("%T: not a struct: %w", v, errUnknownType)
 	}
-	rvt := rv.Type()
-	otFt, ok := rvt.FieldByName("ObjectTypeName")
-	if !ok {
-		return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
-	}
-	otName := rv.FieldByIndex(otFt.Index).String()
-	if otName == "" {
-		otName = otFt.Tag.Get("db_object")
-	}
-	return c.GetObjectType(otName)
 }
 
 func (c *conn) dataGetJSON(v interface{}, data []C.dpiData) error {

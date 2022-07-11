@@ -273,8 +273,12 @@ type objectStruct struct {
 	Txt                   string `db_object:"TXT"`
 }
 
+type sliceStruct struct {
+	ObjSlice []objectStruct `db_object:"test_pkg_types.my_table"`
+}
+
 func TestPlSqlTypes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PLSQLTypes"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 30*time.Second)
 	defer cancel()
 
 	errOld := errors.New("client or server < 12")
@@ -319,6 +323,16 @@ func TestPlSqlTypes(t *testing.T) {
 		var s objectStruct
 		const qry = `begin test_pkg_sample.test_record(:1, :2, :3); end;`
 		_, err := cx.ExecContext(ctx, qry, 42, "abraka dabra", sql.Out{Dest: &s})
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		t.Logf("struct: %+v", s)
+	})
+
+	t.Run("Slice", func(t *testing.T) {
+		s := new(sliceStruct)
+		const qry = `begin test_pkg_sample.test_table_in(:1); end;`
+		_, err := cx.ExecContext(ctx, qry, sql.Out{Dest: &s.ObjSlice, In: true})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}
