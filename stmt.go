@@ -2694,7 +2694,15 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 			nm = strings.ToUpper(f.Name)
 		}
 		rf := rv.FieldByIndex(f.Index)
-		ad.Set(rf.Interface())
+		// TODO: slice/Collection of sth
+		if f.Type.Kind() == reflect.Struct || (f.Type.Kind() == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct) {
+			if err := c.dataSetObjectStruct(obj.Attributes[nm].ObjectType, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
+				return err
+			}
+			continue
+		} else {
+			ad.Set(rf.Interface())
+		}
 		if err := obj.SetAttribute(nm, &ad); err != nil {
 			return fmt.Errorf("SetAttribute(%q): %w", nm, err)
 		}
@@ -2833,7 +2841,14 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 			case reflect.Float64:
 				rf.SetFloat(ad.GetFloat64())
 			default:
-				rf.Set(vv)
+				// TODO: slice/Collection of sth
+				if vv.Kind() == reflect.Struct || (vv.Kind() == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {
+					if err := c.dataGetObjectStruct(ot.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
+						return err
+					}
+				} else {
+					rf.Set(vv)
+				}
 			}
 		}
 	}
