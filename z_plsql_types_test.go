@@ -268,13 +268,14 @@ func dropPackages(ctx context.Context) {
 }
 
 type objectStruct struct {
-	godror.ObjectTypeName `db_object:"test_pkg_types.my_record"`
-	ID                    int32  `db_object:"ID"`
-	Txt                   string `db_object:"TXT"`
+	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
+	ID                    int32  `godror:"ID"`
+	Txt                   string `godror:"TXT"`
 }
 
 type sliceStruct struct {
-	ObjSlice []objectStruct `db_object:"test_pkg_types.my_table"`
+	godror.ObjectTypeName `godror:"test_pkg_types.my_table" json:"-"`
+	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
 }
 
 func TestPlSqlTypes(t *testing.T) {
@@ -330,9 +331,9 @@ func TestPlSqlTypes(t *testing.T) {
 	})
 
 	t.Run("Slice", func(t *testing.T) {
-		s := new(sliceStruct)
+		s := sliceStruct{ObjSlice: []objectStruct{{ID: 1, Txt: "first"}}}
 		const qry = `begin test_pkg_sample.test_table_in(:1); end;`
-		_, err := cx.ExecContext(ctx, qry, sql.Out{Dest: &s.ObjSlice, In: true})
+		_, err := cx.ExecContext(ctx, qry, sql.Out{Dest: &s, In: true})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}

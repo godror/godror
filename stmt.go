@@ -1239,9 +1239,9 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 			logger.Log("msg", "bindVarTypeSwitch default", "value", value)
 		}
 		if !isValuer {
-			if ot, err := getStructObjectTypeName(st.conn, value); err != nil {
+			if ot, err := st.conn.getStructObjectType(value, ""); err != nil {
 				if logger != nil {
-					logger.Log("msg", "getStructObjectTypeName", "value", fmt.Sprintf("%T", value), "error", err)
+					logger.Log("msg", "getStructObjectType", "value", fmt.Sprintf("%T", value), "error", err)
 				}
 				if !errors.Is(err, errUnknownType) {
 					return value, err
@@ -2672,7 +2672,6 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 	}
 	objs := []Object{{}}
 	if vv == nil || rv.IsZero() {
-		rv.Set(reflect.Zero(rvt))
 		return nil
 	}
 
@@ -2686,7 +2685,7 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
 			continue
 		}
-		nm := f.Tag.Get("db_object")
+		nm := f.Tag.Get(StructTag)
 		if nm == "-" {
 			continue
 		}
@@ -2805,10 +2804,27 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
 			continue
 		}
-		nm := f.Tag.Get("db_object")
-		if nm == "-" {
+		tag := f.Tag.Get(StructTag)
+		if tag == "-" {
 			continue
 		}
+		nm := tag
+		var opts []string
+		if strings.IndexByte(tag, ',') >= 0 {
+			opts = strings.Split(tag, ",")
+			nm, opts = opts[0], opts[1:]
+		}
+		fieldTag := tag
+		for _, o := range opts {
+			if strings.HasPrefix(o, "type=") {
+				fieldTag = strings.TrimPrefix(o, "type=")
+				break
+			}
+		}
+		if logger != nil {
+			logger.Log("msg", "dataGetObjectStruct", "opts", opts, "fieldTag", fieldTag, "nm", nm, "tag", tag)
+		}
+
 		if nm == "" {
 			nm = strings.ToUpper(f.Name)
 		}
@@ -2842,8 +2858,17 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 				rf.SetFloat(ad.GetFloat64())
 			default:
 				// TODO: slice/Collection of sth
-				if vv.Kind() == reflect.Struct || (vv.Kind() == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {
+				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {
 					if err := c.dataGetObjectStruct(ot.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
+						return err
+					}
+				} else if kind == reflect.Slice &&
+					(vv.Elem().Kind() == reflect.Struct || (vv.Elem().Kind() == reflect.Ptr && vv.Elem().Elem().Kind() == reflect.Struct)) {
+					ot, err := c.getStructObjectType(v, fieldTag)
+					if err != nil {
+						return err
+					}
+					if err := c.dataGetObjectStruct(ot, v, []C.dpiData{ad.dpiData}); err != nil {
 						return err
 					}
 				} else {
@@ -2857,11 +2882,18 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 
 // ObjectTypeName is for allowing reflection-based Object - struct mapping.
 //
-// Include an ObjectTypeName in your struct, and either set the value to the DB object type name,
-// or the "db_object" struct tag.
-type ObjectTypeName string
+// Include an ObjectTypeName in your struct, and set the "godror" struct tag to the type name.
+type ObjectTypeName struct{}
 
-func getStructObjectTypeName(c *conn, v interface{}) (*ObjectType, error) {
+func (ObjectTypeName) MarshalJSON() ([]byte, error)   { return nil, nil }
+func (ObjectTypeName) MarshalText() ([]byte, error)   { return nil, nil }
+func (ObjectTypeName) MarshalBinary() ([]byte, error) { return nil, nil }
+
+// StructTag is the prefix that tags godror-specific struct fields
+const StructTag = "godror"
+
+func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType, error) {
+	logger := getLogger()
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -2869,27 +2901,17 @@ func getStructObjectTypeName(c *conn, v interface{}) (*ObjectType, error) {
 	rvt := rv.Type()
 	switch rvt.Kind() {
 	case reflect.Slice:
-		var elem reflect.Value
-		if rv.Len() != 0 {
-			elem = rv.Index(0)
-		} else {
-			elem = reflect.Zero(rvt.Elem())
+		if logger != nil {
+			logger.Log("msg", "getStructObjectType", "fieldTag", fieldTag)
 		}
-		ot, err := getStructObjectTypeName(c, elem.Interface())
-		if err != nil {
-			return nil, err
-		}
-		return &ObjectType{CollectionOf: ot}, nil
+		return c.GetObjectType(fieldTag)
 
 	case reflect.Struct:
 		otFt, ok := rvt.FieldByName("ObjectTypeName")
 		if !ok {
 			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
 		}
-		otName := rv.FieldByIndex(otFt.Index).String()
-		if otName == "" {
-			otName = otFt.Tag.Get("db_object")
-		}
+		otName := otFt.Tag.Get(StructTag)
 		if otName == "" {
 			return nil, fmt.Errorf("%T: no ObjectTypeName specified: %w", v, errUnknownType)
 		}
