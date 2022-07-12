@@ -2658,45 +2658,44 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	}
 	return nil
 }
-func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-	if ot == nil {
-		panic("dataSetObjectStruct with nil ObjectType")
-	}
+func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object, error) {
 	logger := getLogger()
-	rv := reflect.ValueOf(vv)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
 	}
-	if logger != nil {
-		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", vv))
-	}
-	if vv == nil || rv.IsZero() {
-		return nil
+	if rv.IsZero() {
+		return nil, nil
 	}
 	rvt := rv.Type()
-	objs := []Object{{}}
-
-	var ad Data
-
 	switch rvt.Kind() {
 	case reflect.Slice:
-		obj, err := ot.NewCollection()
+		coll, err := ot.NewCollection()
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if logger != nil {
+			logger.Log("msg", "collection", "obj", coll)
 		}
 		for i, n := 0, rv.Len(); i < n; i++ {
-			ad.Set(rv.Index(i).Interface())
-			if err = obj.AppendData(&ad); err != nil {
-				return err
+			if logger != nil {
+				logger.Log("msg", "dataSetObjectStruct", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
+			}
+			sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
+			if err != nil {
+				return nil, fmt.Errorf("%d. dataSetObjectStruct: %w", i, err)
+			}
+			if err = coll.Append(sub); err != nil {
+				return nil, err
 			}
 		}
-		objs[0] = *obj.Object
+		return coll.Object, nil
 
 	case reflect.Struct:
 		obj, err := ot.NewObject()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		var ad Data
 		for i, n := 0, rvt.NumField(); i < n; i++ {
 			f := rvt.Field(i)
 			if !f.IsExported() || f.Name == "ObjectTypeName" {
@@ -2714,35 +2713,57 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 				kind == reflect.Struct || (kind == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct) {
 				ot := obj.Attributes[nm].ObjectType
 				if logger != nil {
-					logger.Log("dataSetObjectStruct", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+					logger.Log("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
 				}
-				if err := c.dataSetObjectStruct(ot, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
-					return err
+				sub, err := c.dataSetObjectStructObj(ot, rf)
+				if err != nil {
+					return nil, err
 				}
-				continue
+				ad.SetObject(sub)
 			} else if kind == reflect.Slice && typ != "" {
 				ot, err := c.GetObjectType(typ)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if logger != nil {
-					logger.Log("dataSetObjectStruct", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+					logger.Log("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
 				}
-				if err := c.dataSetObjectStruct(ot, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
-					return err
+				sub, err := c.dataSetObjectStructObj(ot, rf)
+				if err != nil {
+					return nil, err
 				}
-				continue
-			} else {
-				ad.Set(rf.Interface())
+				ad.SetObject(sub)
 			}
 			if err := obj.SetAttribute(nm, &ad); err != nil {
-				return fmt.Errorf("SetAttribute(%q): %w", nm, err)
+				return nil, fmt.Errorf("SetAttribute(%q): %w", nm, err)
 			}
 		}
-		objs[0] = *obj
+		return obj, nil
 	default:
-		return fmt.Errorf("not a struct or a slice: %w", errUnknownType)
+		return nil, fmt.Errorf("not a struct or a slice: %w", errUnknownType)
 	}
+}
+
+func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if ot == nil {
+		panic("dataSetObjectStruct with nil ObjectType")
+	}
+	logger := getLogger()
+	rv := reflect.ValueOf(vv)
+	if rv.Type().Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if logger != nil {
+		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", vv))
+	}
+	if vv == nil || rv.IsZero() {
+		return nil
+	}
+	obj, err := c.dataSetObjectStructObj(ot, rv)
+	if err != nil {
+		return err
+	}
+	objs := []Object{*obj}
 
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
@@ -2751,7 +2772,10 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 		}
 		data[i].isNull = 0
 		if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) }); err != nil {
-			return fmt.Errorf("setFromObject: %w", err)
+			if logger != nil {
+				logger.Log("msg", "setFromObject", "i", i, "dv", dv, "obj", obj, "error", err)
+			}
+			return fmt.Errorf("setFromObject[%d]: %w", i, err)
 		}
 	}
 	return nil
