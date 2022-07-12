@@ -274,7 +274,7 @@ type objectStruct struct {
 }
 
 type sliceStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.my_table" json:"-"`
+	godror.ObjectTypeName `json:"-"`
 	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
 }
 

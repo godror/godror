@@ -948,7 +948,9 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	nilPtr := false
 	logger := getLogger()
 	if logger != nil {
-		logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
+		defer func() {
+			logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
+		}()
 	}
 	vlr, isValuer := value.(driver.Valuer)
 
@@ -2657,56 +2659,91 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	return nil
 }
 func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+	if ot == nil {
+		panic("dataSetObjectStruct with nil ObjectType")
+	}
 	logger := getLogger()
 	rv := reflect.ValueOf(vv)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
 	}
-	if rv.Type().Kind() != reflect.Struct {
-		return fmt.Errorf("not a pointer to a struct: %w", errUnknownType)
-	}
-	rvt := rv.Type()
-
 	if logger != nil {
 		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", vv))
 	}
-	objs := []Object{{}}
 	if vv == nil || rv.IsZero() {
 		return nil
 	}
+	rvt := rv.Type()
+	objs := []Object{{}}
 
-	obj, err := ot.NewObject()
-	if err != nil {
-		return err
-	}
 	var ad Data
-	for i, n := 0, rvt.NumField(); i < n; i++ {
-		f := rvt.Field(i)
-		if !f.IsExported() || f.Name == "ObjectTypeName" {
-			continue
+
+	switch rvt.Kind() {
+	case reflect.Slice:
+		obj, err := ot.NewCollection()
+		if err != nil {
+			return err
 		}
-		nm := f.Tag.Get(StructTag)
-		if nm == "-" {
-			continue
-		}
-		if nm == "" {
-			nm = strings.ToUpper(f.Name)
-		}
-		rf := rv.FieldByIndex(f.Index)
-		// TODO: slice/Collection of sth
-		if f.Type.Kind() == reflect.Struct || (f.Type.Kind() == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct) {
-			if err := c.dataSetObjectStruct(obj.Attributes[nm].ObjectType, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
+		for i, n := 0, rv.Len(); i < n; i++ {
+			ad.Set(rv.Index(i).Interface())
+			if err = obj.AppendData(&ad); err != nil {
 				return err
 			}
-			continue
-		} else {
-			ad.Set(rf.Interface())
 		}
-		if err := obj.SetAttribute(nm, &ad); err != nil {
-			return fmt.Errorf("SetAttribute(%q): %w", nm, err)
+		objs[0] = *obj.Object
+
+	case reflect.Struct:
+		obj, err := ot.NewObject()
+		if err != nil {
+			return err
 		}
+		for i, n := 0, rvt.NumField(); i < n; i++ {
+			f := rvt.Field(i)
+			if !f.IsExported() || f.Name == "ObjectTypeName" {
+				continue
+			}
+			nm, typ, _ := parseStructTag(f.Tag)
+			if nm == "-" {
+				continue
+			}
+			if nm == "" {
+				nm = strings.ToUpper(f.Name)
+			}
+			rf := rv.FieldByIndex(f.Index)
+			if kind := f.Type.Kind(); kind == reflect.Slice && obj.Attributes[nm].ObjectType != nil ||
+				kind == reflect.Struct || (kind == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct) {
+				ot := obj.Attributes[nm].ObjectType
+				if logger != nil {
+					logger.Log("dataSetObjectStruct", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+				}
+				if err := c.dataSetObjectStruct(ot, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
+					return err
+				}
+				continue
+			} else if kind == reflect.Slice && typ != "" {
+				ot, err := c.GetObjectType(typ)
+				if err != nil {
+					return err
+				}
+				if logger != nil {
+					logger.Log("dataSetObjectStruct", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+				}
+				if err := c.dataSetObjectStruct(ot, dv, []C.dpiData{ad.dpiData}, rf.Interface()); err != nil {
+					return err
+				}
+				continue
+			} else {
+				ad.Set(rf.Interface())
+			}
+			if err := obj.SetAttribute(nm, &ad); err != nil {
+				return fmt.Errorf("SetAttribute(%q): %w", nm, err)
+			}
+		}
+		objs[0] = *obj
+	default:
+		return fmt.Errorf("not a struct or a slice: %w", errUnknownType)
 	}
-	objs[0] = *obj
+
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
 			data[i].isNull = 1
@@ -2775,7 +2812,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 
 func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
 	logger := getLogger()
-	// Pointer to a struct with ObjectTypeName field and optional "db_object" struct tags for struct field-object attribute mapping.
+	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -2804,25 +2841,16 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
 			continue
 		}
-		tag := f.Tag.Get(StructTag)
-		if tag == "-" {
+		nm, typ, _ := parseStructTag(f.Tag)
+		if nm == "-" {
 			continue
 		}
-		nm := tag
-		var opts []string
-		if strings.IndexByte(tag, ',') >= 0 {
-			opts = strings.Split(tag, ",")
-			nm, opts = opts[0], opts[1:]
-		}
-		fieldTag := tag
-		for _, o := range opts {
-			if strings.HasPrefix(o, "type=") {
-				fieldTag = strings.TrimPrefix(o, "type=")
-				break
-			}
+		fieldTag := typ
+		if fieldTag == "" {
+			fieldTag = nm
 		}
 		if logger != nil {
-			logger.Log("msg", "dataGetObjectStruct", "opts", opts, "fieldTag", fieldTag, "nm", nm, "tag", tag)
+			logger.Log("msg", "dataGetObjectStruct", "fieldTag", fieldTag, "nm", nm, "tag", f.Tag)
 		}
 
 		if nm == "" {
@@ -2889,6 +2917,28 @@ func (ObjectTypeName) MarshalJSON() ([]byte, error)   { return nil, nil }
 func (ObjectTypeName) MarshalText() ([]byte, error)   { return nil, nil }
 func (ObjectTypeName) MarshalBinary() ([]byte, error) { return nil, nil }
 
+func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]string) {
+	tag = s.Get(StructTag)
+	if strings.IndexByte(tag, ',') < 0 {
+		return tag, typ, opts
+	}
+	vv := strings.Split(tag, ",")
+	tag, vv = vv[0], vv[1:]
+	for _, s := range vv {
+		if strings.HasPrefix(s, "type=") {
+			typ = strings.TrimPrefix(s, "type=")
+			continue
+		}
+		if i := strings.IndexByte(s, '='); i >= 0 {
+			if opts == nil {
+				opts = make(map[string]string, len(vv))
+			}
+			opts[s[:i]] = s[i+1:]
+		}
+	}
+	return tag, typ, opts
+}
+
 // StructTag is the prefix that tags godror-specific struct fields
 const StructTag = "godror"
 
@@ -2911,9 +2961,26 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		if !ok {
 			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
 		}
-		otName := otFt.Tag.Get(StructTag)
+		var otName string
+		if s := otFt.Tag; s.Get(StructTag) != "" {
+			otName, _, _ = parseStructTag(s)
+		} else {
+			for i, n := 0, rvt.NumField(); i < n; i++ {
+				f := rvt.Field(i)
+				if f.Name == "ObjectTypeName" {
+					continue
+				}
+				if f.Type.Kind() == reflect.Slice {
+					_, otName, _ = parseStructTag(f.Tag)
+					break
+				}
+			}
+		}
 		if otName == "" {
 			return nil, fmt.Errorf("%T: no ObjectTypeName specified: %w", v, errUnknownType)
+		}
+		if logger != nil {
+			logger.Log("msg", "parseStructTag", "name", otName)
 		}
 		return c.GetObjectType(otName)
 
