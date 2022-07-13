@@ -75,6 +75,7 @@ import "C"
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -621,13 +622,15 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	var usernameKey string
+	var passwordHash [sha256.Size]byte
 	if !P.Heterogeneous && !P.ExternalAuth {
 		// skip username being part of key in heterogeneous pools
 		usernameKey = P.Username
+		passwordHash = sha256.Sum256([]byte(P.Password.Secret())) // See issue #245
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
-		usernameKey, P.ConnectString, P.MinSessions, P.MaxSessions,
+	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
+		usernameKey, passwordHash[:4], P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,

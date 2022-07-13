@@ -30,7 +30,7 @@ func TestWrongPassword(t *testing.T) {
 		for _, ok := range []bool{true, false} {
 			P2 := P
 			if !ok {
-				P2.Password = dsn.NewPassword("_")
+				P2.Password = dsn.NewPassword(P2.Password.Secret() + "X")
 			}
 			db := sql.OpenDB(godror.NewConnector(P2))
 			err := db.PingContext(ctx)
