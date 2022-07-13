@@ -179,16 +179,7 @@ type drv struct {
 	mu            sync.RWMutex
 }
 
-const oneContext = false
-
-func NewDriver() *drv {
-	var d drv
-	if !oneContext || defaultDrv == nil {
-		return &d
-	}
-	d.dpiContext = defaultDrv.dpiContext
-	return &d
-}
+func NewDriver() *drv { return &drv{} }
 func (d *drv) Close() error {
 	if d == nil {
 		return nil
@@ -204,18 +195,11 @@ func (d *drv) Close() error {
 		}
 		done <- nil
 	}()
-	var err error
 	select {
-	case err = <-done:
+	case <-done:
 	case <-time.After(5 * time.Second):
-		err = fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
 	}
 
-	if oneContext &&
-		// As we use one global dpiContext, don't destroy it
-		(dpiCtx == nil || (d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
-		return err
-	}
 	go func() {
 		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
 			done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
@@ -1125,7 +1109,7 @@ func (c connector) Driver() driver.Driver { return c.drv }
 //
 // From Go 1.17 sql.DB.Close() will call this method.
 func (c connector) Close() error {
-	if c.drv == nil || oneContext || c.drv == defaultDrv {
+	if c.drv == nil || c.drv == defaultDrv {
 		return nil
 	}
 	return c.drv.Close()

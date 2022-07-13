@@ -8,17 +8,10 @@ package godror
 import (
 	"encoding/json"
 	"errors"
-	"os"
-	"strconv"
 	"testing"
 )
 
 func TestNewDriverSepContext(t *testing.T) {
-	if oneContext {
-		if ok, _ := strconv.ParseBool(os.Getenv("GODROR_SEPARATE_CONTEXT")); !ok {
-			t.Skip("GODROR_SEPARATE_CONTEXT is not set, skipping TestNewDriverSepContext")
-		}
-	}
 	for i := 0; i < 10; i++ {
 		t.Log("i:", i)
 		d := &drv{}
