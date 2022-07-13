@@ -1252,7 +1252,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 				info.objType = ot.dpiObjectType
 				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 				info.set = func(dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
-					return st.dataSetObjectStruct(ot, dv, data, vv)
+					return st.dataSetObjectStruct(ot, dv, &data[0], vv)
 				}
 				if info.isOut {
 					*get = func(v interface{}, data []C.dpiData) error {
@@ -2678,7 +2678,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		}
 		for i, n := 0, rv.Len(); i < n; i++ {
 			if logger != nil {
-				logger.Log("msg", "dataSetObjectStruct", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
+				logger.Log("msg", "dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
 			}
 			sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
 			if err != nil {
@@ -2695,7 +2695,6 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		if err != nil {
 			return nil, err
 		}
-		var ad Data
 		for i, n := 0, rvt.NumField(); i < n; i++ {
 			f := rvt.Field(i)
 			if !f.IsExported() || f.Name == "ObjectTypeName" {
@@ -2708,25 +2707,20 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			if nm == "" {
 				nm = strings.ToUpper(f.Name)
 			}
+			attr := obj.Attributes[nm]
+			var ad Data
 			rf := rv.FieldByIndex(f.Index)
-			if kind := f.Type.Kind(); kind == reflect.Slice && obj.Attributes[nm].ObjectType != nil ||
-				kind == reflect.Struct || (kind == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct) {
-				ot := obj.Attributes[nm].ObjectType
-				if logger != nil {
-					logger.Log("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
-				}
-				sub, err := c.dataSetObjectStructObj(ot, rf)
-				if err != nil {
-					return nil, err
-				}
-				ad.SetObject(sub)
-			} else if kind == reflect.Slice && typ != "" {
-				ot, err := c.GetObjectType(typ)
-				if err != nil {
-					return nil, err
+			if !attr.IsObject() {
+				ad.Set(rv.Interface())
+			} else {
+				ot := attr.ObjectType
+				if ot == nil && typ != "" {
+					if ot, err = c.GetObjectType(typ); err != nil {
+						return nil, err
+					}
 				}
 				if logger != nil {
-					logger.Log("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+					logger.Log("msg", "dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
 				}
 				sub, err := c.dataSetObjectStructObj(ot, rf)
 				if err != nil {
@@ -2735,6 +2729,14 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 				ad.SetObject(sub)
 			}
 			if err := obj.SetAttribute(nm, &ad); err != nil {
+				if logger != nil {
+					logger.Log("msg", "SetAttribute", "obj", ot.Name, "nm", nm,
+						"index", f.Index, "kind", f.Type.Kind(),
+						"value", rv.Interface(), "data", ad.Get(),
+						"dataNative", ad.NativeTypeNum, "dataObject", ad.ObjectType,
+						"attrNative", attr.NativeTypeNum, "dataObject", attr.ObjectType,
+					)
+				}
 				return nil, fmt.Errorf("SetAttribute(%q): %w", nm, err)
 			}
 		}
@@ -2744,7 +2746,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 	}
 }
 
-func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData, vv interface{}) error {
 	if ot == nil {
 		panic("dataSetObjectStruct with nil ObjectType")
 	}
@@ -2754,7 +2756,7 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 		rv = rv.Elem()
 	}
 	if logger != nil {
-		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", vv))
+		logger.Log("msg", "dataSetObjectStruct", "v", fmt.Sprintf("%T", vv))
 	}
 	if vv == nil || rv.IsZero() {
 		return nil
@@ -2763,20 +2765,17 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data []C.dpiDat
 	if err != nil {
 		return err
 	}
-	objs := []Object{*obj}
 
-	for i, obj := range objs {
-		if obj.dpiObject == nil {
-			data[i].isNull = 1
-			continue
+	if obj.dpiObject == nil {
+		data.isNull = 1
+		return nil
+	}
+	data.isNull = 0
+	if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(0), obj.dpiObject) }); err != nil {
+		if logger != nil {
+			logger.Log("msg", "setFromObject", "i", 0, "dv", dv, "obj", obj, "error", err)
 		}
-		data[i].isNull = 0
-		if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) }); err != nil {
-			if logger != nil {
-				logger.Log("msg", "setFromObject", "i", i, "dv", dv, "obj", obj, "error", err)
-			}
-			return fmt.Errorf("setFromObject[%d]: %w", i, err)
-		}
+		return fmt.Errorf("setFromObject[%d]: %w", 0, err)
 	}
 	return nil
 }
@@ -2800,7 +2799,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 		}
 	case *ObjectCollection:
 		d := Data{
-			ObjectType: out.Collection().ObjectType,
+			ObjectType: out.Object.ObjectType,
 			dpiData:    data[0],
 		}
 		if logger != nil {
