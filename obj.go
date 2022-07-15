@@ -168,8 +168,10 @@ func maybeString(v interface{}, ot *ObjectType) interface{} {
 	return v
 }
 
-// ObjectRef to let Object implement the userType interface.
-func (O *Object) ObjectRef() *Object { return O }
+// ObjectRef implements userType interface.
+func (O *Object) ObjectRef() *Object {
+	return O
+}
 
 // Collection returns &ObjectCollection{Object: O} iff the Object is a collection.
 // Otherwise it returns nil.
@@ -315,23 +317,8 @@ func (O *Object) String() string {
 
 // ObjectCollection represents a Collection of Objects - itself an Object, too.
 type ObjectCollection struct {
-	Object *Object
+	*Object
 }
-
-// ObjectRef to let Object implement the userType interface.
-func (O ObjectCollection) ObjectRef() *Object { return O.Object }
-
-// Close the underlying Object.
-func (O ObjectCollection) Close() error { return O.Object.Close() }
-
-// FullName prints the underlying object's name.
-func (O ObjectCollection) FullName() string { return O.Object.FullName() }
-
-// Collection returns itself.
-func (O ObjectCollection) Collection() ObjectCollection { return O }
-
-// IsObject returns true.
-func (ObjectCollection) IsObject() bool { return true }
 
 // ErrNotCollection is returned when the Object is not a collection.
 var ErrNotCollection = errors.New("not collection")
@@ -505,7 +492,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 
 // FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
 func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{}) error {
-	if O.Object.dpiObject == nil {
+	if O.dpiObject == nil {
 		return nil
 	}
 	logger := getLogger()
@@ -514,7 +501,7 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{
 		if logger != nil {
 			logger.Log("msg", "FromMapSlice", "index", i, "recursive", recursive)
 		}
-		elt, err := O.Object.ObjectType.CollectionOf.NewObject()
+		elt, err := O.ObjectType.CollectionOf.NewObject()
 		if err != nil {
 			return fmt.Errorf("%d.FromMapSlice: %w", i, err)
 		}
@@ -538,7 +525,7 @@ func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
 	}
 	wantDelim := tok == json.Delim('[')
 	for {
-		elt, err := O.Object.ObjectType.CollectionOf.NewObject()
+		elt, err := O.ObjectType.CollectionOf.NewObject()
 		if err != nil {
 			return err
 		}
@@ -568,15 +555,15 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	d := scratch.Get()
 	defer scratch.Put(d)
 	for i, err := O.First(); err == nil; i, err = O.Next(i) {
-		if O.Object.CollectionOf.IsObject() {
-			d.ObjectType = O.Object.CollectionOf
+		if O.CollectionOf.IsObject() {
+			d.ObjectType = O.CollectionOf
 		}
 		if err = O.GetItem(d, i); err != nil {
 			return dest, err
 		}
 		v := d.Get()
 		if !d.IsObject() {
-			v = maybeString(v, O.Object.CollectionOf)
+			v = maybeString(v, O.CollectionOf)
 		}
 		vr := reflect.ValueOf(v)
 		if needsInit {
@@ -635,8 +622,8 @@ func (O ObjectCollection) String() string {
 
 // AppendData to the collection.
 func (O ObjectCollection) AppendData(data *Data) error {
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_appendElement(O.Object.dpiObject, data.NativeTypeNum, &data.dpiData)
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
 		return fmt.Errorf("append(%d): %w", data.NativeTypeNum, err)
 	}
@@ -668,8 +655,8 @@ func (O ObjectCollection) AppendObject(obj *Object) error {
 
 // Delete i-th element of the collection.
 func (O ObjectCollection) Delete(i int) error {
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_deleteElementByIndex(O.Object.dpiObject, C.int32_t(i))
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i))
 	}); err != nil {
 		return fmt.Errorf("delete(%d): %w", i, err)
 	}
@@ -687,20 +674,20 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 
 	idx := C.int32_t(i)
 	var exists C.int
-	if C.dpiObject_getElementExistsByIndex(O.Object.dpiObject, idx, &exists) == C.DPI_FAILURE {
-		return fmt.Errorf("exists(%d): %w", idx, O.Object.drv.getError())
+	if C.dpiObject_getElementExistsByIndex(O.dpiObject, idx, &exists) == C.DPI_FAILURE {
+		return fmt.Errorf("exists(%d): %w", idx, O.drv.getError())
 	}
 	if exists == 0 {
 		return ErrNotExist
 	}
 	data.reset()
-	data.ObjectType = O.Object.CollectionOf
-	if O.Object.CollectionOf != nil {
-		data.NativeTypeNum = O.Object.CollectionOf.NativeTypeNum
+	data.ObjectType = O.CollectionOf
+	if O.CollectionOf != nil {
+		data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 		data.implicitObj = true
 	}
-	if C.dpiObject_getElementValueByIndex(O.Object.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
-		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.Object.drv.getError())
+	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
+		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
 	}
 	return nil
 }
@@ -715,8 +702,8 @@ func (O ObjectCollection) Get(i int) (interface{}, error) {
 
 // SetItem sets the i-th element of the collection with data.
 func (O ObjectCollection) SetItem(i int, data *Data) error {
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_setElementValueByIndex(O.Object.dpiObject, C.int32_t(i), data.NativeTypeNum, &data.dpiData)
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
 		return fmt.Errorf("set(%d[%d]): %w", i, data.NativeTypeNum, err)
 	}
@@ -740,8 +727,8 @@ func (O ObjectCollection) Set(i int, v interface{}) error {
 func (O ObjectCollection) First() (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_getFirstIndex(O.Object.dpiObject, &idx, &exists)
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_getFirstIndex(O.dpiObject, &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("first: %w", err)
 	}
@@ -755,8 +742,8 @@ func (O ObjectCollection) First() (int, error) {
 func (O ObjectCollection) Last() (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_getLastIndex(O.Object.dpiObject, &idx, &exists)
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_getLastIndex(O.dpiObject, &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("last: %w", err)
 	}
@@ -770,8 +757,8 @@ func (O ObjectCollection) Last() (int, error) {
 func (O ObjectCollection) Next(i int) (int, error) {
 	var exists C.int
 	var idx C.int32_t
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_getNextIndex(O.Object.dpiObject, C.int32_t(i), &idx, &exists)
+	if err := O.drv.checkExec(func() C.int {
+		return C.dpiObject_getNextIndex(O.dpiObject, C.int32_t(i), &idx, &exists)
 	}); err != nil {
 		return 0, fmt.Errorf("next(%d): %w", i, err)
 	}
@@ -784,9 +771,7 @@ func (O ObjectCollection) Next(i int) (int, error) {
 // Len returns the length of the collection.
 func (O ObjectCollection) Len() (int, error) {
 	var size C.int32_t
-	if err := O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_getSize(O.Object.dpiObject, &size)
-	}); err != nil {
+	if err := O.drv.checkExec(func() C.int { return C.dpiObject_getSize(O.dpiObject, &size) }); err != nil {
 		return 0, fmt.Errorf("len: %w", err)
 	}
 	return int(size), nil
@@ -794,9 +779,7 @@ func (O ObjectCollection) Len() (int, error) {
 
 // Trim the collection to n.
 func (O ObjectCollection) Trim(n int) error {
-	return O.Object.drv.checkExec(func() C.int {
-		return C.dpiObject_trim(O.Object.dpiObject, C.uint32_t(n))
-	})
+	return O.drv.checkExec(func() C.int { return C.dpiObject_trim(O.dpiObject, C.uint32_t(n)) })
 }
 
 // ObjectType holds type info of an Object.

@@ -1,4 +1,4 @@
-// Copyright 2020 The Godror Authors
+// Copyright 2020, 2022 The Godror Authors
 // Copyright 2016 Tamás Gulácsi
 //
 //
