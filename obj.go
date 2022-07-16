@@ -84,7 +84,10 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	if !strings.Contains(name, `"`) {
 		name = strings.ToUpper(name)
 	}
-	attr := O.Attributes[name]
+	attr, ok := O.Attributes[name]
+	if !ok {
+		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
+	}
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType

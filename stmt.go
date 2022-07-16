@@ -2658,6 +2658,8 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 	}
 	return nil
 }
+
+// dataSetObjectStructObj creates an ot typed object from rv.
 func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object, error) {
 	logger := getLogger()
 	if rv.Type().Kind() == reflect.Ptr {
@@ -2691,14 +2693,25 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		return coll.Object, nil
 
 	case reflect.Struct:
-		obj, err := ot.NewObject()
-		if err != nil {
-			return nil, err
+		var obj *Object
+		if ot.CollectionOf == nil {
+			var err error
+			if obj, err = ot.NewObject(); err != nil {
+				return nil, err
+			}
 		}
 		for i, n := 0, rvt.NumField(); i < n; i++ {
 			f := rvt.Field(i)
 			if !f.IsExported() || f.Name == "ObjectTypeName" {
 				continue
+			}
+			rf := rv.FieldByIndex(f.Index)
+			if obj == nil {
+				// we must find the slice in the struct
+				if f.Type.Kind() != reflect.Slice {
+					continue
+				}
+				return c.dataSetObjectStructObj(ot, rf)
 			}
 			nm, typ, _ := parseStructTag(f.Tag)
 			if nm == "-" {
@@ -2707,14 +2720,17 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			if nm == "" {
 				nm = strings.ToUpper(f.Name)
 			}
-			attr := obj.Attributes[nm]
+			attr, ok := obj.Attributes[nm]
+			if !ok {
+				return nil, fmt.Errorf("%s[%q]: %w", obj, nm, ErrNoSuchKey)
+			}
 			var ad Data
-			rf := rv.FieldByIndex(f.Index)
 			if !attr.IsObject() {
 				ad.Set(rv.Interface())
 			} else {
 				ot := attr.ObjectType
 				if ot == nil && typ != "" {
+					var err error
 					if ot, err = c.GetObjectType(typ); err != nil {
 						return nil, err
 					}
@@ -2746,6 +2762,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 	}
 }
 
+// dataSetObjectStruct reads from vv, writes it to an ot typed object, and puts it into data.
 func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData, vv interface{}) error {
 	if ot == nil {
 		panic("dataSetObjectStruct with nil ObjectType")
@@ -2779,7 +2796,6 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 	}
 	return nil
 }
-
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	logger := getLogger()
 	switch out := v.(type) {
@@ -2833,28 +2849,31 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	return nil
 }
 
-func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
+// dataGetObjectStructObj reads an object and writes it to rv.
+func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 	logger := getLogger()
-	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
-	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() == reflect.Ptr {
-		rv = rv.Elem()
-	}
-	if rv.Type().Kind() != reflect.Struct {
-		return fmt.Errorf("not a struct: %w", errUnknownType)
-	}
 	rvt := rv.Type()
 
-	d := Data{
-		ObjectType: ot,
-		dpiData:    data[0],
-	}
-	if logger != nil {
-		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
-	}
-	obj := d.GetObject()
 	if obj == nil {
 		rv.Set(reflect.Zero(rvt))
+		return nil
+	}
+	if obj.CollectionOf != nil && rvt.Kind() == reflect.Slice {
+		coll := obj.Collection()
+		rv.SetLen(0)
+		for i, err := coll.First(); err != nil; i, err = coll.Next(i) {
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return err
+			}
+			elt, err := coll.Get(i)
+			if err != nil {
+				return err
+			}
+			reflect.Append(rv, reflect.ValueOf(elt))
+		}
 		return nil
 	}
 
@@ -2863,6 +2882,14 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		f := rvt.Field(i)
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
 			continue
+		}
+		rf := rv.FieldByIndex(f.Index)
+		if obj.CollectionOf != nil {
+			// we must find the slice in the struct
+			if f.Type.Kind() != reflect.Slice {
+				continue
+			}
+			return c.dataGetObjectStructObj(rf, obj)
 		}
 		nm, typ, _ := parseStructTag(f.Tag)
 		if nm == "-" {
@@ -2882,7 +2909,6 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		if err := obj.GetAttribute(&ad, nm); err != nil {
 			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
 		}
-		rf := rv.FieldByIndex(f.Index)
 		v := ad.Get()
 		switch x := v.(type) {
 		case string:
@@ -2910,7 +2936,7 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 			default:
 				// TODO: slice/Collection of sth
 				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {
-					if err := c.dataGetObjectStruct(ot.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
+					if err := c.dataGetObjectStruct(obj.ObjectType.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
 						return err
 					}
 				} else if kind == reflect.Slice &&
@@ -2929,6 +2955,27 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		}
 	}
 	return nil
+}
+
+// dataGetObjectStruct reads the object from data and writes it to v.
+func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
+	logger := getLogger()
+	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
+	rv := reflect.ValueOf(v)
+	if rv.Type().Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
+		return fmt.Errorf("not a struct: %w", errUnknownType)
+	}
+	d := Data{
+		ObjectType: ot,
+		dpiData:    data[0],
+	}
+	if logger != nil {
+		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+	}
+	return c.dataGetObjectStructObj(rv, d.GetObject())
 }
 
 // ObjectTypeName is for allowing reflection-based Object - struct mapping.
