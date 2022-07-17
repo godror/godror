@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -13,7 +14,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -171,7 +171,7 @@ func (a Archive) Download() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	dn, err := ioutil.TempDir("", a.ShaSum)
+	dn, err := os.MkdirTemp("", a.ShaSum)
 	if err != nil {
 		return "", err
 	}

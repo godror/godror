@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"runtime"
@@ -319,7 +318,7 @@ func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInse
 }
 
 func readSmaps(pid int) (uint64, error) {
-	b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", pid))
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/smaps", pid))
 	if err != nil {
 		return 0, err
 	}

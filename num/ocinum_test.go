@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,7 +206,7 @@ func TestPrintCorpus(t *testing.T) {
 				}
 				continue
 			}
-			if err := ioutil.WriteFile(fn, []byte(s), 0444); err != nil {
+			if err := os.WriteFile(fn, []byte(s), 0444); err != nil {
 				t.Fatal(err)
 			}
 		}

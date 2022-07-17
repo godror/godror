@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
@@ -94,7 +93,7 @@ func setUp() func() {
 			panic(err)
 		}
 		wd = filepath.Join(wd, "contrib", "free.db")
-		tempDir, err := ioutil.TempDir("", "godror_drv_test-")
+		tempDir, err := os.MkdirTemp("", "godror_drv_test-")
 		if err != nil {
 			panic(err)
 		}
@@ -116,11 +115,11 @@ func setUp() func() {
 				panic(err)
 			}
 		}
-		b, err := ioutil.ReadFile(filepath.Join(wd, "sqlnet.ora"))
+		b, err := os.ReadFile(filepath.Join(wd, "sqlnet.ora"))
 		if err != nil {
 			panic(err)
 		}
-		if err = ioutil.WriteFile(
+		if err = os.WriteFile(
 			filepath.Join(tempDir, "sqlnet.ora"),
 			bytes.Replace(b,
 				[]byte(`DIRECTORY="?/network/admin"`),
@@ -136,7 +135,7 @@ func setUp() func() {
 		os.Setenv("TNS_ADMIN", tempDir)
 		configDir = tempDir
 
-		if b, err = ioutil.ReadFile(fn); err != nil {
+		if b, err = os.ReadFile(fn); err != nil {
 			fmt.Println(err)
 		} else {
 			const prefix = "export GODROR_TEST_"
@@ -1230,7 +1229,7 @@ func TestReadWriteLOB(t *testing.T) {
 				t.Errorf("%d. %T is not LOB", id, clob)
 			} else {
 				var got []byte
-				if got, err = ioutil.ReadAll(clob); err != nil {
+				if got, err = io.ReadAll(clob); err != nil {
 					t.Errorf("%d. %v", id, err)
 				} else if got := string(got); got != tC.String {
 					t.Errorf("%d. got %q for CLOB, wanted %q", id, got, tC.String)
@@ -2532,7 +2531,7 @@ END;`,
 	if err := ret.GetAttribute(&data, "DATA"); err != nil {
 		t.Fatal(err)
 	}
-	if b, err := ioutil.ReadAll(data.GetLob()); err != nil {
+	if b, err := io.ReadAll(data.GetLob()); err != nil {
 		t.Fatal(err)
 	} else {
 		t.Logf("DATA: %q", b)
@@ -3666,7 +3665,7 @@ func TestOpenCloseLOB(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			b, err := ioutil.ReadAll(lob)
+			b, err := io.ReadAll(lob)
 			if err != nil {
 				t.Error(err)
 				return
@@ -4045,13 +4044,14 @@ END;`
 
 // This covers following externalAuthentication test cases:
 // - standalone=0
-//    - user as [sessonusername], during creation or first Query causes DPI-1032
-//    - empty user/passwd ,taking credentials from external source.
-//    - Proxy Authentication by giving sessionuser , [sessionuser]
-//    - error DPI-1069, if sessionuser is passed without brackets
+//   - user as [sessonusername], during creation or first Query causes DPI-1032
+//   - empty user/passwd ,taking credentials from external source.
+//   - Proxy Authentication by giving sessionuser , [sessionuser]
+//   - error DPI-1069, if sessionuser is passed without brackets
+//
 // - standalone=1
-//    - user as [sessonusername], during creation return success
-//    - empty user/passwd ,taking credentials from external source.
+//   - user as [sessonusername], during creation return success
+//   - empty user/passwd ,taking credentials from external source.
 //
 // connectstring alias for example is defined in env GODROR_TEST_DB
 // example: export GODROR_TEST_DB=db10g

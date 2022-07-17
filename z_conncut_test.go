@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"testing"
@@ -288,7 +287,7 @@ func (px *tcpProxy) handleConn(ctx context.Context, down *net.TCPConn) error {
 // /proc/self/net/tcp 3. col is rem_addr:port
 func getRemotes(dest map[string]net.TCPAddr) error {
 	for _, nm := range []string{"/proc/self/net/tcp", "/proc/self/net/tcp6"} {
-		b, err := ioutil.ReadFile(nm)
+		b, err := os.ReadFile(nm)
 		if err != nil {
 			return err
 		}

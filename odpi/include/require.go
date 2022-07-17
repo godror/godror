@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
+//go:build require
 // +build require
 
 // Package include contains required external dependencies from ODPI-C

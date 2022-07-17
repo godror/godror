@@ -13,7 +13,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -37,7 +37,7 @@ func Main() error {
 	flagVerbose := flag.Bool("v", false, "verbose logging")
 	flag.Parse()
 	if !*flagVerbose {
-		log.SetOutput(ioutil.Discard)
+		log.SetOutput(io.Discard)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
