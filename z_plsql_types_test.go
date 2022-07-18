@@ -323,8 +323,8 @@ type oshStruct struct {
 	godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
 
 	ID      int32         `godror:"ID"`
-	Numbers oshNumberList `godror:"numbers,type=test_pkg_types.number_list"`
-	Record  objectStruct  `godror:"rec,type=test_pkg_types.my_record"`
+	Numbers oshNumberList `godror:"NUMBERS,type=test_pkg_types.number_list"`
+	Record  objectStruct  `godror:"REC,type=test_pkg_types.my_record"`
 }
 
 type oshSliceStruct struct {
@@ -402,6 +402,10 @@ func TestPlSqlTypes(t *testing.T) {
 		_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: &out})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
+		} else if len(out.List) == 0 {
+			t.Fatal("no records found")
+		} else if out.List[0].ID != 1 || len(out.List[0].Numbers.NumberList) == 0 {
+			t.Fatal("wrong data from the array")
 		}
 		t.Logf("struct: %+v", out)
 	})

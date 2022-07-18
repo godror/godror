@@ -487,8 +487,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if n == 0 {
 				st.data[i] = st.data[i][:0]
 			} else {
-				//st.data[i] = unsafe.Slice(data, n) // go1.17
-				st.data[i] = dpiDataSlice(data, n)
+				st.data[i] = unsafe.Slice(data, n)
 			}
 		}
 		dest := st.dests[i]
@@ -2803,27 +2802,13 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	logger := getLogger()
 	switch out := v.(type) {
-	case *Object:
-		d := Data{
-			ObjectType: out.ObjectType,
-			dpiData:    data[0],
-		}
-		if logger != nil {
-			logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
-		}
-		obj := d.GetObject()
-		if obj == nil {
-			*out = Object{ObjectType: d.ObjectType}
-		} else {
-			*out = *obj
-		}
 	case *ObjectCollection:
 		d := Data{
 			ObjectType: out.Object.ObjectType,
 			dpiData:    data[0],
 		}
 		if logger != nil {
-			logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+			logger.Log("msg", "dataGetObject", "typ", "ObjectCollection", "v", fmt.Sprintf("%T", v), "d", d)
 		}
 		obj := d.GetObject()
 		if obj == nil {
@@ -2833,13 +2818,27 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			obj2 := *obj
 			*out = ObjectCollection{Object: &obj2}
 		}
+	case *Object:
+		d := Data{
+			ObjectType: out.ObjectType,
+			dpiData:    data[0],
+		}
+		if logger != nil {
+			logger.Log("msg", "dataGetObject", "typ", "Object", "v", fmt.Sprintf("%T", v), "d", d)
+		}
+		obj := d.GetObject()
+		if obj == nil {
+			*out = Object{ObjectType: d.ObjectType}
+		} else {
+			*out = *obj
+		}
 	case ObjectScanner:
 		d := Data{
 			ObjectType: out.ObjectRef().ObjectType,
 			dpiData:    data[0],
 		}
 		if logger != nil {
-			logger.Log("msg", "dataGetObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", d.GetObject())
+			logger.Log("msg", "dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", d.GetObject())
 		}
 		obj := d.GetObject()
 		err := out.Scan(obj)
@@ -2862,26 +2861,59 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 		rv.Set(reflect.Zero(rvt))
 		return nil
 	}
+	if logger != nil {
+		logger.Log("msg", "dataGetObjectStructObj", "kind", rvt.Kind(), "collectionOf", obj.CollectionOf)
+	}
 	if obj.CollectionOf != nil && rvt.Kind() == reflect.Slice {
 		coll := obj.Collection()
+		if logger != nil {
+			length, _ := coll.Len()
+			logger.Log("msg", "dataGetObjectStructObj", "length", length, "cap", rv.Cap())
+		}
+		orig := rv
 		rv.SetLen(0)
-		for i, err := coll.First(); err != nil; i, err = coll.Next(i) {
+		first := true
+		re := reflect.New(rvt.Elem()).Elem()
+		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					break
 				}
 				return err
 			}
-			elt, err := coll.Get(i)
-			if err != nil {
+			if first {
+				first = false
+				length, err := coll.Len()
+				if err != nil {
+					return err
+				}
+				if rv.Cap() < length {
+					rv = reflect.MakeSlice(rvt, length, length)
+				}
+			}
+			var d Data
+			if err := coll.GetItem(&d, i); err != nil {
 				return err
 			}
-			reflect.Append(rv, reflect.ValueOf(elt))
+			elt := d.Get()
+			switch x := elt.(type) {
+			case *Object:
+				if err := c.dataGetObjectStructObj(re, x); err != nil {
+					return err
+				}
+			default:
+				re.Set(reflect.ValueOf(elt))
+			}
+			rv = reflect.Append(rv, re)
+		}
+		orig.Set(rv)
+		if logger != nil {
+			length, _ := coll.Len()
+			logger.Log("msg", "dataGetObjectStructObj", "coll", length, "rv", orig.Len())
 		}
 		return nil
 	}
 
-	var ad Data
 	for i, n := 0, rvt.NumField(); i < n; i++ {
 		f := rvt.Field(i)
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
@@ -2904,12 +2936,13 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 			fieldTag = nm
 		}
 		if logger != nil {
-			logger.Log("msg", "dataGetObjectStruct", "fieldTag", fieldTag, "nm", nm, "tag", f.Tag)
+			logger.Log("msg", "dataGetObjectStruct", "fieldTag", fieldTag, "nm", nm, "tag", f.Tag, "name", f.Name)
 		}
 
 		if nm == "" {
 			nm = strings.ToUpper(f.Name)
 		}
+		var ad Data
 		if err := obj.GetAttribute(&ad, nm); err != nil {
 			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
 		}
@@ -2977,7 +3010,7 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		dpiData:    data[0],
 	}
 	if logger != nil {
-		logger.Log("msg", "dataGetObject", "v", fmt.Sprintf("%T", v), "d", d)
+		logger.Log("msg", "dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
 	}
 	return c.dataGetObjectStructObj(rv, d.GetObject())
 }
@@ -3457,16 +3490,6 @@ func stmtSetFinalizer(st *statement, tag string) {
 			st.closeNotLocking()
 		}
 	})
-}
-
-func dpiDataSlice(data *C.dpiData, n C.uint) []C.dpiData {
-	// https://github.com/golang/go/wiki/cgo#Turning_C_arrays_into_Go_slices
-	/*
-		var theCArray *C.YourType = C.getTheArray()
-		length := C.getTheArrayLength()
-		slice := (*[maxArraySize]C.YourType)(unsafe.Pointer(theCArray))[:length:length]
-	*/
-	return (*(*[maxArraySize]C.dpiData)(unsafe.Pointer(data)))[:int(n):int(n)]
 }
 
 func dpiData_getBytes(data *C.dpiData) []byte {
