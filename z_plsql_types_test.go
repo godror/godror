@@ -163,7 +163,9 @@ func (r MyTable) WriteObject(ctx context.Context) error {
 }
 
 func createPackages(ctx context.Context) error {
-	qry := []string{`CREATE OR REPLACE PACKAGE test_pkg_types AS
+	qry := []string{`
+	CREATE OR REPLACE PACKAGE test_pkg_types AS
+
 	TYPE my_other_record IS RECORD (
 		id    NUMBER(5),
 		txt   VARCHAR2(200)
@@ -173,9 +175,19 @@ func createPackages(ctx context.Context) error {
 		other test_pkg_types.my_other_record,
 		txt   VARCHAR2(200)
 	);
-	TYPE my_table IS
-		TABLE OF my_record;
-	END test_pkg_types;`,
+	TYPE my_table IS TABLE OF my_record;
+
+	TYPE number_list IS TABLE OF NUMBER(10);
+
+	TYPE osh_record IS RECORD (
+		id    NUMBER(5),
+		numbers test_pkg_types.number_list, 
+		rec test_pkg_types.my_record
+	);
+	TYPE osh_table IS TABLE OF osh_record;
+	
+	END test_pkg_types;
+	`,
 
 		`CREATE OR REPLACE PACKAGE test_pkg_sample AS
 	PROCEDURE test_record (
@@ -194,6 +206,11 @@ func createPackages(ctx context.Context) error {
 
 	PROCEDURE test_table_in (
 		tb IN OUT test_pkg_types.my_table
+	);
+	
+	PROCEDURE test_osh(
+		numbers in test_pkg_types.number_list,
+		res_list out test_pkg_types.osh_table
 	);
 
 	END test_pkg_sample;`,
@@ -249,6 +266,24 @@ func createPackages(ctx context.Context) error {
 	null;
 	END test_table_in;
 
+	PROCEDURE test_osh(
+		numbers in test_pkg_types.number_list,
+		res_list out test_pkg_types.osh_table
+	) 
+	AS
+		rec test_pkg_types.osh_record;
+	BEGIN
+		res_list := test_pkg_types.osh_table();
+				
+		res_list.extend();
+	
+		rec.id := 1;
+		rec.numbers := numbers;
+	
+		res_list(res_list.count) := rec;
+
+	END test_osh;
+
 	END test_pkg_sample;`}
 
 	for _, ddl := range qry {
@@ -276,6 +311,26 @@ type objectStruct struct {
 type sliceStruct struct {
 	godror.ObjectTypeName `json:"-"`
 	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
+}
+
+type oshNumberList struct {
+	godror.ObjectTypeName `json:"-"`
+
+	NumberList []float64 `godror:",type=test_pkg_types.number_list"`
+}
+
+type oshStruct struct {
+	godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
+
+	ID      int32         `godror:"ID"`
+	Numbers oshNumberList `godror:"numbers,type=test_pkg_types.number_list"`
+	Record  objectStruct  `godror:"rec,type=test_pkg_types.my_record"`
+}
+
+type oshSliceStruct struct {
+	godror.ObjectTypeName `json:"-"`
+
+	List []oshStruct `godror:",type=test_pkg_types.osh_table"`
 }
 
 func TestPlSqlTypes(t *testing.T) {
@@ -338,6 +393,17 @@ func TestPlSqlTypes(t *testing.T) {
 			t.Fatalf("%s: %+v", qry, err)
 		}
 		t.Logf("struct: %+v", s)
+	})
+
+	t.Run("Osh", func(t *testing.T) {
+		in := oshNumberList{NumberList: []float64{1, 2, 3}}
+		var out oshSliceStruct
+		const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+		_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: &out})
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		t.Logf("struct: %+v", out)
 	})
 
 	t.Run("Record", func(t *testing.T) {

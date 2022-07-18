@@ -2682,12 +2682,16 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			if logger != nil {
 				logger.Log("msg", "dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
 			}
-			sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
-			if err != nil {
-				return nil, fmt.Errorf("%d. dataSetObjectStruct: %w", i, err)
-			}
-			if err = coll.Append(sub); err != nil {
-				return nil, err
+			if !ot.CollectionOf.IsObject() {
+				coll.Append(rv.Index(i).Interface())
+			} else {
+				sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
+				if err != nil {
+					return nil, fmt.Errorf("%d. dataSetObjectStruct: %w", i, err)
+				}
+				if err = coll.Append(sub); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return coll.Object, nil
@@ -2758,7 +2762,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		}
 		return obj, nil
 	default:
-		return nil, fmt.Errorf("not a struct or a slice: %w", errUnknownType)
+		return nil, fmt.Errorf("%T: not a struct or a slice: %w", rv.Interface(), errUnknownType)
 	}
 }
 
@@ -2966,7 +2970,7 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		rv = rv.Elem()
 	}
 	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
-		return fmt.Errorf("not a struct: %w", errUnknownType)
+		return fmt.Errorf("dataGetObjectStruct: not a struct: %T: %w", v, errUnknownType)
 	}
 	d := Data{
 		ObjectType: ot,
@@ -3055,7 +3059,7 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		return c.GetObjectType(otName)
 
 	default:
-		return nil, fmt.Errorf("%T: not a struct: %w", v, errUnknownType)
+		return nil, fmt.Errorf("getStructObjectType: %T: not a struct: %w", v, errUnknownType)
 	}
 }
 
