@@ -1,6 +1,6 @@
 module github.com/godror/godror
 
-go 1.15
+go 1.17
 
 require (
 	github.com/go-logfmt/logfmt v0.5.1
@@ -10,3 +10,5 @@ require (
 	github.com/oklog/ulid/v2 v2.0.2
 	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
 )
+
+require google.golang.org/protobuf v1.27.1 // indirect

@@ -453,7 +453,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	}); err != nil {
 		return nil, nil, fmt.Errorf("newVar(typ=%d, natTyp=%d, sliceLen=%d, bufSize=%d): %w", vi.Typ, vi.NatTyp, vi.SliceLen, vi.BufSize, err)
 	}
-	return v, dpiDataSlice(dataArr, C.uint(vi.SliceLen)), nil
+	return v, unsafe.Slice(dataArr, vi.SliceLen), nil
 }
 
 var _ = driver.Tx((*conn)(nil))
