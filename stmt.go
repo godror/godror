@@ -3034,10 +3034,6 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 // Include an ObjectTypeName in your struct, and set the "godror" struct tag to the type name.
 type ObjectTypeName struct{}
 
-func (ObjectTypeName) MarshalJSON() ([]byte, error)   { return nil, nil }
-func (ObjectTypeName) MarshalText() ([]byte, error)   { return nil, nil }
-func (ObjectTypeName) MarshalBinary() ([]byte, error) { return nil, nil }
-
 func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]string) {
 	tag = s.Get(StructTag)
 	if strings.IndexByte(tag, ',') < 0 {
@@ -3078,9 +3074,20 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		return c.GetObjectType(fieldTag)
 
 	case reflect.Struct:
-		otFt, ok := rvt.FieldByName("ObjectTypeName")
+		const otnName = "ObjectTypeName"
+		otnType := reflect.TypeOf(ObjectTypeName{})
+		otFt, ok := rvt.FieldByName(otnName)
 		if !ok {
-			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
+			for i, n := 0, rvt.NumField(); i < n; i++ {
+				f := rvt.Field(i)
+				if f.Name == otnName || f.Type == otnType {
+					otFt, ok = f, true
+					break
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
+			}
 		}
 		var otName string
 		if s := otFt.Tag; s.Get(StructTag) != "" {
@@ -3088,7 +3095,7 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		} else {
 			for i, n := 0, rvt.NumField(); i < n; i++ {
 				f := rvt.Field(i)
-				if f.Name == "ObjectTypeName" {
+				if f.Name == otnName || f.Type == otnType {
 					continue
 				}
 				if f.Type.Kind() == reflect.Slice {

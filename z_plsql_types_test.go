@@ -275,12 +275,13 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		res_list := test_pkg_types.osh_table();
 				
-		res_list.extend();
-	
-		rec.id := 1;
 		rec.numbers := numbers;
-	
-		res_list(res_list.count) := rec;
+		
+		FOR i IN 1..3 LOOP
+			res_list.extend();
+			rec.id := i;
+			res_list(res_list.count) := rec;
+		END LOOP;
 
 	END test_osh;
 
@@ -408,6 +409,11 @@ func TestPlSqlTypes(t *testing.T) {
 			t.Fatalf("wrong data from the array: %#v", out.List)
 		}
 		t.Logf("struct: %+v", out)
+		if j, e := json.Marshal(out); e != nil {
+			t.Fatalf("error during json conversion: %s", e)
+		} else {
+			t.Log("json marshaled: ", string(j))
+		}
 	})
 
 	t.Run("Record", func(t *testing.T) {
