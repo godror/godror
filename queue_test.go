@@ -40,7 +40,7 @@ func TestQueue(t *testing.T) {
 	BEGIN
 		BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 		BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl, TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
 
 		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, 'RAW');
 		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
@@ -61,7 +61,7 @@ func TestQueue(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl, TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`,
 				qTblName, qName,
 			)
@@ -172,7 +172,7 @@ func TestQueue(t *testing.T) {
 	BEGIN
 		BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 		BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+		BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl, TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
 
 		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, 'RAW');
 		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
@@ -193,7 +193,7 @@ func TestQueue(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl, TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`,
 					qTblName, qName,
 				)
@@ -220,8 +220,6 @@ func TestQueue(t *testing.T) {
 		const qTblName = qName + "_TBL"
 		const qTypName = qName + "_TYP"
 		const arrTypName = qName + "_ARR_TYP"
-		testDb.ExecContext(ctx, "DROP TYPE "+qTypName)
-		testDb.ExecContext(ctx, "DROP TYPE "+arrTypName)
 
 		var data godror.Data
 		testQueue(ctx, t, qName, qTypName,
@@ -246,7 +244,7 @@ func TestQueue(t *testing.T) {
 		q CONSTANT VARCHAR2(61) := '` + user + "." + qName + `';
 		typ CONSTANT VARCHAR2(61) := '` + user + "." + qTypName + `';
 	BEGIN
-		SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, typ);
+		BEGIN SYS.DBMS_AQADM.CREATE_QUEUE_TABLE(tbl, typ); EXCEPTION WHEN OTHERS THEN IF SQLCODE <> -24001 THEN RAISE; END IF; END;
 		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
 
 		SYS.DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
@@ -268,13 +266,22 @@ func TestQueue(t *testing.T) {
 		BEGIN
 			BEGIN SYS.DBMS_AQADM.stop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
 			BEGIN SYS.DBMS_AQADM.drop_queue(q); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl); EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN EXECUTE IMMEDIATE 'DROP TABLE '||tbl; EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN EXECUTE IMMEDIATE 'DROP TYPE ` + user + `.` + qTypName + ` FORCE'; EXCEPTION WHEN OTHERS THEN NULL; END;
-			BEGIN EXECUTE IMMEDIATE 'DROP TYPE ` + user + `.` + arrTypName + ` FORCE'; EXCEPTION WHEN OTHERS THEN NULL; END;
+			BEGIN SYS.DBMS_AQADM.drop_queue_table(tbl, TRUE); EXCEPTION WHEN OTHERS THEN NULL; END;
 		END;`
 				if _, err := db.ExecContext(ctx, qry, qTblName, qName); err != nil {
 					t.Logf("%q: %+v", qry, err)
+				}
+				for _, qry := range []string{
+					"BEGIN SYS.DBMS_AQADM.stop_queue(" + user + "." + qName + "); END;",
+					"BEGIN SYS.DBMS_AQADM.drop_queue(" + user + "." + qName + "); END;",
+					"BEGIN SYS.DBMS_AQADM.drop_queue_table(" + user + "." + qTblName + ", TRUE); END;",
+					"DROP TABLE " + user + "." + qTblName,
+					"DROP TYPE " + user + "." + qTypName + " FORCE",
+					"DROP TYPE " + user + "." + arrTypName + " FORCE",
+				} {
+					if _, err := db.ExecContext(ctx, qry); err != nil {
+						t.Logf("%q: %+v", qry, err)
+					}
 				}
 				return nil
 			},
@@ -344,17 +351,17 @@ func testQueue(
 	}
 
 	if err = tearDown(ctx, tx, user); err != nil {
-		t.Log(err)
+		t.Log("tearDown:", err)
 	}
 	if err = setUp(ctx, tx, user); err != nil {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
-		t.Fatalf("%+v", err)
+		t.Fatalf("setUp: %+v", err)
 	}
 	defer func() {
 		if err = tearDown(testContext("queue-teardown"), testDb, user); err != nil {
-			t.Log(err)
+			t.Log("tearDown:", err)
 		}
 	}()
 
