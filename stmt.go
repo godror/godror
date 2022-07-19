@@ -2899,7 +2899,9 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 			elt := d.Get()
 			switch x := elt.(type) {
 			case *Object:
-				if err := c.dataGetObjectStructObj(re, x); err != nil {
+				err := c.dataGetObjectStructObj(re, x)
+				x.Close()
+				if err != nil {
 					return err
 				}
 			default:
@@ -2955,9 +2957,12 @@ Loop:
 		v := ad.Get()
 		switch x := v.(type) {
 		case *Object:
-			if err := c.dataGetObjectStructObj(rf, x); err != nil {
+			err := c.dataGetObjectStructObj(rf, x)
+			x.Close()
+			if err != nil {
 				return err
 			}
+			x.Close()
 			continue Loop
 		case string:
 			if rf.Kind() == reflect.String {
@@ -3026,7 +3031,10 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 	if logger != nil {
 		logger.Log("msg", "dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
 	}
-	return c.dataGetObjectStructObj(rv, d.GetObject())
+	obj := d.GetObject()
+	err := c.dataGetObjectStructObj(rv, obj)
+	obj.Close()
+	return err
 }
 
 // ObjectTypeName is for allowing reflection-based Object - struct mapping.

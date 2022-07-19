@@ -491,3 +491,63 @@ func BenchmarkStrconv(b *testing.B) {
 	}
 	b.Log(ss[0])
 }
+
+func BenchmarkPlSqlObj(b *testing.B) {
+	ctx, cancel := context.WithTimeout(testContext("BenchPlSqlObj"), 3*time.Minute)
+	defer cancel()
+	if err := createPackages(ctx); err != nil {
+		b.Fatal(err)
+	}
+	defer dropPackages(ctx)
+
+	cx, err := testDb.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer cx.Close()
+	conn, err := godror.DriverConn(ctx, cx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+
+	b.Run("Struct", func(b *testing.B) {
+		in := oshNumberList{NumberList: []float64{1, 2, 3}}
+		var out oshSliceStruct
+		for i := 0; i < b.N; i++ {
+			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: &out})
+			b.Logf("struct: %+v", out)
+			if err != nil {
+				b.Fatalf("%s: %+v", qry, err)
+			} else if len(out.List) == 0 {
+				b.Fatal("no records found")
+			} else if out.List[0].ID != 1 || len(out.List[0].Numbers.NumberList) == 0 {
+				b.Fatalf("wrong data from the array: %#v", out.List)
+			}
+		}
+	})
+	b.Run("Map", func(b *testing.B) {
+		in := oshNumberList{NumberList: []float64{1, 2, 3}}
+		ot, err := conn.GetObjectType("test_pkg_types.osh_table")
+		if err != nil {
+			b.Fatal(err)
+		}
+		out, err := ot.NewObject()
+		if err != nil {
+			b.Fatal(err)
+		}
+		for i := 0; i < b.N; i++ {
+			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: out})
+			if err != nil {
+				b.Fatalf("%s: %+v", qry, err)
+			}
+			m, err := out.Collection().AsSlice(nil)
+			b.Logf("map of %+v: %+v", out, m)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
