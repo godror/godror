@@ -378,7 +378,7 @@ func TestPlSqlTypes(t *testing.T) {
 	t.Run("Struct", func(t *testing.T) {
 		var s objectStruct
 		const qry = `begin test_pkg_sample.test_record(:1, :2, :3); end;`
-		_, err := cx.ExecContext(ctx, qry, 42, "abraka dabra", sql.Out{Dest: &s})
+		_, err := cx.ExecContext(ctx, qry, 43, "abraka dabra", sql.Out{Dest: &s})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}
@@ -405,7 +405,7 @@ func TestPlSqlTypes(t *testing.T) {
 		} else if len(out.List) == 0 {
 			t.Fatal("no records found")
 		} else if out.List[0].ID != 1 || len(out.List[0].Numbers.NumberList) == 0 {
-			t.Fatal("wrong data from the array")
+			t.Fatalf("wrong data from the array: %#v", out.List)
 		}
 		t.Logf("struct: %+v", out)
 	})

@@ -2874,6 +2874,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 		rv.SetLen(0)
 		first := true
 		re := reflect.New(rvt.Elem()).Elem()
+		ret := re.Type()
 		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -2888,7 +2889,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 					return err
 				}
 				if rv.Cap() < length {
-					rv = reflect.MakeSlice(rvt, length, length)
+					rv = reflect.MakeSlice(rvt, 0, length)
 				}
 			}
 			var d Data
@@ -2902,7 +2903,11 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 					return err
 				}
 			default:
-				re.Set(reflect.ValueOf(elt))
+				ev := reflect.ValueOf(elt)
+				if ev.Type() != ret {
+					ev = ev.Convert(ret)
+				}
+				re.Set(ev)
 			}
 			rv = reflect.Append(rv, re)
 		}
@@ -2914,6 +2919,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 		return nil
 	}
 
+Loop:
 	for i, n := 0, rvt.NumField(); i < n; i++ {
 		f := rvt.Field(i)
 		if !f.IsExported() || f.Name == "ObjectTypeName" {
@@ -2948,6 +2954,11 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 		}
 		v := ad.Get()
 		switch x := v.(type) {
+		case *Object:
+			if err := c.dataGetObjectStructObj(rf, x); err != nil {
+				return err
+			}
+			continue Loop
 		case string:
 			if rf.Kind() == reflect.String {
 				rf.SetString(x)
@@ -2986,6 +2997,9 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 						return err
 					}
 				} else {
+					if f.Type != vv.Type() {
+						vv = vv.Convert(f.Type)
+					}
 					rf.Set(vv)
 				}
 			}
