@@ -835,18 +835,22 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "GetObjectType", "name", name)
-	}
-	cName := C.CString(name)
-	defer func() { C.free(unsafe.Pointer(cName)) }()
-	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
+	if t := c.objTypes[name]; t != nil {
+		if t.drv != nil {
+			return t, nil
+		}
+		// t is closed
+		delete(c.objTypes, name)
+	}
+
+	cName := C.CString(name)
+	defer func() { C.free(unsafe.Pointer(cName)) }()
+	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	if err := c.checkExec(func() C.int {
 		return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
 	}); err != nil {
@@ -860,7 +864,11 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	}
 	t := &ObjectType{drv: c.drv, dpiObjectType: objType}
 	err := t.init()
-	return t, err
+	if err != nil {
+		return t, err
+	}
+	c.objTypes[name] = t
+	return t, nil
 }
 
 // NewObject returns a new Object with ObjectType type.
@@ -880,6 +888,9 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
+	if false {
+		runtime.SetFinalizer(O, func(O *Object) { O.Close() })
+	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
 }

@@ -510,6 +510,12 @@ func BenchmarkPlSqlObj(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer conn.Close()
+	// Warm up type cache
+	for _, nm := range []string{"TEST_PKG_TYPES.OSH_TABLE", "TEST_PKG_TYPES.NUMBER_LIST"} {
+		if _, err := conn.GetObjectType(nm); err != nil {
+			b.Fatal(err)
+		}
+	}
 
 	b.Run("Struct", func(b *testing.B) {
 		in := oshNumberList{NumberList: []float64{1, 2, 3}}

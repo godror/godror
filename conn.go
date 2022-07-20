@@ -58,8 +58,9 @@ type conn struct {
 	poolKey       string
 	Server        VersionInfo
 	params        dsn.ConnectionParams
-	tzOffSecs     int
 	mu            sync.RWMutex
+	objTypes      map[string]*ObjectType
+	tzOffSecs     int
 	inTransaction bool
 	released      bool
 	tzValid       bool
@@ -247,6 +248,10 @@ func (c *conn) closeNotLocking() error {
 	c.dpiConn = nil
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
+	}
+	for k, v := range c.objTypes {
+		v.Close()
+		delete(c.objTypes, k)
 	}
 
 	// dpiConn_release decrements dpiConn's reference counting,
