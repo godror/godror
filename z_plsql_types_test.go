@@ -992,22 +992,27 @@ END;
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer typ.Close()
 	if a_mcalist_i, err = typ.NewObject(); err != nil {
 		t.Fatal(err)
 	}
+	defer a_mcalist_i.Close()
 	if typ, err = godror.GetObjectType(ctx, conn, "test_cwo_rec_t"); err != nil {
 		t.Fatal("GetObjectType(test_cwo_rec_t):", err)
 	}
+	defer typ.Close()
 	elt, err := typ.NewObject()
 	if err != nil {
 		t.Fatalf("NewObject(%s): %+v", typ, err)
 	}
+	defer elt.Close()
 	if err = elt.Set("NUMBERPART1", "np1"); err != nil {
 		t.Fatal("set NUMBERPART1:", err)
 	}
 	if err = a_mcalist_i.Collection().Append(elt); err != nil {
 		t.Fatal("append to collection:", err)
 	}
+	elt.Close()
 
 	const qry = `BEGIN test_cwo_getSum(:v1,:v2,:v3,:v4,:v5,:v6,:v7,:v8,:v9); END;`
 	if _, err := conn.ExecContext(ctx, qry,
@@ -1337,6 +1342,7 @@ END;`},
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rs.Close()
 	t.Logf("rs: %#v", rs)
 
 	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
@@ -1364,10 +1370,12 @@ END;`},
 			t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
 			year := yearI.(float64)
 			if !(err == nil && year == 2021) {
+				o.Close()
 				t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
 			}
 
 			m, err := o.AsMap(true)
+			o.Close()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1498,6 +1506,7 @@ END;`},
 			t.Fatal(err)
 		}
 		hs := hc.(*godror.ObjectCollection)
+		defer hs.Close()
 		length, err := hs.Len()
 		t.Logf("length: %d", length)
 		if err != nil {
@@ -1517,6 +1526,7 @@ END;`},
 				continue
 			}
 			statusI, err := o.Get("STATUS")
+			o.Close()
 			if err != nil {
 				t.Error(err)
 			}
@@ -1660,6 +1670,7 @@ func TestObjectFromMap(t *testing.T) {
 	if err = obj.ToJSON(&buf); err != nil {
 		t.Fatalf("ToJSON: %+v", err)
 	}
+	obj.Close()
 	if d := cmp.Diff(jsonString, buf.String()); d != "" {
 		t.Errorf("ToJSON: %s", d)
 	}
@@ -1731,6 +1742,7 @@ END;`,
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer cO.Close()
 	t.Log(cOt)
 
 	if _, err = stmt.ExecContext(ctx,

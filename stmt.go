@@ -2688,7 +2688,9 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 				if err != nil {
 					return nil, fmt.Errorf("%d. dataSetObjectStruct: %w", i, err)
 				}
-				if err = coll.Append(sub); err != nil {
+				err = coll.Append(sub)
+				sub.Close() // ?
+				if err != nil {
 					return nil, err
 				}
 			}

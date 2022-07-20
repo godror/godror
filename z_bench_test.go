@@ -548,10 +548,10 @@ func BenchmarkPlSqlObj(b *testing.B) {
 			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
 			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: out})
 			if err != nil {
-				b.Fatalf("%s: %+v", qry, err)
+				b.Fatalf("%d. %s: %+v", i, qry, err)
 			}
 			m, err := out.Collection().AsSlice(nil)
-			b.Logf("map of %+v: %+v", out, m)
+			b.Logf("%d. map of %+v: %+v", i, out, m)
 			if err != nil {
 				b.Fatal(err)
 			}
