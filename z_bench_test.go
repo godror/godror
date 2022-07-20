@@ -543,6 +543,7 @@ func BenchmarkPlSqlObj(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+		defer out.Close()
 		for i := 0; i < b.N; i++ {
 			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
 			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: out})

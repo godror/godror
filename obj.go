@@ -888,8 +888,14 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
-	if false {
-		runtime.SetFinalizer(O, func(O *Object) { O.Close() })
+	if true {
+		runtime.SetFinalizer(O, func(O *Object) {
+			if O == nil || O.dpiObject == nil {
+				return
+			}
+			fmt.Printf("WARN Object %v is not closed\n", O)
+			O.Close()
+		})
 	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()

@@ -2797,7 +2797,7 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 		}
 		return fmt.Errorf("setFromObject[%d]: %w", 0, err)
 	}
-	return nil
+	return obj.Close()
 }
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 	logger := getLogger()
