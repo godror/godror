@@ -81,7 +81,7 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseInt(string(*x), 10, 64)
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 
@@ -128,7 +128,7 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return strconv.ParseFloat(string(*x), 64)
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 
@@ -165,7 +165,7 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 		err := n.Compose(x.Decompose(nil))
 		return string(n), err
 	default:
-		return nil, fmt.Errorf("unknown type %T", v)
+		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 }
 func (n Number) String() string { return string(n) }
@@ -199,7 +199,7 @@ func (n *Number) Scan(v interface{}) error {
 	case decimalDecompose:
 		return n.Compose(x.Decompose(nil))
 	default:
-		return fmt.Errorf("unknown type %T", v)
+		return fmt.Errorf("%T: %w", v, errUnknownType)
 	}
 	return nil
 }
@@ -615,4 +615,82 @@ func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
 	}
 	defer cx.Close()
 	return f(cx)
+}
+
+// ConnPool is a concurrent-safe fixed size connection pool.
+//
+// This is a very simple implementation, usable, but serving more as an example - if possible, use *sql.DB !
+type ConnPool struct {
+	get      func(context.Context) (*sql.Conn, error)
+	freeList chan *PooledConn
+}
+
+// NewConnPool returns a connection pool that acquires new connections from the given pool (an *sql.DB for example).
+//
+// The default size is 1.
+func NewConnPool(pool interface {
+	Conn(context.Context) (*sql.Conn, error)
+}, size int) *ConnPool {
+	if size < 1 {
+		size = 1
+	}
+	return &ConnPool{get: pool.Conn, freeList: make(chan *PooledConn, size)}
+}
+
+// Conn returns a pooled connection if there exists one, or creates a new if not.
+//
+// You must call Close on the returned PooledConn to return it to the pool!
+func (p *ConnPool) Conn(ctx context.Context) (*PooledConn, error) {
+	select {
+	case c := <-p.freeList:
+		return c, nil
+	default:
+	}
+	c, err := p.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &PooledConn{Conn: c, pool: p}, nil
+}
+
+// Close releases all the pooled resources.
+func (p *ConnPool) Close() error {
+	if p == nil || p.freeList == nil {
+		return nil
+	}
+	freeList := p.freeList
+	p.get, p.freeList = nil, nil
+	close(freeList)
+	var firstErr error
+	for c := range freeList {
+		if c != nil && c.Conn != nil {
+			if err := c.Conn.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+// PooledConn is a wrapped *sql.Conn that puts back the Conn into the pool on Close is possible (or does a real Close when the pool is full).
+type PooledConn struct {
+	*sql.Conn
+	pool *ConnPool
+}
+
+// Close tries to return the connection to the pool, or Closes it when the pools is full.
+func (c *PooledConn) Close() error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	if c.pool != nil && c.pool.freeList != nil {
+		select {
+		case c.pool.freeList <- c:
+			return nil
+		default:
+		}
+	}
+	conn := c.Conn
+	c.Conn, c.pool = nil, nil
+	return conn.Close()
 }

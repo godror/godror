@@ -69,6 +69,7 @@ func (d *Data) SetBool(b bool) {
 	if b {
 		i = 1
 	}
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_BOOLEAN
 	C.dpiData_setBool(&d.dpiData, i)
 }
 
@@ -91,6 +92,7 @@ func (d *Data) SetBytes(b []byte) {
 		d.dpiData.isNull = 1
 		return
 	}
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 	C.dpiData_setBytes(&d.dpiData, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
 }
 
@@ -105,6 +107,7 @@ func (d *Data) GetFloat32() float32 {
 
 // SetFloat32 sets the data as float32.
 func (d *Data) SetFloat32(f float32) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
 	C.dpiData_setFloat(&d.dpiData, C.float(f))
 }
 
@@ -120,6 +123,7 @@ func (d *Data) GetFloat64() float64 {
 
 // SetFloat64 sets the data as float64.
 func (d *Data) SetFloat64(f float64) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
 	C.dpiData_setDouble(&d.dpiData, C.double(f))
 }
 
@@ -139,6 +143,7 @@ func (d *Data) GetInt64() int64 {
 
 // SetInt64 sets the data as int64.
 func (d *Data) SetInt64(i int64) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 	C.dpiData_setInt64(&d.dpiData, C.int64_t(i))
 }
 
@@ -167,6 +172,7 @@ func (d *Data) SetIntervalDS(dur time.Duration) {
 	dur, rem = rem, dur%time.Second
 	secs := C.int32_t(dur / time.Second)
 	fsecs := C.int32_t(rem)
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
 	C.dpiData_setIntervalDS(&d.dpiData, days, hrs, mins, secs, fsecs)
 }
 
@@ -182,6 +188,7 @@ func (d *Data) GetIntervalYM() IntervalYM {
 
 // SetIntervalYM sets IntervalYM to the data.
 func (d *Data) SetIntervalYM(ym IntervalYM) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_YM
 	C.dpiData_setIntervalYM(&d.dpiData, C.int32_t(ym.Years), C.int32_t(ym.Months))
 }
 
@@ -195,6 +202,7 @@ func (d *Data) GetLob() *Lob {
 
 // SetLob sets Lob to the data.
 func (d *Data) SetLob(lob *DirectLob) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_LOB
 	C.dpiData_setLOB(&d.dpiData, lob.dpiLob)
 }
 
@@ -227,6 +235,8 @@ func (d *Data) GetObject() *Object {
 
 // SetObject sets Object to data.
 func (d *Data) SetObject(o *Object) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+	d.ObjectType = o.ObjectType
 	C.dpiData_setObject(&d.dpiData, o.dpiObject)
 }
 
@@ -240,6 +250,7 @@ func (d *Data) GetStmt() driver.Stmt {
 
 // SetStmt sets Stmt to data.
 func (d *Data) SetStmt(s *statement) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
 	C.dpiData_setStmt(&d.dpiData, s.dpiStmt)
 }
 
@@ -268,6 +279,7 @@ func (d *Data) SetTime(t time.Time) {
 	if d.dpiData.isNull == 1 {
 		return
 	}
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 	_, z := t.Zone()
 	C.dpiData_setTimestamp(&d.dpiData,
 		C.int16_t(t.Year()), C.uint8_t(t.Month()), C.uint8_t(t.Day()),
@@ -287,6 +299,7 @@ func (d *Data) GetUint64() uint64 {
 
 // SetUint64 sets data to uint64.
 func (d *Data) SetUint64(u uint64) {
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 	C.dpiData_setUint64(&d.dpiData, C.uint64_t(u))
 }
 
@@ -343,49 +356,34 @@ func (d *Data) Set(v interface{}) error {
 	}
 	switch x := v.(type) {
 	case int8:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
 	case int16:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
 	case int32:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
 	case int64:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(x)
 	case int:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
 		d.SetInt64(int64(x))
 	case uint8:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
 	case uint16:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
 	case uint32:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
 	case uint64:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(x)
 	case uint:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
 		d.SetUint64(uint64(x))
 	case float32:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
 		d.SetFloat32(x)
 	case float64:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
 		d.SetFloat64(x)
 	case string:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 		d.SetBytes([]byte(x))
 	case []byte:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 		d.SetBytes(x)
 	case time.Time:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		d.SetTime(x)
 	case NullTime:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
@@ -393,27 +391,21 @@ func (d *Data) Set(v interface{}) error {
 			d.SetTime(x.Time)
 		}
 	case time.Duration:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_DS
 		d.SetIntervalDS(x)
 	case IntervalYM:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_INTERVAL_YM
 		d.SetIntervalYM(x)
 	case *DirectLob:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_LOB
 		d.SetLob(x)
 	case *Object:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
 		d.ObjectType = x.ObjectType
 		d.SetObject(x)
 	case ObjectCollection:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
 		d.ObjectType = x.Object.ObjectType
 		d.SetObject(x.Object)
 	//case *stmt:
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_STMT
 	//d.SetStmt(x)
 	case bool:
-		d.NativeTypeNum = C.DPI_NATIVE_TYPE_BOOLEAN
 		d.SetBool(x)
 	//case rowid:
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID

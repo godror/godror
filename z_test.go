@@ -4576,6 +4576,7 @@ END;`,
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer res.Close()
 	if _, err := stmt.ExecContext(ctx,
 		sql.Named("P_USERID", "n.one"),
 		sql.Named("P_LANGUAGE", 0),

@@ -84,7 +84,10 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	if !strings.Contains(name, `"`) {
 		name = strings.ToUpper(name)
 	}
-	attr := O.Attributes[name]
+	attr, ok := O.Attributes[name]
+	if !ok {
+		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
+	}
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
@@ -368,48 +371,60 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			logger.Log("msg", "FromMap", "attribute", a, "value", v, "type", fmt.Sprintf("%T", v), "recursive", recursive, "ot", ot.ObjectType)
 		}
 		if ot.ObjectType.CollectionOf != nil { // Collection case
-			coll, err := ot.NewCollection()
+			if err := func() error {
+				coll, err := ot.NewCollection()
+				if err != nil {
+					return fmt.Errorf("%q.FromMap: %w", a, err)
+				}
+				defer coll.Close()
+				switch v := v.(type) {
+				case []map[string]interface{}:
+					if err := coll.FromMapSlice(recursive, v); err != nil {
+						return fmt.Errorf("%q.FromMapSlice: %w", a, err)
+					}
+				case []interface{}:
+					if ot.IsObject() {
+						m := make([]map[string]interface{}, 0, len(v))
+						for _, e := range v {
+							m = append(m, e.(map[string]interface{}))
+						}
+						if err := coll.FromMapSlice(recursive, m); err != nil {
+							return fmt.Errorf("%q.FromMapSlice: %w", a, err)
+						}
+					} else {
+						data := scratch.Get()
+						defer scratch.Put(data)
+						for _, e := range v {
+							if err := data.Set(e); err != nil {
+								return err
+							}
+							if err := coll.AppendData(data); err != nil {
+								return err
+							}
+						}
+					}
+				default:
+					return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
+				}
+				if err = O.Set(a, coll); err != nil {
+					return fmt.Errorf("%q.Set(%v): %w", a, coll, err)
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else if ot.ObjectType.Attributes != nil { // Object case
+			newO, err := ot.NewObject()
 			if err != nil {
 				return fmt.Errorf("%q.FromMap: %w", a, err)
 			}
-			switch v := v.(type) {
-			case []map[string]interface{}:
-				if err := coll.FromMapSlice(recursive, v); err != nil {
-					return fmt.Errorf("%q.FromMapSlice: %w", a, err)
-				}
-			case []interface{}:
-				if ot.IsObject() {
-					m := make([]map[string]interface{}, 0, len(v))
-					for _, e := range v {
-						m = append(m, e.(map[string]interface{}))
-					}
-					if err := coll.FromMapSlice(recursive, m); err != nil {
-						return fmt.Errorf("%q.FromMapSlice: %w", a, err)
-					}
-				} else {
-					data := scratch.Get()
-					defer scratch.Put(data)
-					for _, e := range v {
-						if err := data.Set(e); err != nil {
-							return err
-						}
-						if err := coll.AppendData(data); err != nil {
-							return err
-						}
-					}
-				}
-			default:
-				return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
-			}
-			if err := O.Set(a, coll); err != nil {
-				return fmt.Errorf("%q.Set(%v): %w", a, coll, err)
-			}
-		} else if ot.ObjectType.Attributes != nil { // Object case
-			if newO, err := ot.NewObject(); err != nil {
+			if err := newO.FromMap(recursive, v.(map[string]interface{})); err != nil {
+				newO.Close()
 				return fmt.Errorf("%q.FromMap: %w", a, err)
-			} else if err := newO.FromMap(recursive, v.(map[string]interface{})); err != nil {
-				return fmt.Errorf("%q.FromMap: %w", a, err)
-			} else if err := O.Set(a, newO); err != nil {
+			}
+			err = O.Set(a, newO)
+			newO.Close()
+			if err != nil {
 				return fmt.Errorf("%q.Set(%v): %w", a, newO.ObjectType, err)
 			}
 		} else if err := O.Set(a, v); err != nil { // Plain type case
@@ -453,6 +468,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 			return fmt.Errorf("key %q not found", k)
 		}
 		var v interface{}
+		var C func() error
 		if a.ObjectType.CollectionOf != nil {
 			coll, err := a.ObjectType.NewCollection()
 			if err != nil {
@@ -462,6 +478,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 				return fmt.Errorf("%q.FromJSON: %w", k, err)
 			}
 			v = coll
+			C = coll.Close
 		} else if a.ObjectType.IsObject() {
 			obj, err := a.ObjectType.NewObject()
 			if err != nil {
@@ -471,13 +488,18 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 				return fmt.Errorf("%q.FromJSON: %w", k, err)
 			}
 			v = obj
+			C = obj.Close
 		} else {
 			if tok, err = dec.Token(); err != nil {
 				return err
 			}
 			v = tok
 		}
-		if err = O.Set(k, v); err != nil {
+		err = O.Set(k, v)
+		if C != nil {
+			C()
+		}
+		if err != nil {
 			return fmt.Errorf("%q.Set(%v): %w", k, v, err)
 		}
 		if !dec.More() {
@@ -506,9 +528,12 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{
 			return fmt.Errorf("%d.FromMapSlice: %w", i, err)
 		}
 		if err := elt.FromMap(recursive, o); err != nil {
+			elt.Close()
 			return fmt.Errorf("%d.FromMapSlice: %w", i, err)
 		}
-		if err := O.Append(elt); err != nil {
+		err = O.Append(elt)
+		elt.Close()
+		if err != nil {
 			return err
 		}
 	}
@@ -529,10 +554,14 @@ func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
 		if err != nil {
 			return err
 		}
-		if err = elt.FromJSON(dec); err != nil {
+		err = elt.FromJSON(dec)
+		if err != nil {
+			elt.Close()
 			return err
 		}
-		if err = O.Append(elt); err != nil {
+		err = O.Append(elt)
+		elt.Close()
+		if err != nil {
 			return err
 		}
 		if !dec.More() {
@@ -832,18 +861,22 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
-	logger := getLogger()
-	if logger != nil {
-		logger.Log("msg", "GetObjectType", "name", name)
-	}
-	cName := C.CString(name)
-	defer func() { C.free(unsafe.Pointer(cName)) }()
-	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
+	if t := c.objTypes[name]; t != nil {
+		if t.drv != nil {
+			return t, nil
+		}
+		// t is closed
+		delete(c.objTypes, name)
+	}
+
+	cName := C.CString(name)
+	defer func() { C.free(unsafe.Pointer(cName)) }()
+	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
 	if err := c.checkExec(func() C.int {
 		return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
 	}); err != nil {
@@ -857,7 +890,11 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	}
 	t := &ObjectType{drv: c.drv, dpiObjectType: objType}
 	err := t.init()
-	return t, err
+	if err != nil {
+		return t, err
+	}
+	c.objTypes[name] = t
+	return t, nil
 }
 
 // NewObject returns a new Object with ObjectType type.
@@ -877,6 +914,15 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
+	if true {
+		runtime.SetFinalizer(O, func(O *Object) {
+			if O == nil || O.dpiObject == nil {
+				return
+			}
+			fmt.Printf("WARN Object %v is not closed\n", O)
+			O.Close()
+		})
+	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
 }

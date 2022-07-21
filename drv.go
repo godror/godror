@@ -386,8 +386,9 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	// create connection and initialize it, if needed
 	c := conn{
 		drv: d, dpiConn: dc,
-		params:  dsn.ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
-		poolKey: poolKey,
+		params:   dsn.ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
+		poolKey:  poolKey,
+		objTypes: make(map[string]*ObjectType),
 	}
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
