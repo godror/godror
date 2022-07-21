@@ -801,6 +801,15 @@ func (s PoolStats) String() string {
 	return fmt.Sprintf("busy=%d open=%d max=%d maxLifetime=%s timeout=%s waitTimeout=%s",
 		s.Busy, s.Open, s.Max, s.MaxLifetime, s.Timeout, s.WaitTimeout)
 }
+func (p PoolStats) AsDBStats() sql.DBStats {
+	return sql.DBStats{
+		MaxOpenConnections: int(p.Max),
+		// Pool Status
+		OpenConnections: int(p.Open),
+		InUse:           int(p.Busy),
+		Idle:            int(p.Open) - int(p.Busy),
+	}
+}
 
 // Stats returns PoolStats of the pool.
 func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
