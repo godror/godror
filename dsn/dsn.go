@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -46,6 +46,8 @@ const (
 )
 
 // CommonParams holds the common parameters for pooled or standalone connections.
+//
+// For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
 type CommonParams struct {
 	Username, ConnectString string
 	Password                Password
@@ -102,6 +104,8 @@ func (P CommonParams) String() string {
 }
 
 // ConnParams holds the connection-specific parameters.
+//
+// For details, see https://oracle.github.io/odpi/doc/structs/dpiConnCreateParams.html#dpiconncreateparams
 type ConnParams struct {
 	NewPassword                             Password
 	ConnClass                               string
@@ -137,6 +141,10 @@ func (P ConnParams) String() string {
 }
 
 // PoolParams holds the configuration of the Oracle Session Pool.
+//
+// For details, see https://oracle.github.io/odpi/doc/structs/dpiPoolCreateParams.html#dpipoolcreateparams
+//
+// For details, see https://oracle.github.io/odpi/doc/structs/dpiPoolCreateParams.html#dpipoolcreateparams
 type PoolParams struct {
 	MinSessions, MaxSessions, SessionIncrement int
 	MaxSessionsPerShard                        int
