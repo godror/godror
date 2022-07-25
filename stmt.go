@@ -2978,6 +2978,18 @@ Loop:
 			} else {
 				rf.SetBytes(x)
 			}
+		case *Lob:
+			var buf bytes.Buffer
+			if x != nil && x.Reader != nil {
+				if _, err := buf.ReadFrom(x.Reader); err != nil {
+					return fmt.Errorf("GetLobAttribute(%q): %w", nm, err)
+				}
+			}
+			if rf.Kind() == reflect.String {
+				rf.SetString(buf.String())
+			} else {
+				rf.SetBytes(buf.Bytes())
+			}
 		default:
 			switch vv := reflect.ValueOf(v); vv.Kind() {
 			case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
