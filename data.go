@@ -15,6 +15,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"time"
 	"unsafe"
@@ -394,6 +395,12 @@ func (d *Data) Set(v interface{}) error {
 		d.SetIntervalDS(x)
 	case IntervalYM:
 		d.SetIntervalYM(x)
+	case *Lob:
+		b, err := io.ReadAll(x.Reader)
+		if err != nil {
+			return err
+		}
+		d.SetBytes(b)
 	case *DirectLob:
 		d.SetLob(x)
 	case *Object:
