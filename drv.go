@@ -397,7 +397,10 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	c.init(ctx, getOnInit(&c.params.CommonParams))
+	if err := c.init(ctx, getOnInit(&c.params.CommonParams)); err != nil {
+		_ = c.closeNotLocking()
+		return nil, err
+	}
 	cancel()
 
 	var a [4096]byte
@@ -405,7 +408,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, error) {
 	runtime.SetFinalizer(&c, func(c *conn) {
 		if c != nil && c.dpiConn != nil {
 			fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
-			c.closeNotLocking()
+			_ = c.closeNotLocking()
 		}
 	})
 	return &c, nil

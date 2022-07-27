@@ -44,10 +44,10 @@ func (f LogFunc) Log(keyvals ...interface{}) error { return f(keyvals...) }
 func (f LogFunc) Init(_ logr.RuntimeInfo)          {}
 func (f LogFunc) Enabled(_ int) bool               { return f != nil }
 func (f LogFunc) Info(level int, msg string, keyvals ...interface{}) {
-	f(append(append(make([]interface{}, 0, 4+len(keyvals)), "lvl", level, "msg", msg), keyvals...)...)
+	_ = f(append(append(make([]interface{}, 0, 4+len(keyvals)), "lvl", level, "msg", msg), keyvals...)...)
 }
 func (f LogFunc) Error(err error, msg string, keyvals ...interface{}) {
-	f(append(append(make([]interface{}, 0, 4+len(keyvals)), "msg", msg, "error", err), keyvals...)...)
+	_ = f(append(append(make([]interface{}, 0, 4+len(keyvals)), "msg", msg, "error", err), keyvals...)...)
 }
 func (f LogFunc) WithValues(plusKeyVals ...interface{}) logr.LogSink {
 	return LogFunc(func(keyvals ...interface{}) error {

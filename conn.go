@@ -337,7 +337,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	defer c.mu.Unlock()
 	c.inTransaction = true
 	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
-		c.setTraceTag(tt)
+		_ = c.setTraceTag(tt)
 	}
 	return c, nil
 }
@@ -355,7 +355,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 
 	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
-		c.setTraceTag(tt)
+		_ = c.setTraceTag(tt)
 	}
 	// TODO: get rid of this hack
 	if query == getConnection {
@@ -725,7 +725,7 @@ func maybeBadConn(err error, c *conn) error {
 			if logger != nil {
 				logger.Log("msg", "maybeBadConn close", "conn", c, "error", err)
 			}
-			c.closeNotLocking()
+			_ = c.closeNotLocking()
 		}
 	}
 	if errors.Is(err, driver.ErrBadConn) {
@@ -1096,7 +1096,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
-		c.closeNotLocking()
+		_ = c.closeNotLocking()
 	}
 	var err error
 	c.dpiConn, err = c.drv.acquireConn(pool, P)
@@ -1105,11 +1105,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 
-	//if paramsFromCtx || newSession || !c.tzValid || c.params.Timezone == nil {
-	if true {
-		c.init(ctx, P.OnInit)
-	}
-	return nil
+	return c.init(ctx, P.OnInit)
 }
 
 // Validator may be implemented by Conn to allow drivers to
@@ -1153,7 +1149,7 @@ func (c *conn) IsValid() bool {
 	// See https://github.com/godror/godror/issues/57 for example.
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.closeNotLocking()
+	_ = c.closeNotLocking()
 	c.released = true
 	return true
 }

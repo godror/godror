@@ -230,7 +230,9 @@ func (d *Data) GetObject() *Object {
 		}
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
-	obj.init()
+	if err := obj.init(); err != nil {
+		panic(err)
+	}
 	return obj
 }
 
@@ -418,11 +420,11 @@ func (d *Data) Set(v interface{}) error {
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
 	//d.SetRowid(x)
 	default:
-		return fmt.Errorf("%T: %w", v, ErrNotSupported)
+		return fmt.Errorf("data Set type %T: %w", v, ErrNotSupported)
 	}
 	logger := getLogger()
 	if logger != nil {
-		logger.Log("msg", "Set", "data", d)
+		logger.Log("msg", "Set", "data", d, "nativeTypeNum")
 	}
 	return nil
 }

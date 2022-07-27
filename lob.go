@@ -389,7 +389,7 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	}); err != nil {
 		err = fmt.Errorf("writeBytes(%p, offset=%d, data=%d): %w", lob, dlw.offset, n, err)
 		dlw.dpiLob = nil
-		closeLob(dlw, lob)
+		_ = closeLob(dlw, lob)
 		return 0, err
 	}
 	// fmt.Printf("written %q into %p@%d\n", p[:n], lob, dlw.offset)

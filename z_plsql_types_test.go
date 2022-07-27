@@ -173,7 +173,8 @@ func createPackages(ctx context.Context) error {
 	TYPE my_record IS RECORD (
 		id    NUMBER(5),
 		other test_pkg_types.my_other_record,
-		txt   VARCHAR2(200)
+		txt   VARCHAR2(200),
+		aclob CLOB
 	);
 	TYPE my_table IS TABLE OF my_record;
 
@@ -225,6 +226,8 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		rec.id := id;
 		rec.txt := txt;
+		--DBMS_LOB.createtemporary(rec.aclob, TRUE);
+		--DBMS_LOB.write(rec.aclob, LENGTH(txt)*2+1, 1, txt||'+'||txt);
 	END test_record;
 
 	PROCEDURE test_record_in (
@@ -233,6 +236,9 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		rec.id := rec.id + 1;
 		rec.txt := rec.txt || ' changed';
+		--IF rec.aclob IS NOT NULL AND DBMS_LOB.isopen(rec.aclob) <> 0 THEN
+		--  DBMS_LOB.writeappend(rec.aclob, 7, ' changed');
+		--END IF;
 	END test_record_in;
 
 	FUNCTION test_table (
@@ -280,6 +286,7 @@ func createPackages(ctx context.Context) error {
 		FOR i IN 1..3 LOOP
 			res_list.extend();
 			rec.id := i;
+			--test_record(rec.id, rec.id, rec.rec);
 			res_list(res_list.count) := rec;
 		END LOOP;
 
@@ -295,6 +302,14 @@ func createPackages(ctx context.Context) error {
 		}
 	}
 
+	errs, err := godror.GetCompileErrors(ctx, testDb, false)
+	if err != nil {
+		return err
+	}
+	for _, err := range errs {
+		return err
+	}
+
 	return nil
 }
 
@@ -307,6 +322,7 @@ type objectStruct struct {
 	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
 	ID                    int32  `godror:"ID"`
 	Txt                   string `godror:"TXT"`
+	AClob                 string `godror:"ACLOB"`
 }
 
 type sliceStruct struct {

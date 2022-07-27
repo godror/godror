@@ -427,7 +427,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil
 		}
 		c := st.conn
-		st.closeNotLocking()
+		_ = st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
 
@@ -581,7 +581,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 			return nil
 		}
 		c := st.conn
-		st.closeNotLocking()
+		_ = st.closeNotLocking()
 		return maybeBadConn(err, c)
 	}
 	// HandleDeadline for all ODPI calls called below
@@ -2682,7 +2682,9 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 				logger.Log("msg", "dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
 			}
 			if !ot.CollectionOf.IsObject() {
-				coll.Append(rv.Index(i).Interface())
+				if err := coll.Append(rv.Index(i).Interface()); err != nil {
+					return nil, fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
+				}
 			} else {
 				sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
 				if err != nil {
@@ -2731,7 +2733,9 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			}
 			var ad Data
 			if !attr.IsObject() {
-				ad.Set(rv.Interface())
+				if err := ad.Set(rv.Interface()); err != nil {
+					return nil, fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
+				}
 			} else {
 				ot := attr.ObjectType
 				if ot == nil && typ != "" {
@@ -3530,7 +3534,7 @@ func stmtSetFinalizer(st *statement, tag string) {
 			} else {
 				fmt.Printf("ERROR: statement %p of %s is not closed!\n%s\n", st, tag, stack)
 			}
-			st.closeNotLocking()
+			_ = st.closeNotLocking()
 		}
 	})
 }

@@ -89,8 +89,13 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
 	}
 	if data.NativeTypeNum == 0 {
+		logger := getLogger()
+		if logger != nil {
+			logger.Log("msg", "WARN setAttributeValue", "attr.NativeTypeNum", attr.NativeTypeNum, "data.NativeTypeNum", data.NativeTypeNum)
+		}
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
+		data.dpiData.isNull = 1
 	}
 	return O.drv.checkExec(func() C.int {
 		return C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
@@ -497,7 +502,9 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		}
 		err = O.Set(k, v)
 		if C != nil {
-			C()
+			if closeErr := C(); err == nil {
+				err = closeErr
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("%q.Set(%v): %w", k, v, err)
@@ -883,7 +890,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		C.free(unsafe.Pointer(objType))
 		if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
 			err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
-			c.closeNotLocking()
+			_ = c.closeNotLocking()
 			return nil, err
 		}
 		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
