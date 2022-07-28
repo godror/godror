@@ -2668,6 +2668,21 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		return nil, nil
 	}
 	rvt := rv.Type()
+	wrappedSlice := ot.CollectionOf != nil && rvt.Kind() == reflect.Struct
+	if logger != nil {
+		logger.Log("msg", "dataSetObjectStructObj", "ot", ot.FullName(), "rvt", rvt, "kind", rvt.Kind(), "wrappedSlice", wrappedSlice)
+	}
+	if wrappedSlice {
+		for i, n := 0, rvt.NumField(); i < n; i++ {
+			f := rvt.Field(i)
+			if !f.IsExported() || fieldIsObjectTypeName(f) {
+				continue
+			}
+			rv = rv.FieldByIndex(f.Index)
+			rvt = rv.Type()
+			break
+		}
+	}
 	switch rvt.Kind() {
 	case reflect.Slice:
 		coll, err := ot.NewCollection()
@@ -2675,7 +2690,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			return nil, err
 		}
 		if logger != nil {
-			logger.Log("msg", "collection", "obj", coll)
+			logger.Log("msg", "dataSetObjectStructObj", "collection", coll)
 		}
 		for i, n := 0, rv.Len(); i < n; i++ {
 			if logger != nil {
@@ -2688,7 +2703,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			} else {
 				sub, err := c.dataSetObjectStructObj(ot.CollectionOf, rv.Index(i))
 				if err != nil {
-					return nil, fmt.Errorf("%d. dataSetObjectStruct: %w", i, err)
+					return nil, fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
 				}
 				err = coll.Append(sub)
 				sub.Close() // ?
@@ -2700,26 +2715,34 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		return coll.Object, nil
 
 	case reflect.Struct:
-		var obj *Object
-		if ot.CollectionOf == nil {
-			var err error
-			if obj, err = ot.NewObject(); err != nil {
-				return nil, err
-			}
-		}
-		for i, n := 0, rvt.NumField(); i < n; i++ {
-			f := rvt.Field(i)
-			if !f.IsExported() || f.Name == "ObjectTypeName" {
-				continue
-			}
-			rf := rv.FieldByIndex(f.Index)
-			if obj == nil {
+		if ot.CollectionOf != nil {
+			for i, n := 0, rvt.NumField(); i < n; i++ {
+				f := rvt.Field(i)
+				if !f.IsExported() || fieldIsObjectTypeName(f) {
+					continue
+				}
+				rf := rv.FieldByIndex(f.Index)
 				// we must find the slice in the struct
 				if f.Type.Kind() != reflect.Slice {
 					continue
 				}
+				if logger != nil {
+					logger.Log("msg", "dataSetObjectStructObj", "sliceInStruct", f.Name, "ot", ot.FullName(), "rf", rf.Interface())
+				}
 				return c.dataSetObjectStructObj(ot, rf)
 			}
+		}
+
+		obj, err := ot.NewObject()
+		if err != nil {
+			return nil, err
+		}
+		for i, n := 0, rvt.NumField(); i < n; i++ {
+			f := rvt.Field(i)
+			if !f.IsExported() || fieldIsObjectTypeName(f) {
+				continue
+			}
+			rf := rv.FieldByIndex(f.Index)
 			nm, typ, _ := parseStructTag(f.Tag)
 			if nm == "-" {
 				continue
@@ -2733,7 +2756,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			}
 			var ad Data
 			if !attr.IsObject() {
-				if err := ad.Set(rv.Interface()); err != nil {
+				if err := ad.Set(rf.Interface()); err != nil {
 					return nil, fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
 				}
 			} else {
@@ -2930,7 +2953,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 Loop:
 	for i, n := 0, rvt.NumField(); i < n; i++ {
 		f := rvt.Field(i)
-		if !f.IsExported() || f.Name == "ObjectTypeName" {
+		if !f.IsExported() || fieldIsObjectTypeName(f) {
 			continue
 		}
 		rf := rv.FieldByIndex(f.Index)
@@ -3100,20 +3123,17 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		return c.GetObjectType(fieldTag)
 
 	case reflect.Struct:
-		const otnName = "ObjectTypeName"
-		otnType := reflect.TypeOf(ObjectTypeName{})
-		otFt, ok := rvt.FieldByName(otnName)
+		var otFt reflect.StructField
+		var ok bool
+		for i, n := 0, rvt.NumField(); i < n; i++ {
+			f := rvt.Field(i)
+			if fieldIsObjectTypeName(f) {
+				otFt, ok = f, true
+				break
+			}
+		}
 		if !ok {
-			for i, n := 0, rvt.NumField(); i < n; i++ {
-				f := rvt.Field(i)
-				if f.Name == otnName || f.Type == otnType {
-					otFt, ok = f, true
-					break
-				}
-			}
-			if !ok {
-				return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
-			}
+			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
 		}
 		var otName string
 		if s := otFt.Tag; s.Get(StructTag) != "" {
@@ -3121,7 +3141,7 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 		} else {
 			for i, n := 0, rvt.NumField(); i < n; i++ {
 				f := rvt.Field(i)
-				if f.Name == otnName || f.Type == otnType {
+				if fieldIsObjectTypeName(f) {
 					continue
 				}
 				if f.Type.Kind() == reflect.Slice {
@@ -3141,6 +3161,13 @@ func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType,
 	default:
 		return nil, fmt.Errorf("getStructObjectType: %T: not a struct: %w", v, errUnknownType)
 	}
+}
+
+var otnType = reflect.TypeOf(ObjectTypeName{})
+
+func fieldIsObjectTypeName(f reflect.StructField) bool {
+	const otnName = "ObjectTypeName"
+	return f.Name == otnName || f.Type == otnType
 }
 
 func (c *conn) dataGetJSON(v interface{}, data []C.dpiData) error {
