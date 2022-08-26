@@ -1385,8 +1385,41 @@ func copySlice(orig interface{}) interface{} {
 	}
 	return rc.Addr().Interface()
 }
+func TestOpenCloseConn(t *testing.T) {
+	cs, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.MinSessions, cs.MaxSessions = 0, 4
+	t.Log(cs.String())
+	db := sql.OpenDB(godror.NewConnector(cs))
+	defer db.Close()
+	const countQry = "SELECT COUNT(0) FROM user_objects"
+	ctx, cancel := context.WithCancel(testContext("OpenCloseConn"))
+	defer cancel()
+	limitCh := make(chan struct{}, cs.MaxSessions)
+	grp, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < 100; i++ {
+		limitCh <- struct{}{}
+		grp.Go(func() error {
+			defer func() { <-limitCh }()
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				return fmt.Errorf("Open: %w", err)
+			}
+			defer conn.Close()
+			var n int32
+			err = conn.QueryRowContext(ctx, countQry).Scan(&n)
+			t.Logf("object count: %d (%+v)", n, err)
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
 
-func TestOpenClose(t *testing.T) {
+func TestOpenCloseTx(t *testing.T) {
 	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -1404,9 +1437,9 @@ func TestOpenClose(t *testing.T) {
 	}()
 	db.SetMaxIdleConns(cs.MinSessions)
 	db.SetMaxOpenConns(cs.MaxSessions)
-	ctx, cancel := context.WithCancel(testContext("OpenClose"))
+	ctx, cancel := context.WithCancel(testContext("OpenCloseTx"))
 	defer cancel()
-	const module = "godror.v2.test-OpenClose "
+	const module = "godror.v2.test-OpenCloseTx "
 	const countQry = "SELECT COUNT(0) FROM v$session WHERE module LIKE '" + module + "%'"
 	stmt, err := db.PrepareContext(ctx, countQry)
 	if err != nil {

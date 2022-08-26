@@ -599,6 +599,9 @@ func (c *conn) initTZ() error {
 	}
 
 	if c.tzValid {
+		if c.drv.timezones == nil {
+			c.drv.timezones = make(map[string]locationWithOffSecs)
+		}
 		c.drv.timezones[key] = tz
 	}
 	//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
