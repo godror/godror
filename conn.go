@@ -564,7 +564,7 @@ func (c *conn) initTZ() error {
 	}
 
 	if c.tzValid {
-		if c.drv.timezones == nil {
+		if false && c.drv.timezones == nil {
 			c.drv.timezones = make(map[string]locationWithOffSecs)
 		}
 		c.drv.timezones[key] = tz

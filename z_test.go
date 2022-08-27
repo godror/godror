@@ -1381,6 +1381,40 @@ func copySlice(orig interface{}) interface{} {
 	return rc.Addr().Interface()
 }
 
+func TestOpenCloseDB(t *testing.T) {
+	cs, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.MinSessions, cs.MaxSessions = 0, 4
+	t.Log(cs.String())
+	const countQry = "SELECT COUNT(0) FROM user_objects"
+	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
+	defer cancel()
+	limitCh := make(chan struct{}, cs.MaxSessions)
+	grp, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < 16; i++ {
+		limitCh <- struct{}{}
+		grp.Go(func() error {
+			defer func() { <-limitCh }()
+			db := sql.OpenDB(godror.NewConnector(cs))
+			defer db.Close()
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				return fmt.Errorf("Open: %w", err)
+			}
+			defer conn.Close()
+			var n int32
+			err = conn.QueryRowContext(ctx, countQry).Scan(&n)
+			t.Logf("object count: %d (%+v)", n, err)
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenCloseConn(t *testing.T) {
 	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {
