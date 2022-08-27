@@ -18,16 +18,17 @@ import "strings"
 
 // Fuzz:
 // go-fuzz -bin=./num-fuzz.zip -workdir=/tmp/fuzz
-func Fuzz(p []byte) int {
-	pS := string(p)
-	var q [22]byte
-	n := OCINum(q[:0])
-	if err := n.SetString(pS); err != nil {
-		return -1
-	}
-	s := n.String()
-	if s != strings.TrimSpace(pS) {
-		return 1
-	}
-	return 0
+func FuzzOCINum(f *testing.F) {
+	f.Fuzz(func(t *testing.t, p []byte) {
+		pS := string(p)
+		var q [22]byte
+		n := OCINum(q[:0])
+		if err := n.SetString(pS); err != nil {
+			t.Fatalf("SetString(%q): %+v", pS, err)
+		}
+		s := n.String()
+		if s != strings.TrimSpace(pS) {
+			t.Fatalf("printed %q, wanted %q", s, pS)
+		}
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"strconv"
 	"strings"
@@ -172,7 +173,10 @@ func (num OCINum) String() string {
 // SetString sets the OCINum to the number in s.
 func (num *OCINum) SetString(s string) error {
 	s = strings.TrimSpace(s)
-	if len(s) == 0 || s == "0" {
+	if len(s) == 0 {
+		return io.EOF
+	}
+	if s == "0" {
 		*num = OCINum([]byte{128})
 		return nil
 	}

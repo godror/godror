@@ -10,10 +10,9 @@ package num
 
 import (
 	"bytes"
-	"crypto/sha1"
-	"encoding/hex"
+	"errors"
+	"math/big"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -190,28 +189,41 @@ func TestDeCompose(t *testing.T) {
 	}
 }
 
-func TestPrintCorpus(t *testing.T) {
-	hsh := sha1.New()
-	var h []byte
-	// semgrep: go.lang.correctness.permissions.file_permission.incorrect-default-permission
-	os.MkdirAll("corpus", 0750)
-	for _, ss := range [][]string{setStringCasesGood, setStringCasesBad} {
-		for _, s := range ss {
-			hsh.Reset()
-			hsh.Write([]byte(s))
-			h = hsh.Sum(h[:0])
-			fn := filepath.Join("corpus", hex.EncodeToString(h))
-			if fi, err := os.Stat(fn); err == nil {
-				if fi.Size() != int64(len(s)) {
-					os.Remove(fn)
-				}
-				continue
-			}
-			if err := os.WriteFile(fn, []byte(s), 0444); err != nil {
-				t.Fatal(err)
+func FuzzOCINum(f *testing.F) {
+	for _, s := range setStringCasesBad {
+		f.Add(s)
+	}
+	for _, s := range setStringCasesGood {
+		f.Add(s)
+	}
+	var epsilon big.Float
+	epsilon.SetFloat64(1.0 / 1000.0)
+	f.Fuzz(func(t *testing.T, pS string) {
+		var wantF big.Float
+		_, _, err := wantF.Parse(pS, 10)
+		if err != nil {
+			t.Logf("cannot parse %q: %+v", pS, err)
+			return
+		}
+		var q [22]byte
+		n := OCINum(q[:0])
+		if err := n.SetString(pS); err != nil {
+			t.Logf("SetString(%q): %+v", pS, err)
+			if errors.Is(err, ErrTooLong) {
+				return
 			}
 		}
-	}
+		s := n.String()
+		var gotF big.Float
+		if _, _, err = gotF.Parse(s, 10); err != nil {
+			t.Fatalf("%q results %q which cannot parse: %+v", pS, s, err)
+		}
+		var diffF big.Float
+		diffF.Sub(&wantF, &gotF)
+		if diffF.Abs(&diffF).Cmp(&epsilon) >= 0 {
+			t.Fatalf("%v printed %q (%v), wanted %q (%v), diff: %v", n, s, gotF, pS, wantF, diffF)
+		}
+	})
 }
 
 var setStringCasesGood = []string{
