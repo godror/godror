@@ -83,10 +83,11 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
-		if Q.PayloadObjectType, err = Q.conn.GetObjectType(payloadObjectTypeName); err != nil {
+		ot, err := Q.conn.GetObjectType(payloadObjectTypeName)
+		if err != nil {
 			return nil, err
 		}
-		payloadType = Q.PayloadObjectType.dpiObjectType
+		Q.PayloadObjectType, payloadType = ot, ot.dpiObjectType
 	}
 	value := C.CString(name)
 	err = Q.conn.checkExec(func() C.int {

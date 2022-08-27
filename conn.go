@@ -99,6 +99,7 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		c.mu.RLock()
 		ok := func() bool {
 			if c.drv.clientVersion.Version < 18 {
+				// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 				return false
 			}
 			dur := time.Until(dl)
@@ -111,12 +112,14 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 				logger.Log("msg", "setCallTimeout", "ms", ms)
 			}
 			if C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE {
+				// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 				return true
 			}
 			if logger != nil {
 				logger.Log("msg", "setCallTimeout failed!")
 			}
 			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+			// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 			return false
 		}()
 		c.mu.RUnlock()
@@ -573,16 +576,19 @@ func (c *conn) initTZ() error {
 		logger.Log("msg", "calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
-	tz.Location, tz.offSecs, err = calculateTZ(dbTZ, dbOSTZ, noTZCheck)
+	tzLoc, tzOff, err := calculateTZ(dbTZ, dbOSTZ, noTZCheck)
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if logger != nil {
 		logger.Log("timezone", dbOSTZ, "tz", tz, "error", err)
 	}
-	if err == nil && tz.Location == nil {
-		if tz.offSecs != 0 {
-			err = fmt.Errorf("nil timezone from %q,%q", dbTZ, dbOSTZ)
-		} else {
-			tz.Location = time.UTC
+	if err == nil {
+		tz.Location, tz.offSecs = tzLoc, tzOff
+		if tz.Location == nil {
+			if tz.offSecs != 0 {
+				err = fmt.Errorf("nil timezone from %q,%q", dbTZ, dbOSTZ)
+			} else {
+				tz.Location = time.UTC
+			}
 		}
 	}
 	if err != nil {
@@ -1101,12 +1107,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		// Just release
 		_ = c.closeNotLocking()
 	}
-	var err error
-	c.dpiConn, err = c.drv.acquireConn(pool, P)
+	dpiConn, err := c.drv.acquireConn(pool, P)
 	c.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
+	c.dpiConn = dpiConn
 
 	return c.init(ctx, P.OnInit)
 }

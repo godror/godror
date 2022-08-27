@@ -216,21 +216,18 @@ func TestParse(t *testing.T) {
 				t.Errorf("parse of %q\ngot\n\t%#v,\nwanted\n\t%#v\n%s", tCase.In, P, tCase.Want, diff)
 				return
 			}
-			// FIXME(tgulacsi): this breaks logfmt
-			if false {
-				s := setP(P.String(), P.Password.Secret())
-				Q, err := Parse(s)
-				if err != nil {
-					t.Errorf("parseConnString %v", err)
-					return
-				}
-				if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" && P.String() != Q.String() {
-					t.Errorf("params got\n\t%+v,\nwanted\n\t%+v\n%s", P, Q, diff)
-					return
-				}
-				if got := setP(Q.String(), Q.Password.Secret()); s != got {
-					t.Errorf("paramString got %q, wanted %q", got, s)
-				}
+			s := setP(P.String(), P.Password.Secret())
+			Q, err := Parse(s)
+			if err != nil {
+				t.Errorf("parseConnString %v", err)
+				return
+			}
+			if diff := cmp.Diff(P, Q, cmpOpts...); diff != "" && P.String() != Q.String() {
+				t.Errorf("params got\n\t%+v,\nwanted\n\t%+v\n%s", P, Q, diff)
+				return
+			}
+			if got := setP(Q.String(), Q.Password.Secret()); s != got {
+				t.Errorf("paramString got %q, wanted %q", got, s)
 			}
 		})
 	}

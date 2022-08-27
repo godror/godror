@@ -193,6 +193,7 @@ func TestDeCompose(t *testing.T) {
 func TestPrintCorpus(t *testing.T) {
 	hsh := sha1.New()
 	var h []byte
+	// semgrep: go.lang.correctness.permissions.file_permission.incorrect-default-permission
 	os.MkdirAll("corpus", 0750)
 	for _, ss := range [][]string{setStringCasesGood, setStringCasesBad} {
 		for _, s := range ss {

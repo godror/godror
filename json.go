@@ -595,6 +595,7 @@ func (j JSONObject) GetInto(v interface{}) {
 	for _, f := range jsonObjectFields(j.dpiJsonObject) {
 		var d Data
 		jsonNodeToData(&d, f.Value)
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		rv.FieldByName(f.Name).Set(reflect.ValueOf(d.Get()))
 	}
 }

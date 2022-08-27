@@ -447,13 +447,14 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	}
 
 	if tz := q.Get("timezone"); tz != "" {
-		var err error
 		if strings.EqualFold(tz, "local") {
 			P.Timezone = time.Local
 		} else if strings.Contains(tz, "/") {
-			if P.Timezone, err = time.LoadLocation(tz); err != nil {
+			ptz, err := time.LoadLocation(tz)
+			if err != nil {
 				return P, fmt.Errorf("%s: %w", tz, err)
 			}
+			P.Timezone = ptz
 		} else if off, err := ParseTZ(tz); err == nil {
 			if off == 0 {
 				P.Timezone = time.UTC
@@ -592,7 +593,9 @@ func (P *Password) Set(secret string) {
 
 var ErrCannotMarshal = errors.New("cannot be marshaled")
 
-func (P *Password) MarshalText() ([]byte, error)   { return nil, ErrCannotMarshal }
+func (P *Password) MarshalText() ([]byte, error) { return nil, ErrCannotMarshal }
+
+// nosemgrep
 func (P *Password) MarshalJSON() ([]byte, error)   { return nil, ErrCannotMarshal }
 func (P *Password) MarshalBinary() ([]byte, error) { return nil, ErrCannotMarshal }
 

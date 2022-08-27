@@ -203,10 +203,11 @@ func (d *Description) Parse(ss []Statement) error {
 		case "ENABLE":
 			d.TCPKeepAlive = d.TCPKeepAlive || s.Value == "broken"
 		case "SDU":
-			var err error
-			if d.SDU, err = strconv.Atoi(s.Value); err != nil {
+			i, err := strconv.Atoi(s.Value)
+			if err != nil {
 				return err
 			}
+			d.SDU = i
 		case "SECURITY":
 			if err := d.Security.Parse(s.Statements); err != nil {
 				return err

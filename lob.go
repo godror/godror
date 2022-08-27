@@ -199,6 +199,7 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	}
 	var err error
 	// We only read into dlr.buf when it's empty, dlr.bufR == dlr.bufW == 0
+	// nosemgrep: trailofbits.go.questionable-assignment.questionable-assignment
 	dlr.bufW, err = dlr.read(dlr.buf)
 	if logger != nil {
 		logger.Log("msg", "dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)

@@ -27,6 +27,11 @@ import (
 	"unsafe"
 )
 
+const (
+	warnMissingObjectClose   = true
+	closeObjectWithFinalizer = false
+)
+
 var _ = fmt.Printf
 
 // Object represents a dpiObject.
@@ -921,7 +926,7 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
-	if true {
+	if warnMissingObjectClose {
 		runtime.SetFinalizer(O, func(O *Object) {
 			if O == nil || O.dpiObject == nil {
 				return
@@ -1076,7 +1081,7 @@ func (t *ObjectType) init() error {
 		t.Attributes[objAttr.Name] = objAttr
 	}
 
-	if false {
+	if closeObjectWithFinalizer {
 		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
 	}
 	return nil

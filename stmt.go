@@ -41,6 +41,8 @@ import (
 	"github.com/godror/knownpb/timestamppb"
 )
 
+const printStack = false
+
 // NullTime is an alias for sql.NullTime
 type NullTime = sql.NullTime
 
@@ -333,7 +335,7 @@ func (st *statement) closeNotLocking() error {
 
 	if logger := getLogger(); logger != nil {
 		logger.Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
-		if false {
+		if printStack {
 			var a [4096]byte
 			stack := a[:runtime.Stack(a[:], false)]
 			logger.Log("msg", "closeNotLocking", "stack", string(stack))
