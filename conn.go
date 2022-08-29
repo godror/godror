@@ -466,7 +466,14 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 	return onInit(ctx, c)
 }
 
+var slowdown = true
+
 func (c *conn) initTZ() error {
+	if slowdown {
+		fmt.Print("Artificially slowing down a connection init")
+		slowdown = false
+		time.Sleep(5 * time.Second)
+	}
 	if Log != nil {
 		Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
 	}
