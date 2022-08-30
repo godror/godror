@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -466,12 +467,20 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 	return onInit(ctx, c)
 }
 
-var slowdown = true
+var slowdownInitTZ int32
+
+func SlowdownInitTZ(t bool) {
+	var i int32
+	if t {
+		i = 1
+	}
+	atomic.StoreInt32(&slowdownInitTZ, i)
+}
 
 func (c *conn) initTZ() error {
-	if slowdown {
-		fmt.Print("Artificially slowing down a connection init")
-		slowdown = false
+	if atomic.LoadInt32(&slowdownInitTZ) != 0 {
+		atomic.CompareAndSwapInt32(&slowdownInitTZ, 0, 1)
+		fmt.Println("Artificially slowing down a connection init")
 		time.Sleep(5 * time.Second)
 	}
 	if Log != nil {

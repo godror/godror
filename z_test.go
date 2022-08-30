@@ -1380,7 +1380,6 @@ func copySlice(orig interface{}) interface{} {
 	}
 	return rc.Addr().Interface()
 }
-
 func TestOpenCloseDB(t *testing.T) {
 	cs, err := godror.ParseDSN(testConStr)
 	if err != nil {

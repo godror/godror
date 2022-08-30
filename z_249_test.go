@@ -4,31 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
-	_ "github.com/godror/godror"
+	godror "github.com/godror/godror"
 )
 
 func TestOpenCloseCrash(t *testing.T) {
-	c1, e1 := sql.Open("godror", "oracle://?sysdba=1")
+	ctx, cancel := context.WithTimeout(testContext("OpenCloseCrash"), 10*time.Second)
+	defer cancel()
+
+	godror.SlowdownInitTZ(true)
+	c1, e1 := sql.Open("godror", testConStr)
 	t.Logf("e1: %v", e1)
-	c2, e2 := sql.Open("godror", "oracle://?sysdba=1")
+	if c1 != nil {
+		defer c1.Close()
+	}
+	c2, e2 := sql.Open("godror", testConStr)
 	t.Logf("e2: %v", e2)
+	if c2 != nil {
+		defer c2.Close()
+	}
 
 	join := make(chan struct{})
 	waitForSch := make(chan struct{})
+	var token struct{}
 	go func() {
 		defer c1.Close()
-		waitForSch <- struct{}{}
-		e1 := c1.PingContext(context.TODO())
+		waitForSch <- token
+		e1 := c1.PingContext(ctx)
 		t.Logf("conn1 done: %v", e1)
-		join <- struct{}{}
+		join <- token
 	}()
 	go func() {
 		defer c2.Close()
 		<-waitForSch
-		e2 := c2.PingContext(context.TODO())
+		e2 := c2.PingContext(ctx)
 		t.Logf("conn2 done: %v", e2)
-		join <- struct{}{}
+		join <- token
 	}()
 	<-join
 	<-join

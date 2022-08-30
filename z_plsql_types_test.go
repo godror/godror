@@ -702,7 +702,7 @@ END;`
 	cOt, err := testCon.GetObjectType(strings.ToUpper("test_pkg_obj.tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
-			t.Fatal(fmt.Sprintf("%+v", err))
+			t.Fatalf("%+v", err)
 		}
 		t.Log(err)
 		t.Skipf("client=%d or server=%d < 12", clientVersion.Version, serverVersion.Version)
@@ -801,7 +801,7 @@ END;`
 	ot, err := godror.GetObjectType(ctx, conn, pkg+strings.ToUpper(".int_tab_typ"))
 	if err != nil {
 		if clientVersion.Version >= 12 && serverVersion.Version >= 12 {
-			t.Fatal(fmt.Sprintf("%+v", err))
+			t.Fatalf("%+v", err)
 		}
 		t.Log(err)
 		t.Skip("client or server version < 12")
