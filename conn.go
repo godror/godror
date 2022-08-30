@@ -503,7 +503,23 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 	return onInit(ctx, c)
 }
 
+var slowdownInitTZ int32
+
+// SlowdownInitTZ is just for a test.
+func SlowdownInitTZ(t bool) {
+	var i int32
+	if t {
+		i = 1
+	}
+	atomic.StoreInt32(&slowdownInitTZ, i)
+}
+
 func (c *conn) initTZ() error {
+	if atomic.LoadInt32(&slowdownInitTZ) != 0 {
+		atomic.CompareAndSwapInt32(&slowdownInitTZ, 0, 1)
+		fmt.Println("Artificially slowing down a connection init")
+		time.Sleep(5 * time.Second)
+	}
 	logger := getLogger()
 	if logger != nil {
 		logger.Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
@@ -751,6 +767,7 @@ func maybeBadConn(err error, c *conn) error {
 	return err
 }
 
+// IsBadConn reports whether the error is caused by a connection error.
 func IsBadConn(err error) bool {
 	if err == nil {
 		return false
