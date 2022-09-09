@@ -14,10 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/zerologr"
 	godror "github.com/godror/godror"
-	"github.com/rs/zerolog"
 )
 
 // go install && go test -c && ./godror.v2.test -test.run=^$ -test.bench=Insert25 -test.cpuprofile=/tmp/insert25.prof && go tool pprof ./godror.v2.test /tmp/insert25.prof
@@ -762,10 +759,6 @@ END;`
 
 		var rowNum int64
 		start := time.Now()
-		if i == 0 {
-			zl := zerolog.New(zerolog.NewConsoleWriter(zerolog.ConsoleTestWriter(b)))
-			godror.SetLogger(zerologr.New(&zl))
-		}
 		b.StartTimer()
 		for rows.Next() {
 			if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
@@ -787,9 +780,6 @@ END;`
 		}
 		b.StopTimer()
 		b.Logf("Read %d rows in %s", rowNum, time.Since(start))
-		if i == 0 {
-			godror.SetLogger(logr.Discard())
-		}
 	}
 }
 
@@ -993,10 +983,6 @@ END;`
 
 		var rowNum int64
 		start := time.Now()
-		if i == 0 {
-			zl := zerolog.New(zerolog.NewConsoleWriter(zerolog.ConsoleTestWriter(b)))
-			godror.SetLogger(zerologr.New(&zl))
-		}
 		b.StartTimer()
 		for rows.Next() {
 			if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
@@ -1018,8 +1004,5 @@ END;`
 		}
 		b.StopTimer()
 		b.Logf("Read %d rows in %s", rowNum, time.Since(start))
-		if i == 0 {
-			godror.SetLogger(logr.Discard())
-		}
 	}
 }
