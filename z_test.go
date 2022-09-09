@@ -223,7 +223,7 @@ func setUp() func() {
 	}()
 
 	statTicks = make(chan time.Time)
-	statTicker = time.NewTicker(30 * time.Second)
+	statTicker = time.NewTicker(60 * time.Second)
 	go func() {
 		for t := range statTicker.C {
 			statTicks <- t

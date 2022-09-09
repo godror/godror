@@ -559,13 +559,19 @@ func BenchmarkPlSqlObj(b *testing.B) {
 	})
 }
 
-// BenchmarkSelectWideN9
+// BenchmarkSelectWide
 //
 // go test -run=^$ -bench=Wide -cpuprofile c.pprof -memprofile m.pprof -benchtime 30s
 // go tool pprof c.pprof
 // go tool pprof m.pprof
-func BenchmarkSelectWideN9(b *testing.B) {
-	const createWideTable = `CREATE TABLE tst_wide_n9 (
+func BenchmarkSelectWide(b *testing.B) {
+	tblName := func(suffix string) string { return "tst_wide_n" + strings.Replace(suffix, ",", "_", 1) }
+	for _, typ := range []string{"9", "18", "19", "20,4", "20,4B"} {
+		typ := typ
+		b.Run(typ, func(b *testing.B) {
+			tbl := tblName(typ)
+			colTyp := strings.TrimRight(typ, "B")
+			createWideTable := `CREATE TABLE ` + tbl + ` (
 	"NE_KEY" NUMBER(19,0), 
 	"STATISTIC_TIME" DATE, 
 	"YEAR" NUMBER(4,0), 
@@ -575,116 +581,116 @@ func BenchmarkSelectWideN9(b *testing.B) {
 	"INSERT_TIME" DATE, 
 	"VENDOR_ID" NUMBER(4,0), 
 	"COLL_SOURCE" NUMBER(10,0), 
-	"COL_001" NUMBER(9), 
-	"COL_002" NUMBER(9), 
-	"COL_003" NUMBER(9), 
-	"COL_004" NUMBER(9), 
-	"COL_005" NUMBER(9), 
-	"COL_006" NUMBER(9), 
-	"COL_007" NUMBER(9), 
-	"COL_008" NUMBER(9), 
-	"COL_009" NUMBER(9), 
-	"COL_010" NUMBER(9), 
-	"COL_011" NUMBER(9), 
-	"COL_012" NUMBER(9), 
-	"COL_013" NUMBER(9), 
-	"COL_014" NUMBER(9), 
-	"COL_015" NUMBER(9), 
-	"COL_016" NUMBER(9), 
-	"COL_017" NUMBER(9), 
-	"COL_018" NUMBER(9), 
-	"COL_019" NUMBER(9), 
-	"COL_020" NUMBER(9), 
-	"COL_021" NUMBER(9), 
-	"COL_022" NUMBER(9), 
-	"COL_023" NUMBER(9), 
-	"COL_024" NUMBER(9), 
-	"COL_025" NUMBER(9), 
-	"COL_026" NUMBER(9), 
-	"COL_027" NUMBER(9), 
-	"COL_028" NUMBER(9), 
-	"COL_029" NUMBER(9), 
-	"COL_030" NUMBER(9), 
-	"COL_031" NUMBER(9), 
-	"COL_032" NUMBER(9), 
-	"COL_033" NUMBER(9), 
-	"COL_034" NUMBER(9), 
-	"COL_035" NUMBER(9), 
-	"COL_036" NUMBER(9), 
-	"COL_037" NUMBER(9), 
-	"COL_038" NUMBER(9), 
-	"COL_039" NUMBER(9), 
-	"COL_040" NUMBER(9), 
-	"COL_041" NUMBER(9), 
-	"COL_042" NUMBER(9), 
-	"COL_043" NUMBER(9), 
-	"COL_044" NUMBER(9), 
-	"COL_045" NUMBER(9), 
-	"COL_046" NUMBER(9), 
-	"COL_047" NUMBER(9), 
-	"COL_048" NUMBER(9), 
-	"COL_049" NUMBER(9), 
-	"COL_050" NUMBER(9), 
-	"COL_051" NUMBER(9), 
-	"COL_052" NUMBER(9), 
-	"COL_053" NUMBER(9), 
-	"COL_054" NUMBER(9), 
-	"COL_055" NUMBER(9), 
-	"COL_056" NUMBER(9), 
-	"COL_057" NUMBER(9), 
-	"COL_058" NUMBER(9), 
-	"COL_059" NUMBER(9), 
-	"COL_060" NUMBER(9), 
-	"COL_061" NUMBER(9), 
-	"COL_062" NUMBER(9), 
-	"COL_063" NUMBER(9), 
-	"COL_064" NUMBER(9), 
-	"COL_065" NUMBER(9), 
-	"COL_066" NUMBER(9), 
-	"COL_067" NUMBER(9), 
-	"COL_068" NUMBER(9), 
-	"COL_069" NUMBER(9), 
-	"COL_070" NUMBER(9), 
-	"COL_071" NUMBER(9), 
-	"COL_072" NUMBER(9), 
-	"COL_073" NUMBER(9), 
-	"COL_074" NUMBER(9), 
-	"COL_075" NUMBER(9), 
-	"COL_076" NUMBER(9), 
-	"COL_077" NUMBER(9), 
-	"COL_078" NUMBER(9), 
-	"COL_079" NUMBER(9), 
-	"COL_080" NUMBER(9), 
-	"COL_081" NUMBER(9), 
-	"COL_082" NUMBER(9), 
-	"COL_083" NUMBER(9), 
-	"COL_084" NUMBER(9), 
-	"COL_085" NUMBER(9), 
-	"COL_086" NUMBER(9), 
-	"COL_087" NUMBER(9), 
-	"COL_088" NUMBER(9), 
-	"COL_089" NUMBER(9), 
-	"COL_090" NUMBER(9), 
-	"COL_091" NUMBER(9), 
-	"COL_092" NUMBER(9), 
-	"COL_093" NUMBER(9), 
-	"COL_094" NUMBER(9), 
-	"COL_095" NUMBER(9), 
-	"COL_096" NUMBER(9), 
-	"COL_097" NUMBER(9), 
-	"COL_098" NUMBER(9), 
-	"COL_099" NUMBER(9), 
-	"COL_100" NUMBER(9)
+	"COL_001" NUMBER(` + colTyp + `), 
+	"COL_002" NUMBER(` + colTyp + `), 
+	"COL_003" NUMBER(` + colTyp + `), 
+	"COL_004" NUMBER(` + colTyp + `), 
+	"COL_005" NUMBER(` + colTyp + `), 
+	"COL_006" NUMBER(` + colTyp + `), 
+	"COL_007" NUMBER(` + colTyp + `), 
+	"COL_008" NUMBER(` + colTyp + `), 
+	"COL_009" NUMBER(` + colTyp + `), 
+	"COL_010" NUMBER(` + colTyp + `), 
+	"COL_011" NUMBER(` + colTyp + `), 
+	"COL_012" NUMBER(` + colTyp + `), 
+	"COL_013" NUMBER(` + colTyp + `), 
+	"COL_014" NUMBER(` + colTyp + `), 
+	"COL_015" NUMBER(` + colTyp + `), 
+	"COL_016" NUMBER(` + colTyp + `), 
+	"COL_017" NUMBER(` + colTyp + `), 
+	"COL_018" NUMBER(` + colTyp + `), 
+	"COL_019" NUMBER(` + colTyp + `), 
+	"COL_020" NUMBER(` + colTyp + `), 
+	"COL_021" NUMBER(` + colTyp + `), 
+	"COL_022" NUMBER(` + colTyp + `), 
+	"COL_023" NUMBER(` + colTyp + `), 
+	"COL_024" NUMBER(` + colTyp + `), 
+	"COL_025" NUMBER(` + colTyp + `), 
+	"COL_026" NUMBER(` + colTyp + `), 
+	"COL_027" NUMBER(` + colTyp + `), 
+	"COL_028" NUMBER(` + colTyp + `), 
+	"COL_029" NUMBER(` + colTyp + `), 
+	"COL_030" NUMBER(` + colTyp + `), 
+	"COL_031" NUMBER(` + colTyp + `), 
+	"COL_032" NUMBER(` + colTyp + `), 
+	"COL_033" NUMBER(` + colTyp + `), 
+	"COL_034" NUMBER(` + colTyp + `), 
+	"COL_035" NUMBER(` + colTyp + `), 
+	"COL_036" NUMBER(` + colTyp + `), 
+	"COL_037" NUMBER(` + colTyp + `), 
+	"COL_038" NUMBER(` + colTyp + `), 
+	"COL_039" NUMBER(` + colTyp + `), 
+	"COL_040" NUMBER(` + colTyp + `), 
+	"COL_041" NUMBER(` + colTyp + `), 
+	"COL_042" NUMBER(` + colTyp + `), 
+	"COL_043" NUMBER(` + colTyp + `), 
+	"COL_044" NUMBER(` + colTyp + `), 
+	"COL_045" NUMBER(` + colTyp + `), 
+	"COL_046" NUMBER(` + colTyp + `), 
+	"COL_047" NUMBER(` + colTyp + `), 
+	"COL_048" NUMBER(` + colTyp + `), 
+	"COL_049" NUMBER(` + colTyp + `), 
+	"COL_050" NUMBER(` + colTyp + `), 
+	"COL_051" NUMBER(` + colTyp + `), 
+	"COL_052" NUMBER(` + colTyp + `), 
+	"COL_053" NUMBER(` + colTyp + `), 
+	"COL_054" NUMBER(` + colTyp + `), 
+	"COL_055" NUMBER(` + colTyp + `), 
+	"COL_056" NUMBER(` + colTyp + `), 
+	"COL_057" NUMBER(` + colTyp + `), 
+	"COL_058" NUMBER(` + colTyp + `), 
+	"COL_059" NUMBER(` + colTyp + `), 
+	"COL_060" NUMBER(` + colTyp + `), 
+	"COL_061" NUMBER(` + colTyp + `), 
+	"COL_062" NUMBER(` + colTyp + `), 
+	"COL_063" NUMBER(` + colTyp + `), 
+	"COL_064" NUMBER(` + colTyp + `), 
+	"COL_065" NUMBER(` + colTyp + `), 
+	"COL_066" NUMBER(` + colTyp + `), 
+	"COL_067" NUMBER(` + colTyp + `), 
+	"COL_068" NUMBER(` + colTyp + `), 
+	"COL_069" NUMBER(` + colTyp + `), 
+	"COL_070" NUMBER(` + colTyp + `), 
+	"COL_071" NUMBER(` + colTyp + `), 
+	"COL_072" NUMBER(` + colTyp + `), 
+	"COL_073" NUMBER(` + colTyp + `), 
+	"COL_074" NUMBER(` + colTyp + `), 
+	"COL_075" NUMBER(` + colTyp + `), 
+	"COL_076" NUMBER(` + colTyp + `), 
+	"COL_077" NUMBER(` + colTyp + `), 
+	"COL_078" NUMBER(` + colTyp + `), 
+	"COL_079" NUMBER(` + colTyp + `), 
+	"COL_080" NUMBER(` + colTyp + `), 
+	"COL_081" NUMBER(` + colTyp + `), 
+	"COL_082" NUMBER(` + colTyp + `), 
+	"COL_083" NUMBER(` + colTyp + `), 
+	"COL_084" NUMBER(` + colTyp + `), 
+	"COL_085" NUMBER(` + colTyp + `), 
+	"COL_086" NUMBER(` + colTyp + `), 
+	"COL_087" NUMBER(` + colTyp + `), 
+	"COL_088" NUMBER(` + colTyp + `), 
+	"COL_089" NUMBER(` + colTyp + `), 
+	"COL_090" NUMBER(` + colTyp + `), 
+	"COL_091" NUMBER(` + colTyp + `), 
+	"COL_092" NUMBER(` + colTyp + `), 
+	"COL_093" NUMBER(` + colTyp + `), 
+	"COL_094" NUMBER(` + colTyp + `), 
+	"COL_095" NUMBER(` + colTyp + `), 
+	"COL_096" NUMBER(` + colTyp + `), 
+	"COL_097" NUMBER(` + colTyp + `), 
+	"COL_098" NUMBER(` + colTyp + `), 
+	"COL_099" NUMBER(` + colTyp + `), 
+	"COL_100" NUMBER(` + colTyp + `)
    )`
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-	defer cancel()
-	_, _ = testDb.ExecContext(ctx, "DROP TABLE tst_wide_n9")
-	if _, err := testDb.ExecContext(ctx, createWideTable); err != nil {
-		b.Fatalf("%s: %+v", createWideTable, err)
-	}
-	defer func() { _, _ = testDb.ExecContext(context.Background(), "DROP TABLE tst_wide_n9") }()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+			defer cancel()
+			_, _ = testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+			if _, err := testDb.ExecContext(ctx, createWideTable); err != nil {
+				b.Fatalf("%s: %+v", createWideTable, err)
+			}
+			defer func() { _, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
 
-	const insQry = `DECLARE
+			insQry := `DECLARE
   v_want SIMPLE_INTEGER := :1;
   
   v_ne_key CONSTANT NUMBER(19) := DBMS_RANDOM.value(0, 9999999999999999999);
@@ -696,12 +702,12 @@ func BenchmarkSelectWideN9(b *testing.B) {
   v_vendor_id CONSTANT SIMPLE_INTEGER := DBMS_RANDOM.VALUE(0, 9999);
   v_coll_source CONSTANT NUMBER(10) := DBMS_RANDOM.VALUE(0, 9999999999);
 BEGIN
-  SELECT v_want - COUNT(0) INTO v_want FROM tst_wide_n9;
+  SELECT v_want - COUNT(0) INTO v_want FROM ` + tbl + `;
   IF v_want <= 0 THEN
     RETURN;
   END IF;
-  FOR i IN 1..v_want LOOP
-    INSERT INTO tst_wide_n9 (
+  FOR i IN -v_want..-1 LOOP
+    INSERT INTO ` + tbl + ` (
 	  COL_001, COL_002, COL_003, COL_004, COL_005, COL_006, COL_007, COL_008, COL_009, COL_010, 
 	  COL_011, COL_012, COL_013, COL_014, COL_015, COL_016, COL_017, COL_018, COL_019, COL_020, 
 	  COL_021, COL_022, COL_023, COL_024, COL_025, COL_026, COL_027, COL_028, COL_029, COL_030, 
@@ -728,281 +734,82 @@ BEGIN
   END LOOP;
 END;`
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		j := (i + 1) * 100
-		b.StopTimer()
-		if _, err := testDb.ExecContext(ctx, insQry, j); err != nil {
-			b.Fatalf("%s: %+v", insQry, err)
-		}
-		qry := "SELECT * FROM tst_wide_n9 FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
+			first := true
+			var rowNum int64
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				j := (i + 1) * 10
+				if _, err := testDb.ExecContext(ctx, insQry, j); err != nil {
+					b.Fatalf("%s: %+v", insQry, err)
+				}
 
-		rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(5000), godror.FetchArraySize(5000))
-		if err != nil {
-			b.Fatalf("%s: %+v", qry, err)
-		}
-		defer rows.Close()
-		var (
-			statisticTime, insertTime                                             time.Time
-			neKey, year, month, day, hour, vendorId, collSource                   string
-			col1, col2, col3, col4, col5, col6, col7, col8, col9, col10           int64
-			col11, col12, col13, col14, col15, col16, col17, col18, col19, col20  int64
-			col21, col22, col23, col24, col25, col26, col27, col28, col29, col30  int64
-			col31, col32, col33, col34, col35, col36, col37, col38, col39, col40  int64
-			col41, col42, col43, col44, col45, col46, col47, col48, col49, col50  int64
-			col51, col52, col53, col54, col55, col56, col57, col58, col59, col60  int64
-			col61, col62, col63, col64, col65, col66, col67, col68, col69, col70  int64
-			col71, col72, col73, col74, col75, col76, col77, col78, col79, col80  int64
-			col81, col82, col83, col84, col85, col86, col87, col88, col89, col90  int64
-			col91, col92, col93, col94, col95, col96, col97, col98, col99, col100 int64
-		)
+				qry := "SELECT * FROM " + tbl + " FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
+				if strings.HasSuffix(typ, "B") {
+					qry = `SELECT 
+	  NE_KEY, STATISTIC_TIME, YEAR, MONTH, DAY, HOUR, INSERT_TIME, VENDOR_ID, COLL_SOURCE,
+	  CAST(COL_001 AS BINARY_DOUBLE), CAST(COL_002 AS BINARY_DOUBLE), CAST(COL_003 AS BINARY_DOUBLE), CAST(COL_004 AS BINARY_DOUBLE), CAST(COL_005 AS BINARY_DOUBLE), CAST(COL_006 AS BINARY_DOUBLE), CAST(COL_007 AS BINARY_DOUBLE), CAST(COL_008 AS BINARY_DOUBLE), CAST(COL_009 AS BINARY_DOUBLE), CAST(COL_010 AS BINARY_DOUBLE), 
+	  CAST(COL_011 AS BINARY_DOUBLE), CAST(COL_012 AS BINARY_DOUBLE), CAST(COL_013 AS BINARY_DOUBLE), CAST(COL_014 AS BINARY_DOUBLE), CAST(COL_015 AS BINARY_DOUBLE), CAST(COL_016 AS BINARY_DOUBLE), CAST(COL_017 AS BINARY_DOUBLE), CAST(COL_018 AS BINARY_DOUBLE), CAST(COL_019 AS BINARY_DOUBLE), CAST(COL_020 AS BINARY_DOUBLE), 
+	  CAST(COL_021 AS BINARY_DOUBLE), CAST(COL_022 AS BINARY_DOUBLE), CAST(COL_023 AS BINARY_DOUBLE), CAST(COL_024 AS BINARY_DOUBLE), CAST(COL_025 AS BINARY_DOUBLE), CAST(COL_026 AS BINARY_DOUBLE), CAST(COL_027 AS BINARY_DOUBLE), CAST(COL_028 AS BINARY_DOUBLE), CAST(COL_029 AS BINARY_DOUBLE), CAST(COL_030 AS BINARY_DOUBLE), 
+	  CAST(COL_031 AS BINARY_DOUBLE), CAST(COL_032 AS BINARY_DOUBLE), CAST(COL_033 AS BINARY_DOUBLE), CAST(COL_034 AS BINARY_DOUBLE), CAST(COL_035 AS BINARY_DOUBLE), CAST(COL_036 AS BINARY_DOUBLE), CAST(COL_037 AS BINARY_DOUBLE), CAST(COL_038 AS BINARY_DOUBLE), CAST(COL_039 AS BINARY_DOUBLE), CAST(COL_040 AS BINARY_DOUBLE), 
+	  CAST(COL_041 AS BINARY_DOUBLE), CAST(COL_042 AS BINARY_DOUBLE), CAST(COL_043 AS BINARY_DOUBLE), CAST(COL_044 AS BINARY_DOUBLE), CAST(COL_045 AS BINARY_DOUBLE), CAST(COL_046 AS BINARY_DOUBLE), CAST(COL_047 AS BINARY_DOUBLE), CAST(COL_048 AS BINARY_DOUBLE), CAST(COL_049 AS BINARY_DOUBLE), CAST(COL_050 AS BINARY_DOUBLE), 
+	  CAST(COL_051 AS BINARY_DOUBLE), CAST(COL_052 AS BINARY_DOUBLE), CAST(COL_053 AS BINARY_DOUBLE), CAST(COL_054 AS BINARY_DOUBLE), CAST(COL_055 AS BINARY_DOUBLE), CAST(COL_056 AS BINARY_DOUBLE), CAST(COL_057 AS BINARY_DOUBLE), CAST(COL_058 AS BINARY_DOUBLE), CAST(COL_059 AS BINARY_DOUBLE), CAST(COL_060 AS BINARY_DOUBLE), 
+	  CAST(COL_061 AS BINARY_DOUBLE), CAST(COL_062 AS BINARY_DOUBLE), CAST(COL_063 AS BINARY_DOUBLE), CAST(COL_064 AS BINARY_DOUBLE), CAST(COL_065 AS BINARY_DOUBLE), CAST(COL_066 AS BINARY_DOUBLE), CAST(COL_067 AS BINARY_DOUBLE), CAST(COL_068 AS BINARY_DOUBLE), CAST(COL_069 AS BINARY_DOUBLE), CAST(COL_070 AS BINARY_DOUBLE), 
+	  CAST(COL_071 AS BINARY_DOUBLE), CAST(COL_072 AS BINARY_DOUBLE), CAST(COL_073 AS BINARY_DOUBLE), CAST(COL_074 AS BINARY_DOUBLE), CAST(COL_075 AS BINARY_DOUBLE), CAST(COL_076 AS BINARY_DOUBLE), CAST(COL_077 AS BINARY_DOUBLE), CAST(COL_078 AS BINARY_DOUBLE), CAST(COL_079 AS BINARY_DOUBLE), CAST(COL_080 AS BINARY_DOUBLE), 
+	  CAST(COL_081 AS BINARY_DOUBLE), CAST(COL_082 AS BINARY_DOUBLE), CAST(COL_083 AS BINARY_DOUBLE), CAST(COL_084 AS BINARY_DOUBLE), CAST(COL_085 AS BINARY_DOUBLE), CAST(COL_086 AS BINARY_DOUBLE), CAST(COL_087 AS BINARY_DOUBLE), CAST(COL_088 AS BINARY_DOUBLE), CAST(COL_089 AS BINARY_DOUBLE), CAST(COL_090 AS BINARY_DOUBLE), 
+	  CAST(COL_091 AS BINARY_DOUBLE), CAST(COL_092 AS BINARY_DOUBLE), CAST(COL_093 AS BINARY_DOUBLE), CAST(COL_094 AS BINARY_DOUBLE), CAST(COL_095 AS BINARY_DOUBLE), CAST(COL_096 AS BINARY_DOUBLE), CAST(COL_097 AS BINARY_DOUBLE), CAST(COL_098 AS BINARY_DOUBLE), CAST(COL_099 AS BINARY_DOUBLE), CAST(COL_100 AS BINARY_DOUBLE)
+				FROM ` + tbl + " FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
+				}
 
-		var rowNum int64
-		start := time.Now()
-		b.StartTimer()
-		for rows.Next() {
-			if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
-				&insertTime, &vendorId, &collSource,
-				&col1, &col2, &col3, &col4, &col5, &col6, &col7, &col8, &col9, &col10,
-				&col11, &col12, &col13, &col14, &col15, &col16, &col17, &col18, &col19, &col20,
-				&col21, &col22, &col23, &col24, &col25, &col26, &col27, &col28, &col29, &col30,
-				&col31, &col32, &col33, &col34, &col35, &col36, &col37, &col38, &col39, &col40,
-				&col41, &col42, &col43, &col44, &col45, &col46, &col47, &col48, &col49, &col50,
-				&col51, &col52, &col53, &col54, &col55, &col56, &col57, &col58, &col59, &col60,
-				&col61, &col62, &col63, &col64, &col65, &col66, &col67, &col68, &col69, &col70,
-				&col71, &col72, &col73, &col74, &col75, &col76, &col77, &col78, &col79, &col80,
-				&col81, &col82, &col83, &col84, &col85, &col86, &col87, &col88, &col89, &col90,
-				&col91, &col92, &col93, &col94, &col95, &col96, &col97, &col98, &col99, &col100,
-			); err != nil {
-				b.Fatalf("%s: %+v", qry, err)
+				rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(5000), godror.FetchArraySize(5000))
+				if err != nil {
+					b.Fatalf("%s: %+v", qry, err)
+				}
+				defer rows.Close()
+				var (
+					statisticTime, insertTime                                             time.Time
+					neKey, year, month, day, hour, vendorId, collSource                   string
+					col1, col2, col3, col4, col5, col6, col7, col8, col9, col10           int64
+					col11, col12, col13, col14, col15, col16, col17, col18, col19, col20  int64
+					col21, col22, col23, col24, col25, col26, col27, col28, col29, col30  int64
+					col31, col32, col33, col34, col35, col36, col37, col38, col39, col40  int64
+					col41, col42, col43, col44, col45, col46, col47, col48, col49, col50  int64
+					col51, col52, col53, col54, col55, col56, col57, col58, col59, col60  int64
+					col61, col62, col63, col64, col65, col66, col67, col68, col69, col70  int64
+					col71, col72, col73, col74, col75, col76, col77, col78, col79, col80  int64
+					col81, col82, col83, col84, col85, col86, col87, col88, col89, col90  int64
+					col91, col92, col93, col94, col95, col96, col97, col98, col99, col100 int64
+				)
+
+				b.StartTimer()
+				for rows.Next() {
+					if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
+						&insertTime, &vendorId, &collSource,
+						&col1, &col2, &col3, &col4, &col5, &col6, &col7, &col8, &col9, &col10,
+						&col11, &col12, &col13, &col14, &col15, &col16, &col17, &col18, &col19, &col20,
+						&col21, &col22, &col23, &col24, &col25, &col26, &col27, &col28, &col29, &col30,
+						&col31, &col32, &col33, &col34, &col35, &col36, &col37, &col38, &col39, &col40,
+						&col41, &col42, &col43, &col44, &col45, &col46, &col47, &col48, &col49, &col50,
+						&col51, &col52, &col53, &col54, &col55, &col56, &col57, &col58, &col59, &col60,
+						&col61, &col62, &col63, &col64, &col65, &col66, &col67, &col68, &col69, &col70,
+						&col71, &col72, &col73, &col74, &col75, &col76, &col77, &col78, &col79, &col80,
+						&col81, &col82, &col83, &col84, &col85, &col86, &col87, &col88, &col89, &col90,
+						&col91, &col92, &col93, &col94, &col95, &col96, &col97, &col98, &col99, &col100,
+					); err != nil {
+						b.Fatalf("%s: %+v", qry, err)
+					}
+					if first {
+						first = false
+						b.Logf("col1=%d col2=%d col100=%d", col1, col2, col100)
+					}
+					if col1 >= 0 {
+						b.Fatalf("%d got %d wanted <0", rowNum, col1)
+					}
+					rowNum++
+				}
+				b.StopTimer()
 			}
-			rowNum++
-		}
-		b.StopTimer()
-		b.Logf("Read %d rows in %s", rowNum, time.Since(start))
-	}
-}
-
-// BenchmarkSelectWideN20_4
-//
-// go test -run=^$ -bench=Wide -cpuprofile c.pprof -memprofile m.pprof -benchtime 30s
-// go tool pprof c.pprof
-// go tool pprof m.pprof
-func BenchmarkSelectWideN20_4(b *testing.B) {
-	const createWideTable = `CREATE TABLE tst_wide_n20_4 (
-	"NE_KEY" NUMBER(19,0), 
-	"STATISTIC_TIME" DATE, 
-	"YEAR" NUMBER(4,0), 
-	"MONTH" NUMBER(2,0), 
-	"DAY" NUMBER(2,0), 
-	"HOUR" NUMBER(2,0), 
-	"INSERT_TIME" DATE, 
-	"VENDOR_ID" NUMBER(4,0), 
-	"COLL_SOURCE" NUMBER(10,0), 
-	"COL_001" NUMBER(20,4), 
-	"COL_002" NUMBER(20,4), 
-	"COL_003" NUMBER(20,4), 
-	"COL_004" NUMBER(20,4), 
-	"COL_005" NUMBER(20,4), 
-	"COL_006" NUMBER(20,4), 
-	"COL_007" NUMBER(20,4), 
-	"COL_008" NUMBER(20,4), 
-	"COL_009" NUMBER(20,4), 
-	"COL_010" NUMBER(20,4), 
-	"COL_011" NUMBER(20,4), 
-	"COL_012" NUMBER(20,4), 
-	"COL_013" NUMBER(20,4), 
-	"COL_014" NUMBER(20,4), 
-	"COL_015" NUMBER(20,4), 
-	"COL_016" NUMBER(20,4), 
-	"COL_017" NUMBER(20,4), 
-	"COL_018" NUMBER(20,4), 
-	"COL_019" NUMBER(20,4), 
-	"COL_020" NUMBER(20,4), 
-	"COL_021" NUMBER(20,4), 
-	"COL_022" NUMBER(20,4), 
-	"COL_023" NUMBER(20,4), 
-	"COL_024" NUMBER(20,4), 
-	"COL_025" NUMBER(20,4), 
-	"COL_026" NUMBER(20,4), 
-	"COL_027" NUMBER(20,4), 
-	"COL_028" NUMBER(20,4), 
-	"COL_029" NUMBER(20,4), 
-	"COL_030" NUMBER(20,4), 
-	"COL_031" NUMBER(20,4), 
-	"COL_032" NUMBER(20,4), 
-	"COL_033" NUMBER(20,4), 
-	"COL_034" NUMBER(20,4), 
-	"COL_035" NUMBER(20,4), 
-	"COL_036" NUMBER(20,4), 
-	"COL_037" NUMBER(20,4), 
-	"COL_038" NUMBER(20,4), 
-	"COL_039" NUMBER(20,4), 
-	"COL_040" NUMBER(20,4), 
-	"COL_041" NUMBER(20,4), 
-	"COL_042" NUMBER(20,4), 
-	"COL_043" NUMBER(20,4), 
-	"COL_044" NUMBER(20,4), 
-	"COL_045" NUMBER(20,4), 
-	"COL_046" NUMBER(20,4), 
-	"COL_047" NUMBER(20,4), 
-	"COL_048" NUMBER(20,4), 
-	"COL_049" NUMBER(20,4), 
-	"COL_050" NUMBER(20,4), 
-	"COL_051" NUMBER(20,4), 
-	"COL_052" NUMBER(20,4), 
-	"COL_053" NUMBER(20,4), 
-	"COL_054" NUMBER(20,4), 
-	"COL_055" NUMBER(20,4), 
-	"COL_056" NUMBER(20,4), 
-	"COL_057" NUMBER(20,4), 
-	"COL_058" NUMBER(20,4), 
-	"COL_059" NUMBER(20,4), 
-	"COL_060" NUMBER(20,4), 
-	"COL_061" NUMBER(20,4), 
-	"COL_062" NUMBER(20,4), 
-	"COL_063" NUMBER(20,4), 
-	"COL_064" NUMBER(20,4), 
-	"COL_065" NUMBER(20,4), 
-	"COL_066" NUMBER(20,4), 
-	"COL_067" NUMBER(20,4), 
-	"COL_068" NUMBER(20,4), 
-	"COL_069" NUMBER(20,4), 
-	"COL_070" NUMBER(20,4), 
-	"COL_071" NUMBER(20,4), 
-	"COL_072" NUMBER(20,4), 
-	"COL_073" NUMBER(20,4), 
-	"COL_074" NUMBER(20,4), 
-	"COL_075" NUMBER(20,4), 
-	"COL_076" NUMBER(20,4), 
-	"COL_077" NUMBER(20,4), 
-	"COL_078" NUMBER(20,4), 
-	"COL_079" NUMBER(20,4), 
-	"COL_080" NUMBER(20,4), 
-	"COL_081" NUMBER(20,4), 
-	"COL_082" NUMBER(20,4), 
-	"COL_083" NUMBER(20,4), 
-	"COL_084" NUMBER(20,4), 
-	"COL_085" NUMBER(20,4), 
-	"COL_086" NUMBER(20,4), 
-	"COL_087" NUMBER(20,4), 
-	"COL_088" NUMBER(20,4), 
-	"COL_089" NUMBER(20,4), 
-	"COL_090" NUMBER(20,4), 
-	"COL_091" NUMBER(20,4), 
-	"COL_092" NUMBER(20,4), 
-	"COL_093" NUMBER(20,4), 
-	"COL_094" NUMBER(20,4), 
-	"COL_095" NUMBER(20,4), 
-	"COL_096" NUMBER(20,4), 
-	"COL_097" NUMBER(20,4), 
-	"COL_098" NUMBER(20,4), 
-	"COL_099" NUMBER(20,4), 
-	"COL_100" NUMBER(20,4)
-   )`
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-	defer cancel()
-	_, _ = testDb.ExecContext(ctx, "DROP TABLE tst_wide_n20_4")
-	if _, err := testDb.ExecContext(ctx, createWideTable); err != nil {
-		b.Fatalf("%s: %+v", createWideTable, err)
-	}
-	defer func() { _, _ = testDb.ExecContext(context.Background(), "DROP TABLE tst_wide_n20_4") }()
-
-	const insQry = `DECLARE
-  v_want SIMPLE_INTEGER := :1;
-  
-  v_ne_key CONSTANT NUMBER(19) := DBMS_RANDOM.value(0, 9999999999999999999);
-  v_now CONSTANT DATE := SYSDATE;
-  v_year CONSTANT SIMPLE_INTEGER := TO_CHAR(v_now, 'YYYY');
-  v_month CONSTANT SIMPLE_INTEGER := TO_CHAR(v_now, 'MM');
-  v_day CONSTANT SIMPLE_INTEGER := TO_CHAR(v_now, 'DD');
-  v_hour CONSTANT SIMPLE_INTEGER := TO_CHAR(v_now, 'HH24');
-  v_vendor_id CONSTANT SIMPLE_INTEGER := DBMS_RANDOM.VALUE(0, 9999);
-  v_coll_source CONSTANT NUMBER(10) := DBMS_RANDOM.VALUE(0, 9999999999);
-BEGIN
-  SELECT v_want - COUNT(0) INTO v_want FROM tst_wide_n20_4;
-  IF v_want <= 0 THEN
-    RETURN;
-  END IF;
-  FOR i IN 1..v_want LOOP
-    INSERT INTO tst_wide_n20_4 (
-	  COL_001, COL_002, COL_003, COL_004, COL_005, COL_006, COL_007, COL_008, COL_009, COL_010, 
-	  COL_011, COL_012, COL_013, COL_014, COL_015, COL_016, COL_017, COL_018, COL_019, COL_020, 
-	  COL_021, COL_022, COL_023, COL_024, COL_025, COL_026, COL_027, COL_028, COL_029, COL_030, 
-	  COL_031, COL_032, COL_033, COL_034, COL_035, COL_036, COL_037, COL_038, COL_039, COL_040, 
-	  COL_041, COL_042, COL_043, COL_044, COL_045, COL_046, COL_047, COL_048, COL_049, COL_050, 
-	  COL_051, COL_052, COL_053, COL_054, COL_055, COL_056, COL_057, COL_058, COL_059, COL_060, 
-	  COL_061, COL_062, COL_063, COL_064, COL_065, COL_066, COL_067, COL_068, COL_069, COL_070, 
-	  COL_071, COL_072, COL_073, COL_074, COL_075, COL_076, COL_077, COL_078, COL_079, COL_080, 
-	  COL_081, COL_082, COL_083, COL_084, COL_085, COL_086, COL_087, COL_088, COL_089, COL_090, 
-	  COL_091, COL_092, COL_093, COL_094, COL_095, COL_096, COL_097, COL_098, COL_099, COL_100,
-	  NE_KEY, STATISTIC_TIME, YEAR, MONTH, DAY, HOUR, INSERT_TIME, VENDOR_ID, COLL_SOURCE 
-    ) VALUES (
-	  i*100-1+1, i*100-1+2, i*100-1+3, i*100-1+4, i*100-1+5, i*100-1+6, i*100-1+7, i*100-1+8, i*100-1+9, i*100-1+10, 
-	  i*100-1+11, i*100-1+12, i*100-1+13, i*100-1+14, i*100-1+15, i*100-1+16, i*100-1+17, i*100-1+18, i*100-1+19, i*100-1+20, 
-	  i*100-1+21, i*100-1+22, i*100-1+23, i*100-1+24, i*100-1+25, i*100-1+26, i*100-1+27, i*100-1+28, i*100-1+29, i*100-1+30, 
-	  i*100-1+31, i*100-1+32, i*100-1+33, i*100-1+34, i*100-1+35, i*100-1+36, i*100-1+37, i*100-1+38, i*100-1+39, i*100-1+40, 
-	  i*100-1+41, i*100-1+42, i*100-1+43, i*100-1+44, i*100-1+45, i*100-1+46, i*100-1+47, i*100-1+48, i*100-1+49, i*100-1+50, 
-	  i*100-1+51, i*100-1+52, i*100-1+53, i*100-1+54, i*100-1+55, i*100-1+56, i*100-1+57, i*100-1+58, i*100-1+59, i*100-1+60, 
-	  i*100-1+61, i*100-1+62, i*100-1+63, i*100-1+64, i*100-1+65, i*100-1+66, i*100-1+67, i*100-1+68, i*100-1+69, i*100-1+70, 
-	  i*100-1+71, i*100-1+72, i*100-1+73, i*100-1+74, i*100-1+75, i*100-1+76, i*100-1+77, i*100-1+78, i*100-1+79, i*100-1+80, 
-	  i*100-1+81, i*100-1+82, i*100-1+83, i*100-1+84, i*100-1+85, i*100-1+86, i*100-1+87, i*100-1+88, i*100-1+89, i*100-1+90, 
-	  i*100-1+91, i*100-1+92, i*100-1+93, i*100-1+94, i*100-1+95, i*100-1+96, i*100-1+97, i*100-1+98, i*100-1+99, i*100-1+100,
-      v_ne_key, v_now, v_year, v_month, v_day, v_hour, SYSDATE, v_vendor_id, v_coll_source);
-  END LOOP;
-END;`
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		j := (i + 1) * 100
-		b.StopTimer()
-		if _, err := testDb.ExecContext(ctx, insQry, j); err != nil {
-			b.Fatalf("%s: %+v", insQry, err)
-		}
-		qry := "SELECT * FROM tst_wide_n20_4 FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
-
-		rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(5000), godror.FetchArraySize(5000))
-		if err != nil {
-			b.Fatalf("%s: %+v", qry, err)
-		}
-		defer rows.Close()
-		var (
-			statisticTime, insertTime                                             time.Time
-			neKey, year, month, day, hour, vendorId, collSource                   string
-			col1, col2, col3, col4, col5, col6, col7, col8, col9, col10           int64
-			col11, col12, col13, col14, col15, col16, col17, col18, col19, col20  int64
-			col21, col22, col23, col24, col25, col26, col27, col28, col29, col30  int64
-			col31, col32, col33, col34, col35, col36, col37, col38, col39, col40  int64
-			col41, col42, col43, col44, col45, col46, col47, col48, col49, col50  int64
-			col51, col52, col53, col54, col55, col56, col57, col58, col59, col60  int64
-			col61, col62, col63, col64, col65, col66, col67, col68, col69, col70  int64
-			col71, col72, col73, col74, col75, col76, col77, col78, col79, col80  int64
-			col81, col82, col83, col84, col85, col86, col87, col88, col89, col90  int64
-			col91, col92, col93, col94, col95, col96, col97, col98, col99, col100 int64
-		)
-
-		var rowNum int64
-		start := time.Now()
-		b.StartTimer()
-		for rows.Next() {
-			if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
-				&insertTime, &vendorId, &collSource,
-				&col1, &col2, &col3, &col4, &col5, &col6, &col7, &col8, &col9, &col10,
-				&col11, &col12, &col13, &col14, &col15, &col16, &col17, &col18, &col19, &col20,
-				&col21, &col22, &col23, &col24, &col25, &col26, &col27, &col28, &col29, &col30,
-				&col31, &col32, &col33, &col34, &col35, &col36, &col37, &col38, &col39, &col40,
-				&col41, &col42, &col43, &col44, &col45, &col46, &col47, &col48, &col49, &col50,
-				&col51, &col52, &col53, &col54, &col55, &col56, &col57, &col58, &col59, &col60,
-				&col61, &col62, &col63, &col64, &col65, &col66, &col67, &col68, &col69, &col70,
-				&col71, &col72, &col73, &col74, &col75, &col76, &col77, &col78, &col79, &col80,
-				&col81, &col82, &col83, &col84, &col85, &col86, &col87, &col88, &col89, &col90,
-				&col91, &col92, &col93, &col94, &col95, &col96, &col97, &col98, &col99, &col100,
-			); err != nil {
-				b.Fatalf("%s: %+v", qry, err)
-			}
-			rowNum++
-		}
-		b.StopTimer()
-		b.Logf("Read %d rows in %s", rowNum, time.Since(start))
+			b.SetBytes(rowNum)
+		})
 	}
 }
