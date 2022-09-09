@@ -17,7 +17,7 @@ import (
 )
 
 func BenchmarkSelect113(b *testing.B) {
-	stopConnStats()
+	StopConnStats()
 	b.StopTimer()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()

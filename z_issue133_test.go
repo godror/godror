@@ -32,7 +32,7 @@ func BenchmarkMemoryAlloc133(t *testing.B) {
 	if err := exec.CommandContext(ctx, "go", "test", "-c").Run(); err != nil {
 		t.Fatalf("compiling: %+v", err)
 	}
-	stopConnStats()
+	StopConnStats()
 	const runs = "3"
 	cmd := exec.CommandContext(ctx, "./godror.test", "-test.run=^TestMergeMemory133$", "-test.count=1", "-test.v")
 	cmd.Env = append(os.Environ(), "DPI_DEBUG_LEVEL=32", "RUNS="+runs)

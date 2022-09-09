@@ -269,7 +269,7 @@ var statTicks chan time.Time
 func PrintConnStats() {
 	statTicks <- time.Now()
 }
-func stopConnStats() {
+func StopConnStats() {
 	statTicker.Stop()
 }
 

@@ -565,6 +565,8 @@ func BenchmarkPlSqlObj(b *testing.B) {
 // go tool pprof c.pprof
 // go tool pprof m.pprof
 func BenchmarkSelectWide(b *testing.B) {
+	StopConnStats()
+
 	tblName := func(suffix string) string { return "tst_wide_n" + strings.Replace(suffix, ",", "_", 1) }
 	for _, typ := range []string{"9", "18", "19", "20,4", "20,4B"} {
 		typ := typ
@@ -800,10 +802,10 @@ END;`
 					}
 					if first {
 						first = false
-						b.Logf("col1=%d col2=%d col100=%d", col1, col2, col100)
-					}
-					if col1 >= 0 {
-						b.Fatalf("%d got %d wanted <0", rowNum, col1)
+						if col1 >= 0 {
+							b.Logf("col1=%d col2=%d col100=%d", col1, col2, col100)
+							b.Fatalf("%d got %d wanted <0", rowNum, col1)
+						}
 					}
 					rowNum++
 				}
