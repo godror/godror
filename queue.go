@@ -624,7 +624,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	D.MsgID = nil
 	if OK(C.dpiDeqOptions_getMsgId(opts, &value, &length), "getMsgId") {
 		if length != 0 {
-			D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length)]
+			D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]
 		}
 	}
 	var nav C.dpiDeqNavigation

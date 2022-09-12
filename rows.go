@@ -377,10 +377,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	//fmt.Printf("data=%#v\n", r.data)
 
 	nullDate := r.statement.NullDate()
-	mkNumber := func(s string) interface{} { return Number(s) }
-	if r.statement.NumberAsString() {
-		mkNumber = func(s string) interface{} { return s }
-	}
+	nass := r.statement.NumberAsString()
 
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
@@ -408,7 +405,12 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = ""
 				continue
 			}
-			dest[i] = C.GoStringN(b.ptr, C.int(b.length))
+			if b.length < 10 {
+				bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+				dest[i] = internBytes(bb)
+			} else {
+				dest[i] = C.GoStringN(b.ptr, C.int(b.length))
+			}
 
 		case C.DPI_ORACLE_TYPE_NUMBER:
 			if isNull {
@@ -435,9 +437,14 @@ func (r *rows) Next(dest []driver.Value) error {
 			default:
 				//b := C.dpiData_getBytes(d)
 				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
-				s := C.GoStringN(b.ptr, C.int(b.length))
+				//s := C.GoStringN(b.ptr, C.int(b.length))
+				bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
 
-				dest[i] = mkNumber(s)
+				if nass {
+					dest[i] = internBytes(bb)
+				} else {
+					dest[i] = internNumberBytes(bb)
+				}
 				if false && logger != nil {
 					logger.Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
 				}

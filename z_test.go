@@ -4661,3 +4661,28 @@ END;`,
 	}
 	t.Log(res.AsMapSlice(true))
 }
+func TestSelectText(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
+	defer cancel()
+	qry := "SELECT UPPER(:1) FROM DUAL"
+	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	stmt, err := testDb.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	for _, in := range []string{"a", "abc", "abcd", "árvíztűrő tükörfúrógép"} {
+		var got string
+		if err := stmt.QueryRowContext(ctx, in).Scan(&got); err != nil {
+			t.Errorf("%s [%q]: %+v", qry, in, err)
+		}
+		t.Logf("%q -> %q", in, got)
+		if want := strings.ToUpper(in); got != want {
+			t.Errorf("%q. got %q, wanted %q", in, got, want)
+		}
+	}
+}
