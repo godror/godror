@@ -3633,7 +3633,7 @@ func TestSelectNullTime(t *testing.T) {
 	const qry = "SELECT SYSDATE, SYSDATE+NULL, SYSDATE+NULL FROM DUAL"
 	var t0, t1 time.Time
 	var nt sql.NullTime
-	ctx, cancel := context.WithTimeout(testContext("SelectNullTime"), time.Second)
+	ctx, cancel := context.WithTimeout(testContext("SelectNullTime"), 30*time.Second)
 	err := testDb.QueryRowContext(ctx, qry, godror.NullDateAsZeroTime()).Scan(&t0, &t1, &nt)
 	cancel()
 	if err != nil {
