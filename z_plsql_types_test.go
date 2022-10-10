@@ -286,6 +286,7 @@ func createPackages(ctx context.Context) error {
 		FOR i IN 1..3 LOOP
 			res_list.extend();
 			rec.id := i;
+			rec.rec.id := 2*i+1;  --initialize sub-record for #283
 			--test_record(rec.id, rec.id, rec.rec);
 			res_list(res_list.count) := rec;
 		END LOOP;
