@@ -253,7 +253,7 @@ func (c *conn) closeNotLocking() error {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
 	for k, v := range c.objTypes {
-		v.Close()
+		_ = v.Close()
 		delete(c.objTypes, k)
 	}
 

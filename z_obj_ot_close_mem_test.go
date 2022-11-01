@@ -102,7 +102,7 @@ func TestObjOpenClose(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer objType.Close()
+		//defer objType.Close()
 
 		obj, err := objType.NewObject()
 		if err != nil {
@@ -143,7 +143,7 @@ func TestObjOpenClose(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("%d; process memory (rss): %.3f MiB\n", loopCnt, float64(rss)/1024/1024)
-		if rss > startMem {
+		if rss > startMem*2 {
 			t.Errorf("started with RSS %d, got %d", startMem, rss)
 		}
 	}

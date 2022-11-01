@@ -878,27 +878,24 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
-	logger := getLogger()
 	if t := c.objTypes[name]; t != nil {
 		if t.drv != nil {
-			if logger != nil {
-				logger.Log("msg", "GetObjectType CACHED", "name", name)
-			}
+			//fmt.Println("GetObjectType CACHED", name)
 			return t, nil
 		}
-		if logger != nil {
-			logger.Log("msg", "GetObjectType CLOSED", "name", name)
-		}
+		//fmt.Printf("GetObjectType(%q) %p is CLOSED on %p\n", name, t, c)
 		// t is closed
 		delete(c.objTypes, name)
+		delete(c.objTypes, t.FullName())
 	}
 
-	cName := C.CString(name)
-	defer func() { C.free(unsafe.Pointer(cName)) }()
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
-	if err := c.checkExec(func() C.int {
+	cName := C.CString(name)
+	err := c.checkExec(func() C.int {
 		return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
-	}); err != nil {
+	})
+	C.free(unsafe.Pointer(cName))
+	if err != nil {
 		C.free(unsafe.Pointer(objType))
 		if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
 			err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
@@ -908,14 +905,13 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
 	}
 	t := &ObjectType{drv: c.drv, dpiObjectType: objType}
-	err := t.init()
-	if err != nil {
+	if err = t.init(c.objTypes); err != nil {
 		return t, err
 	}
-	if logger != nil {
-		logger.Log("msg", "GetObjectType NEW", "name", name)
+	if name != t.FullName() {
+		c.objTypes[name] = t
 	}
-	c.objTypes[name] = t
+	//fmt.Printf("GetObjectType(%q/%q) NEW: %p\n", name, t.FullName(), t)
 	return t, nil
 }
 
@@ -967,12 +963,16 @@ func (t *ObjectType) Close() error {
 	if t == nil {
 		return nil
 	}
+	//var a [4096]byte
+	//stack := a[:runtime.Stack(a[:], false)]
+	//fmt.Printf("ObjectType %p[%q].Close(): %s\n", t, t.Name, stack)
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	attributes, cof, d, conn := t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv
+	attributes, cof, ot, drv := t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv
 	t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv = nil, nil, nil, nil
 
-	if d == nil {
+	if ot == nil {
 		return nil
 	}
 
@@ -992,8 +992,8 @@ func (t *ObjectType) Close() error {
 	if logger != nil {
 		logger.Log("msg", "ObjectType.Close", "name", t.Name)
 	}
-	if err := conn.checkExec(func() C.int { return C.dpiObjectType_release(d) }); err != nil {
-		return fmt.Errorf("error on close object type: %w", err)
+	if err := drv.checkExec(func() C.int { return C.dpiObjectType_release(ot) }); err != nil {
+		return fmt.Errorf("error releasing object type: %w", err)
 	}
 
 	return nil
@@ -1010,10 +1010,17 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		ObjectType: &ObjectType{dpiObjectType: objectType, drv: c.drv},
 		dpiObject:  object,
 	}
-	return o, o.init()
+	c.mu.RLock()
+	err := o.ObjectType.init(c.objTypes)
+	c.mu.RUnlock()
+	if err != nil {
+		_ = o.Close()
+		return nil, err
+	}
+	return o, nil
 }
 
-func (t *ObjectType) init() error {
+func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if t.drv == nil {
 		panic("conn is nil")
 	}
@@ -1041,7 +1048,7 @@ func (t *ObjectType) init() error {
 	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
 		t.CollectionOf = &ObjectType{drv: t.drv}
-		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo); err != nil {
+		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo, cache); err != nil {
 			return err
 		}
 		if t.CollectionOf.Name == "" {
@@ -1054,6 +1061,9 @@ func (t *ObjectType) init() error {
 	}
 	if numAttributes == 0 {
 		t.Attributes = map[string]ObjectAttribute{}
+		if cache != nil {
+			cache[t.FullName()] = t
+		}
 		return nil
 	}
 	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
@@ -1074,7 +1084,7 @@ func (t *ObjectType) init() error {
 			logger.Log("i", i, "attrInfo", attrInfo)
 		}
 		typ := attrInfo.typeInfo
-		sub, err := objectTypeFromDataTypeInfo(t.drv, typ)
+		sub, err := objectTypeFromDataTypeInfo(t.drv, typ, cache)
 		if err != nil {
 			return err
 		}
@@ -1094,10 +1104,13 @@ func (t *ObjectType) init() error {
 	if closeObjectWithFinalizer {
 		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
 	}
+	if cache != nil {
+		cache[t.FullName()] = t
+	}
 	return nil
 }
 
-func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
+func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*ObjectType) error {
 	t.dpiObjectType = typ.objectType
 
 	t.OracleTypeNum = typ.oracleTypeNum
@@ -1108,9 +1121,9 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo) error {
 	t.Precision = int16(typ.precision)
 	t.Scale = int8(typ.scale)
 	t.FsPrecision = uint8(typ.fsPrecision)
-	return t.init()
+	return t.init(cache)
 }
-func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo) (*ObjectType, error) {
+func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]*ObjectType) (*ObjectType, error) {
 	if d == nil {
 		panic("drv is nil")
 	}
@@ -1118,7 +1131,7 @@ func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo) (*ObjectType, err
 		panic("typ is nil")
 	}
 	t := &ObjectType{drv: d}
-	err := t.fromDataTypeInfo(typ)
+	err := t.fromDataTypeInfo(typ, cache)
 	return t, err
 }
 
