@@ -616,6 +616,7 @@ func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 			Name:  C.GoStringN(names[i], C.int(nameLengths[i])),
 			Value: &fields[i],
 		}
+		C.free(unsafe.Pointer(names[i]))
 	}
 	return ff
 }
@@ -654,8 +655,8 @@ func populateJSONNode(jsonnode *C.dpiJsonNode, in interface{}) error {
 		for k, v := range m {
 			cKey = C.CString(k)
 			C.godror_dpiJsonObject_setKey(jsonnode, i, cKey, C.uint32_t(len(k)))
-			var jsonnodelocal *C.dpiJsonNode
 			C.free(unsafe.Pointer(cKey))
+			var jsonnodelocal *C.dpiJsonNode
 			C.godror_setObjectFields(dpijsonobj, i, (**C.dpiJsonNode)(unsafe.Pointer(&jsonnodelocal)))
 			err := populateJSONNode(jsonnodelocal, v)
 			if err != nil {

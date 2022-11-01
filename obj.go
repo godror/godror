@@ -878,9 +878,16 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
+	logger := getLogger()
 	if t := c.objTypes[name]; t != nil {
 		if t.drv != nil {
+			if logger != nil {
+				logger.Log("msg", "GetObjectType CACHED", "name", name)
+			}
 			return t, nil
+		}
+		if logger != nil {
+			logger.Log("msg", "GetObjectType CLOSED", "name", name)
 		}
 		// t is closed
 		delete(c.objTypes, name)
@@ -904,6 +911,9 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	err := t.init()
 	if err != nil {
 		return t, err
+	}
+	if logger != nil {
+		logger.Log("msg", "GetObjectType NEW", "name", name)
 	}
 	c.objTypes[name] = t
 	return t, nil

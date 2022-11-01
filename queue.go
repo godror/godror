@@ -410,8 +410,9 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	var value *C.char
 	var length C.uint
 	M.Correlation = ""
-	if OK(C.dpiMsgProps_getCorrelation(props, &value, &length), "getCorrelation") {
+	if OK(C.dpiMsgProps_getCorrelation(props, &value, &length), "getCorrelation") && value != nil && length != 0 {
 		M.Correlation = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 
 	M.Delay = 0
@@ -426,8 +427,9 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 	}
 
 	M.ExceptionQ = ""
-	if OK(C.dpiMsgProps_getExceptionQ(props, &value, &length), "getExceptionQ") {
+	if OK(C.dpiMsgProps_getExceptionQ(props, &value, &length), "getExceptionQ") && value != nil && length != 0 {
 		M.ExceptionQ = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 
 	var ts C.dpiTimestamp
@@ -525,8 +527,9 @@ func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
 
 	var value *C.char
 	var length C.uint
-	if OK(C.dpiEnqOptions_getTransformation(opts, &value, &length), "getTransformation") {
+	if OK(C.dpiEnqOptions_getTransformation(opts, &value, &length), "getTransformation") && value != nil && length != 0 {
 		E.Transformation = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 
 	var vis C.dpiVisibility
@@ -601,20 +604,24 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	var value *C.char
 	var length C.uint
 	D.Transformation = ""
-	if OK(C.dpiDeqOptions_getTransformation(opts, &value, &length), "getTransformation") {
+	if OK(C.dpiDeqOptions_getTransformation(opts, &value, &length), "getTransformation") && value != nil && length != 0 {
 		D.Transformation = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 	D.Condition = ""
-	if OK(C.dpiDeqOptions_getCondition(opts, &value, &length), "getCondifion") {
+	if OK(C.dpiDeqOptions_getCondition(opts, &value, &length), "getCondifion") && value != nil && length != 0 {
 		D.Condition = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 	D.Consumer = ""
-	if OK(C.dpiDeqOptions_getConsumerName(opts, &value, &length), "getConsumer") {
+	if OK(C.dpiDeqOptions_getConsumerName(opts, &value, &length), "getConsumer") && value != nil && length != 0 {
 		D.Consumer = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 	D.Correlation = ""
-	if OK(C.dpiDeqOptions_getCorrelation(opts, &value, &length), "getCorrelation") {
+	if OK(C.dpiDeqOptions_getCorrelation(opts, &value, &length), "getCorrelation") && value != nil && length != 0 {
 		D.Correlation = C.GoStringN(value, C.int(length))
+		C.free(unsafe.Pointer(value))
 	}
 	D.DeliveryMode = DeliverPersistent
 	var mode C.dpiDeqMode

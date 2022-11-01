@@ -38,6 +38,8 @@ func internString(s string) string {
 	return s
 }
 
+var _ = internString
+
 // internBytes returns b converted to a string, interned.
 func internBytes(b []byte) string {
 	m := internStringPool.Get().(map[string]string)
