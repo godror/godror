@@ -1,10 +1,11 @@
+--sqlplus admin/...@db201911301540_medium
 WHENEVER SQLERROR CONTINUE
 
 DROP USER test CASCADE;
 
 WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 
-CREATE USER test IDENTIFIED BY r97oUPimsmTOIcBaeeDF;
+CREATE USER test IDENTIFIED BY KSyB5a2vTpEKB1WT;
 ALTER USER test QUOTA 100m ON data;
 GRANT create session, create table, create type, create sequence, create synonym, create procedure, change notification TO test;
 GRANT EXECUTE ON SYS.DBMS_AQ TO test;

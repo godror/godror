@@ -1,2 +1,3 @@
-WALLET_LOCATION = (SOURCE = (METHOD = file) (METHOD_DATA = (DIRECTORY="?/network/admin")))
+WALLET_LOCATION = (SOURCE = (METHOD = file) (METHOD_DATA = (DIRECTORY="/home/gthomas/src/github.com/godror/godror/contrib/free.db")))
+
 SSL_SERVER_DN_MATCH=yes
