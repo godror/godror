@@ -18,7 +18,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	godror "github.com/godror/godror"
@@ -59,11 +58,14 @@ END;`
 
 	{
 		const qry = `DECLARE
-  clobResult CLOB := :1;
+  v_out CLOB := :1;
+  v_inp CLOB := :2;
 BEGIN
-  clobResult := XMLTYPE.CREATEXML(:2);
+  DBMS_LOB.copy(v_out, v_inp, DBMS_LOB.getlength(v_inp));
 END;`
-		_, err = tx.ExecContext(ctx, qry, clobResult, `<?xml version="1.0" charset="utf-8"?>
+		_, err = tx.ExecContext(ctx, qry,
+			sql.Out{Dest: &clobResult, In: true},
+			`<?xml version="1.0" charset="utf-8"?>
 <!-- a very long xml -->`)
 		if err != nil {
 			t.Fatalf("ExecContext(%q): %+v", qry, err)
@@ -80,10 +82,10 @@ END;`
 	var offset int64
 	bufSize := int64(32768)
 	buf := make([]byte, bufSize)
-	for {
+	for i := 0; i < 100; i++ {
 		count, err := directLob.ReadAt(buf, offset)
 		if err != nil {
-			t.Errorf("ReadAt(%d): %+v", offset, err)
+			t.Fatalf("ReadAt(%d): %+v", offset, err)
 		}
 		if int64(count) > bufSize/int64(4) {
 			count = int(bufSize / 4)
@@ -95,12 +97,7 @@ END;`
 		}
 	}
 
-	t.Log(strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return -1
-	}, result.String()))
+	t.Logf("result: %q", result.String())
 }
 
 func TestInsertLargeLOB(t *testing.T) {

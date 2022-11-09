@@ -2522,7 +2522,9 @@ func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error
 		if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil {
 			return fmt.Errorf("dpiVar_setFromLob(%p): %w", r.dpiLob, err)
 		}
+		return nil
 	}
+
 	logger := getLogger()
 
 	// For small reads it is faster to set it as byte slice
@@ -2562,7 +2564,7 @@ func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error
 	defer lw.Close() // Do NOT close before dpiVar_setFromLob !
 	written, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
 	if logger != nil {
-		logger.Log("msg", "setLOB", "written", n, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
+		logger.Log("msg", "setLOB", "written", written, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
 	}
 	if err != nil {
 		return err
