@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2022 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -18,12 +18,90 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	godror "github.com/godror/godror"
 	"github.com/godror/godror/dsn"
 	"github.com/google/go-cmp/cmp"
 )
+
+func TestLoadXMLLOB(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("LoadXMLLOB"), 60*time.Second)
+	defer cancel()
+
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx...%+v", err)
+	}
+
+	defer tx.Rollback()
+	var clobResult godror.Lob = godror.Lob{IsClob: true}
+
+	{
+		const qry = `DECLARE 
+  clobResult CLOB;
+BEGIN
+  DBMS_LOB.createtemporary(clobResult, TRUE, DBMS_LOB.SESSION);
+  :2 := clobResult;
+END;`
+
+		stmt, err := tx.PrepareContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("PrepareContex...%+v", err)
+		}
+		defer stmt.Close()
+
+		if _, err = stmt.ExecContext(ctx, godror.LobAsReader(), sql.Out{Dest: &clobResult}); err != nil {
+			t.Fatalf("ExecContext lob...%+v", err)
+		}
+	}
+
+	{
+		const qry = `DECLARE
+  clobResult CLOB := :1;
+BEGIN
+  clobResult := XMLTYPE.CREATEXML(:2);
+END;`
+		_, err = tx.ExecContext(ctx, qry, clobResult, `<?xml version="1.0" charset="utf-8"?>
+<!-- a very long xml -->`)
+		if err != nil {
+			t.Fatalf("ExecContext(%q): %+v", qry, err)
+		}
+	}
+
+	directLob, err := clobResult.Hijack()
+	if err != nil {
+		t.Fatalf("Hijack...%+v", err)
+	}
+	defer directLob.Close()
+
+	var result strings.Builder
+	var offset int64
+	bufSize := int64(32768)
+	buf := make([]byte, bufSize)
+	for {
+		count, err := directLob.ReadAt(buf, offset)
+		if err != nil {
+			t.Errorf("ReadAt(%d): %+v", offset, err)
+		}
+		if int64(count) > bufSize/int64(4) {
+			count = int(bufSize / 4)
+		}
+		offset += int64(count)
+		result.Write(buf[:count])
+		if count == 0 {
+			break
+		}
+	}
+
+	t.Log(strings.Map(func(r rune) rune {
+		if unicode.IsPrint(r) {
+			return r
+		}
+		return -1
+	}, result.String()))
+}
 
 func TestInsertLargeLOB(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 60*time.Second)
