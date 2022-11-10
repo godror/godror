@@ -68,7 +68,7 @@ static dpiMutexType dpiGlobalMutex;
 
 // forward declarations of internal functions only used in this file
 static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
-        dpiError *error);
+        const char *fnName, dpiError *error);
 static void dpiGlobal__finalize(void);
 static int dpiGlobal__getErrorBuffer(const char *fnName, dpiError *error);
 
@@ -96,7 +96,7 @@ int dpiGlobal__ensureInitialized(const char *fnName,
     if (!dpiGlobalInitialized) {
         dpiMutex__acquire(dpiGlobalMutex);
         if (!dpiGlobalInitialized)
-            dpiGlobal__extendedInitialize(params, error);
+            dpiGlobal__extendedInitialize(params, fnName, error);
         dpiMutex__release(dpiGlobalMutex);
         if (!dpiGlobalInitialized)
             return DPI_FAILURE;
@@ -115,9 +115,14 @@ int dpiGlobal__ensureInitialized(const char *fnName,
 // IANA or Oracle character set name.
 //-----------------------------------------------------------------------------
 static int dpiGlobal__extendedInitialize(dpiContextCreateParams *params,
-        dpiError *error)
+        const char *fnName, dpiError *error)
 {
     int status;
+
+    // initialize debugging
+    dpiDebug__initialize();
+    if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
+        dpiDebug__print("fn start %s\n", fnName);
 
     // load OCI library
     if (dpiOci__loadLib(params, &dpiGlobalClientVersionInfo, error) < 0)
@@ -276,7 +281,6 @@ DPI_INITIALIZER(dpiGlobal__initialize)
     memset(&dpiGlobalErrorBuffer, 0, sizeof(dpiGlobalErrorBuffer));
     strcpy(dpiGlobalErrorBuffer.encoding, DPI_CHARSET_NAME_UTF8);
     dpiMutex__initialize(dpiGlobalMutex);
-    dpiDebug__initialize();
     atexit(dpiGlobal__finalize);
 }
 

@@ -829,7 +829,7 @@ type ObjectType struct {
 	Attributes                          map[string]ObjectAttribute
 	drv                                 *drv
 	dpiObjectType                       *C.dpiObjectType
-	Schema, Name                        string
+	Schema, Name, PackageName           string
 	DBSize, ClientSizeInBytes, CharSize int
 	mu                                  sync.RWMutex
 	OracleTypeNum                       C.dpiOracleTypeNum
@@ -1043,6 +1043,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	}
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
+	t.PackageName = C.GoStringN(info.packageName, C.int(info.packageNameLength))
 	t.CollectionOf = nil
 
 	numAttributes := int(info.numAttributes)

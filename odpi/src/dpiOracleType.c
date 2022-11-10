@@ -553,7 +553,7 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 
     // acquire object type, if applicable
     if (info->oracleTypeNum == DPI_ORACLE_TYPE_OBJECT) {
-        if (dpiObjectType__allocate(conn, handle, DPI_OCI_ATTR_TYPE_NAME,
+        if (dpiObjectType__allocate(conn, handle, handleType,
                 &info->objectType, error) < 0)
             return DPI_FAILURE;
         if (dpiObjectType__isXmlType(info->objectType)) {

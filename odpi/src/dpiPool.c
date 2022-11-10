@@ -156,16 +156,16 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             return DPI_FAILURE;
 
         if (createParams->accessTokenCallback) {
-            // set IAM context callback on session handle
+            // set token based auth context callback on session handle
             if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
-                    (void*) pool, 0, DPI_OCI_ATTR_IAM_CBKCTX,
+                    (void*) pool, 0, DPI_OCI_ATTR_TOKEN_CBKCTX,
                     "set token callback context", error) < 0)
                 return DPI_FAILURE;
 
-            // set IAM callback on session handle
+            // set token based auth callback on session handle
             if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
                     (void*) dpiPool__accessTokenCallback, 0,
-                    DPI_OCI_ATTR_IAM_CBK, "set token callback", error) < 0)
+                    DPI_OCI_ATTR_TOKEN_CBK, "set token callback", error) < 0)
                 return DPI_FAILURE;
         }
     }

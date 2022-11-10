@@ -218,8 +218,6 @@ int dpiContext_createWithParams(unsigned int majorVersion,
     if (!localParams.loadErrorUrl)
         localParams.loadErrorUrl = DPI_DEFAULT_LOAD_ERROR_URL;
 
-    if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
-        dpiDebug__print("fn start %s\n", __func__);
     status = dpiContext__create(__func__, majorVersion, minorVersion,
             &localParams, context, &error);
     if (status < 0) {

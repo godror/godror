@@ -69,8 +69,8 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   4
-#define DPI_MINOR_VERSION   4
-#define DPI_PATCH_LEVEL     1
+#define DPI_MINOR_VERSION   6
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -681,6 +681,8 @@ struct dpiObjectTypeInfo {
     int isCollection;
     dpiDataTypeInfo elementTypeInfo;
     uint16_t numAttributes;
+    const char *packageName;
+    uint32_t packageNameLength;
 };
 
 // structure used for creating pools
@@ -1004,6 +1006,13 @@ DPI_EXPORT int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options);
 
 // create a new enqueue options object and return it
 DPI_EXPORT int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options);
+
+// create a new, empty JSON
+DPI_EXPORT int dpiConn_newJson(dpiConn *conn, dpiJson **json);
+
+// create a new AQ queue with JSON payload
+DPI_EXPORT int dpiConn_newJsonQueue(dpiConn *conn, const char *name,
+        uint32_t nameLength, dpiQueue **queue);
 
 // create a new message properties object and return it
 DPI_EXPORT int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props);
@@ -1470,6 +1479,9 @@ DPI_EXPORT int dpiMsgProps_getOriginalMsgId(dpiMsgProps *props,
 DPI_EXPORT int dpiMsgProps_getPayload(dpiMsgProps *props, dpiObject **obj,
         const char **value, uint32_t *valueLength);
 
+// return the payload of the message (JSON)
+DPI_EXPORT int dpiMsgProps_getPayloadJson(dpiMsgProps *props, dpiJson **json);
+
 // return the priority of the message
 DPI_EXPORT int dpiMsgProps_getPriority(dpiMsgProps *props, int32_t *value);
 
@@ -1501,6 +1513,9 @@ DPI_EXPORT int dpiMsgProps_setOriginalMsgId(dpiMsgProps *props,
 // set the payload of the message (as a series of bytes)
 DPI_EXPORT int dpiMsgProps_setPayloadBytes(dpiMsgProps *props,
         const char *value, uint32_t valueLength);
+
+// set the payload of the message (as JSON)
+DPI_EXPORT int dpiMsgProps_setPayloadJson(dpiMsgProps *props, dpiJson *json);
 
 // set the payload of the message (as an object)
 DPI_EXPORT int dpiMsgProps_setPayloadObject(dpiMsgProps *props,

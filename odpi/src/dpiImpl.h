@@ -200,6 +200,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SCHEMA_NAME                    9
 #define DPI_OCI_ATTR_ROW_COUNT                      9
 #define DPI_OCI_ATTR_PREFETCH_ROWS                  11
+#define DPI_OCI_ATTR_PACKAGE_NAME                   12
 #define DPI_OCI_ATTR_PARAM_COUNT                    18
 #define DPI_OCI_ATTR_ROWID                          19
 #define DPI_OCI_ATTR_USERNAME                       22
@@ -343,10 +344,11 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
 #define DPI_OCI_ATTR_SODA_METADATA_CACHE            624
 #define DPI_OCI_ATTR_SODA_HINT                      627
-#define DPI_OCI_ATTR_IAM_TOKEN                      636
+#define DPI_OCI_ATTR_TOKEN                          636
 #define DPI_OCI_ATTR_IAM_PRIVKEY                    637
-#define DPI_OCI_ATTR_IAM_CBK                        638
-#define DPI_OCI_ATTR_IAM_CBKCTX                     639
+#define DPI_OCI_ATTR_TOKEN_CBK                      638
+#define DPI_OCI_ATTR_TOKEN_CBKCTX                   639
+#define DPI_OCI_ATTR_TOKEN_ISBEARER                 657
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -1244,8 +1246,8 @@ typedef struct {
     dpiMsgProps **props;                // array of dpiMsgProps handles
     void **handles;                     // array of OCI msg prop handles
     void **instances;                   // array of instances
-    void **indicators;                  // array of indicators
-    int16_t *rawIndicators;             // array of indicators (RAW queues)
+    void **indicators;                  // array of indicator pointers
+    int16_t *scalarIndicators;          // array of scalar indicator buffers
     void **msgIds;                      // array of OCI message ids
 } dpiQueueBuffer;
 
@@ -1289,6 +1291,7 @@ struct dpiConn {
     const char *releaseString;          // cached release string or NULL
     uint32_t releaseStringLength;       // cached release string length or 0
     void *rawTDO;                       // cached RAW TDO
+    void *jsonTDO;                      // cached JSON TDO
     dpiVersionInfo versionInfo;         // Oracle database version info
     uint32_t commitMode;                // commit mode (for two-phase commits)
     uint16_t charsetId;                 // database character set ID
@@ -1419,6 +1422,8 @@ struct dpiObjectType {
     const char *schema;                 // schema owning type (CHAR encoding)
     uint32_t schemaLength;              // length of schema owning type
     const char *name;                   // name of type (CHAR encoding)
+    uint32_t packageNameLength;         // length of package name
+    const char *packageName;            // package name of type (CHAR ENCODING)
     uint32_t nameLength;                // length of name of type
     dpiDataTypeInfo elementTypeInfo;    // type info of elements of collection
     int isCollection;                   // is type a collection?
@@ -1494,6 +1499,7 @@ struct dpiMsgProps {
     void *handle;                       // OCI message properties handle
     dpiObject *payloadObj;              // payload (object)
     void *payloadRaw;                   // payload (RAW)
+    dpiJson *payloadJson;               // payload (JSON)
     void *msgIdRaw;                     // message ID (RAW)
 };
 
@@ -1554,6 +1560,7 @@ struct dpiQueue {
     dpiDeqOptions *deqOptions;          // dequeue options
     dpiEnqOptions *enqOptions;          // enqueue options
     dpiQueueBuffer buffer;              // buffer area
+    int isJson;                         // is JSON payload?
 };
 
 
@@ -1684,6 +1691,7 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error);
 void dpiConn__free(dpiConn *conn, dpiError *error);
+int dpiConn__getJsonTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
         dpiError *error);
@@ -1772,8 +1780,8 @@ void dpiObject__free(dpiObject *obj, dpiError *error);
 //-----------------------------------------------------------------------------
 // definition of internal dpiObjectType methods
 //-----------------------------------------------------------------------------
-int dpiObjectType__allocate(dpiConn *conn, void *param,
-        uint32_t nameAttribute, dpiObjectType **objType, dpiError *error);
+int dpiObjectType__allocate(dpiConn *conn, void *handle, uint32_t handleType,
+        dpiObjectType **objType, dpiError *error);
 void dpiObjectType__free(dpiObjectType *objType, dpiError *error);
 int dpiObjectType__isXmlType(dpiObjectType *objType);
 
@@ -1860,7 +1868,8 @@ void dpiSodaDocCursor__free(dpiSodaDocCursor *cursor, dpiError *error);
 // definition of internal dpiQueue methods
 //-----------------------------------------------------------------------------
 int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
-        dpiObjectType *payloadType, dpiQueue **queue, dpiError *error);
+        dpiObjectType *payloadType, dpiQueue **queue, int isJson,
+        dpiError *error);
 void dpiQueue__free(dpiQueue *queue, dpiError *error);
 
 

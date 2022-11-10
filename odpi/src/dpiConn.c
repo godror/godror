@@ -723,9 +723,23 @@ static int dpiConn__getHandles(dpiConn *conn, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
+// dpiConn__getJsonTDO() [INTERNAL]
+//   Internal method used for ensuring that the JSON TDO has been cached on the
+// connection.
+//-----------------------------------------------------------------------------
+int dpiConn__getJsonTDO(dpiConn *conn, dpiError *error)
+{
+    if (conn->jsonTDO)
+        return DPI_SUCCESS;
+    return dpiOci__typeByName(conn, "SYS", 3, "JSON", 4, &conn->jsonTDO,
+            error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn__getRawTDO() [INTERNAL]
 //   Internal method used for ensuring that the RAW TDO has been cached on the
-//connection.
+// connection.
 //-----------------------------------------------------------------------------
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error)
 {
@@ -1986,8 +2000,8 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
     }
 
     // create object type
-    status = dpiObjectType__allocate(conn, param, DPI_OCI_ATTR_NAME, objType,
-            &error);
+    status = dpiObjectType__allocate(conn, param, DPI_OCI_HTYPE_DESCRIBE,
+            objType, &error);
     dpiOci__handleFree(describeHandle, DPI_OCI_HTYPE_DESCRIBE);
     return dpiGen__endPublicFn(conn, status, &error);
 }
@@ -2127,6 +2141,43 @@ int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options)
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_newJson() [PUBLIC]
+//   Create a new JSON object and return it.
+//-----------------------------------------------------------------------------
+int dpiConn_newJson(dpiConn *conn, dpiJson **json)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, json);
+    status = dpiJson__allocate(conn, json, &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_newJsonQueue() [PUBLIC]
+//   Create a new AQ queue object with JSON payload and return it.
+//-----------------------------------------------------------------------------
+int dpiConn_newJsonQueue(dpiConn *conn, const char *name, uint32_t nameLength,
+        dpiQueue **queue)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, name)
+    DPI_CHECK_PTR_NOT_NULL(conn, queue)
+    status = dpiQueue__allocate(conn, name, nameLength, NULL, queue, 1,
+            &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_newTempLob() [PUBLIC]
 //   Create a new temporary LOB and return it.
 //-----------------------------------------------------------------------------
@@ -2194,7 +2245,7 @@ int dpiConn_newQueue(dpiConn *conn, const char *name, uint32_t nameLength,
     DPI_CHECK_PTR_AND_LENGTH(conn, name)
     DPI_CHECK_PTR_NOT_NULL(conn, queue)
     status = dpiQueue__allocate(conn, name, nameLength, payloadType, queue,
-            &error);
+            0, &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
