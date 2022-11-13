@@ -8,6 +8,7 @@
 // at any time without notification.
 // All functions may be called concurrently
 // with themselves and each other.
+
 package godror
 
 import "sync"
@@ -43,12 +44,12 @@ var _ = internString
 // internBytes returns b converted to a string, interned.
 func internBytes(b []byte) string {
 	m := internStringPool.Get().(map[string]string)
-	c, ok := m[string(b)]
+	s := string(b)
+	c, ok := m[s]
 	if ok {
 		internStringPool.Put(m)
 		return c
 	}
-	s := string(b)
 	m[s] = s
 	internStringPool.Put(m)
 	return s
@@ -57,12 +58,12 @@ func internBytes(b []byte) string {
 // internNumberBytes returns b converted to a Number, interned.
 func internNumberBytes(b []byte) Number {
 	m := internNumberPool.Get().(map[Number]Number)
-	c, ok := m[Number(b)]
+	s := Number(b)
+	c, ok := m[s]
 	if ok {
 		internNumberPool.Put(m)
 		return c
 	}
-	s := Number(b)
 	m[s] = s
 	internNumberPool.Put(m)
 	return s
