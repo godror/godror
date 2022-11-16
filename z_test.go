@@ -4686,3 +4686,24 @@ func TestSelectText(t *testing.T) {
 		}
 	}
 }
+
+func TestReplaceQuestionPlaceholders(t *testing.T) {
+	for tN, tC := range []struct {
+		Qry, Want string
+	}{
+		{" ", " "},
+		{"?", ":1"},
+		{
+			"SELECT * FROM a WHERE id=? AND b=?",
+			"SELECT * FROM a WHERE id=:1 AND b=:2",
+		},
+		{
+			"BEGIN ? := fun(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); END;",
+			"BEGIN :1 := fun(:2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12); END;",
+		},
+	} {
+		if got := godror.ReplaceQuestionPlaceholders(tC.Qry); got != tC.Want {
+			t.Errorf("%d. got %q wanted %q", tN, got, tC.Want)
+		}
+	}
+}
