@@ -185,9 +185,6 @@ func setUp() func() {
 	tearDown = append(tearDown, func() { testDb.Close() })
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
-	if err = testDb.PingContext(ctx); err != nil {
-		panic(fmt.Errorf("ping %s: %q: %w", testConStr, eDSN, err))
-	}
 
 	if eSysDSN := os.Getenv("GODROR_TEST_SYSTEM_DSN"); eSysDSN != "" {
 		PSystem := P
@@ -198,7 +195,9 @@ func setUp() func() {
 		}
 		testSystemConStr = PSystem.StringWithPassword()
 	}
-
+	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
+		return func() {}
+	}
 	fmt.Println("#", P.String())
 	fmt.Println("Version:", godror.Version)
 	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
@@ -602,7 +601,7 @@ func TestDbmsOutput(t *testing.T) {
 	}
 	t.Log(buf.String())
 	if buf.String() != txt+"\n" {
-		t.Errorf("got %q, wanted %q", buf.String(), txt+"\n")
+		t.Errorf("got\n%q, wanted\n%q", buf.String(), txt+"\n")
 	}
 }
 
@@ -4702,8 +4701,8 @@ func TestReplaceQuestionPlaceholders(t *testing.T) {
 			"BEGIN :1 := fun(:2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12); END;",
 		},
 	} {
-		if got := godror.ReplaceQuestionPlaceholders(tC.Qry); got != tC.Want {
-			t.Errorf("%d. got %q wanted %q", tN, got, tC.Want)
+		if got := godror.ReplaceQuestionPlacholders(tC.Qry); got != tC.Want {
+			t.Errorf("%d. got\n%q wanted\n%q", tN, got, tC.Want)
 		}
 	}
 }

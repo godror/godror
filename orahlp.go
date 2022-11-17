@@ -697,6 +697,11 @@ func (c *PooledConn) Close() error {
 }
 
 // ReplaceQuestionPlacholders replaces ? marks with Oracle-supported :%d placeholders.
+//
+// THIS IS JUST A SIMPLE CONVENIENCE FUNCTION, WITHOUT WARRANTIES:
+// - does not handle '?' - mark in string
+// - does not handle --? - mark in line comment
+// - does not handle /*?*/ - mark in block comment
 func ReplaceQuestionPlacholders(qry string) string {
 	n := strings.Count(qry, "?")
 	if n == 0 {
@@ -707,15 +712,19 @@ func ReplaceQuestionPlacholders(qry string) string {
 		nLog10++
 		x *= 10
 	}
+	//fmt.Println("\n## n:", n, "x:", x, "nLog10:", nLog10)
 	num := make([]byte, 0, nLog10)
 	var buf strings.Builder
 	buf.Grow(len(qry) + n*(nLog10))
-	for i := strings.IndexByte(qry, '?'); i >= 0; {
+	var idx int64
+	for i := strings.IndexByte(qry, '?'); i >= 0; i = strings.IndexByte(qry, '?') {
 		buf.WriteString(qry[:i])
-		buf.WriteByte(':')
-		num = strconv.AppendInt(num[:0], int64(i), 10)
-		buf.Write(num)
 		qry = qry[i+1:]
+		buf.WriteByte(':')
+		idx++
+		num = strconv.AppendInt(num[:0], idx, 10)
+		buf.Write(num)
 	}
+	buf.WriteString(qry)
 	return buf.String()
 }
