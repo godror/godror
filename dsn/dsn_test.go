@@ -115,6 +115,12 @@ func TestParse(t *testing.T) {
 	wantLibDir.ConnectString = "localhost/orclpdb1"
 	wantLibDir.LibDir = "/Users/cjones/instantclient_19_3"
 
+	wantPassExistsSpecialCharacters1 := wantDefault
+	wantPassExistsSpecialCharacters1.CommonParams.Password = NewPassword("pass@pass")
+	wantPassExistsSpecialCharacters2 := wantDefault
+	wantPassExistsSpecialCharacters2.ConnectString = ""
+	wantPassExistsSpecialCharacters2.CommonParams.Password = NewPassword("pass@pass")
+
 	// From fuzzing
 	for _, in := range []string{
 		"oracle://[]",
@@ -128,8 +134,10 @@ func TestParse(t *testing.T) {
 		In   string
 		Want ConnectionParams
 	}{
-		"simple":   {In: "user/pass@sid", Want: wantDefault},
-		"userpass": {In: "user/pass", Want: wantEmptyConnectString},
+		"simple":                       {In: "user/pass@sid", Want: wantDefault},
+		"userpass":                     {In: "user/pass", Want: wantEmptyConnectString},
+		"passExistsSpecialCharacters1": {In: "user/\"pass@pass\"@sid", Want: wantPassExistsSpecialCharacters1},
+		"passExistsSpecialCharacters2": {In: "user/\"pass@pass\"", Want: wantPassExistsSpecialCharacters2},
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{

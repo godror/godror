@@ -776,6 +776,14 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 		return "", "", dataSourceName + unquote(extra)
 	}
 
+	// username/"password"
+	if strings.Index(dataSourceName, "/\"") > 0 {
+		if si := strings.Index(dataSourceName, "\""); si > 0 {
+			li := strings.Index(dataSourceName[si+1:], "\"") + si
+			ups = splitQuoted(dataSourceName[li+1:], '@')
+			userpass = []string{dataSourceName[:si-1], dataSourceName[si+1 : li+1]}
+		}
+	}
 	user = unquote(userpass[0])
 	if len(userpass) > 1 {
 		passw = unquote(userpass[1])
