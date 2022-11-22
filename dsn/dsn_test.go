@@ -60,12 +60,23 @@ func TestParse(t *testing.T) {
 	wantXO := wantDefault
 	wantXO.ConnectString = "localhost/sid"
 
+	wantXOPassExistsSpecialCharacters := wantDefault
+	wantXOPassExistsSpecialCharacters.ConnectString = "localhost/sid"
+	wantXOPassExistsSpecialCharacters.CommonParams.Password = NewPassword("pa@ss")
+
 	wantHeterogeneous := wantDefault
 	wantHeterogeneous.Heterogeneous = true
 	wantHeterogeneous.StandaloneConnection = false
 	wantHeterogeneous.ConnClass = DefaultConnectionClass
 	//wantHeterogeneous.PoolParams.Username, wantHeterogeneous.PoolParams.Password = "", ""
 	wantHeterogeneous.ConnectString = "localhost/sid"
+
+	wantHeterogeneousPassExistsSpecialCharacters := wantDefault
+	wantHeterogeneousPassExistsSpecialCharacters.Heterogeneous = true
+	wantHeterogeneousPassExistsSpecialCharacters.StandaloneConnection = false
+	wantHeterogeneousPassExistsSpecialCharacters.ConnClass = DefaultConnectionClass
+	wantHeterogeneousPassExistsSpecialCharacters.ConnectString = "localhost/sid"
+	wantHeterogeneousPassExistsSpecialCharacters.CommonParams.Password = NewPassword("pa@ss")
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(ConnectionParams{}),
@@ -111,15 +122,21 @@ func TestParse(t *testing.T) {
 	wantEmptyConnectString := wantDefault
 	wantEmptyConnectString.ConnectString = ""
 
+	wantEmptyConnectStringPassExistsSpecialCharacters := wantDefault
+	wantEmptyConnectStringPassExistsSpecialCharacters.ConnectString = ""
+	wantEmptyConnectStringPassExistsSpecialCharacters.CommonParams.Password = NewPassword("pa@ss")
+
 	wantLibDir := wantDefault
 	wantLibDir.ConnectString = "localhost/orclpdb1"
 	wantLibDir.LibDir = "/Users/cjones/instantclient_19_3"
 
-	wantPassExistsSpecialCharacters1 := wantDefault
-	wantPassExistsSpecialCharacters1.CommonParams.Password = NewPassword("pass@pass")
-	wantPassExistsSpecialCharacters2 := wantDefault
-	wantPassExistsSpecialCharacters2.ConnectString = ""
-	wantPassExistsSpecialCharacters2.CommonParams.Password = NewPassword("pass@pass")
+	wantLibDirPassExistsSpecialCharacters := wantDefault
+	wantLibDirPassExistsSpecialCharacters.ConnectString = "localhost/orclpdb1"
+	wantLibDirPassExistsSpecialCharacters.LibDir = "/Users/cjones/instantclient_19_3"
+	wantLibDirPassExistsSpecialCharacters.CommonParams.Password = NewPassword("pa@ss")
+
+	simplePassExistsSpecialCharacters := wantDefault
+	simplePassExistsSpecialCharacters.CommonParams.Password = NewPassword("pa@ss")
 
 	// From fuzzing
 	for _, in := range []string{
@@ -134,15 +151,29 @@ func TestParse(t *testing.T) {
 		In   string
 		Want ConnectionParams
 	}{
-		"simple":                       {In: "user/pass@sid", Want: wantDefault},
-		"userpass":                     {In: "user/pass", Want: wantEmptyConnectString},
-		"passExistsSpecialCharacters1": {In: "user/\"pass@pass\"@sid", Want: wantPassExistsSpecialCharacters1},
-		"passExistsSpecialCharacters2": {In: "user/\"pass@pass\"", Want: wantPassExistsSpecialCharacters2},
+		"simple":                              {In: "user/pass@sid", Want: wantDefault},
+		"simplePassExistsSpecialCharacters":   {In: "user/\"pa@ss\"@sid", Want: simplePassExistsSpecialCharacters},
+		"userpass":                            {In: "user/pass", Want: wantEmptyConnectString},
+		"userpassPassExistsSpecialCharacters": {In: "user/\"pa@ss\"", Want: wantEmptyConnectStringPassExistsSpecialCharacters},
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+				},
+				ConnParams: ConnParams{
+					ConnClass: "TestClassName", IsSysOper: true,
+				},
+				PoolParams: PoolParams{
+					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
+					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+				},
+			},
+		},
+		"fullPassExistsSpecialCharacters": {In: "oracle://user:pa@ss@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
+			Want: ConnectionParams{
+				CommonParams: CommonParams{
+					Username: "user", Password: NewPassword("pa@ss"), ConnectString: "sid",
 				},
 				ConnParams: ConnParams{
 					ConnClass: "TestClassName", IsSysOper: true,
@@ -159,8 +190,10 @@ func TestParse(t *testing.T) {
 			Want: wantAt,
 		},
 
-		"xo":            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
-		"heterogeneous": {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
+		"xo":                            {In: "oracle://user:pass@localhost/sid", Want: wantXO},
+		"xoPassExistsSpecialCharacters": {In: "oracle://user:pa@ss@localhost/sid", Want: wantXOPassExistsSpecialCharacters},
+		"heterogeneous":                 {In: "oracle://user:pass@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneous},
+		"heterogeneousPassExistsSpecialCharacters": {In: "oracle://user:pa@ss@localhost/sid?heterogeneousPool=1", Want: wantHeterogeneousPassExistsSpecialCharacters},
 
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
@@ -185,20 +218,43 @@ func TestParse(t *testing.T) {
 			Want: wantEasy,
 		},
 
-		"logfmt":           {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
-		"logfmt_multiline": {In: "user=user\npassword=pass\nconnectString=localhost/sid\nheterogeneousPool=1", Want: wantHeterogeneous},
-		"logfmt_simple":    {In: `user="user" password="pass" connectString="sid"`, Want: wantDefault},
-		"logfmt_userpass":  {In: `user="user" password="pass" connectString=""`, Want: wantEmptyConnectString},
+		"logfmt":                            {In: "user=user password=pass connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmtPassExistsSpecialCharacters": {In: "user=user password=pa@ss connectString=localhost/sid heterogeneousPool=1", Want: wantHeterogeneousPassExistsSpecialCharacters},
+		"logfmt_multiline":                  {In: "user=user\npassword=pass\nconnectString=localhost/sid\nheterogeneousPool=1", Want: wantHeterogeneous},
+		"logfmt_multilinePassExistsSpecialCharacters": {In: "user=user\npassword=pa@ss\nconnectString=localhost/sid\nheterogeneousPool=1", Want: wantHeterogeneousPassExistsSpecialCharacters},
+		"logfmt_simple": {In: `user="user" password="pass" connectString="sid"`, Want: wantDefault},
+		"logfmt_simplePassExistsSpecialCharacters":   {In: `user="user" password="pa@ss" connectString="sid"`, Want: simplePassExistsSpecialCharacters},
+		"logfmt_userpass":                            {In: `user="user" password="pass" connectString=""`, Want: wantEmptyConnectString},
+		"logfmt_userpassPassExistsSpecialCharacters": {In: `user="user" password="pa@ss" connectString=""`, Want: wantEmptyConnectStringPassExistsSpecialCharacters},
 
 		"logfmt_libDir": {In: `user="user" password="pass" 
 			connectString="localhost/orclpdb1"
 			libDir="/Users/cjones/instantclient_19_3"`,
 			Want: wantLibDir},
+		"logfmt_libDirPassExistsSpecialCharacters": {In: `user="user" password="pass" 
+			connectString="localhost/orclpdb1"
+			libDir="/Users/cjones/instantclient_19_3"`,
+			Want: wantLibDirPassExistsSpecialCharacters},
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+					OnInitStmts: []string{"a", "b"},
+				},
+				ConnParams: ConnParams{
+					ConnClass: "TestClassName", IsSysOper: true,
+				},
+				PoolParams: PoolParams{
+					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
+					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+				},
+			},
+		},
+		"onInitPassExistsSpecialCharacters": {In: "oracle://user:pa@ss@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
+			Want: ConnectionParams{
+				CommonParams: CommonParams{
+					Username: "user", Password: NewPassword("pa@ss"), ConnectString: "sid",
 					OnInitStmts: []string{"a", "b"},
 				},
 				ConnParams: ConnParams{

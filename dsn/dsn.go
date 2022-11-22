@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -363,7 +364,10 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		// Not URL, not logfmt-ed - an old styled DSN
 		// Old, or Easy Connect, or anything
 		var passw string
-		P.Username, passw, dataSourceName = parseUserPassw(dataSourceName)
+		var err error
+		if P.Username, passw, dataSourceName, err = parseUserPassw(dataSourceName); err != nil {
+			return P, fmt.Errorf("%s: %w", dataSourceName, err)
+		}
 		P.Password.Set(passw)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
 		uSid := strings.ToUpper(dataSourceName)
@@ -754,13 +758,13 @@ func splitQuoted(s string, sep rune) []string {
 }
 
 // parseUserPassw splits of the username/password@ from the connectString.
-func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
+func parseUserPassw(dataSourceName string) (user, passw, connectString string, err error) {
 	if i := strings.Index(dataSourceName, "://"); i >= 0 &&
 		strings.IndexFunc(
 			dataSourceName[:i],
 			func(r rune) bool { return !('a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' || '0' <= r && r <= '9') },
 		) < 0 {
-		return "", "", dataSourceName
+		return "", "", dataSourceName, nil
 	}
 	ups := splitQuoted(dataSourceName, '@')
 	var extra string
@@ -773,25 +777,35 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	userpass := splitQuoted(ups[0], '/')
 	//fmt.Printf("ups=%q\nuserpass=%q\n", ups, userpass)
 	if len(ups) == 1 && len(userpass) == 1 {
-		return "", "", dataSourceName + unquote(extra)
+		return "", "", dataSourceName + unquote(extra), nil
 	}
 
-	// username/"password"
-	if strings.Index(dataSourceName, "/\"") > 0 {
-		if si := strings.Index(dataSourceName, "\""); si > 0 {
-			li := strings.Index(dataSourceName[si+1:], "\"") + si
-			ups = splitQuoted(dataSourceName[li+1:], '@')
-			userpass = []string{dataSourceName[:si-1], dataSourceName[si+1 : li+1]}
+	var b bool
+	// user/"pass" or user/"pass"@sid
+	// this check just for password exists special characters
+	// other dsn don't need this check
+	if b, err = regexp.MatchString("/\"*\"", dataSourceName); err != nil {
+		return "", "", dataSourceName, err
+	} else if b {
+		si := strings.Index(dataSourceName, "\"")
+		li := strings.Index(dataSourceName[si+1:], "\"") + si + 1
+		userpass = []string{dataSourceName[:si-1], dataSourceName[si+1 : li]}
+		ups = splitQuoted(dataSourceName[li+1:], '@')
+		if len(ups) == 1 {
+			ups = []string{fmt.Sprint(userpass[0], "/", userpass[1]), ups[0]}
+		} else {
+			ups[0] = fmt.Sprint(userpass[0], "/", userpass[1])
 		}
 	}
+
 	user = unquote(userpass[0])
 	if len(userpass) > 1 {
 		passw = unquote(userpass[1])
 	}
 	if len(ups) == 1 {
-		return user, passw, unquote(extra)
+		return user, passw, unquote(extra), nil
 	}
-	return user, passw, unquote(ups[1] + extra)
+	return user, passw, unquote(ups[1] + extra), nil
 }
 
 // ParseTZ parses timezone specification ("Europe/Budapest" or "+01:00") and returns the offset in seconds.
