@@ -316,7 +316,7 @@ func (d *drv) Open(s string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.createConnFromParams(c.(connector).ConnectionParams)
+	return d.createConnFromParams(context.Background(), c.(connector).ConnectionParams)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
@@ -588,7 +588,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, er
 // standalone connection is created instead. The connection parameters are used
 // to acquire a connection from the pool specified by the pool parameters or
 // are used to create a standalone connection.
-func (d *drv) createConnFromParams(P dsn.ConnectionParams) (*conn, error) {
+func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) (*conn, error) {
 	var err error
 	var pool *connPool
 	if !P.IsStandalone() {
@@ -605,7 +605,7 @@ func (d *drv) createConnFromParams(P dsn.ConnectionParams) (*conn, error) {
 	if onInit == nil {
 		return conn, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), nvlD(conn.params.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(ctx, nvlD(conn.params.WaitTimeout, time.Minute))
 	err = onInit(ctx, conn)
 	cancel()
 	if err != nil {
@@ -1095,7 +1095,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 			if logger != nil {
 				logger.Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
 			}
-			return c.drv.createConnFromParams(dsn.ConnectionParams{
+			return c.drv.createConnFromParams(ctx, dsn.ConnectionParams{
 				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
 				PoolParams: params.PoolParams,
 			})
@@ -1113,7 +1113,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if logger != nil {
 		logger.Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
-	return c.drv.createConnFromParams(params)
+	return c.drv.createConnFromParams(ctx, params)
 }
 
 // Driver returns the underlying Driver of the Connector,
