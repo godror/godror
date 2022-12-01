@@ -45,6 +45,13 @@ const (
 	DefaultStandaloneConnection = false
 )
 
+type OnInitNewConnectionType string
+
+// context key for OnInit method true = newconnection / false = connection from pool
+var (
+	OnInitNewConnectionKey OnInitNewConnectionType = "oinewconn"
+)
+
 // CommonParams holds the common parameters for pooled or standalone connections.
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
