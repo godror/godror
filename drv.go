@@ -376,7 +376,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
-	dc, newConnectionCreated, err := d.acquireConn(pool, P)
+	dc, isNew, err := d.acquireConn(pool, P)
 	if err != nil {
 		return nil, false, err
 	}
@@ -397,7 +397,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 			c.params.Username = pool.params.Username
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), dsn.OnInitNewConnectionKey, newConnectionCreated), nvlD(c.params.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), dsn.OnInitNewConnectionKey, isNew), nvlD(c.params.WaitTimeout, time.Minute))
 	if err := c.init(ctx, getOnInit(&c.params.CommonParams)); err != nil {
 		_ = c.closeNotLocking()
 		return nil, false, err
@@ -412,7 +412,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 			_ = c.closeNotLocking()
 		}
 	})
-	return &c, newConnectionCreated, nil
+	return &c, isNew, nil
 }
 
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
@@ -600,7 +600,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 			return nil, err
 		}
 	}
-	conn, newConnectionCreated, err := d.createConn(pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
+	conn, isNew, err := d.createConn(pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
 	if err != nil {
 		return conn, err
 	}
@@ -608,7 +608,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 	if onInit == nil {
 		return conn, err
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(ctx, dsn.OnInitNewConnectionKey, newConnectionCreated), nvlD(conn.params.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, dsn.OnInitNewConnectionKey, isNew), nvlD(conn.params.WaitTimeout, time.Minute))
 	err = onInit(ctx, conn)
 	cancel()
 	if err != nil {
