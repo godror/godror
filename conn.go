@@ -1113,7 +1113,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 	c.dpiConn = dpiConn
-	ctx = context.WithValue(ctx, dsn.OnInitNewConnectionKey, isNew)
+	ctx = context.WithValue(ctx, dsn.isNewCtxKey, isNew)
 	return c.init(ctx, P.OnInit)
 }
 

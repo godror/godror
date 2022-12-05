@@ -45,11 +45,11 @@ const (
 	DefaultStandaloneConnection = false
 )
 
-type OnInitNewConnectionType string
+type isNewCtxType string
 
 // context key for OnInit method true = newconnection / false = connection from pool
 var (
-	OnInitNewConnectionKey OnInitNewConnectionType = "oinewconn"
+	isNewCtxKey isNewCtxType = "oinewconn"
 )
 
 // CommonParams holds the common parameters for pooled or standalone connections.
