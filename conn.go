@@ -1107,13 +1107,13 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		// Just release
 		_ = c.closeNotLocking()
 	}
-	dpiConn, newConnectionCreated, err := c.drv.acquireConn(pool, P)
+	dpiConn, isNew, err := c.drv.acquireConn(pool, P)
 	c.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 	c.dpiConn = dpiConn
-	ctx = context.WithValue(ctx, dsn.OnInitNewConnectionKey, newConnectionCreated)
+	ctx = context.WithValue(ctx, dsn.OnInitNewConnectionKey, isNew)
 	return c.init(ctx, P.OnInit)
 }
 
