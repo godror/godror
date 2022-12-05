@@ -579,8 +579,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			username, connCreateParams, err)
 	}
 	//use the information from ODPI driver if new connection has been created or it is only pooled
-	newConnctionCreated := connCreateParams.outNewSession == 1
-	return dc, newConnctionCreated, nil
+	isNew := connCreateParams.outNewSession == 1
+	return dc, isNew, nil
 }
 
 // createConnFromParams creates a driver connection given pool parameters and connection
