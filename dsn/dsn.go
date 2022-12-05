@@ -45,13 +45,6 @@ const (
 	DefaultStandaloneConnection = false
 )
 
-type isNewCtxType string
-
-// context key for OnInit method true = newconnection / false = connection from pool
-var (
-	isNewCtxKey isNewCtxType = "oinewconn"
-)
-
 // CommonParams holds the common parameters for pooled or standalone connections.
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
@@ -63,6 +56,8 @@ type CommonParams struct {
 	OnInit func(context.Context, driver.ConnPrepareContext) error
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
+	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
+	OnInitNewCon bool
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
 	AlterSession [][2]string
 	Timezone     *time.Location

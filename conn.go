@@ -487,7 +487,7 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
+func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
 	c.released = false
 	logger := ctxGetLog(ctx)
 	if logger != nil {
@@ -500,6 +500,11 @@ func (c *conn) init(ctx context.Context, onInit func(ctx context.Context, conn d
 	if logger != nil {
 		logger.Log("msg", "connection initialized", "conn", c, "haveOnInit", onInit != nil)
 	}
+
+	if c.params.CommonParams.OnInitNewCon && !isNew {
+		return nil
+	}
+
 	return onInit(ctx, c)
 }
 
@@ -1113,8 +1118,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 	c.dpiConn = dpiConn
-	ctx = context.WithValue(ctx, dsn.isNewCtxKey, isNew)
-	return c.init(ctx, P.OnInit)
+
+	return c.init(ctx, isNew, P.OnInit)
 }
 
 // Validator may be implemented by Conn to allow drivers to
