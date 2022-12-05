@@ -397,7 +397,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 			c.params.Username = pool.params.Username
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), dsn.OnInitNewConnectionKey, isNew), nvlD(c.params.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), dsn.isNewCtxKey, isNew), nvlD(c.params.WaitTimeout, time.Minute))
 	if err := c.init(ctx, getOnInit(&c.params.CommonParams)); err != nil {
 		_ = c.closeNotLocking()
 		return nil, false, err
@@ -608,7 +608,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 	if onInit == nil {
 		return conn, err
 	}
-	ctx, cancel := context.WithTimeout(context.WithValue(ctx, dsn.OnInitNewConnectionKey, isNew), nvlD(conn.params.WaitTimeout, time.Minute))
+	ctx, cancel := context.WithTimeout(context.WithValue(ctx, dsn.isNewCtxKey, isNew), nvlD(conn.params.WaitTimeout, time.Minute))
 	err = onInit(ctx, conn)
 	cancel()
 	if err != nil {
