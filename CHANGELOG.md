@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.36.0]
+### Added
+- initOnNewConnection connection flag to call OnInit only when the connection is new.
+
+## [v0.35.0]
+### Changed
+- Use ODPI-v4.6.0
+
 ## [v0.34.0]
 ### Added
 - ObjectType.AttributeNames() returns the attribute names in DB order.
