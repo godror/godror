@@ -604,18 +604,23 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 	if err != nil {
 		return conn, err
 	}
+
+	if P.CommonParams.OnInitNewCon && !isNew {
+		return conn, nil
+	}
+
 	onInit := getOnInit(&conn.params.CommonParams)
 	if onInit == nil {
 		return conn, err
 	}
-	if !P.CommonParams.OnInitNewCon || isNew {
-		ctx, cancel := context.WithTimeout(ctx, nvlD(conn.params.WaitTimeout, time.Minute))
-		err = onInit(ctx, conn)
-		cancel()
-		if err != nil {
-			conn.Close()
-			return nil, err
-		}
+
+	ctx, cancel := context.WithTimeout(ctx, nvlD(conn.params.WaitTimeout, time.Minute))
+	err = onInit(ctx, conn)
+	cancel()
+
+	if err != nil {
+		conn.Close()
+		return nil, err
 	}
 	return conn, nil
 }
