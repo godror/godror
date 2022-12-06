@@ -501,7 +501,7 @@ func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Con
 		logger.Log("msg", "connection initialized", "conn", c, "haveOnInit", onInit != nil)
 	}
 
-	if c.params.CommonParams.OnInitNewCon && !isNew {
+	if c.params.CommonParams.InitOnNewConn && !isNew {
 		return nil
 	}
 
