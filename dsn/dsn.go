@@ -57,7 +57,7 @@ type CommonParams struct {
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
-	OnInitNewCon bool
+	InitOnNewConn bool
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
 	AlterSession [][2]string
 	Timezone     *time.Location
@@ -101,8 +101,8 @@ func (P CommonParams) String() string {
 	if P.Charset != "" {
 		q.Add("charset", P.Charset)
 	}
-	if P.OnInitNewCon {
-		q.Add("onInitNewConnect", "1")
+	if P.InitOnNewConn {
+		q.Add("initOnNewConnection", "1")
 	}
 
 	return q.String()
@@ -302,7 +302,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		as.Add(kv[0], kv[1])
 		q.Add("alterSession", strings.TrimSpace(as.String()))
 	}
-	q.Add("onInitNewConnect", B(P.OnInitNewCon))
+	q.Add("initOnNewConnection", B(P.InitOnNewConn))
 	q.Values["onInit"] = P.OnInitStmts
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
@@ -438,7 +438,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.StandaloneConnection, "standaloneConnection"},
 
 		{&P.NoTZCheck, "noTimezoneCheck"},
-		{&P.OnInitNewCon, "onInitNewConnect"},
+		{&P.InitOnNewConn, "initOnNewConnection"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {

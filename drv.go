@@ -605,7 +605,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 		return conn, err
 	}
 
-	if P.CommonParams.OnInitNewCon && !isNew {
+	if P.CommonParams.InitOnNewConn && !isNew {
 		return conn, nil
 	}
 
