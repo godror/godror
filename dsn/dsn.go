@@ -101,6 +101,9 @@ func (P CommonParams) String() string {
 	if P.Charset != "" {
 		q.Add("charset", P.Charset)
 	}
+	if P.OnInitNewCon {
+		q.Add("onInitNewConnect", "1")
+	}
 
 	return q.String()
 }
@@ -299,6 +302,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		as.Add(kv[0], kv[1])
 		q.Add("alterSession", strings.TrimSpace(as.String()))
 	}
+	q.Add("onInitNewConnect", B(P.OnInitNewCon))
 	q.Values["onInit"] = P.OnInitStmts
 	q.Add("configDir", P.ConfigDir)
 	q.Add("libDir", P.LibDir)
@@ -434,6 +438,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.StandaloneConnection, "standaloneConnection"},
 
 		{&P.NoTZCheck, "noTimezoneCheck"},
+		{&P.OnInitNewCon, "onInitNewConnect"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
