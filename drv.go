@@ -613,11 +613,9 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 	if onInit == nil {
 		return conn, err
 	}
-
 	ctx, cancel := context.WithTimeout(ctx, nvlD(conn.params.WaitTimeout, time.Minute))
 	err = onInit(ctx, conn)
 	cancel()
-
 	if err != nil {
 		conn.Close()
 		return nil, err
