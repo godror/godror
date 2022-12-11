@@ -282,7 +282,7 @@ func ExampleAppendLogfmt() {
 	// connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 }
 
-func ExampleConnectString() {
+func ExampleParse() {
 	var P ConnectionParams
 	P.Username, P.Password = "scott", NewPassword("tiger")
 	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"

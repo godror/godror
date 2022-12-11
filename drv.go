@@ -398,11 +398,12 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	if err := c.init(ctx, isNew, getOnInit(&c.params.CommonParams)); err != nil {
+	err = c.init(ctx, isNew, getOnInit(&c.params.CommonParams))
+	cancel()
+	if err != nil {
 		_ = c.closeNotLocking()
 		return nil, false, err
 	}
-	cancel()
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
