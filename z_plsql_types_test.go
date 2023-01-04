@@ -1881,10 +1881,30 @@ func TestXMLType(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("XMLType"), 30*time.Second)
 	defer cancel()
 
-	const qry = "SELECT XMLElement(\"Date\", SYSDATE) FROM DUAL"
-	var str string
-	if err := testDb.QueryRowContext(ctx, qry).Scan(&str); err != nil {
-		t.Errorf("%s: %+v", qry, err)
+	const qry = "SELECT 'text' AS text, XMLElement(\"Date\", SYSDATE) AS xml FROM DUAL"
+	var txt, xml string
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&txt, &xml); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
 	}
-	t.Log(str)
+	t.Logf("txt=%q xml=%q", txt, xml)
+
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("coltype: %v, %v", types[0], types[1])
+	defer rows.Close()
+	for rows.Next() {
+		var i, j interface{}
+		if err = rows.Scan(&i, &j); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("column[0]: (%[1]T) %#[1]v", i)
+		t.Logf("column[1]: (%[1]T) %#[1]v", j)
+
+	}
 }
