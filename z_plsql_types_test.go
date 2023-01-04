@@ -1876,3 +1876,15 @@ END;`,
 	}
 	t.Log(s, len(s))
 }
+
+func TestXMLType(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("XMLType"), 30*time.Second)
+	defer cancel()
+
+	const qry = "SELECT XMLElement(\"Date\", SYSDATE) FROM DUAL"
+	var str string
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&str); err != nil {
+		t.Errorf("%s: %+v", qry, err)
+	}
+	t.Log(str)
+}
