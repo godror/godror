@@ -406,7 +406,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				continue
 			}
 			if b.length < 10 {
-				bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+				//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
 				dest[i] = internBytes(bb)
 			} else {
 				dest[i] = C.GoStringN(b.ptr, C.int(b.length))
@@ -438,7 +439,8 @@ func (r *rows) Next(dest []driver.Value) error {
 				//b := C.dpiData_getBytes(d)
 				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
 				//s := C.GoStringN(b.ptr, C.int(b.length))
-				bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+				//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
 
 				if nass {
 					dest[i] = internBytes(bb)

@@ -528,7 +528,8 @@ func (j JSONArray) GetValue() (nodes []interface{}, err error) {
 
 func jsonArraySlice(arr *C.dpiJsonArray) []C.dpiJsonNode {
 	n := int(arr.numElements)
-	return ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(arr.elements)))[:n:n]
+	//return ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(arr.elements)))[:n:n]
+	return unsafe.Slice(arr.elements, n)
 }
 
 // JSONObject represents the map input.
@@ -607,9 +608,12 @@ type jsonField struct {
 
 func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 	n := int(obj.numFields)
-	names := ((*[maxArraySize]*C.char)(unsafe.Pointer(obj.fieldNames)))[:n:n]
-	nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(obj.fieldNameLengths)))[:n:n]
-	fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(obj.fields)))[:n:n]
+	//names := ((*[maxArraySize]*C.char)(unsafe.Pointer(obj.fieldNames)))[:n:n]
+	names := unsafe.Slice(obj.fieldNames, n)
+	//nameLengths := ((*[maxArraySize]C.uint32_t)(unsafe.Pointer(obj.fieldNameLengths)))[:n:n]
+	nameLengths := unsafe.Slice(obj.fieldNameLengths, n)
+	//fields := ((*[maxArraySize]C.dpiJsonNode)(unsafe.Pointer(obj.fields)))[:n:n]
+	fields := unsafe.Slice(obj.fields, n)
 	ff := make([]jsonField, n)
 	for i := range fields {
 		ff[i] = jsonField{

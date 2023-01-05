@@ -2069,7 +2069,7 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			if i < len(maX) {
 				*x = append(*x, append(maX[i][:0], b...))
 			} else {
-				*x = append(*x, append(make([]byte, 0, len(b)), b...))
+				*x = append(*x, bytes.Clone(b))
 			}
 		}
 
@@ -3572,5 +3572,6 @@ func stmtSetFinalizer(st *statement, tag string) {
 
 func dpiData_getBytes(data *C.dpiData) []byte {
 	db := ((*C.dpiBytes)(unsafe.Pointer(&data.value)))
-	return ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+	// return ((*[32767]byte)(unsafe.Pointer(db.ptr)))[:db.length:db.length]
+	return unsafe.Slice((*byte)(unsafe.Pointer(db.ptr)), db.length)
 }

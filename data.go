@@ -84,7 +84,8 @@ func (d *Data) GetBytes() []byte {
 	if b.ptr == nil || b.length == 0 {
 		return nil
 	}
-	return ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
+	//return ((*[32767]byte)(unsafe.Pointer(b.ptr)))[:b.length:b.length]
+	return ([]byte)(unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length))
 }
 
 // SetBytes set the data as []byte.

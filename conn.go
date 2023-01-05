@@ -481,7 +481,8 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	}
 	c.Server.set(&v)
 	c.Server.ServerRelease = string(bytes.Replace(
-		((*[1024]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
+		//((*[1024]byte)(unsafe.Pointer(release)))[:releaseLen:releaseLen],
+		([]byte)(unsafe.Slice((*byte)(unsafe.Pointer(release)), releaseLen)),
 		[]byte{'\n'}, []byte{';', ' '}, -1))
 
 	return c.Server, nil

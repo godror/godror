@@ -98,7 +98,8 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		if rwsNum == 0 {
 			return nil
 		}
-		cRws := (*((*[maxArraySize]C.dpiSubscrMessageRow)(unsafe.Pointer(rws))))[:int(rwsNum)]
+		//cRws := (*((*[maxArraySize]C.dpiSubscrMessageRow)(unsafe.Pointer(rws))))[:int(rwsNum)]
+		cRws := unsafe.Slice(rws, rwsNum)
 		rows := make([]RowEvent, len(cRws))
 		for i, row := range cRws {
 			rows[i] = RowEvent{
@@ -113,7 +114,8 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		if tblsNum == 0 {
 			return nil
 		}
-		cTbls := (*((*[maxArraySize]C.dpiSubscrMessageTable)(unsafe.Pointer(tbls))))[:int(tblsNum)]
+		//cTbls := (*((*[maxArraySize]C.dpiSubscrMessageTable)(unsafe.Pointer(tbls))))[:int(tblsNum)]
+		cTbls := unsafe.Slice(tbls, tblsNum)
 		tables := make([]TableEvent, len(cTbls))
 		for i, tbl := range cTbls {
 			tables[i] = TableEvent{
@@ -129,7 +131,8 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		if qrysNum == 0 {
 			return nil
 		}
-		cQrys := (*((*[maxArraySize]C.dpiSubscrMessageQuery)(unsafe.Pointer(qrys))))[:int(qrysNum)]
+		//cQrys := (*((*[maxArraySize]C.dpiSubscrMessageQuery)(unsafe.Pointer(qrys))))[:int(qrysNum)]
+		cQrys := unsafe.Slice(qrys, qrysNum)
 		queries := make([]QueryEvent, len(cQrys))
 		for i, qry := range cQrys {
 			queries[i] = QueryEvent{
