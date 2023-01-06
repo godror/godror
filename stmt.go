@@ -144,16 +144,16 @@ type Option func(*stmtOptions)
 //
 // For the other way around, use an sql.Scanner that converts from string to bool. For example:
 //
-//   type Booler bool
-//   var _ sql.Scanner = Booler{}
-//   func (b Booler) Scan(src interface{}) error {
-//     switch src := src.(type) {
-//       case int: *b = x == 1
-//       case string: *b = x == "Y" || x == "T"  // or any string your database model treats as truth value
-//       default: return fmt.Errorf("unknown scanner source %T", src)
-//     }
-//     return nil
-//   }
+//	type Booler bool
+//	var _ sql.Scanner = Booler{}
+//	func (b Booler) Scan(src interface{}) error {
+//	  switch src := src.(type) {
+//	    case int: *b = x == 1
+//	    case string: *b = x == "Y" || x == "T"  // or any string your database model treats as truth value
+//	    default: return fmt.Errorf("unknown scanner source %T", src)
+//	  }
+//	  return nil
+//	}
 //
 // Such a type cannot be included in this package till we can inject the truth strings into the scanner method.
 func BoolToString(trueVal, falseVal string) Option {
@@ -2069,7 +2069,8 @@ func dataGetBytes(v interface{}, data []C.dpiData) error {
 			if i < len(maX) {
 				*x = append(*x, append(maX[i][:0], b...))
 			} else {
-				*x = append(*x, bytes.Clone(b))
+				//*x = append(*x, bytes.Clone(b))
+				*x = append(*x, append(([]byte)(nil), b...))
 			}
 		}
 
