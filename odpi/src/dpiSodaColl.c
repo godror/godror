@@ -96,12 +96,6 @@ static int dpiSodaColl__createOperOptions(dpiSodaColl *coll,
     if (!options) {
         dpiContext__initSodaOperOptions(&localOptions);
         options = &localOptions;
-
-    // size changed in version 4.2; this can be removed in version 5
-    } else if (coll->env->context->dpiMinorVersion < 2) {
-        dpiContext__initSodaOperOptions(&localOptions);
-        memcpy(&localOptions, options, sizeof(dpiSodaOperOptions__v41));
-        options = &localOptions;
     }
 
     // allocate new handle

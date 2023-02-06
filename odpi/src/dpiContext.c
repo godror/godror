@@ -296,25 +296,13 @@ void dpiContext_getError(const dpiContext *context, dpiErrorInfo *info)
 int dpiContext_initCommonCreateParams(const dpiContext *context,
         dpiCommonCreateParams *params)
 {
-    dpiCommonCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-
-    // size changed in version 4.2 and 4.4; local structure and checks can
-    // be dropped once version 5 released
-    if (context->dpiMinorVersion > 3) {
-        dpiContext__initCommonCreateParams(context, params);
-    } else if (context->dpiMinorVersion > 1) {
-        dpiContext__initCommonCreateParams(context, &localParams);
-        memcpy(params, &localParams, sizeof(dpiCommonCreateParams__v43));
-    } else {
-        dpiContext__initCommonCreateParams(context, &localParams);
-        memcpy(params, &localParams, sizeof(dpiCommonCreateParams__v41));
-    }
+    dpiContext__initCommonCreateParams(context, params);
 
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
@@ -346,22 +334,13 @@ int dpiContext_initConnCreateParams(const dpiContext *context,
 int dpiContext_initPoolCreateParams(const dpiContext *context,
         dpiPoolCreateParams *params)
 {
-    dpiPoolCreateParams localParams;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-
-    // size changed in version 4.4; local structure and checks
-    // can be dropped once version 5 released
-    if (context->dpiMinorVersion > 3) {
-        dpiContext__initPoolCreateParams(params);
-    } else {
-        dpiContext__initPoolCreateParams(&localParams);
-        memcpy(params, &localParams, sizeof(dpiPoolCreateParams__v43));
-    }
+    dpiContext__initPoolCreateParams(params);
 
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
@@ -374,22 +353,13 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
 int dpiContext_initSodaOperOptions(const dpiContext *context,
         dpiSodaOperOptions *options)
 {
-    dpiSodaOperOptions localOptions;
     dpiError error;
 
     if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, options)
-
-    // size changed in version 4.2; local structure and check can be dropped
-    // once version 5 released
-    if (context->dpiMinorVersion > 1) {
-        dpiContext__initSodaOperOptions(options);
-    } else {
-        dpiContext__initSodaOperOptions(&localOptions);
-        memcpy(options, &localOptions, sizeof(dpiSodaOperOptions__v41));
-    }
+    dpiContext__initSodaOperOptions(options);
 
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }

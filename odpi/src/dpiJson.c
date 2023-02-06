@@ -275,15 +275,24 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
             return DPI_SUCCESS;
         case DPI_JZNVAL_FLOAT:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
-            node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
-            node->value->asDouble = scalar.value.asFloat.value;
+            node->nativeTypeNum = DPI_NATIVE_TYPE_FLOAT;
+            node->value->asFloat = scalar.value.asFloat.value;
             return DPI_SUCCESS;
         case DPI_JZNVAL_DOUBLE:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
             node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
             node->value->asDouble = scalar.value.asDouble.value;
             return DPI_SUCCESS;
+        case DPI_JZNVAL_ORA_SIGNED_INT:
+        case DPI_JZNVAL_ORA_SIGNED_LONG:
+        case DPI_JZNVAL_ORA_DECIMAL128:
         case DPI_JZNVAL_ORA_NUMBER:
+            if (scalar.valueType != DPI_JZNVAL_ORA_NUMBER) {
+                ociVal.asJsonNumber[0] =
+                        (uint8_t) scalar.value.asOciVal.valueLength;
+                memcpy(&ociVal.asJsonNumber[1], scalar.value.asOciVal.value,
+                        scalar.value.asOciVal.valueLength);
+            }
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
             if (options & DPI_JSON_OPT_NUMBER_AS_STRING) {
                 node->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;

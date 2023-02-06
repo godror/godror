@@ -1435,31 +1435,6 @@ int dpiConn_addRef(dpiConn *conn)
 
 
 //-----------------------------------------------------------------------------
-// dpiConn_beginDistribTrans() [PUBLIC]
-//   Begin a distributed transaction. This function is deprecated. Use
-// dpiConn_tpcBegin() instead.
-//-----------------------------------------------------------------------------
-int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
-        const char *globalTransactionId, uint32_t globalTransactionIdLength,
-        const char *branchQualifier, uint32_t branchQualifierLength)
-{
-    dpiXid xid;
-
-    // a negative format id implies a NULL XID so nothing needs to be done
-    if (formatId < 0)
-        return DPI_SUCCESS;
-
-    // call the new function instead
-    xid.formatId = formatId;
-    xid.globalTransactionId = globalTransactionId;
-    xid.globalTransactionIdLength = globalTransactionIdLength;
-    xid.branchQualifier = branchQualifier;
-    xid.branchQualifierLength = branchQualifierLength;
-    return dpiConn_tpcBegin(conn, &xid, 0, DPI_TPC_BEGIN_NEW);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiConn_breakExecution() [PUBLIC]
 //   Break (interrupt) the currently executing operation.
 //-----------------------------------------------------------------------------
@@ -2286,17 +2261,6 @@ int dpiConn_ping(dpiConn *conn)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__ping(conn, &error);
     return dpiGen__endPublicFn(conn, status, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiConn_prepareDistribTrans() [PUBLIC]
-//   Prepare a distributed transaction for commit. This function is deprecated.
-// Use dpiConn_tpcPrepare() instead.
-//-----------------------------------------------------------------------------
-int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded)
-{
-    return dpiConn_tpcPrepare(conn, NULL, commitNeeded);
 }
 
 

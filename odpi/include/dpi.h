@@ -68,10 +68,10 @@ extern "C" {
 #endif
 
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   4
-#define DPI_MINOR_VERSION   6
+#define DPI_MAJOR_VERSION   5
+#define DPI_MINOR_VERSION   0
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX
+#define DPI_VERSION_SUFFIX  "b1"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -910,12 +910,6 @@ DPI_EXPORT int dpiContext_initSubscrCreateParams(const dpiContext *context,
 // add a reference to a connection
 DPI_EXPORT int dpiConn_addRef(dpiConn *conn);
 
-// begin a distributed transaction
-// DEPRECATED: use dpiConn_tpcBegin() instead
-DPI_EXPORT int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
-        const char *globalTransactionId, uint32_t globalTransactionIdLength,
-        const char *branchQualifier, uint32_t branchQualifierLength);
-
 // break execution of the statement running on the connection
 DPI_EXPORT int dpiConn_breakExecution(dpiConn *conn);
 
@@ -1033,10 +1027,6 @@ DPI_EXPORT int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
 
 // ping the connection to see if it is still alive
 DPI_EXPORT int dpiConn_ping(dpiConn *conn);
-
-// prepare a distributed transaction for commit
-// DEPRECATED: use dpiConn_tpcPrepare() instead
-DPI_EXPORT int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded);
 
 // prepare a statement and return it for subsequent execution/fetching
 DPI_EXPORT int dpiConn_prepareStmt(dpiConn *conn, int scrollable,
