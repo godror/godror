@@ -26,10 +26,12 @@ the session.  The values can then be seen by the DBA in database views such as
 V$SESSION.  For example to set `Module` and `Action` on the Context:
 
 ```go
-db.QueryContext(godror.ContextWithTraceTag(godror.TraceTag{
-    Module: "processing",
-    Action: "first",
-}), qry)
+db.QueryContext(godror.ContextWithTraceTag(ctx, 
+    godror.TraceTag{
+        Module: "processing",
+        Action: "first",
+    }), 
+    qry)
 ```
 
 ### <a name="internaltracing"></a> Internal Tracing
