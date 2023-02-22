@@ -22,6 +22,16 @@ Godror will print a
 warning that it chosen the DB's OS' time zone (`TO_CHAR(SYSTIMESTAMP, 'TZR')`),
 - as that's what SYSDATE is in - but that differs from DBTIMEZONE.
 
+## How to eliminate this warning ?
+Either speak with your DBA to synchronize the 
+DB's time zone (DBTIMEZONE) with the underlying OS' time zone,
+or set one chosen timezone in the [./connection.md](connection string):
+
+    timezone="Europe/Berlin"
+
+(it is parsed with `time.LoadLocation`, so such names can be used,
+ or `local`, or a numeric `+0500` fixed zone).
+
 ## Why do we need to handle time zones for DATE ?
 DATEs should use something else than time.Time, as the don't have a time zone.
 Only TIMESTAMP WITH TIME (LOCAL) TIMEZONE data types should use time.Time.
