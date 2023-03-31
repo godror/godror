@@ -697,6 +697,69 @@ typedef struct {
     int isRecoverable;
 } dpiErrorInfo__v33;
 
+// structure used for common parameters used for creating standalone
+// connections and session pools
+typedef struct {
+    dpiCreateMode createMode;
+    const char *encoding;
+    const char *nencoding;
+    const char *edition;
+    uint32_t editionLength;
+    const char *driverName;
+    uint32_t driverNameLength;
+} dpiCommonCreateParams__v41;
+
+// structure used for common parameters used for creating standalone
+// connections and session pools
+typedef struct {
+    dpiCreateMode createMode;
+    const char *encoding;
+    const char *nencoding;
+    const char *edition;
+    uint32_t editionLength;
+    const char *driverName;
+    uint32_t driverNameLength;
+    int sodaMetadataCache;
+    uint32_t stmtCacheSize;
+} dpiCommonCreateParams__v43;
+
+// structure used for SODA operations (find/replace/remove)
+typedef struct {
+    uint32_t numKeys;
+    const char **keys;
+    uint32_t *keyLengths;
+    const char *key;
+    uint32_t keyLength;
+    const char *version;
+    uint32_t versionLength;
+    const char *filter;
+    uint32_t filterLength;
+    uint32_t skip;
+    uint32_t limit;
+    uint32_t fetchArraySize;
+} dpiSodaOperOptions__v41;
+
+// structure used for creating pools
+typedef struct {
+    uint32_t minSessions;
+    uint32_t maxSessions;
+    uint32_t sessionIncrement;
+    int pingInterval;
+    int pingTimeout;
+    int homogeneous;
+    int externalAuth;
+    dpiPoolGetMode getMode;
+    const char *outPoolName;
+    uint32_t outPoolNameLength;
+    uint32_t timeout;
+    uint32_t waitTimeout;
+    uint32_t maxLifetimeSession;
+    const char *plsqlFixupCallback;
+    uint32_t plsqlFixupCallbackLength;
+    uint32_t maxSessionsPerShard;
+} dpiPoolCreateParams__v43;
+
+
 //-----------------------------------------------------------------------------
 // forward declarations for recursive OCI JSON type definitions
 //-----------------------------------------------------------------------------

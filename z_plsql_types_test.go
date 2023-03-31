@@ -406,7 +406,10 @@ func TestPlSqlTypes(t *testing.T) {
 	t.Run("Slice", func(t *testing.T) {
 		s := sliceStruct{ObjSlice: []objectStruct{{ID: 1, Txt: "first"}}}
 		const qry = `begin test_pkg_sample.test_table_in(:1); end;`
-		_, err := cx.ExecContext(ctx, qry, sql.Out{Dest: &s, In: true})
+		_, err := cx.ExecContext(ctx,
+			qry,
+			sql.Out{Dest: &s, In: true},
+		)
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}

@@ -275,8 +275,8 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
             return DPI_SUCCESS;
         case DPI_JZNVAL_FLOAT:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
-            node->nativeTypeNum = DPI_NATIVE_TYPE_FLOAT;
-            node->value->asFloat = scalar.value.asFloat.value;
+            node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
+            node->value->asDouble = scalar.value.asFloat.value;
             return DPI_SUCCESS;
         case DPI_JZNVAL_DOUBLE:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
