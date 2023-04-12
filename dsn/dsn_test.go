@@ -29,6 +29,7 @@ func TestParse(t *testing.T) {
 		},
 		PoolParams: PoolParams{
 			MaxLifeTime:    DefaultMaxLifeTime,
+			PingInterval:   3142 * time.Millisecond,
 			SessionTimeout: DefaultSessionTimeout,
 			WaitTimeout:    DefaultWaitTimeout,
 		},
@@ -46,8 +47,8 @@ func TestParse(t *testing.T) {
 		PoolParams: PoolParams{
 			MinSessions:      DefaultPoolMinSessions,
 			MaxSessions:      DefaultPoolMaxSessions,
-			SessionIncrement: DefaultPoolIncrement,
 			MaxLifeTime:      DefaultMaxLifeTime,
+			SessionIncrement: DefaultPoolIncrement,
 			SessionTimeout:   DefaultSessionTimeout,
 			WaitTimeout:      DefaultWaitTimeout,
 		},
@@ -131,7 +132,7 @@ func TestParse(t *testing.T) {
 		"simple":   {In: "user/pass@sid", Want: wantDefault},
 		"userpass": {In: "user/pass", Want: wantEmptyConnectString},
 
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
 					Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
@@ -142,6 +143,7 @@ func TestParse(t *testing.T) {
 				PoolParams: PoolParams{
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
 					WaitTimeout: 200 * time.Millisecond, MaxLifeTime: 4000 * time.Second, SessionTimeout: 2000 * time.Second,
+					PingInterval: 4 * time.Second,
 				},
 			},
 		},
@@ -294,7 +296,8 @@ func ExampleParse() {
 	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
 	// configDir= connectionClass= enableEvents=0 externalAuth=0 heterogeneousPool=0
-	// libDir= newPassword= noTimezoneCheck=0 poolIncrement=0 poolMaxSessions=0 poolMinSessions=0
-	// poolSessionMaxLifetime=0s poolSessionTimeout=42s poolWaitTimeout=0s prelim=0
-	// standaloneConnection=0 sysasm=0 sysdba=0 sysoper=0 timezone=
+	// initOnNewConnection=0 libDir= newPassword= noTimezoneCheck=0 pingInterval=0s
+	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
+	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 standaloneConnection=0
+	// sysasm=0 sysdba=0 sysoper=0 timezone=
 }

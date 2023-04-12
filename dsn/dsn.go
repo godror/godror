@@ -296,6 +296,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolWaitTimeout", P.WaitTimeout.String())
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
+	q.Add("pingInterval", P.PingInterval.String())
 	as := newParamsArray(1)
 	for _, kv := range P.AlterSession {
 		as.Reset()
