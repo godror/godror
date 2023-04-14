@@ -1911,3 +1911,250 @@ func TestXMLType(t *testing.T) {
 
 	}
 }
+
+func TestBigXMLType(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("BigXMLType"), 30*time.Second)
+	defer cancel()
+	{
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE test_xml")
+		const qry = "create table test_xml(id number,data xmltype)"
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%q: %+v", qry, err)
+		}
+		defer testDb.ExecContext(context.Background(), "DROP TABLE test_xml")
+	}
+	// defer db.Exec("drop table test_xml")
+
+	const want = `<root>
+  <person
+  firstname="Marsiella"
+  lastname="Schonfeld"
+  city="Arbil"
+  country="Nicaragua"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person2
+  firstname="Emilia"
+  lastname="Glovsky"
+  city="Cali"
+  country="Cyprus"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person3
+  firstname="Dari"
+  lastname="Mike"
+  city="Mata-Utu"
+  country="Belize"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person4
+  firstname="Ericka"
+  lastname="Swanhildas"
+  city="Wichita"
+  country="Somalia"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person5
+  firstname="Luci"
+  lastname="Gualtiero"
+  city="Iquique"
+  country="Korea, Republic of"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person6
+  firstname="Ofilia"
+  lastname="Ailyn"
+  city="Sydney"
+  country="Tanzania, United Republic of"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person7
+  firstname="Edith"
+  lastname="Dannye"
+  city="Charlotte Amalie"
+  country="Swaziland"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person8
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person9
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person10
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="Ardys"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person11
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="Ardys"
+  lastname2="中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person12
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="Ardys"
+  lastname2="中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person13
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="Portland"
+  country="Oman"
+  firstname2="中文测试"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person14
+  firstname="Gratia"
+  lastname="Ephrem"
+  city="中文测试中文测试中文测试中文测试"
+  country="中文测试中文测试中文测试中文测试"
+  firstname2="中文测试中文测试中文测试中文测试"
+  lastname2="中文测试中文测试中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person15
+  firstname="中文测试中文测试中文测试中文测试中文测试中文测试"
+  lastname="中文测试中文测试中文测试中文测试"
+  city="中文测试中文测试中文测试中文测试"
+  country="中文测试中文测试中文测试中文测试"
+  firstname2="中文测试中文测试中文测试中文测试"
+  lastname2="中文测试中文测试中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person16
+  firstname="中文测试中文测试中文测试中文测试"
+  lastname="中文测试中文测试"
+  city="中文测试中文测试中文测试中文测试"
+  country="中文测试中文测试中文测试中文测试"
+  firstname2="中文测试中文测试"
+  lastname2="中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person17
+  firstname="中文测试"
+  lastname="中文测试"
+  city="中文测试"
+  country="中文测试"
+  firstname2="中文测试"
+  lastname2="中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person18
+  firstname="中文测试中文测试"
+  lastname="中文测试中文测试"
+  city="中文测试中文测试"
+  country="中文测试中文测试"
+  firstname2="中文测试中文测试"
+  lastname2="中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person19
+  firstname="中文测试中文测试"
+  lastname="中文测试中文测试"
+  city="中文测试中文测试"
+  country="中文测试中文测试"
+  firstname2="中文测试中文测试"
+  lastname2="Doig"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person20
+  firstname="中文测试中文测试"
+  lastname="中文测试中文测试"
+  city="中文测试中文测试"
+  country="中文测试中文测试"
+  firstname2="中文测试中文测试"
+  lastname2="中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <person21
+  firstname="Gratia"
+  lastname="中文测试中文测试"
+  city="中文测试中文测试"
+  country="中文测试中文测试"
+  firstname2="中文测试中文测试"
+  lastname2="中文测试中文测试"
+  email="Ardys.Doig@yopmail.com"
+  />
+  <random>38</random>
+  <random_float>28.038</random_float>
+  <bool>true</bool>
+  <date>1983-01-07</date>
+  <regEx>hell0</regEx>
+  <enum>online</enum>
+  <elt>Cherilyn</elt><elt>Frieda</elt><elt>Kimberley</elt><elt>Celestyna</elt><elt>Ethel</elt>  
+  <Ardys>
+    <age>34</age>
+  </Ardys>
+</root>`
+	{
+		const qry = "insert into test_xml(id,data) values (:1,:2)"
+		if _, err := testDb.ExecContext(ctx, qry, 1, want); err != nil {
+			t.Fatalf("insert %s", err)
+		}
+	}
+	const qry = "select * from test_xml"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	for _, c := range cols {
+		t.Logf("column %q: %q", c.Name(), c.DatabaseTypeName())
+	}
+	sRepl := strings.NewReplacer(" ", "", "\n", "", "\t", "")
+	for rows.Next() {
+		var id, data string
+		if err := rows.Scan(&id, &data); err != nil {
+			t.Fatal("scan: %+w", err)
+		}
+		t.Logf("id=%q data=%d", id, len(data))
+		if d := cmp.Diff(sRepl.Replace(data), sRepl.Replace(want)); d != "" {
+			t.Error(d)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+}
