@@ -84,6 +84,7 @@ var (
 )
 
 // CallbackSubscr is the callback for C code on subscription event.
+//
 //export CallbackSubscr
 func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 	log.Printf("CB %p %+v", ctx, message)
@@ -293,7 +294,7 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
 		return fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "subscribed", "query", qry, "id", queryID)
 	}

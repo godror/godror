@@ -83,7 +83,7 @@ func (r *rows) Close() error {
 		}
 	}
 	if nextRs != nil {
-		if logger := getLogger(); logger != nil {
+		if logger := getLogger(nil); logger != nil {
 			logger.Log("msg", "rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
 		}
 		C.dpiStmt_release(nextRs)
@@ -291,7 +291,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if len(dest) != len(r.columns) {
 		return fmt.Errorf("column count mismatch: we have %d columns, but given %d destination", len(r.columns), len(dest))
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -684,7 +684,7 @@ type directRow struct {
 }
 
 func (dr *directRow) Columns() []string {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("directRow", "Columns")
 	}
@@ -710,7 +710,7 @@ func (dr *directRow) Close() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (dr *directRow) Next(dest []driver.Value) error {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("directRow", "Next", "query", dr.query, "dest", dest)
 	}
@@ -763,7 +763,7 @@ func (r *rows) NextResultSet() error {
 	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
 
 	var n C.uint32_t
-	logger := getLogger()
+	logger := getLogger(nil)
 	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
 		if logger != nil {

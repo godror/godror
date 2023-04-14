@@ -58,7 +58,7 @@ func (b *Batch) Flush(ctx context.Context) error {
 	if b.values == nil {
 		b.values = make([]interface{}, len(b.rValues))
 	}
-	logger := ctxGetLog(ctx)
+	logger := getLogger(ctx)
 	for i, v := range b.rValues {
 		b.values[i] = v.Interface()
 		if false && logger != nil {

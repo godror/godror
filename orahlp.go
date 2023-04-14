@@ -37,7 +37,7 @@ type intType struct{}
 
 func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("ConvertValue", "Int64", "value", v)
 	}
@@ -90,7 +90,7 @@ type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("ConvertValue", "Float64", "value", v)
 	}
@@ -137,7 +137,7 @@ type numType struct{}
 
 func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("ConvertValue", "Num", "value", v)
 	}

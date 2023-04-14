@@ -304,17 +304,18 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 
 // GetValue converts the native DB type stored in JSON into an interface value.
 // The scalar values stored in JSON get converted as below.
-//      map[string]interface{}, for JSON object type
-//      []interface{}, for JSON arrays
-//      godror.Number or float64 based on options for NUMBER
-//      bool , for boolean
-//      byte[], for RAW
-//      time.Duration, for INTERVAL DAY TO SECOND
-//      time.Time, for TIMESTAMP
-//      string, for VARCHAR2(string)
+//
+//	map[string]interface{}, for JSON object type
+//	[]interface{}, for JSON arrays
+//	godror.Number or float64 based on options for NUMBER
+//	bool , for boolean
+//	byte[], for RAW
+//	time.Duration, for INTERVAL DAY TO SECOND
+//	time.Time, for TIMESTAMP
+//	string, for VARCHAR2(string)
 func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
 	jScalar, err := j.GetJSONScalar(opts)
-	logger := getLogger()
+	logger := getLogger(nil)
 	if err != nil {
 		if logger != nil {
 			logger.Log("msg", "JSON.GetValue", "Error", err.Error())
@@ -338,7 +339,7 @@ func (j JSON) String() string {
 	// Returning empty string for error case, fix?
 
 	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
-	logger := getLogger()
+	logger := getLogger(nil)
 	if err != nil {
 		if logger != nil {
 			logger.Log("msg", "JSON.String", "Error", err.Error())
@@ -411,14 +412,15 @@ type JSONScalar struct {
 
 // GetValue converts native DB type stored in JSONScalar to an interface value.
 // The scalar value stored in JSONScalar gets converted as below.
-//      map[string]interface{}, for JSON object type
-//      []interface{}, for JSON arrays
-//      godror.Number or float64 based on options for NUMBER
-//      bool , for JSON boolean
-//      byte[], for JSON RAW
-//      time.Duration, for INTERVAL DAY TO SECOND
-//      time.Time, for TIMESTAMP
-//      string, for VARCHAR2(string)
+//
+//	map[string]interface{}, for JSON object type
+//	[]interface{}, for JSON arrays
+//	godror.Number or float64 based on options for NUMBER
+//	bool , for JSON boolean
+//	byte[], for JSON RAW
+//	time.Duration, for INTERVAL DAY TO SECOND
+//	time.Time, for TIMESTAMP
+//	string, for VARCHAR2(string)
 func (j JSONScalar) GetValue() (val interface{}, err error) {
 	var d Data
 	jsonNodeToData(&d, j.dpiJsonNode)
@@ -453,7 +455,7 @@ func getJSONScalarNumber(d Data) (val interface{}) {
 	return
 }
 
-//getJSONScalarString converts the byte array of VARCHAR2 to string
+// getJSONScalarString converts the byte array of VARCHAR2 to string
 func getJSONScalarString(d Data) (string, error) {
 	b := d.Get()
 	return string(b.([]byte)), nil

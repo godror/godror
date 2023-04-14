@@ -107,19 +107,16 @@ func (sw *swapLogger) Log(keyvals ...interface{}) error {
 
 type logCtxKey struct{}
 
-func getLogger() Logger {
-	if globalLogger.IsSet() {
-		return globalLogger
-	}
-	return nil
-}
-func ctxGetLog(ctx context.Context) Logger {
+func getLogger(ctx context.Context) Logger {
 	if ctx != nil {
 		if lgr, ok := ctx.Value(logCtxKey{}).(Logger); ok {
 			return lgr
 		}
 	}
-	return getLogger()
+	if globalLogger.IsSet() {
+		return globalLogger
+	}
+	return nil
 }
 
 // ContextWithLogger returns a context with the given logger.

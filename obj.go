@@ -74,7 +74,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%s, attr=%+v, typ=%d): %w", name, O.Name, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
@@ -94,7 +94,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
 	}
 	if data.NativeTypeNum == 0 {
-		logger := getLogger()
+		logger := getLogger(nil)
 		if logger != nil {
 			logger.Log("msg", "WARN setAttributeValue", "attr.NativeTypeNum", attr.NativeTypeNum, "data.NativeTypeNum", data.NativeTypeNum)
 		}
@@ -205,7 +205,7 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "Object.Close", "object", obj)
 	}
@@ -225,7 +225,7 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 		return nil, nil
 	}
 	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
-	logger := getLogger()
+	logger := getLogger(nil)
 	data := scratch.Get()
 	defer scratch.Put(data)
 	for a, ot := range O.ObjectType.Attributes {
@@ -370,7 +370,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 
 	for a, ot := range O.ObjectType.Attributes {
 		v := m[a]
@@ -452,7 +452,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		}
 		return err
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	wantDelim := tok == json.Delim('{')
 	first := true
 	for {
@@ -529,7 +529,7 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{
 	if O.dpiObject == nil {
 		return nil
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 
 	for i, o := range m {
 		if logger != nil {
@@ -919,7 +919,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t *ObjectType) NewObject() (*Object, error) {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "NewObject", "name", t.Name)
 	}
@@ -976,7 +976,7 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 
-	logger := getLogger()
+	logger := getLogger(nil)
 	if cof != nil {
 		if err := cof.Close(); err != nil && logger != nil {
 			logger.Log("msg", "ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
@@ -1075,7 +1075,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getAttributes: %w", t, t.drv.getError())
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
@@ -1149,7 +1149,7 @@ func (A ObjectAttribute) Close() error {
 	if A.dpiObjectAttr == nil {
 		return nil
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "ObjectAttribute.Close", "name", A.Name)
 	}

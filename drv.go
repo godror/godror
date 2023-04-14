@@ -8,33 +8,34 @@
 // The connection string for the sql.Open("godror", dataSourceName) call can be
 // the simple
 //
-//   user="login" password="password" connectString="host:port/service_name" sysdba=true
+//	user="login" password="password" connectString="host:port/service_name" sysdba=true
 //
 // with additional params (here with the defaults):
-//     sysdba=0
-//     sysoper=0
-//     poolMinSessions=1
-//     poolMaxSessions=1000
-//     poolMaxSessionsPerShard=
-//     poolPingInterval=
-//     poolIncrement=1
-//     connectionClass=
-//     standaloneConnection=0
-//     enableEvents=0
-//     heterogeneousPool=0
-//     externalAuth=0
-//     prelim=0
-//     poolWaitTimeout=5m
-//     poolSessionMaxLifetime=1h
-//     poolSessionTimeout=30s
-//     timezone=
-//     noTimezoneCheck=
-//     newPassword=
-//     onInit="ALTER SESSION SET current_schema=my_schema"
-//     configDir=
-//     libDir=
-//     stmtCacheSize=
-//     charset=UTF-8
+//
+//	sysdba=0
+//	sysoper=0
+//	poolMinSessions=1
+//	poolMaxSessions=1000
+//	poolMaxSessionsPerShard=
+//	poolPingInterval=
+//	poolIncrement=1
+//	connectionClass=
+//	standaloneConnection=0
+//	enableEvents=0
+//	heterogeneousPool=0
+//	externalAuth=0
+//	prelim=0
+//	poolWaitTimeout=5m
+//	poolSessionMaxLifetime=1h
+//	poolSessionTimeout=30s
+//	timezone=
+//	noTimezoneCheck=
+//	newPassword=
+//	onInit="ALTER SESSION SET current_schema=my_schema"
+//	configDir=
+//	libDir=
+//	stmtCacheSize=
+//	charset=UTF-8
 //
 // These are the defaults.
 // For external authentication, user and password should be empty
@@ -285,7 +286,7 @@ func (d *drv) init(configDir, libDir string) error {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
 		}
 	}
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
@@ -417,7 +418,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 }
 
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "acquireConn", "pool", pool, "connParams", P)
 	}
@@ -648,7 +649,7 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("msg", "getPool", "key", poolKey)
 	}
@@ -768,7 +769,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// create pool
 	var dp *C.dpiPool
-	logger := getLogger()
+	logger := getLogger(nil)
 	if logger != nil {
 		logger.Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
@@ -1094,7 +1095,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	params := c.ConnectionParams
-	logger := ctxGetLog(ctx)
+	logger := getLogger(ctx)
 	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
@@ -1187,7 +1188,7 @@ func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext)
 // mkExecMany returns a function that applies the queries to the connection.
 func mkExecMany(qrys []string) func(context.Context, driver.ConnPrepareContext) error {
 	return func(ctx context.Context, conn driver.ConnPrepareContext) error {
-		logger := ctxGetLog(ctx)
+		logger := getLogger(ctx)
 		for _, qry := range qrys {
 			if logger != nil {
 				logger.Log("msg", "execMany", "qry", qry)
