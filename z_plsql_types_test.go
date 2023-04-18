@@ -2132,7 +2132,7 @@ func TestBigXMLType(t *testing.T) {
 			t.Fatalf("insert %s", err)
 		}
 	}
-	const qry = "select * from test_xml"
+	const qry = "select A.id, A.data.getClobVal() AS data FROM test_xml A"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
