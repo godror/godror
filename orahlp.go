@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 // Number as string
@@ -37,9 +39,8 @@ type intType struct{}
 
 func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger(context.TODO())
-	if logger != nil {
-		logger.Debug("ConvertValue", "Int64", "value", v)
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("ConvertValue Int64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -90,9 +91,8 @@ type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger(context.TODO())
-	if logger != nil {
-		logger.Debug("ConvertValue", "Float64", "value", v)
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("ConvertValue Float64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -137,9 +137,8 @@ type numType struct{}
 
 func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
-	logger := getLogger(context.TODO())
-	if logger != nil {
-		logger.Debug("ConvertValue", "Num", "value", v)
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("ConvertValue Num", "value", v)
 	}
 	switch x := v.(type) {
 	case string:

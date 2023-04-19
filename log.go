@@ -7,12 +7,26 @@ package godror
 
 import (
 	"context"
+	"sync/atomic"
 
 	"golang.org/x/exp/slog"
 )
 
+var globalLogger atomic.Value
+
+// SetLogger sets the global logger.
+func SetLogger(logger *slog.Logger) {
+	if logger != nil {
+		globalLogger.Store(logger)
+	}
+}
+
 type logCtxKey struct{}
 
+// ContextWithLogger returns a context with the given logger.
+func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, logCtxKey{}, logger)
+}
 func getLogger(ctx context.Context) *slog.Logger {
 	if ctx != nil {
 		if lgr, ok := ctx.Value(logCtxKey{}).(*slog.Logger); ok {
@@ -24,10 +38,8 @@ func getLogger(ctx context.Context) *slog.Logger {
 			}
 		}
 	}
+	if lgr, ok := globalLogger.Load().(*slog.Logger); ok {
+		return lgr
+	}
 	return nil
-}
-
-// ContextWithLogger returns a context with the given logger.
-func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
-	return context.WithValue(ctx, logCtxKey{}, logger)
 }

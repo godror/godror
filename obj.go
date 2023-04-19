@@ -25,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
+
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -74,8 +76,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%s, attr=%+v, typ=%d): %w", name, O.Name, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
-	logger := getLogger(context.TODO())
-	if logger != nil {
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
 			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
@@ -94,9 +95,8 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
 	}
 	if data.NativeTypeNum == 0 {
-		logger := getLogger(context.TODO())
-		if logger != nil {
-			logger.Warn("setAttributeValue", "attr.NativeTypeNum", attr.NativeTypeNum, "data.NativeTypeNum", data.NativeTypeNum)
+		if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelWarn) {
+			logger.Warn("WARN setAttributeValue", "attr.NativeTypeNum", attr.NativeTypeNum, "data.NativeTypeNum", data.NativeTypeNum)
 		}
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
@@ -205,10 +205,10 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-	logger := getLogger(context.TODO())
-	if logger != nil {
-		logger.Debug("Object.Close", "object", obj)
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", obj))
 	}
+
 	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
 	}
@@ -224,6 +224,7 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 	if O == nil || O.dpiObject == nil {
 		return nil, nil
 	}
+	logger := getLogger(context.TODO())
 	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
 	data := scratch.Get()
 	defer scratch.Put(data)
@@ -239,6 +240,9 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 			d = maybeString(d, ot.ObjectType)
 		}
 		m[a] = d
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("AsMap", "attribute", a, "data", fmt.Sprintf("%#v", d), "type", fmt.Sprintf("%T", d), "recursive", recursive)
+		}
 		if !recursive {
 			continue
 		}
@@ -391,10 +395,15 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
+	logger := getLogger(context.TODO())
+
 	for a, ot := range O.ObjectType.Attributes {
 		v := m[a]
 		if v == nil {
 			continue
+		}
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("FromMap", "attribute", a, "value", v, "type", fmt.Sprintf("%T", v), "recursive", recursive, "ot", ot.ObjectType)
 		}
 		if ot.ObjectType.CollectionOf != nil { // Collection case
 			if err := func() error {
@@ -469,6 +478,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		return err
 	}
 	wantDelim := tok == json.Delim('{')
+	logger := getLogger(context.TODO())
 	first := true
 	for {
 		if first && wantDelim || !first {
@@ -486,6 +496,9 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		}
 		k = strings.ToUpper(k)
 		a, ok := O.ObjectType.Attributes[k]
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("attribute", "k", k, "a", a)
+		}
 		if !ok {
 			return fmt.Errorf("key %q not found", k)
 		}
@@ -541,8 +554,12 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{
 	if O.dpiObject == nil {
 		return nil
 	}
+	logger := getLogger(context.TODO())
 
 	for i, o := range m {
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("FromMapSlice", "index", i, "recursive", recursive)
+		}
 		elt, err := O.ObjectType.CollectionOf.NewObject()
 		if err != nil {
 			return fmt.Errorf("%d.FromMapSlice: %w", i, err)
@@ -945,7 +962,7 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, errNilObjectType
 	}
 	logger := getLogger(context.TODO())
-	if logger != nil {
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("NewObject", "name", t.Name)
 	}
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
@@ -1001,14 +1018,22 @@ func (t *ObjectType) Close() error {
 		return nil
 	}
 
+	logger := getLogger(context.TODO())
 	if cof != nil {
-		_ = cof.Close()
+		if err := cof.Close(); err != nil && logger != nil {
+			logger.Error("ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
+		}
 	}
 
 	for _, attr := range attributes {
-		_ = attr.Close()
+		if err := attr.Close(); err != nil && logger != nil {
+			logger.Error("ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
+		}
 	}
 
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("ObjectType.Close", "name", t.Name)
+	}
 	if err := drv.checkExec(func() C.int { return C.dpiObjectType_release(ot) }); err != nil {
 		return fmt.Errorf("error releasing object type: %w", err)
 	}
@@ -1092,11 +1117,16 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getAttributes: %w", t, t.drv.getError())
 	}
+	logger := getLogger(context.TODO())
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
 			return fmt.Errorf("%v.attr_getInfo: %w", attr, t.drv.getError())
 		}
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("getAttributes", "i", i, "attrInfo", attrInfo)
+		}
+
 		typ := attrInfo.typeInfo
 		sub, err := objectTypeFromDataTypeInfo(t.drv, typ, cache)
 		if err != nil {
@@ -1162,9 +1192,8 @@ func (A ObjectAttribute) Close() error {
 	if A.dpiObjectAttr == nil {
 		return nil
 	}
-	logger := getLogger(context.TODO())
-	if logger != nil {
-		logger.Debug("ObjectAttribute.Close", "name", A.Name)
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("ObjectAttribute.CloReplaceQuestionPlacholders()se", "name", A.Name)
 	}
 	if err := A.ObjectType.drv.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
 		return err

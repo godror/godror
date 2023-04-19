@@ -20,6 +20,8 @@ import (
 	"sync"
 	"unicode/utf8"
 	"unsafe"
+
+	"golang.org/x/exp/slog"
 )
 
 // Lob is for reading/writing a LOB.
@@ -164,9 +166,10 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
 	logger := getLogger(context.TODO())
-	if logger != nil {
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
 	}
+
 	if dlr.buf == nil {
 		if dlr.chunkSize == 0 {
 			if err := dlr.checkExec(func() C.int {
@@ -177,6 +180,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 		}
 		// If the dest buffer is big enough, avoid copying.
 		if ulen := C.uint64_t(len(p)); ulen >= C.uint64_t(dlr.chunkSize) || dlr.sizePlusOne != 0 && ulen+1 >= dlr.sizePlusOne {
+			if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+				logger.Debug("direct read", "p", len(p), "chunkSize", dlr.chunkSize)
+			}
 			return dlr.read(p)
 		}
 		cs := int(dlr.chunkSize)
@@ -199,6 +205,9 @@ func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	// We only read into dlr.buf when it's empty, dlr.bufR == dlr.bufW == 0
 	// nosemgrep: trailofbits.go.questionable-assignment.questionable-assignment
 	dlr.bufW, err = dlr.read(dlr.buf)
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("dlr.read", "bufR", dlr.bufR, "bufW", dlr.bufW, "chunkSize", dlr.chunkSize, "error", err)
+	}
 	dlr.bufR = copy(p, dlr.buf[:dlr.bufW])
 	if err == io.EOF && dlr.bufW != dlr.bufR {
 		err = nil
@@ -245,7 +254,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
 	logger := getLogger(context.TODO())
-	if logger != nil {
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}
 	if dlr.finished || dlr.dpiLob == nil {
@@ -282,12 +291,21 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		amount /= 4 // dpiLob_readBytes' amount is the number of CHARACTERS for CLOBs.
 	}
 	// fmt.Printf("%p.Read offset=%d sizePlusOne=%d n=%d\n", dlr.dpiLob, dlr.offset, dlr.sizePlusOne, n)
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("Read", "offset", dlr.offset, "sizePlusOne", dlr.sizePlusOne, "n", n, "amount", amount)
+	}
 	if !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
+		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+			logger.Debug("LOB reached end", "offset", dlr.offset, "size", dlr.sizePlusOne)
+		}
 		return 0, io.EOF
 	}
 	if err := dlr.drv.checkExecNoLOT(func() C.int {
 		return C.dpiLob_readBytes(dlr.dpiLob, dlr.offset+1, amount, (*C.char)(unsafe.Pointer(&p[0])), &n)
 	}); err != nil {
+		if logger != nil {
+			logger.Error("readBytes", "error", err)
+		}
 		C.dpiLob_close(dlr.dpiLob)
 		dlr.dpiLob = nil
 		var codeErr interface{ Code() int }
@@ -296,6 +314,9 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 			return int(n), io.EOF
 		}
 		return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
+	}
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("read", "n", n)
 	}
 	if dlr.IsClob {
 		dlr.offset += C.uint64_t(utf8.RuneCount(p[:n]))
@@ -308,6 +329,9 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		dlr.dpiLob = nil
 		dlr.finished = true
 		err = io.EOF
+	}
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("LOB", "n", n, "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob, "error", err)
 	}
 	return int(n), err
 }

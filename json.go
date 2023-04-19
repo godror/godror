@@ -223,6 +223,7 @@ void godror_dpiJsonfreeMem(dpiJsonNode *node) {
 import "C"
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -316,13 +317,16 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
 	jScalar, err := j.GetJSONScalar(opts)
 	if err != nil {
-		return nil, err
+		// later
+	} else if val, err2 := jScalar.GetValue(); err2 != nil {
+		err = err2
+	} else {
+		return val, nil
 	}
-	val, err := jScalar.GetValue()
-	if err != nil {
-		return nil, err
+	if logger := getLogger(context.TODO()); logger != nil {
+		logger.Error("JSON.GetValue", "error", err)
 	}
-	return val, nil
+	return nil, err
 }
 
 // String returns standard JSON formatted string
@@ -333,17 +337,18 @@ func (j JSON) String() string {
 
 	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
 	if err != nil {
-		return ""
+		// later
+	} else if jScalarVal, err2 := jScalar.GetValue(); err2 != nil {
+		err = err2
+	} else if data, err2 := json.Marshal(jScalarVal); err2 != nil {
+		err = err2
+	} else {
+		return string(data)
 	}
-	jScalarVal, err := jScalar.GetValue()
-	if err != nil {
-		return ""
+	if logger := getLogger(context.TODO()); logger != nil {
+		logger.Error("JSON.String", "error", err)
 	}
-	data, err := json.Marshal(jScalarVal)
-	if err != nil {
-		return ""
-	}
-	return string(data)
+	return ""
 }
 
 // jsonNodeToData gets the data from dpiJsonNode
