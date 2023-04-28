@@ -11,6 +11,7 @@ package godror
 import "C"
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -162,7 +163,7 @@ func (dlr *dpiLobReader) ChunkSize() int {
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
 	}
@@ -249,7 +250,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if dlr == nil {
 		return 0, errors.New("read on nil dpiLobReader")
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "LOB Read", "dlr", fmt.Sprintf("%p", dlr), "offset", dlr.offset, "size", dlr.sizePlusOne, "finished", dlr.finished, "clob", dlr.IsClob)
 	}

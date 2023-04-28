@@ -2139,6 +2139,9 @@ func TestBigXMLType(t *testing.T) {
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range cols {
 		t.Logf("column %q: %q", c.Name(), c.DatabaseTypeName())
 	}

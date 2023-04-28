@@ -333,7 +333,7 @@ func (st *statement) closeNotLocking() error {
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
 
-	if logger := getLogger(nil); logger != nil {
+	if logger := getLogger(context.TODO()); logger != nil {
 		logger.Log("msg", "statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
 		if printStack {
 			var a [4096]byte
@@ -635,7 +635,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "NumInput", "stmt", fmt.Sprintf("%p", st), "dpiStmt", fmt.Sprintf("%p", st.dpiStmt), "query", st.query)
 	}
@@ -947,7 +947,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 
 func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
 	nilPtr := false
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		defer func() {
 			logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
@@ -1485,7 +1485,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 
 	//tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
 	if logger == nil {
-		logger = getLogger(nil)
+		logger = getLogger(context.TODO())
 	}
 	tz := c.Timezone()
 	for i, t := range times {
@@ -1525,7 +1525,7 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 }
 
 func (c *conn) dataGetIntervalDS(v interface{}, data []C.dpiData) error {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "dataGetIntervalDS", "data", data, "v", v)
 	}
@@ -1559,7 +1559,7 @@ func dataGetIntervalDS(t *time.Duration, d *C.dpiData) {
 		time.Duration(ds.minutes)*time.Minute +
 		time.Duration(ds.seconds)*time.Second +
 		time.Duration(ds.fseconds)
-	if logger := getLogger(nil); logger != nil {
+	if logger := getLogger(context.TODO()); logger != nil {
 		logger.Log("msg", "dataGetIntervalDS", "d", *d, "t", *t)
 	}
 }
@@ -1586,7 +1586,7 @@ func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		}
 		return nil
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "dataSetIntervalDS", "data", data, "times", times)
 	}
@@ -2432,7 +2432,7 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
 
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	var n C.uint32_t
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("dataGetStmtC.getNumQueryColumns: %+v: %w", err, io.EOF)
@@ -2526,7 +2526,7 @@ func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error
 		return nil
 	}
 
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 
 	// For small reads it is faster to set it as byte slice
 	var a [1 << 20]byte
@@ -2665,7 +2665,7 @@ func (c *conn) dataSetObject(dv *C.dpiVar, data []C.dpiData, vv interface{}) err
 
 // dataSetObjectStructObj creates an ot typed object from rv.
 func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object, error) {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
 	}
@@ -2804,7 +2804,7 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 	if ot == nil {
 		panic("dataSetObjectStruct with nil ObjectType")
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	rv := reflect.ValueOf(vv)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -2834,7 +2834,7 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 	return obj.Close()
 }
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	switch out := v.(type) {
 	case *ObjectCollection:
 		d := Data{
@@ -2888,7 +2888,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 
 // dataGetObjectStructObj reads an object and writes it to rv.
 func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	rvt := rv.Type()
 
 	if obj == nil {
@@ -3061,7 +3061,7 @@ Loop:
 
 // dataGetObjectStruct reads the object from data and writes it to v.
 func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() == reflect.Ptr {
@@ -3114,7 +3114,7 @@ func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]strin
 const StructTag = "godror"
 
 func (c *conn) getStructObjectType(v interface{}, fieldTag string) (*ObjectType, error) {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -3382,7 +3382,7 @@ func (st *statement) ColumnConverter(idx int) driver.ValueConverter {
 			c = Num
 		}
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "ColumnConverter", "c", c)
 	}
@@ -3404,7 +3404,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	for i := 0; i < colCount; i++ {
 		if err := st.checkExecNoLOT(func() C.int {
 			return C.dpiStmt_getQueryInfo(st.dpiStmt, C.uint32_t(i+1), &info)
@@ -3561,7 +3561,7 @@ func stmtSetFinalizer(st *statement, tag string) {
 
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
-			if logger := getLogger(nil); logger != nil {
+			if logger := getLogger(context.TODO()); logger != nil {
 				logger.Log("msg", "ERROR: statement is not closed!", "stmt", st, "tag", tag, "stack", string(stack))
 			} else {
 				fmt.Printf("ERROR: statement %p of %s is not closed!\n%s\n", st, tag, stack)

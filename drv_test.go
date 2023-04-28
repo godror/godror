@@ -33,13 +33,36 @@ func TestNewDriver(t *testing.T) {
 }
 
 func TestFromErrorInfo(t *testing.T) {
-	errInfo := newErrorInfo(0, "ORA-24315: érvénytelen attribútumtípus\n")
-	t.Logf("errInfo: %#v", errInfo)
-	err := fromErrorInfo(errInfo)
-	t.Log("OraErr", err)
-	var oe interface{ Code() int }
-	if !errors.As(err, &oe) || oe.Code() != 24315 {
-		t.Errorf("got %d, wanted 24315", oe.Code())
+	for _, tC := range []struct {
+		Msg      string
+		WantMsg  string
+		WantCode int
+	}{
+		{Msg: "ORA-24315: érvénytelen attribútumtípus\n",
+			WantCode: 24315, WantMsg: "érvénytelen attribútumtípus"},
+		{Msg: "DPI-1080: connection was closed by ORA-3113",
+			WantCode: 3113, WantMsg: "DPI-1080: connection was closed by"},
+	} {
+		tC := tC
+		t.Run(tC.Msg, func(t *testing.T) {
+			errInfo := newErrorInfo(0, tC.Msg)
+			t.Logf("errInfo: %#v", errInfo)
+			err := fromErrorInfo(errInfo)
+			t.Log("OraErr", err)
+			var oe interface {
+				Code() int
+				Message() string
+			}
+			if !errors.As(err, &oe) {
+				t.Fatal("not OraErr")
+			}
+			if oe.Code() != tC.WantCode {
+				t.Errorf("got %d, wanted %d", oe.Code(), tC.WantCode)
+			}
+			if oe.Message() != tC.WantMsg {
+				t.Errorf("got %q, wanted %q", oe.Message(), tC.WantMsg)
+			}
+		})
 	}
 }
 

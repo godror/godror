@@ -162,7 +162,7 @@ func (c *conn) Break() error {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "Break", "dpiConn", c.dpiConn)
 	}
@@ -447,7 +447,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	}
 	var dataArr *C.dpiData
 	var v *C.dpiVar
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
 	}
@@ -510,7 +510,7 @@ func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Con
 }
 
 func (c *conn) initTZ() error {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
 	}
@@ -667,7 +667,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	if (dbTZ == "+00:00" || dbTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
 		return time.UTC, 0, nil
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
@@ -734,7 +734,7 @@ func maybeBadConn(err error, c *conn) error {
 		return nil
 	}
 	cl := func() {}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if c != nil {
 		cl = func() {
 			if logger != nil {
@@ -1141,7 +1141,7 @@ func (c *conn) IsValid() bool {
 	if dpiConnOK {
 		dpiConnOK = c.isHealthy()
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
 	}

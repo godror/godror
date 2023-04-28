@@ -286,7 +286,7 @@ func (d *drv) init(configDir, libDir string) error {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
 		}
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "dpiContext_createWithParams", "params", ctxParams)
 	}
@@ -418,7 +418,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 }
 
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "acquireConn", "pool", pool, "connParams", P)
 	}
@@ -649,7 +649,7 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "getPool", "key", poolKey)
 	}
@@ -769,7 +769,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// create pool
 	var dp *C.dpiPool
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
@@ -927,10 +927,29 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) error {
 	if oe.code == 0 && oe.message == "" {
 		return nil
 	}
-	if oe.code == 0 && strings.HasPrefix(oe.message, "ORA-") &&
-		len(oe.message) > 9 && oe.message[9] == ':' {
-		if i, _ := strconv.Atoi(oe.message[4:9]); i > 0 {
-			oe.code, oe.message = i, strings.TrimSpace(oe.message[10:])
+	indexNotDigit := func(s string) int {
+		return strings.IndexFunc(s, func(r rune) bool {
+			return !('0' <= r && r <= '9')
+		})
+	}
+	if oe.code == 0 {
+		if msg, ok := strings.CutPrefix(oe.message, "ORA-"); ok {
+			if i := indexNotDigit(msg); i > 0 && msg[i] == ':' {
+				if j, _ := strconv.Atoi(msg[:i]); j > 0 {
+					oe.code, oe.message = j, strings.TrimSpace(msg[i+1:])
+				}
+			}
+		}
+	}
+	if oe.code == 0 {
+		// DPI-1080: connection was closed by ORA-3113
+		if msg, num, ok := strings.Cut(oe.message, " ORA-"); ok {
+			if j := indexNotDigit(num); j > 0 {
+				num, msg = num[:j], msg+" "+num[j:]
+			}
+			if j, _ := strconv.Atoi(num); j > 0 {
+				oe.code, oe.message = j, strings.TrimSpace(msg)
+			}
 		}
 	}
 	oe.message = strings.TrimPrefix(oe.message, fmt.Sprintf("ORA-%05d: ", oe.Code()))

@@ -16,6 +16,7 @@ void CallbackSubscrDebug(void *context, dpiSubscrMessage *message);
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -294,7 +295,7 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
 		return fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
 	}
-	logger := getLogger(nil)
+	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "subscribed", "query", qry, "id", queryID)
 	}
