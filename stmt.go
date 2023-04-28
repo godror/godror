@@ -429,8 +429,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil
 		}
 		c := st.conn
-		_ = st.closeNotLocking()
-		return maybeBadConn(err, c)
+		if err = maybeBadConn(err, c); err == driver.ErrBadConn {
+			_ = st.closeNotLocking()
+		}
+		return err
 	}
 
 	// bind variables
@@ -583,8 +585,10 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 			return nil
 		}
 		c := st.conn
-		_ = st.closeNotLocking()
-		return maybeBadConn(err, c)
+		if err = maybeBadConn(err, c); err == driver.ErrBadConn {
+			_ = st.closeNotLocking()
+		}
+		return err
 	}
 	// HandleDeadline for all ODPI calls called below
 
