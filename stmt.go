@@ -60,6 +60,7 @@ type stmtOptions struct {
 	nullDateAsZeroTime bool
 	deleteFromCache    bool
 	numberAsString     bool
+	numberAsFloat64    bool
 }
 
 type boolString struct {
@@ -130,6 +131,7 @@ func (o stmtOptions) NullDate() interface{} {
 }
 func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
+func (o stmtOptions) NumberAsFloat64() bool { return o.numberAsFloat64 }
 
 // Option holds statement options.
 //
@@ -272,8 +274,11 @@ func NullDateAsZeroTime() Option { return func(o *stmtOptions) { o.nullDateAsZer
 // DeleteFromCache is an option to delete the statement from the statement cache.
 func DeleteFromCache() Option { return func(o *stmtOptions) { o.deleteFromCache = true } }
 
-// NumberAsString is an option to return numbers a string, not Number.
+// NumberAsString is an option to return numbers as string, not Number.
 func NumberAsString() Option { return func(o *stmtOptions) { o.numberAsString = true } }
+
+// NumberAsFloat64 is an option to return numbers as float64, not Number (which is a string).
+func NumberAsFloat64() Option { return func(o *stmtOptions) { o.numberAsFloat64 = true } }
 
 const minChunkSize = 1 << 16
 

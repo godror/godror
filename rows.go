@@ -379,6 +379,7 @@ func (r *rows) Next(dest []driver.Value) error {
 
 	nullDate := r.statement.NullDate()
 	nass := r.statement.NumberAsString()
+	naf := !nass && r.statement.NumberAsFloat64()
 
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
@@ -422,18 +423,38 @@ func (r *rows) Next(dest []driver.Value) error {
 			switch col.NativeType {
 			case C.DPI_NATIVE_TYPE_INT64:
 				//dest[i] = int64(C.dpiData_getInt64(d))
-				dest[i] = *((*int64)(unsafe.Pointer(&d.value)))
+				i64 := *((*int64)(unsafe.Pointer(&d.value)))
+				if naf {
+					dest[i] = float64(i64)
+				} else {
+					dest[i] = i64
+				}
 			case C.DPI_NATIVE_TYPE_UINT64:
 				//dest[i] = uint64(C.dpiData_getUint64(d))
-				dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
+				u64 := *((*uint64)(unsafe.Pointer(&d.value)))
+				if naf {
+					dest[i] = float64(u64)
+				} else {
+					dest[i] = u64
+				}
 			case C.DPI_NATIVE_TYPE_FLOAT:
 				//dest[i] = float32(C.dpiData_getFloat(d))
 				//dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
-				dest[i] = printFloat(float64(*((*float32)(unsafe.Pointer(&d.value)))))
+				f64 := float64(*((*float32)(unsafe.Pointer(&d.value))))
+				if naf {
+					dest[i] = f64
+				} else {
+					dest[i] = printFloat(f64)
+				}
 			case C.DPI_NATIVE_TYPE_DOUBLE:
 				//dest[i] = float64(C.dpiData_getDouble(d))
 				//dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
-				dest[i] = printFloat(*((*float64)(unsafe.Pointer(&d.value))))
+				f64 := *((*float64)(unsafe.Pointer(&d.value)))
+				if naf {
+					dest[i] = f64
+				} else {
+					dest[i] = printFloat(f64)
+				}
 			case C.DPI_NATIVE_TYPE_BOOLEAN:
 				dest[i] = d.isNull != 0 && C.dpiData_getBool(d) != 0
 			default:
@@ -445,6 +466,11 @@ func (r *rows) Next(dest []driver.Value) error {
 
 				if nass {
 					dest[i] = internBytes(bb)
+				} else if naf {
+					var err error
+					if dest[i], err = strconv.ParseFloat(internBytes(bb), 64); err != nil {
+						return fmt.Errorf("parse %q as float64: %w", string(bb), err)
+					}
 				} else {
 					dest[i] = internNumberBytes(bb)
 				}
@@ -793,17 +819,17 @@ func (r *rows) NextResultSet() error {
 	return nil
 }
 
-func printFloat(f float64) string {
+func printFloat(f float64) Number {
 	var a [40]byte
 	b := strconv.AppendFloat(a[:0], f, 'f', -1, 64)
 	i := bytes.IndexByte(b, '.')
 	if i < 0 {
-		return string(b)
+		return internNumberBytes(b)
 	}
 	for j := i + 1; j < len(b); j++ {
 		if b[j] != '0' {
-			return string(b)
+			return internNumberBytes(b)
 		}
 	}
-	return string(b[:i])
+	return internNumberBytes(b[:i])
 }

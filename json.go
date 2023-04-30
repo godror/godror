@@ -445,11 +445,11 @@ func (j JSONScalar) GetValue() (val interface{}, err error) {
 }
 
 // getJSONScalarNumber returns DB NUMBER as godror.Number for option,
-// JSONOptNumberAsString and float64 for otpion, JSONOptDefault.
+// JSONOptNumberAsString and float64 for option, JSONOptDefault.
 func getJSONScalarNumber(d Data) (val interface{}) {
 	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
-		val = Number(string(b.([]byte)))
+		val = internNumberBytes(b.([]byte))
 	} else {
 		val = b.(float64)
 	}
