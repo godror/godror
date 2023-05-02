@@ -32,6 +32,7 @@ import (
 
 	"github.com/go-logfmt/logfmt"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	godror "github.com/godror/godror"
@@ -42,6 +43,7 @@ var (
 	testDb       *sql.DB
 	testSystemDb *sql.DB
 	tl           = &testLogger{}
+	logger       *slog.Logger
 
 	clientVersion, serverVersion godror.VersionInfo
 	testConStr                   string
@@ -75,7 +77,7 @@ func setUp() func() {
 
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
-		godror.SetLog(tl.Log)
+		logger = slog.New(slog.NewTextHandler(tl))
 	}
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
@@ -166,6 +168,7 @@ func setUp() func() {
 	if err != nil {
 		panic(fmt.Errorf("parse %q: %w", eDSN, err))
 	}
+	P.CommonParams.Logger = logger
 	P.CommonParams.EnableEvents = true
 	P.CommonParams.ConfigDir = configDir
 	if P.ConnParams.ConnClass == "" {
@@ -183,7 +186,7 @@ func setUp() func() {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
-	if testDb, err = sql.Open("godror", testConStr); err != nil {
+	if testDb = sql.OpenDB(godror.NewConnector(P)); err != nil {
 		panic(fmt.Errorf("connect to %s: %w", testConStr, err))
 	}
 	tearDown = append(tearDown, func() { testDb.Close() })
@@ -293,6 +296,27 @@ type testLogger struct {
 	beHelped []*testing.T
 	mu       sync.RWMutex
 }
+
+func (tl *testLogger) Write(p []byte) (int, error) {
+	s := string(p)
+	for _, t := range tl.Ts {
+		t.Helper()
+		t.Log(s)
+	}
+	return len(p), nil
+}
+func (tl *testLogger) Enabled(context.Context, slog.Level) bool { return true }
+
+func (tl *testLogger) Handle(ctx context.Context, r slog.Record) error {
+	for _, t := range tl.Ts {
+		t.Helper()
+		t.Log(r.Message)
+	}
+	return nil
+}
+
+func (tl *testLogger) WithAttrs(attrs []slog.Attr) slog.Handler { return tl }
+func (tl *testLogger) WithGroup(name string) slog.Handler       { return tl }
 
 func (tl *testLogger) Log(args ...interface{}) error {
 	if tl.enc != nil {
@@ -2315,13 +2339,6 @@ func TestSDO(t *testing.T) {
 
 	}
 	defer rows.Close()
-	if false {
-		godror.SetLog(func(kv ...interface{}) error {
-			t.Helper()
-			t.Log(kv)
-			return nil
-		})
-	}
 	for rows.Next() {
 		var dmp, isNull string
 		var intf interface{}

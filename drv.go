@@ -288,7 +288,7 @@ func (d *drv) init(configDir, libDir string) error {
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "dpiContext_createWithParams", "params", ctxParams)
+		logger.Debug("dpiContext_createWithParams", "params", ctxParams)
 	}
 
 	runtime.LockOSThread()
@@ -377,7 +377,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
-	dc, isNew, err := d.acquireConn(pool, P)
+	dc, isNew, cleanup, err := d.acquireConn(pool, P)
 	if err != nil {
 		return nil, false, err
 	}
@@ -403,12 +403,18 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	cancel()
 	if err != nil {
 		_ = c.closeNotLocking()
+		if cleanup != nil {
+			cleanup()
+		}
 		return nil, false, err
 	}
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
 	runtime.SetFinalizer(&c, func(c *conn) {
+		if cleanup != nil {
+			cleanup()
+		}
 		if c != nil && c.dpiConn != nil {
 			fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
 			_ = c.closeNotLocking()
@@ -417,10 +423,10 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	return &c, isNew, nil
 }
 
-func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
-	logger := getLogger(context.TODO())
+func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, func(), error) {
+	logger := P.Logger
 	if logger != nil {
-		logger.Log("msg", "acquireConn", "pool", pool, "connParams", P)
+		logger.Debug("acquireConn", "pool", pool, "connParams", P)
 	}
 	// initialize ODPI-C structure for common creation parameters; this is only
 	// used when a standalone connection is being created; when a connection is
@@ -429,7 +435,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	var commonCreateParams C.dpiCommonCreateParams
 	if pool == nil {
 		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize, P.Charset); err != nil {
-			return nil, false, err
+			return nil, false, nil, err
 		}
 		commonCreateParamsPtr = &commonCreateParams
 	}
@@ -458,7 +464,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams)
 	}); err != nil {
-		return nil, false, fmt.Errorf("initConnCreateParams: %w", err)
+		return nil, false, nil, fmt.Errorf("initConnCreateParams: %w", err)
 	}
 
 	// assign connection class
@@ -496,6 +502,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_PRELIM
 	}
 
+	var cleanup func()
 	// assign sharding keys, if applicable
 	if len(P.ShardingKey) > 0 {
 		var tempData C.dpiData
@@ -523,19 +530,21 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
 				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
 			default:
-				return nil, false, errors.New("unsupported data type for sharding")
+				for _, f := range tbd {
+					f()
+				}
+				return nil, false, nil, errors.New("unsupported data type for sharding")
 			}
 			columns[i].value = tempData.value
 		}
 		connCreateParams.shardingKeyColumns = &columns[0]
 		connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
 		if len(tbd) != 0 {
-			runtime.SetFinalizer(connCreateParams.shardingKeyColumns,
-				func(_ interface{}) {
-					for _, f := range tbd {
-						f()
-					}
-				})
+			cleanup = func() {
+				for _, f := range tbd {
+					f()
+				}
+			}
 		}
 	}
 
@@ -572,17 +581,20 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			&connCreateParams, &dc,
 		)
 	}); err != nil {
+		if cleanup != nil {
+			cleanup()
+		}
 		if pool != nil {
 			stats, _ := d.getPoolStats(pool)
-			return nil, false, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
+			return nil, false, nil, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
 				pool.dpiPool, stats, connCreateParams, err)
 		}
-		return nil, false, fmt.Errorf("user=%q standalone params=%+v: %w",
+		return nil, false, nil, fmt.Errorf("user=%q standalone params=%+v: %w",
 			username, connCreateParams, err)
 	}
 	//use the information from ODPI driver if new connection has been created or it is only pooled
 	isNew := connCreateParams.outNewSession == 1
-	return dc, isNew, nil
+	return dc, isNew, cleanup, nil
 }
 
 // createConnFromParams creates a driver connection given pool parameters and connection
@@ -649,9 +661,9 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
-	logger := getLogger(context.TODO())
+	logger := P.Logger
 	if logger != nil {
-		logger.Log("msg", "getPool", "key", poolKey)
+		logger.Debug("getPool", "key", poolKey)
 	}
 
 	// if pool already exists, return it immediately; otherwise, create a new
@@ -769,9 +781,9 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// create pool
 	var dp *C.dpiPool
-	logger := getLogger(context.TODO())
+	logger := P.Logger
 	if logger != nil {
-		logger.Log("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
+		logger.Debug("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
 			"common", commonCreateParams, "pool",
 			fmt.Sprintf("%#v", poolCreateParams))
 	}
@@ -1114,15 +1126,16 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	params := c.ConnectionParams
-	logger := getLogger(ctx)
+	logger := c.CommonParams.Logger
 	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
 			if cc.ConnectString == "" {
 				cc.ConnectString = params.ConnectString
 			}
+			logger = cc.Logger
 			if logger != nil {
-				logger.Log("msg", "connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
+				logger.Debug("connect with params from context", "poolParams", params.PoolParams, "connParams", cc, "common", cc.CommonParams)
 			}
 			return c.drv.createConnFromParams(ctx, dsn.ConnectionParams{
 				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
@@ -1140,7 +1153,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 
 	if logger != nil {
-		logger.Log("msg", "connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
+		logger.Debug("connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
 	return c.drv.createConnFromParams(ctx, params)
 }
@@ -1210,7 +1223,7 @@ func mkExecMany(qrys []string) func(context.Context, driver.ConnPrepareContext) 
 		logger := getLogger(ctx)
 		for _, qry := range qrys {
 			if logger != nil {
-				logger.Log("msg", "execMany", "qry", qry)
+				logger.Debug("execMany", "qry", qry)
 			}
 			st, err := conn.PrepareContext(ctx, qry)
 			if err == nil {

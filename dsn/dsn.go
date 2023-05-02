@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -49,22 +50,25 @@ const (
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
 type CommonParams struct {
+	// Logger is the per-pool or per-connection logger.
+	// The default nil logger does not log.
+	Logger *slog.Logger
+	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
+	OnInit                  func(context.Context, driver.ConnPrepareContext) error
+	Timezone                *time.Location
+	ConfigDir, LibDir       string
 	Username, ConnectString string
 	Password                Password
-	ConfigDir, LibDir       string
-	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
-	OnInit func(context.Context, driver.ConnPrepareContext) error
+	Charset                 string
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
-	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
-	InitOnNewConn bool
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
 	AlterSession [][2]string
-	Timezone     *time.Location
 	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache completely
-	StmtCacheSize           int
+	StmtCacheSize int
+	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
+	InitOnNewConn           bool
 	EnableEvents, NoTZCheck bool
-	Charset                 string
 }
 
 // String returns the string representation of CommonParams.
@@ -114,8 +118,8 @@ func (P CommonParams) String() string {
 type ConnParams struct {
 	NewPassword                             Password
 	ConnClass                               string
-	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
 	ShardingKey, SuperShardingKey           []interface{}
+	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
 }
 
 // String returns the string representation of the ConnParams.
@@ -186,8 +190,8 @@ func (P PoolParams) String() string {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	CommonParams
 	ConnParams
+	CommonParams
 	PoolParams
 	// ConnParams.NewPassword is used iff StandaloneConnection is true!
 	StandaloneConnection bool

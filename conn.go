@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/godror/godror/dsn"
+	"golang.org/x/exp/slog"
 )
 
 const getConnection = "--GET_CONNECTION--"
@@ -87,10 +88,10 @@ func (c *conn) checkExecNoLOT(f func() C.int) error {
 
 // used before an ODPI call to force it to return within the context deadline
 func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
-	logger := getLogger(ctx)
+	logger := c.getLogger(ctx)
 	if err := ctx.Err(); err != nil {
 		if logger != nil {
-			logger.Log("msg", "handleDeadline", "error", err)
+			logger.Error("handleDeadline", "error", err)
 		}
 		return err
 	}
@@ -109,14 +110,14 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		}
 		ms := C.uint32_t(dur / time.Millisecond)
 		if logger != nil {
-			logger.Log("msg", "setCallTimeout", "ms", ms)
+			logger.Debug("setCallTimeout", "ms", ms)
 		}
 		if C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE {
 			// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 			return true
 		}
 		if logger != nil {
-			logger.Log("msg", "setCallTimeout failed!")
+			logger.Warn("setCallTimeout failed!")
 		}
 		_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
 		// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
@@ -146,7 +147,7 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 			default:
 				err := ctx.Err()
 				if logger != nil {
-					logger.Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
+					logger.Error("BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
 				}
 				_ = c.Break()
 				if eraseTimeout != nil {
@@ -173,14 +174,14 @@ func (c *conn) Break() error {
 	defer c.mu.RUnlock()
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "Break", "dpiConn", c.dpiConn)
+		logger.Debug("Break", "dpiConn", c.dpiConn)
 	}
 	if c.dpiConn == nil {
 		return nil
 	}
 	if err := c.checkExec(func() C.int { return C.dpiConn_breakExecution(c.dpiConn) }); err != nil {
 		if logger != nil {
-			logger.Log("msg", "Break", "error", err)
+			logger.Error("Break", "error", err)
 		}
 		return maybeBadConn(fmt.Errorf("Break: %w", err), c)
 	}
@@ -206,7 +207,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	logger := getLogger(ctx)
 	if logger != nil {
 		dl, ok := ctx.Deadline()
-		logger.Log("msg", "Ping", "deadline", dl, "ok", ok)
+		logger.Debug("Ping", "deadline", dl, "ok", ok)
 	}
 	if err := c.handleDeadline(ctx, done); err != nil {
 		return err
@@ -370,9 +371,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 	// TODO: get rid of this hack
 	if query == getConnection {
-		logger := getLogger(ctx)
+		logger := c.getLogger(ctx)
 		if logger != nil {
-			logger.Log("msg", "PrepareContext", "shortcut", query)
+			logger.Debug("PrepareContext", "shortcut", query)
 		}
 		return &statement{conn: c, query: query}, nil
 	}
@@ -457,7 +458,7 @@ func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	var v *C.dpiVar
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("C", "dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
+		logger.Debug("dpiConn_newVar", "conn", c.dpiConn, "typ", int(vi.Typ), "natTyp", int(vi.NatTyp), "sliceLen", vi.SliceLen, "bufSize", vi.BufSize, "isArray", isArray, "objType", vi.ObjectType, "v", v)
 	}
 	if err := c.checkExec(func() C.int {
 		return C.dpiConn_newVar(
@@ -498,16 +499,16 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 
 func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
 	c.released = false
-	logger := getLogger(ctx)
+	logger := c.getLogger(ctx)
 	if logger != nil {
-		logger.Log("msg", "init connection", "params", c.params)
+		logger.Debug("init connection", "params", c.params)
 	}
 
 	if err := c.initTZ(); err != nil || onInit == nil {
 		return err
 	}
 	if logger != nil {
-		logger.Log("msg", "connection initialized", "conn", c, "haveOnInit", onInit != nil)
+		logger.Debug("connection initialized", "conn", c, "haveOnInit", onInit != nil)
 	}
 
 	if c.params.CommonParams.InitOnNewConn && !isNew {
@@ -520,7 +521,7 @@ func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Con
 func (c *conn) initTZ() error {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
+		logger.Debug("initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
 	}
 	if c.tzValid {
 		return nil
@@ -554,7 +555,7 @@ func (c *conn) initTZ() error {
 		return nil
 	}
 	if logger != nil {
-		logger.Log("msg", "initTZ", "key", key)
+		logger.Debug("initTZ", "key", key)
 	}
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// DBTIMEZONE is useless, false, and misdirecting!
@@ -572,7 +573,7 @@ func (c *conn) initTZ() error {
 	rows, err := st.(*statement).queryContextNotLocked(ctx, nil)
 	if err != nil {
 		if logger != nil {
-			logger.Log("qry", qry, "error", err)
+			logger.Error("query", "qry", qry, "error", err)
 		}
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		return err
@@ -587,13 +588,13 @@ func (c *conn) initTZ() error {
 	dbTZ = vals[0].(string)
 	dbOSTZ = vals[1].(string)
 	if logger != nil {
-		logger.Log("msg", "calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
+		logger.Debug("calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
-	tzLoc, tzOff, err := calculateTZ(dbTZ, dbOSTZ, noTZCheck)
+	tzLoc, tzOff, err := calculateTZ(dbTZ, dbOSTZ, noTZCheck, logger)
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if logger != nil {
-		logger.Log("timezone", dbOSTZ, "tz", tz, "error", err)
+		logger.Debug("calculateTZ", "timezone", dbOSTZ, "tz", tz, "error", err)
 	}
 	if err == nil {
 		tz.Location, tz.offSecs = tzLoc, tzOff
@@ -607,7 +608,7 @@ func (c *conn) initTZ() error {
 	}
 	if err != nil {
 		if logger != nil {
-			logger.Log("msg", "initTZ", "error", err)
+			logger.Error("initTZ", "error", err)
 		}
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
 		panic(err)
@@ -615,7 +616,7 @@ func (c *conn) initTZ() error {
 
 	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, tz.Location != nil
 	if logger != nil {
-		logger.Log("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
+		logger.Debug("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
 	if c.tzValid {
@@ -631,7 +632,7 @@ func (c *conn) initTZ() error {
 //go:generate go run generate_tznames.go -pkg godror -o tznames_generated.go
 var tzNames []string
 
-func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, error) {
+func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*time.Location, int, error) {
 	if dbTZ == "" && dbOSTZ != "" {
 		dbTZ = dbOSTZ
 	} else if dbTZ != "" && dbOSTZ == "" {
@@ -675,9 +676,8 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 	if (dbTZ == "+00:00" || dbTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
 		return time.UTC, 0, nil
 	}
-	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
+		logger.Debug("calculateTZ", "dbTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
 	var tz *time.Location
@@ -703,7 +703,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool) (*time.Location, int, erro
 			return tz, off, nil
 		}
 		if logger != nil {
-			logger.Log("LoadLocation", dbTZ, "error", err)
+			logger.Error("LoadLocation", dbTZ, "error", err)
 		}
 	}
 	// If not, use the numbers.
@@ -746,7 +746,7 @@ func maybeBadConn(err error, c *conn) error {
 	if c != nil {
 		cl = func() {
 			if logger != nil {
-				logger.Log("msg", "maybeBadConn close", "conn", c, "error", err)
+				logger.Error("maybeBadConn close", "conn", c, "error", err)
 			}
 			_ = c.closeNotLocking()
 		}
@@ -756,7 +756,7 @@ func maybeBadConn(err error, c *conn) error {
 		return driver.ErrBadConn
 	}
 	if logger != nil {
-		logger.Log("msg", "maybeBadConn", "err", err, "errS", fmt.Sprintf("%q", err.Error()), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
+		logger.Error("maybeBadConn", "error", err, "errS", fmt.Sprintf("%q", err.Error()), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
 	}
 	if IsBadConn(err) {
 		cl()
@@ -1098,7 +1098,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 			P.ConnParams.ConnClass = cc.ConnParams.ConnClass
 		}
 	}
-	logger := getLogger(ctx)
+	logger := c.getLogger(ctx)
 	if !paramsFromCtx {
 		if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 			if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
@@ -1107,13 +1107,13 @@ func (c *conn) ResetSession(ctx context.Context) error {
 					P.ConnectString = params.ConnectString
 				}
 				if logger != nil {
-					logger.Log("msg", "paramsFromContext", "params", P)
+					logger.Info("paramsFromContext", "params", P)
 				}
 			}
 		}
 	}
 	if logger != nil {
-		logger.Log("msg", "ResetSession re-acquire session", "pool", pool.key)
+		logger.Info("ResetSession re-acquire session", "pool", pool.key)
 	}
 	c.mu.Lock()
 	// Close and then reacquire a fresh dpiConn
@@ -1121,12 +1121,15 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		// Just release
 		_ = c.closeNotLocking()
 	}
-	dpiConn, isNew, err := c.drv.acquireConn(pool, P)
+	dpiConn, isNew, cleanup, err := c.drv.acquireConn(pool, P)
 	c.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
 	}
 	c.dpiConn = dpiConn
+	if cleanup != nil {
+		runtime.SetFinalizer(&c, func(*conn) { cleanup() })
+	}
 
 	return c.init(ctx, isNew, P.OnInit)
 }
@@ -1151,7 +1154,7 @@ func (c *conn) IsValid() bool {
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
+		logger.Debug("IsValid", "connOK", dpiConnOK, "released", released, "pooled", pooled, "tzOK", tzOK)
 	}
 	if c.params.IsPrelim {
 		return dpiConnOK
@@ -1194,4 +1197,16 @@ func (c *conn) String() string {
 	currentTT, _ := c.currentTT.Load().(TraceTag)
 	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d",
 		currentTT, c.params, c.Server.String(), c.tzOffSecs)
+}
+
+func (c *conn) getLogger(ctx context.Context) *slog.Logger {
+	if ctx != nil {
+		if lgr := getLogger(ctx); lgr != nil {
+			return lgr
+		}
+	}
+	if c != nil {
+		return c.params.Logger
+	}
+	return nil
 }

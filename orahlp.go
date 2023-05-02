@@ -39,7 +39,7 @@ func (intType) String() string { return "Int64" }
 func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("ConvertValue", "Int64", "value", v)
+		logger.Debug("ConvertValue", "Int64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -92,7 +92,7 @@ func (floatType) String() string { return "Float64" }
 func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("ConvertValue", "Float64", "value", v)
+		logger.Debug("ConvertValue", "Float64", "value", v)
 	}
 	switch x := v.(type) {
 	case int8:
@@ -139,7 +139,7 @@ func (numType) String() string { return "Num" }
 func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("ConvertValue", "Num", "value", v)
+		logger.Debug("ConvertValue", "Num", "value", v)
 	}
 	switch x := v.(type) {
 	case string:

@@ -297,7 +297,7 @@ func (s *Subscription) Register(qry string, params ...interface{}) error {
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "subscribed", "query", qry, "id", queryID)
+		logger.Debug("subscribed", "query", qry, "id", queryID)
 	}
 
 	return nil

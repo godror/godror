@@ -139,7 +139,7 @@ func (d *Data) GetInt64() int64 {
 	i := *((*int64)(unsafe.Pointer(&d.dpiData.value)))
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
+		logger.Debug("GetInt64", "data", d, "p", fmt.Sprintf("%p", d), "i", i)
 	}
 	return i
 }
@@ -316,7 +316,7 @@ type IntervalYM struct {
 // Get returns the contents of Data.
 func (d *Data) Get() interface{} {
 	if logger := getLogger(context.TODO()); logger != nil {
-		logger.Log("msg", "Get", "data", fmt.Sprintf("%#v", d), "p", fmt.Sprintf("%p", d))
+		logger.Debug("Get", "data", fmt.Sprintf("%#v", d), "p", fmt.Sprintf("%p", d))
 	}
 	switch d.NativeTypeNum {
 	case 0:
@@ -426,7 +426,7 @@ func (d *Data) Set(v interface{}) error {
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("msg", "Set", "data", d, "nativeTypeNum")
+		logger.Debug("Set", "data", d, "nativeTypeNum")
 	}
 	return nil
 }

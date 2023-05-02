@@ -85,7 +85,7 @@ func (r *rows) Close() error {
 	}
 	if nextRs != nil {
 		if logger := getLogger(context.TODO()); logger != nil {
-			logger.Log("msg", "rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
+			logger.Debug("rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
 		}
 		C.dpiStmt_release(nextRs)
 	}
@@ -341,7 +341,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		r.statement.Unlock()
 		if failed {
 			if logger != nil {
-				logger.Log("msg", "fetch", "error", err)
+				logger.Error("fetch", "error", err)
 			}
 			_ = r.Close()
 			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
@@ -352,7 +352,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			return r.err
 		}
 		if logger != nil {
-			logger.Log("msg", "fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
+			logger.Debug("fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
 		if r.fetched == 0 {
 			_ = r.Close()
@@ -388,9 +388,6 @@ func (r *rows) Next(dest []driver.Value) error {
 		typ := col.OracleType
 		d := &r.data[i][r.bufferRowIndex]
 		isNull := d.isNull == 1
-		if false && logger != nil {
-			logger.Log("msg", "Next", "i", i, "row", r.bufferRowIndex, "typ", typ, "null", isNull) //, "data", fmt.Sprintf("%+v", d), "typ", typ)
-		}
 
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
@@ -474,12 +471,6 @@ func (r *rows) Next(dest []driver.Value) error {
 				} else {
 					dest[i] = internNumberBytes(bb)
 				}
-				if false && logger != nil {
-					logger.Log("msg", "b", "i", i, "ptr", b.ptr, "length", b.length, "typ", col.NativeType, "int64", C.dpiData_getInt64(d), "dest", dest[i])
-				}
-			}
-			if false && logger != nil {
-				logger.Log("msg", "num", "t", col.NativeType, "i", i, "dest", fmt.Sprintf("%T %+v", dest[i], dest[i]))
 			}
 
 		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
@@ -557,7 +548,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			if tz == nil {
 				if logger != nil {
-					logger.Log("msg", "DATE", "i", i, "tz", tz, "params", r.conn.params)
+					logger.Debug("DATE", "i", i, "tz", tz, "params", r.conn.params)
 				}
 			}
 			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
@@ -619,7 +610,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
 			}); err != nil {
 				if logger != nil {
-					logger.Log("msg", "Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+					logger.Error("Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
 				//C.dpiStmt_release(st.dpiStmt)
 				return fmt.Errorf("getNumQueryColumns: %w", err)
@@ -629,7 +620,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			st.Unlock()
 			if err != nil {
 				if logger != nil {
-					logger.Log("msg", "Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+					logger.Error("Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
 				st.Close()
 				return err
@@ -695,7 +686,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	}
 	if logger != nil {
-		logger.Log("msg", "scanned", "row", r.bufferRowIndex, "dest", dest)
+		logger.Debug("scanned", "row", r.bufferRowIndex, "dest", dest)
 	}
 
 	return nil
@@ -713,7 +704,7 @@ type directRow struct {
 func (dr *directRow) Columns() []string {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("directRow", "Columns")
+		logger.Debug("directRow.Columns")
 	}
 	switch dr.query {
 	case getConnection:
@@ -739,7 +730,7 @@ func (dr *directRow) Close() error {
 func (dr *directRow) Next(dest []driver.Value) error {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Log("directRow", "Next", "query", dr.query, "dest", dest)
+		logger.Debug("directRow", "Next", "query", dr.query, "dest", dest)
 	}
 	switch dr.query {
 	case getConnection:
@@ -794,7 +785,7 @@ func (r *rows) NextResultSet() error {
 	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
 		if logger != nil {
-			logger.Log("msg", "NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+			logger.Error("NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}
 		//C.dpiStmt_release(st.dpiStmt)
 		return err
@@ -805,7 +796,7 @@ func (r *rows) NextResultSet() error {
 	st.Unlock()
 	if err != nil {
 		if logger != nil {
-			logger.Log("msg", "NextResultSet.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+			logger.Error("NextResultSet.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}
 		st.Close()
 		return err

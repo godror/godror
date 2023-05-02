@@ -58,15 +58,8 @@ func (b *Batch) Flush(ctx context.Context) error {
 	if b.values == nil {
 		b.values = make([]interface{}, len(b.rValues))
 	}
-	logger := getLogger(ctx)
 	for i, v := range b.rValues {
 		b.values[i] = v.Interface()
-		if false && logger != nil {
-			logger.Log("msg", "Flush", "i", i, "v", b.values[i])
-		}
-	}
-	if false && logger != nil {
-		logger.Log("msg", "Flush", "values", b.values)
 	}
 	if _, err := b.Stmt.ExecContext(ctx, b.values...); err != nil {
 		return err

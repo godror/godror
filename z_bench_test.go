@@ -111,7 +111,7 @@ END tst_bench_25;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = godror.ContextWithLog(ctx, nil)
+	ctx = godror.ContextWithLogger(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)
@@ -225,7 +225,7 @@ END tst_bench_inout;`,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx = godror.ContextWithLog(ctx, nil)
+	ctx = godror.ContextWithLogger(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		b.Fatal(err)

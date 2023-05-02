@@ -11,4 +11,7 @@ require (
 	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
 )
 
-require google.golang.org/protobuf v1.30.0 // indirect
+require (
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
+)
