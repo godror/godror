@@ -1391,14 +1391,18 @@ func TestOpenCloseDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.MinSessions, cs.MaxSessions = 0, 4
-	t.Log(cs.String())
+	cs.StandaloneConnection = true
 	const countQry = "SELECT COUNT(0) FROM user_objects"
 	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
 	defer cancel()
 	grp, ctx := errgroup.WithContext(ctx)
 	grp.SetLimit(cs.MaxSessions)
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 32; i++ {
+		cs := cs
 		grp.Go(func() error {
+			// To make the connections differ
+			cs.WaitTimeout += time.Duration(i)
+			t.Log(cs.String())
 			db := sql.OpenDB(godror.NewConnector(cs))
 			defer db.Close()
 			conn, err := db.Conn(ctx)
