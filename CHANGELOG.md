@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- NumberAsFloat64 option to return every number as float64
+
+## [v0.37.0]
+### Changed
+- ODPI-C v4.6.1
 
 ## [v0.36.0]
 ### Added
