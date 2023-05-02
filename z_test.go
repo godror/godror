@@ -1395,12 +1395,10 @@ func TestOpenCloseDB(t *testing.T) {
 	const countQry = "SELECT COUNT(0) FROM user_objects"
 	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
 	defer cancel()
-	limitCh := make(chan struct{}, cs.MaxSessions)
 	grp, ctx := errgroup.WithContext(ctx)
+	grp.SetLimit(cs.MaxSessions)
 	for i := 0; i < 16; i++ {
-		limitCh <- struct{}{}
 		grp.Go(func() error {
-			defer func() { <-limitCh }()
 			db := sql.OpenDB(godror.NewConnector(cs))
 			defer db.Close()
 			conn, err := db.Conn(ctx)
