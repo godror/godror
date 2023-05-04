@@ -18,6 +18,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -85,7 +86,10 @@ func setUp() func() {
 
 	var tearDown []func()
 	eDSN := os.Getenv("GODROR_TEST_DSN")
-	fmt.Println("eDSN:", eDSN)
+	{
+		uid, _ := user.Current()
+		fmt.Println("eDSN:", eDSN, "OS user:", uid)
+	}
 	var configDir string
 	if eDSN == "" {
 		wd, err := os.Getwd()
