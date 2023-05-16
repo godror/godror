@@ -3240,7 +3240,7 @@ func TestOnInitParallel(t *testing.T) {
 						return
 					}
 					var ec interface{ Code() int }
-					if errors.As(err, &ec) && ec.Code() == 28547 || ec.Code() == 18 {
+					if errors.As(err, &ec) && (ec.Code() == 28547 || ec.Code() == 18) {
 						return
 					}
 					t.Errorf("%d*%d. %+v", i, j, err)
