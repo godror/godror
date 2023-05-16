@@ -603,6 +603,9 @@ func (P *Password) Set(secret string) {
 	P.secret = secret
 }
 
+// LogValue implements slog.LogValuer.
+func (P Password) LogValue() slog.Value { return slog.StringValue(obfuscatedPassword) }
+
 var ErrCannotMarshal = errors.New("cannot be marshaled")
 
 func (P *Password) MarshalText() ([]byte, error) { return nil, ErrCannotMarshal }
