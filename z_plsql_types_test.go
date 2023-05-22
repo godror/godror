@@ -1793,19 +1793,15 @@ func TestInputWithNativeSlice(t *testing.T) {
 	cleanup()
 	defer cleanup()
 	create_query := []string{
-		`CREATE OR REPLACE TYPE ` + name + `_list AS TABLE OF number;`,
-		`CREATE OR REPLACE PROCEDURE ` + name + `_proc(p_in in ` + name + `_list, p_out out number) IS
-         v_result NUMBER:=0;
-         v_in ` + name + `_list :=` + name + `_list();
+		`CREATE OR REPLACE TYPE ` + name + `_list AS TABLE OF NUMBER;`,
+		`CREATE OR REPLACE PROCEDURE ` + name + `_proc(p_in IN ` + name + `_list, p_out OUT NUMBER) IS
+         v_result NUMBER := 0;
          BEGIN
-            v_in := ` + name + `_list();
-            v_in := p_in;
-	   
-            for v in 1..v_in.count LOOP
-                v_result :=v_result + v_in(v);
-            end loop;
+           FOR v IN 1..p_in.COUNT LOOP
+             v_result := v_result + p_in(v);
+           END LOOP;
 		
-            p_out := v_result;
+           p_out := v_result;
          END;`,
 	}
 
@@ -1834,7 +1830,7 @@ func TestInputWithNativeSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	qry := "CALL " + name + "_proc(:1)"
+	qry := "CALL " + name + "_proc(:1, :2)"
 	stmt, err := conn.PrepareContext(ctx, qry)
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
@@ -1852,7 +1848,21 @@ func TestInputWithNativeSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cC.Close()
-	t.Log(cCt)
+	fSlice := []float64{1, 3.14}
+	var want float64
+	iSlice := make([]interface{}, len(fSlice))
+	for i, f := range fSlice {
+		iSlice[i] = f
+		want += f
+	}
+	if err = cC.FromSlice(iSlice); err != nil {
+		t.Fatal(err)
+	}
+	length, err := cC.Len()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("length of cC:", length)
 
 	var sum float64
 	if _, err = stmt.ExecContext(ctx,
@@ -1862,12 +1872,9 @@ func TestInputWithNativeSlice(t *testing.T) {
 		t.Errorf("%s: %+v", qry, err)
 	}
 
-	if cC.ObjectType != nil {
-		input, err := cC.AsSlice(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Log("Input:", input, "\nSum:", sum)
+	t.Log("Sum:", sum)
+	if fmt.Sprintf("%f", sum) != fmt.Sprintf("%f", want) {
+		t.Errorf("got %f, wanted %f", sum, want)
 	}
 }
 

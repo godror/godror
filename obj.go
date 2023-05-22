@@ -642,6 +642,9 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 		}
 		dr = reflect.Append(dr, vr)
 	}
+	if !dr.IsValid() {
+		return nil, nil
+	}
 	return dr.Interface(), nil
 }
 
