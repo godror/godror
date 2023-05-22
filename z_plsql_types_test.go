@@ -1780,6 +1780,97 @@ END;`,
 	}
 }
 
+func TestInputWithNativeSlice(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("InputWithNativeSlice"), 10*time.Second)
+	defer cancel()
+	t.Logf("dbstats: %#v", testDb.Stats())
+	name := "test_ons" + tblSuffix
+
+	cleanup := func() {
+		testDb.Exec("DROP PROCEDURE " + name + "_proc")
+		testDb.Exec("DROP TYPE " + name + "_list")
+	}
+	cleanup()
+	defer cleanup()
+	create_query := []string{
+		`CREATE OR REPLACE TYPE ` + name + `_list AS TABLE OF number;`,
+		`CREATE OR REPLACE PROCEDURE ` + name + `_proc(p_in in ` + name + `_list, p_out out number) IS
+         v_result NUMBER:=0;
+         v_in ` + name + `_list :=` + name + `_list();
+         BEGIN
+            v_in := ` + name + `_list();
+            v_in := p_in;
+	   
+            for v in 1..v_in.count LOOP
+                v_result :=v_result + v_in(v);
+            end loop;
+		
+            p_out := v_result;
+         END;`,
+	}
+
+	for _, q := range create_query {
+		if _, err := testDb.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %+v", q, err)
+		}
+	}
+	if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+		t.Fatal(err)
+	} else if len(ces) != 0 {
+		t.Fatal(ces)
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	testCon, err := godror.DriverConn(ctx, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testCon.Close()
+	if err = testCon.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	qry := "CALL " + name + "_proc(:1)"
+	stmt, err := conn.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	cCt, err := testCon.GetObjectType(strings.ToUpper(name + "_list"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("ObjectType:", cCt)
+
+	cC, err := cCt.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cC.Close()
+	t.Log(cCt)
+
+	var sum float64
+	if _, err = stmt.ExecContext(ctx,
+		cC,
+		sql.Out{Dest: &sum},
+	); err != nil {
+		t.Errorf("%s: %+v", qry, err)
+	}
+
+	if cC.ObjectType != nil {
+		input, err := cC.AsSlice(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log("Input:", input, "\nSum:", sum)
+	}
+}
+
 func TestPlSQLNumSlice(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSQLNumSlice"), 30*time.Second)
 	defer cancel()
