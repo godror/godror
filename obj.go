@@ -365,6 +365,31 @@ func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, 
 	return m, nil
 }
 
+// FromSlice read from a slice of primitives.
+func (O ObjectCollection) FromSlice(v []interface{}) error {
+	if O.dpiObject == nil {
+		return nil
+	}
+	logger := getLogger(context.TODO())
+
+	data := scratch.Get()
+
+	for i, o := range v {
+		if logger != nil {
+			logger.Log("msg", "FromSlice", "index", i)
+		}
+
+		if err := data.Set(o); err != nil {
+			return err
+		}
+		if err := O.AppendData(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // FromMap populates the Object starting from a map, according to the Object's Attributes.
 func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 	if O == nil || O.dpiObject == nil {
