@@ -4712,3 +4712,42 @@ func TestReplaceQuestionPlaceholders(t *testing.T) {
 		}
 	}
 }
+
+func TestPipelinedSelectIssue289(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
+	defer cancel()
+	funcName := "test_pipelined_" + tblSuffix
+	defer testDb.ExecContext(context.Background(), "DROP FUNCTION "+funcName)
+	qry := `CREATE OR REPLACE FUNCTION ` + funcName + `(v_string IN VARCHAR2, v_delimiter IN VARCHAR2) RETURN SYS.ODCIVARCHAR2LIST PIPELINED IS
+  v_start_pos       PLS_INTEGER := 1;
+  v_next_pos        PLS_INTEGER;
+BEGIN
+  LOOP
+    v_next_pos := INSTR(v_string, v_delimiter, v_start_pos);
+    IF v_next_pos = 0 THEN
+      PIPE ROW (SUBSTR(v_string, v_start_pos));
+      EXIT;
+    END IF;
+    PIPE ROW (SUBSTR(v_string, v_start_pos, v_next_pos - v_start_pos));
+    v_start_pos := v_next_pos + LENGTH(v_delimiter);
+  END LOOP;
+  RETURN;
+END;`
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	qry = "select * FROM TABLE(" + funcName + "('sdfasdf,asdfasdf',','))"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			t.Fatalf("scan: %+v", err)
+		}
+		t.Log(text)
+	}
+}
