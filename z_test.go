@@ -4737,17 +4737,28 @@ END;`
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
-	qry = "select * FROM TABLE(" + funcName + "('sdfasdf,asdfasdf',','))"
-	rows, err := testDb.QueryContext(ctx, qry)
-	if err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var text string
-		if err := rows.Scan(&text); err != nil {
-			t.Fatalf("scan: %+v", err)
+	t.Run("TABLE", func(t *testing.T) {
+		qry := "select * FROM TABLE(" + funcName + "('sdfasdf,asdfasdf',','))"
+		rows, err := testDb.QueryContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
 		}
-		t.Log(text)
-	}
+		defer rows.Close()
+		for rows.Next() {
+			var text string
+			if err := rows.Scan(&text); err != nil {
+				t.Fatalf("scan: %+v", err)
+			}
+			t.Log(text)
+		}
+	})
+
+	t.Run("CALL", func(t *testing.T) {
+		qry := "CALL :1 := " + funcName + "('sdfasdf,asdfasdf',',');"
+		var obj godror.Object
+		if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &obj}); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		t.Log("obj:", obj)
+	})
 }

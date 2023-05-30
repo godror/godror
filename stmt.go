@@ -403,7 +403,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	logger := getLogger(ctx)
 	if logger != nil {
-		logger.Log("msg", "ExecContext", "stmt", fmt.Sprintf("%p", st), "args", args)
+		logger.Log("msg", "ExecContext", "stmt", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
 
 	st.Lock()
@@ -728,7 +728,7 @@ type argInfo struct {
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, logger Logger) error {
 	if logger != nil {
-		logger.Log("enter", "bindVars", "st", fmt.Sprintf("%p", st), "args", args)
+		logger.Log("enter", "bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
 	var named bool
 	if cap(st.vars) < len(args) {
@@ -959,7 +959,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		defer func() {
-			logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%v", value, value))
+			logger.Log("msg", "bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%#v", value, value))
 		}()
 	}
 	vlr, isValuer := value.(driver.Valuer)

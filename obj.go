@@ -869,6 +869,9 @@ type ObjectType struct {
 
 // AttributeNames returns the Attributes' names ordered as on the database (by ObjectAttribute.Sequence).
 func (t *ObjectType) AttributeNames() []string {
+	if t == nil {
+		return nil
+	}
 	names := make([]string, len(t.Attributes))
 	for k, v := range t.Attributes {
 		names[v.Sequence] = k
@@ -877,6 +880,9 @@ func (t *ObjectType) AttributeNames() []string {
 }
 
 func (t *ObjectType) String() string {
+	if t == nil {
+		return ""
+	}
 	if t.Schema == "" {
 		return t.Name
 	}
@@ -887,6 +893,9 @@ func (t *ObjectType) IsObject() bool { return t != nil && t.NativeTypeNum == C.D
 
 // FullName returns the object's name with the schame prepended.
 func (t *ObjectType) FullName() string {
+	if t == nil {
+		return ""
+	}
 	if t.Schema == "" {
 		return t.Name
 	}
@@ -943,10 +952,15 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	return t, nil
 }
 
+var errNilObjectType = errors.New("ObjectType is nil")
+
 // NewObject returns a new Object with ObjectType type.
 //
 // As with all Objects, you MUST call Close on it when not needed anymore!
 func (t *ObjectType) NewObject() (*Object, error) {
+	if t == nil {
+		return nil, errNilObjectType
+	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Log("msg", "NewObject", "name", t.Name)
