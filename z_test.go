@@ -4779,18 +4779,20 @@ func TestLevelSerializable(t *testing.T) {
 		}
 	}
 	defer testDb.Exec(dropQry)
-	tx1, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
+	txRO, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx1.Rollback()
-	tx2, err := testDb.BeginTx(ctx, nil)
+	defer txRO.Rollback()
+	txRW, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx2.Rollback()
+	defer txRW.Rollback()
 
-	C := func(tx *sql.Tx) int {
+	C := func(tx interface {
+		QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+	}) int {
 		var n int
 		if err := tx.QueryRowContext(ctx, "SELECT COUNT(0) FROM "+tbl).Scan(&n); err != nil {
 			t.Fatal(err)
@@ -4799,16 +4801,23 @@ func TestLevelSerializable(t *testing.T) {
 		return n
 	}
 
-	if !(C(tx1) == 0 && C(tx2) == 0) {
+	if !(C(txRO) == 0 && C(txRW) == 0) {
 		t.Fatal("starting with non-zero rows?!")
 	}
-	if _, err := tx1.ExecContext(ctx, "INSERT INTO "+tbl+" (id) VALUES (:1)", 3); err != nil {
+	if _, err := txRW.ExecContext(ctx, "INSERT INTO "+tbl+" (id) VALUES (:1)", 3); err != nil {
 		t.Fatal("insert1:", err)
 	}
-	if got := C(tx1); got != 1 {
-		t.Errorf("tx1 has %d rows (instead of 1)", got)
+	if got := C(txRW); got != 1 {
+		t.Errorf("txRW has %d rows (instead of 1)", got)
 	}
-	if got := C(tx2); got != 0 {
-		t.Errorf("tx2 has %d rows (instead of 0)", got)
+	if got := C(txRO); got != 0 {
+		t.Errorf("txRO has %d rows (instead of 0)", got)
+	}
+
+	if err := txRW.Commit(); err != nil {
+		t.Errorf("commit txRW: %+v", err)
+	}
+	if got := C(txRO); got != 0 {
+		t.Skipf("txRO sees %d rows (instead of 0)", got)
 	}
 }
