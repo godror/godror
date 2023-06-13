@@ -290,40 +290,54 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 
 	const (
-		trRO = "READ ONLY"
-		trRW = "READ WRITE"
-		trLC = "ISOLATION LEVEL READ COMMIT" + "TED" // against misspell check
-		trLS = "ISOLATION LEVEL SERIALIZABLE"
+		trRO   = "READ ONLY"
+		trRW   = "READ WRITE"
+		trLC   = "ISOLATION LEVEL READ COMMIT" + "TED" // against misspell check
+		trLS   = "ISOLATION LEVEL SERIALIZABLE"
+		sessLC = "READ COMMIT" + "TED"
+		sessLS = "SERIALIZABLE"
 	)
 
 	var todo tranParams
 	switch level := sql.IsolationLevel(opts.Isolation); level {
 	case sql.LevelDefault:
 	case sql.LevelReadCommitted:
-		todo.RWLevel = trLC
+		todo.IsolationLevel = sessLC
 	case sql.LevelSerializable:
-		todo.RWLevel = trLS
+		todo.IsolationLevel = sessLS
 	default:
 		return nil, fmt.Errorf("isolation level is not supported: %s", sql.IsolationLevel(opts.Isolation))
 	}
 	if opts.ReadOnly {
-		if todo.RWLevel != "" {
+		if todo.IsolationLevel != "" {
 			return nil, fmt.Errorf("either isolation level or READ ONLY, both cannot be set (keep ReadOnly, that's the stronger)")
 		}
 		todo.RWLevel = trRO
 	}
 
-	if todo != c.tranParams && todo.RWLevel != "" {
-		qry := "SET TRANSACTION " + todo.RWLevel
-		st, err := c.PrepareContext(ctx, qry)
-		if err == nil {
-			_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
-			st.Close()
+	if todo != c.tranParams {
+		if todo.RWLevel != "" {
+			qry := "SET TRANSACTION " + todo.RWLevel
+			st, err := c.PrepareContext(ctx, qry)
+			if err == nil {
+				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+				st.Close()
+			}
+			if err != nil {
+				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
+			}
 		}
-		if err != nil {
-			return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
+		if todo.IsolationLevel != "" {
+			qry := "ALTER SESSION SET ISOLATION_LEVEL=" + todo.IsolationLevel
+			st, err := c.PrepareContext(ctx, qry)
+			if err == nil {
+				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+				st.Close()
+			}
+			if err != nil {
+				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
+			}
 		}
-
 		c.tranParams = todo
 	}
 
@@ -343,7 +357,8 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 }
 
 type tranParams struct {
-	RWLevel string
+	RWLevel        string
+	IsolationLevel string
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.

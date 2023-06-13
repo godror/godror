@@ -4784,7 +4784,6 @@ func TestLevelSerializable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx1.Rollback()
 	tx2, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
 	if err != nil {
 		t.Fatal(err)
@@ -4808,6 +4807,10 @@ func TestLevelSerializable(t *testing.T) {
 	}
 	if got := C(tx1); got != 1 {
 		t.Errorf("tx1 has %d rows (instead of 1)", got)
+	}
+	if err := tx1.Commit(); err != nil {
+		tx1.Rollback()
+		t.Errorf("error committing tx1: %s", err)
 	}
 	if got := C(tx2); got != 0 {
 		t.Errorf("tx2 has %d rows (instead of 0)", got)
