@@ -2089,7 +2089,7 @@ func TestRO(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(testContext("RO"))
 	defer cancel()
-	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2097,8 +2097,7 @@ func TestRO(t *testing.T) {
 	if _, err = tx.QueryContext(ctx, "SELECT 1 FROM DUAL"); err != nil {
 		t.Fatal(err)
 	}
-	tbl := "test_ro_" + tblSuffix
-	if _, err = tx.ExecContext(ctx, "CREATE TABLE "+tbl+"(i INTEGER)"); err == nil {
+	if _, err = tx.ExecContext(ctx, "CREATE TABLE test_table (i INTEGER)"); err == nil {
 		t.Log("RO allows CREATE TABLE ?")
 	}
 	if err = tx.Commit(); err != nil {
@@ -4780,12 +4779,12 @@ func TestLevelSerializable(t *testing.T) {
 		}
 	}
 	defer testDb.Exec(dropQry)
-	tx1, err := testDb.BeginTx(ctx, nil)
+	tx1, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tx1.Rollback()
-	tx2, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
+	tx2, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

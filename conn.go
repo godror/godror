@@ -297,33 +297,36 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	)
 
 	var todo tranParams
+	if opts.ReadOnly {
+		todo.RW = trRO
+	} else {
+		todo.RW = trRW
+	}
 	switch level := sql.IsolationLevel(opts.Isolation); level {
 	case sql.LevelDefault:
 	case sql.LevelReadCommitted:
-		todo.RWLevel = trLC
+		todo.Level = trLC
 	case sql.LevelSerializable:
-		todo.RWLevel = trLS
+		todo.Level = trLS
 	default:
 		return nil, fmt.Errorf("isolation level is not supported: %s", sql.IsolationLevel(opts.Isolation))
 	}
-	if opts.ReadOnly {
-		if todo.RWLevel != "" {
-			return nil, fmt.Errorf("either isolation level or READ ONLY, both cannot be set (keep ReadOnly, that's the stronger)")
-		}
-		todo.RWLevel = trRO
-	}
 
-	if todo != c.tranParams && todo.RWLevel != "" {
-		qry := "SET TRANSACTION " + todo.RWLevel
-		st, err := c.PrepareContext(ctx, qry)
-		if err == nil {
-			_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
-			st.Close()
+	if todo != c.tranParams {
+		for _, qry := range []string{todo.RW, todo.Level} {
+			if qry == "" {
+				continue
+			}
+			qry = "SET TRANSACTION " + qry
+			st, err := c.PrepareContext(ctx, qry)
+			if err == nil {
+				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+				st.Close()
+			}
+			if err != nil {
+				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
+			}
 		}
-		if err != nil {
-			return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
-		}
-
 		c.tranParams = todo
 	}
 
@@ -343,7 +346,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 }
 
 type tranParams struct {
-	RWLevel string
+	RW, Level string
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.

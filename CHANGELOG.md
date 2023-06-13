@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - NumberAsFloat64 option to return every number as float64
-### Changed
-- Do not allow IsolationLevel AND ReadOnly both to be set. ReadOnly was the stronger, keep that.
 
 ## [v0.37.0]
 ### Changed
