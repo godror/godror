@@ -4764,3 +4764,51 @@ END;`
 		t.Log("obj:", obj)
 	})
 }
+
+func TestLevelSerializable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("LevelSerializable"), 10*time.Second)
+	defer cancel()
+
+	tbl := "test_serializable_" + tblSuffix
+	dropQry := `DROP TABLE ` + tbl
+	testDb.Exec(dropQry)
+	{
+		qry := "CREATE TABLE " + tbl + " (id NUMBER(3))"
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer testDb.Exec(dropQry)
+	tx1, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx1.Rollback()
+	tx2, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx2.Rollback()
+
+	C := func(tx *sql.Tx) int {
+		var n int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(0) FROM "+tbl).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%p: %d", tx, n)
+		return n
+	}
+
+	if !(C(tx1) == 0 && C(tx2) == 0) {
+		t.Fatal("starting with non-zero rows?!")
+	}
+	if _, err := tx1.ExecContext(ctx, "INSERT INTO "+tbl+" (id) VALUES (:1)", 3); err != nil {
+		t.Fatal("insert1:", err)
+	}
+	if got := C(tx1); got != 1 {
+		t.Errorf("tx1 has %d rows (instead of 1)", got)
+	}
+	if got := C(tx2); got != 0 {
+		t.Errorf("tx2 has %d rows (instead of 0)", got)
+	}
+}
