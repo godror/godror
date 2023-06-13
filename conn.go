@@ -290,10 +290,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 
 	const (
-		trRO = "READ ONLY"
-		trRW = "READ WRITE"
-		trLC = "ISOLATION LEVEL READ COMMIT" + "TED" // against misspell check
-		trLS = "ISOLATION LEVEL SERIALIZABLE"
+		trRO = "SET TRANSACTION READ ONLY"
+		trRW = "SET TRANSACTION READ WRITE"
+		trLC = "ALTER SESSION SET ISOLATION_LEVEL=READ COMMIT" + "TED" // against misspell check
+		trLS = "ALTER SESSION SET ISOLATION_LEVEL=SERIALIZABLE"
 	)
 
 	var todo tranParams
@@ -317,7 +317,6 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			if qry == "" {
 				continue
 			}
-			qry = "SET TRANSACTION " + qry
 			st, err := c.PrepareContext(ctx, qry)
 			if err == nil {
 				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)

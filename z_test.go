@@ -4818,6 +4818,6 @@ func TestLevelSerializable(t *testing.T) {
 		t.Errorf("commit txRW: %+v", err)
 	}
 	if got := C(txRO); got != 0 {
-		t.Skipf("txRO sees %d rows (instead of 0)", got)
+		t.Errorf("txRO sees %d rows (instead of 0)", got)
 	}
 }
