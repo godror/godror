@@ -4842,35 +4842,46 @@ func TestLevelSerializable(t *testing.T) {
 }
 
 func TestSelectAlterSessionIssue297(t *testing.T) {
-	ensureSystemDB(t)
 	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
 	defer cancel()
 
-	conn, err := testSystemDb.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-
+	db := testSystemDb
 	qry := "ALTER SESSION SET DB_FILE_MULTIBLOCK_READ_COUNT=128"
-	_, err = conn.ExecContext(ctx, qry)
-	if err != nil {
-		t.Fatalf("%s: %+v", qry, err)
+	if db == nil {
+		db = testDb
+		qry = "ALTER SESSION SET ISOLATION_LEVEL = READ COMMIT" + "TED"
 	}
-	qry = "select sysdate from dual"
-	rows, err := conn.QueryContext(ctx, qry)
-	if err != nil {
-		t.Fatalf("%s: %+v", qry, err)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	for i := 0; i < 10; i++ {
+		grp.Go(func() error {
+			conn, err := db.Conn(grpCtx)
+			if err != nil {
+				return err
+			}
+			defer conn.Close()
+
+			_, err = conn.ExecContext(ctx, qry)
+			if err != nil {
+				return fmt.Errorf("%s: %w", qry, err)
+			}
+			qry = "select sysdate from dual"
+			rows, err := conn.QueryContext(ctx, qry)
+			if err != nil {
+				return fmt.Errorf("%s: %w", qry, err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var a1 string
+				if err := rows.Scan(&a1); err != nil {
+					return fmt.Errorf("scan %s: %w", qry, err)
+				}
+				t.Log(a1)
+			}
+			return rows.Err()
+		})
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var a1 string
-		if err := rows.Scan(&a1); err != nil {
-			t.Fatalf("scan %s: %+v", qry, err)
-		}
-		t.Log(a1)
-	}
-	if err := rows.Err(); err != nil {
+
+	if err := grp.Wait(); err != nil {
 		t.Fatal(err)
 	}
 }
