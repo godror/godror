@@ -195,7 +195,12 @@ func setUp() func() {
 		if ps, err := dsn.Parse(eSysDSN); err != nil {
 			panic(fmt.Errorf("sysdsn: %q: %w", eSysDSN, err))
 		} else {
-			PSystem.Username, PSystem.Password = ps.Username, ps.Password
+			PSystem = ps
+			PSystem.CommonParams.EnableEvents = true
+			PSystem.CommonParams.ConfigDir = configDir
+			PSystem.ConnParams.ConnClass = P.ConnParams.ConnClass
+			PSystem.ConnParams.ShardingKey = P.ConnParams.ShardingKey
+			PSystem.PoolParams = P.PoolParams
 		}
 		testSystemConStr = PSystem.StringWithPassword()
 	}
@@ -2447,6 +2452,7 @@ func TestImplicitResults(t *testing.T) {
 }
 
 func TestStartupShutdown(t *testing.T) {
+	ensureSystemDB(t)
 	if os.Getenv("GODROR_DB_SHUTDOWN") != "1" {
 		t.Skip("GODROR_DB_SHUTDOWN != 1, skipping shutdown/startup test")
 	}
@@ -3748,16 +3754,29 @@ func TestOpenCloseLOB(t *testing.T) {
 	}
 }
 
-func TestPreFetchQuery(t *testing.T) {
+var ensureSystemDBOnce sync.Once
 
-	if os.Getenv("GODROR_TEST_SYSTEM_USERNAME") == "" ||
-		(os.Getenv("GODROR_TEST_SYSTEM_PASSWORD") == "") {
+func ensureSystemDB(t *testing.T) {
+	ensureSystemDBOnce.Do(func() {
+		if testSystemDb != nil {
+			return
+		}
+		if testSystemConStr == "" {
+			return
+		}
+		var err error
+		t.Log("SYSTEM:", testSystemConStr)
+		if testSystemDb, err = sql.Open("godror", testSystemConStr); err != nil {
+			panic(fmt.Errorf("%s: %+v", testConStr, err))
+		}
+	})
+	if testSystemDb == nil {
 		t.Skip("Please define GODROR_TEST_SYSTEM_USERNAME and GODROR_TEST_SYSTEM_PASSWORD env variables")
 	}
-	var err error
-	if testSystemDb, err = sql.Open("godror", testSystemConStr); err != nil {
-		panic(fmt.Errorf("%s: %+v", testConStr, err))
-	}
+}
+
+func TestSystem(t *testing.T) {
+	ensureSystemDB(t)
 
 	ctx, cancel := context.WithTimeout(testContext("TestPreFetchQuery"), 30*time.Second)
 	defer cancel()
@@ -4819,5 +4838,39 @@ func TestLevelSerializable(t *testing.T) {
 	}
 	if got := C(txRO); got != 0 {
 		t.Errorf("txRO sees %d rows (instead of 0)", got)
+	}
+}
+
+func TestSelectAlterSessionIssue297(t *testing.T) {
+	ensureSystemDB(t)
+	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	defer cancel()
+
+	conn, err := testSystemDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	qry := "ALTER SESSION SET DB_FILE_MULTIBLOCK_READ_COUNT=128"
+	_, err = conn.ExecContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	qry = "select sysdate from dual"
+	rows, err := conn.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a1 string
+		if err := rows.Scan(&a1); err != nil {
+			t.Fatalf("scan %s: %+v", qry, err)
+		}
+		t.Log(a1)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
