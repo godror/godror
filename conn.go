@@ -122,7 +122,9 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 		return false
 	}() {
-		eraseTimeout = func() { _ = C.dpiConn_setCallTimeout(c.dpiConn, 0) }
+		eraseTimeout = func() {
+			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+		}
 
 	}
 
@@ -134,12 +136,12 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 			}
 			return
 		case <-ctx.Done():
-			if eraseTimeout != nil {
-				eraseTimeout()
-			}
 			// select again to avoid race condition if both are done
 			select {
 			case <-done:
+				if eraseTimeout != nil {
+					eraseTimeout()
+				}
 				return
 			default:
 				err := ctx.Err()
@@ -147,6 +149,9 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 					logger.Log("msg", "BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
 				}
 				_ = c.Break()
+				if eraseTimeout != nil {
+					eraseTimeout()
+				}
 				return
 			}
 		}
