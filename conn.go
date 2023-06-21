@@ -94,45 +94,49 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		}
 		return err
 	}
-	dl, hasDeadline := ctx.Deadline()
-	if hasDeadline {
+	var eraseTimeout func()
+	if dl, hasDeadline := ctx.Deadline(); hasDeadline && func() bool {
 		c.mu.RLock()
-		ok := func() bool {
-			if c.drv.clientVersion.Version < 18 {
-				// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
-				return false
-			}
-			dur := time.Until(dl)
-			const minDur = 100 * time.Millisecond
-			if dur < minDur {
-				dur = 100 * time.Millisecond
-			}
-			ms := C.uint32_t(dur / time.Millisecond)
-			if logger != nil {
-				logger.Log("msg", "setCallTimeout", "ms", ms)
-			}
-			if C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE {
-				// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
-				return true
-			}
-			if logger != nil {
-				logger.Log("msg", "setCallTimeout failed!")
-			}
-			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+		defer c.mu.RUnlock()
+		if c.drv.clientVersion.Version < 18 {
 			// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 			return false
-		}()
-		c.mu.RUnlock()
-		if ok {
-			defer func() { _ = C.dpiConn_setCallTimeout(c.dpiConn, 0) }()
 		}
+		dur := time.Until(dl)
+		const minDur = 100 * time.Millisecond
+		if dur < minDur {
+			dur = 100 * time.Millisecond
+		}
+		ms := C.uint32_t(dur / time.Millisecond)
+		if logger != nil {
+			logger.Log("msg", "setCallTimeout", "ms", ms)
+		}
+		if C.dpiConn_setCallTimeout(c.dpiConn, ms) != C.DPI_FAILURE {
+			// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
+			return true
+		}
+		if logger != nil {
+			logger.Log("msg", "setCallTimeout failed!")
+		}
+		_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
+		// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
+		return false
+	}() {
+		eraseTimeout = func() { _ = C.dpiConn_setCallTimeout(c.dpiConn, 0) }
+
 	}
 
 	go func() {
 		select {
 		case <-done:
+			if eraseTimeout != nil {
+				eraseTimeout()
+			}
 			return
 		case <-ctx.Done():
+			if eraseTimeout != nil {
+				eraseTimeout()
+			}
 			// select again to avoid race condition if both are done
 			select {
 			case <-done:

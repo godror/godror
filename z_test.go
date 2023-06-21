@@ -1877,12 +1877,7 @@ func TestExecHang(t *testing.T) {
 	wg.Wait()
 	close(done)
 	if err := <-done; err != nil {
-		// TODO[tgulacsi]: his should be an error, too, but I don't know why this happens at all.
-		if errors.Is(err, errMismatch) {
-			t.Log(err)
-		} else {
-			t.Fatal(err)
-		}
+		t.Fatal(err)
 	}
 
 }
@@ -2192,8 +2187,66 @@ func TestQueryTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("QueryTimeout"), 100*time.Millisecond)
 	defer cancel()
-	if _, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM (SELECT 1 FROM all_objects WHERE rownum < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000)"); err != nil {
+	if rows, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM (SELECT 1 FROM all_objects WHERE rownum < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000)"); err != nil {
 		t.Log(err)
+	} else {
+		rows.Close()
+	}
+}
+func TestQueryLOBTimeout(t *testing.T) {
+	t.Parallel()
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(testContext("QueryLOBTimeout"), 10*time.Second)
+	defer cancel()
+	tbl := "test_query_lob_" + tblSuffix
+	drop := func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }
+	drop()
+	qry := "CREATE TABLE " + tbl + " (i NUMBER(3), lob BLOB)"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer drop()
+
+	// Generate some lob, 1MiB size
+	length := int(1 << 20)
+	lobGen := godror.Lob{
+		Reader: ReaderFunc(func(p []byte) (int, error) {
+			if length <= 0 {
+				return 0, io.EOF
+			}
+			var n int
+			for i := 0; i < len(p) && length > 0; i++ {
+				p[i] = byte(length & 0xff)
+				n++
+				length--
+			}
+			if length <= 0 {
+				return n, io.EOF
+			}
+			return n, nil
+		}),
+	}
+	qry = "INSERT INTO " + tbl + " (i, lob) VALUES (0, :1)"
+	if _, err := testDb.ExecContext(ctx, qry, lobGen); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+
+	ctx, cancel = context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	if rows, err := testDb.QueryContext(ctx, "SELECT A.i, A.lob FROM all_objects B, "+tbl+" A FETCH FIRST 1 ROW ONLY"); err != nil {
+		t.Log(err)
+	} else {
+		defer rows.Close()
+		var i int
+		var s []byte
+		for rows.Next() {
+			if err := rows.Scan(&i, &s); err != nil {
+				t.Errorf("scan: %+v", err)
+				break
+			}
+			fmt.Println(i, len(s))
+			t.Log(i, len(s))
+		}
 	}
 }
 
@@ -4885,3 +4938,7 @@ func TestSelectAlterSessionIssue297(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type ReaderFunc func([]byte) (int, error)
+
+func (rf ReaderFunc) Read(p []byte) (int, error) { return rf(p) }
