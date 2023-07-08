@@ -230,7 +230,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 				//case 25263: // ORA-25263: no message in queue with message ID
 				//return 0, nil
 			case 25226: // ORA-25226: dequeue failed, queue <owner>.<queue_name> is not enabled for dequeue
-				if startErr := Q.start(nil); startErr != nil {
+				if startErr := Q.start(); startErr != nil {
 					return 0, fmt.Errorf("%w: %w", startErr, err)
 				} else {
 					// try again
@@ -263,11 +263,6 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 }
 
 func (Q *Queue) execQ(ctx context.Context, qry string) error {
-	if ctx == nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-	}
 	stmt, err := Q.conn.PrepareContext(ctx, qry)
 	if err != nil {
 		return fmt.Errorf("%s: %w", qry, err)
@@ -281,7 +276,9 @@ func (Q *Queue) execQ(ctx context.Context, qry string) error {
 	}
 	return nil
 }
-func (Q *Queue) start(ctx context.Context) error {
+func (Q *Queue) start() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	return Q.execQ(ctx, `BEGIN DBMS_AQADM.start_queue(queue_name=>:1); END;`)
 }
 
@@ -333,7 +330,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 			case 24010: // 0RA-24010: Queue does not exist
 				Q.Close()
 			case 25207: // ORA-25207: enque failed, queue string.string is disabled from enqueuing
-				if startErr := Q.start(nil); startErr != nil {
+				if startErr := Q.start(); startErr != nil {
 					err = fmt.Errorf("%w: %w", err, startErr)
 				} else {
 					// try again
