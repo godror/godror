@@ -156,7 +156,7 @@ func (Q *Queue) Close() error {
 
 // Purge the expired messages from the queue.
 func (Q *Queue) PurgeExpired(ctx context.Context) error {
-	const qry = `BEGIN 
+	return Q.execQ(ctx, `BEGIN 
   FOR row IN (
     SELECT sys_context('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
 	  FROM user_queues
@@ -164,16 +164,8 @@ func (Q *Queue) PurgeExpired(ctx context.Context) error {
   ) LOOP
     dbms_aqadm.purge_queue_table(row.queue_table, 'qtview.msg_state = ''EXPIRED''', NULL);
   END LOOP;
-END;`
-	stmt, err := Q.conn.PrepareContext(ctx, qry)
-	if err != nil {
-		return fmt.Errorf("%s: %w", qry, err)
-	}
-	defer stmt.Close()
-	if _, err = stmt.(driver.StmtExecContext).ExecContext(ctx, []driver.NamedValue{{Ordinal: 2, Value: Q.name}}); err != nil {
-		return fmt.Errorf("%s [%q]: %w", qry, Q.name, err)
-	}
-	return nil
+END;`,
+	)
 }
 
 // Name of the queue.
@@ -217,29 +209,44 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 	}
 	Q.props = props
 
-	var rc C.int
-	num := C.uint(len(props))
-	deqOne := num == 1
-	if deqOne {
-		rc = C.dpiQueue_deqOne(Q.dpiQueue, &props[0])
-	} else {
-		rc = C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
+	var num C.uint
+	deqOne := len(props) == 1
+	dequeue := func() C.int {
+		num = C.uint(len(props))
+		if deqOne {
+			return C.dpiQueue_deqOne(Q.dpiQueue, &props[0])
+		}
+		return C.dpiQueue_deqMany(Q.dpiQueue, &num, &props[0])
 	}
-	if rc == C.DPI_FAILURE {
+	if dequeue() == C.DPI_FAILURE {
 		err := Q.conn.getError()
 		var ec interface{ Code() int }
 		if errors.As(err, &ec) {
 			switch ec.Code() {
 			case 3156:
-				return 0, nil
+				err = nil
 			case 24010: // 0RA-24010: Queue does not exist
 				Q.Close()
 				//case 25263: // ORA-25263: no message in queue with message ID
 				//return 0, nil
+			case 25226: // ORA-25226: dequeue failed, queue <owner>.<queue_name> is not enabled for dequeue
+				if startErr := Q.start(nil); startErr != nil {
+					return 0, fmt.Errorf("%w: %w", startErr, err)
+				} else {
+					// try again
+					if dequeue() == C.DPI_FAILURE {
+						err = Q.conn.getError()
+					} else {
+						err = nil
+					}
+				}
 			}
 		}
-		return 0, fmt.Errorf("dequeue: %w", err)
+		if err != nil {
+			return 0, fmt.Errorf("dequeue: %w", err)
+		}
 	}
+
 	var firstErr error
 	for i, p := range props[:int(num)] {
 		if err := messages[i].fromOra(Q.conn, p, Q.PayloadObjectType); err != nil {
@@ -253,6 +260,29 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 		}
 	}
 	return int(num), firstErr
+}
+
+func (Q *Queue) execQ(ctx context.Context, qry string) error {
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+	}
+	stmt, err := Q.conn.PrepareContext(ctx, qry)
+	if err != nil {
+		return fmt.Errorf("%s: %w", qry, err)
+	}
+	defer stmt.Close()
+	if _, err = stmt.(driver.StmtExecContext).
+		ExecContext(ctx, []driver.NamedValue{
+			{Ordinal: 1, Value: Q.name},
+		}); err != nil {
+		return fmt.Errorf("%s [%q]: %w", qry, Q.name, err)
+	}
+	return nil
+}
+func (Q *Queue) start(ctx context.Context) error {
+	return Q.execQ(ctx, `BEGIN DBMS_AQADM.start_queue(queue_name=>:1); END;`)
 }
 
 // Enqueue all the messages given.
@@ -289,19 +319,35 @@ func (Q *Queue) Enqueue(messages []Message) error {
 		}
 	}
 
-	var rc C.int
-	if len(messages) == 1 {
-		rc = C.dpiQueue_enqOne(Q.dpiQueue, props[0])
-	} else {
-		rc = C.dpiQueue_enqMany(Q.dpiQueue, C.uint(len(props)), &props[0])
+	enqueue := func() C.int {
+		if len(messages) == 1 {
+			return C.dpiQueue_enqOne(Q.dpiQueue, props[0])
+		}
+		return C.dpiQueue_enqMany(Q.dpiQueue, C.uint(len(props)), &props[0])
 	}
-	if rc == C.DPI_FAILURE {
+	if enqueue() == C.DPI_FAILURE {
 		err := Q.conn.getError()
 		var ec interface{ Code() int }
-		if errors.As(err, &ec) && ec.Code() == 24010 { // 0RA-24010: Queue does not exist
-			Q.Close()
+		if errors.As(err, &ec) {
+			switch ec.Code() {
+			case 24010: // 0RA-24010: Queue does not exist
+				Q.Close()
+			case 25207: // ORA-25207: enque failed, queue string.string is disabled from enqueuing
+				if startErr := Q.start(nil); startErr != nil {
+					err = fmt.Errorf("%w: %w", err, startErr)
+				} else {
+					// try again
+					if enqueue() == C.DPI_FAILURE {
+						err = Q.conn.getError()
+					} else {
+						err = nil
+					}
+				}
+			}
 		}
-		return fmt.Errorf("enqueue %#v: %w", messages, err)
+		if err != nil {
+			return fmt.Errorf("enqueue %#v: %w", messages, err)
+		}
 	}
 
 	// Read back the MsgIDs

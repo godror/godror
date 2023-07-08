@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
+- Auto-start queue on specific failures (if possible)
 - NumberAsFloat64 option to return every number as float64
 
 ## [v0.37.0]

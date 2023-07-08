@@ -178,7 +178,7 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.CREATE_QUEUE(q, tbl);
 		SYS.DBMS_AQADM.grant_queue_privilege('ENQUEUE', q, '` + user + `');
 		SYS.DBMS_AQADM.grant_queue_privilege('DEQUEUE', q, '` + user + `');
-		SYS.DBMS_AQADM.start_queue(q);
+		--SYS.DBMS_AQADM.start_queue(q);
 	END;`
 				_, err := db.ExecContext(ctx, qry)
 				return err
@@ -450,6 +450,14 @@ func testQueue(
 				t.Fatal(err)
 			}
 			defer q.Close()
+
+			// stop queue to test auto-starting it
+			{
+				const qry = `BEGIN DBMS_AQADM.stop_queue(queue_name=>:1); END;`
+				if _, err := tx.ExecContext(ctx, qry, q.Name()); err != nil {
+					t.Log(qry, err)
+				}
+			}
 
 			//t.Logf("name=%q q=%#v", q.Name(), q)
 			n, err := q.Dequeue(msgs)
