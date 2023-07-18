@@ -730,7 +730,7 @@ func (dr *directRow) Close() error {
 func (dr *directRow) Next(dest []driver.Value) error {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Debug("directRow", "Next", "query", dr.query, "dest", dest)
+		logger.Debug("directRow.Next", "query", dr.query, "dest", dest)
 	}
 	switch dr.query {
 	case getConnection:

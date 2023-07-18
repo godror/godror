@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 const (

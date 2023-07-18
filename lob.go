@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 // Lob is for reading/writing a LOB.

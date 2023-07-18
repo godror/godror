@@ -31,8 +31,8 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
+	"github.com/godror/godror/slog"
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 
 	godror "github.com/godror/godror"
@@ -77,7 +77,7 @@ func setUp() func() {
 
 	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
-		logger = slog.New(slog.NewTextHandler(tl))
+		logger = slog.New(slog.NewTextHandler(tl, nil))
 	}
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error

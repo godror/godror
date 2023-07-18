@@ -783,9 +783,11 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	var dp *C.dpiPool
 	logger := P.Logger
 	if logger != nil {
-		logger.Debug("C", "dpiPool_create", "user", P.Username, "ConnectString", P.ConnectString,
-			"common", commonCreateParams, "pool",
-			fmt.Sprintf("%#v", poolCreateParams))
+		logger.Debug("C.dpiPool_create",
+			"user", P.Username,
+			"ConnectString", P.ConnectString,
+			"common", commonCreateParams,
+			"pool", fmt.Sprintf("%#v", poolCreateParams))
 	}
 	if err := d.checkExec(func() C.int {
 		return C.dpiPool_create(

@@ -26,7 +26,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 const (

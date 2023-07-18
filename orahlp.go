@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 // Number as string

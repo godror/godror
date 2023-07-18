@@ -38,8 +38,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/godror/godror/slog"
 	"github.com/godror/knownpb/timestamppb"
-	"golang.org/x/exp/slog"
 )
 
 const printStack = false
@@ -726,7 +726,7 @@ type argInfo struct {
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) error {
 	if logger != nil {
-		logger.Debug("enter", "bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
+		logger.Debug("enter bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
 	var named bool
 	if cap(st.vars) < len(args) {
@@ -837,7 +837,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) err
 		}
 	}
 	if logger != nil {
-		logger.Debug("doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
+		logger.Debug("bindVars", "doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -1613,11 +1613,11 @@ func (c *conn) dataSetIntervalDS(dv *C.dpiVar, data []C.dpiData, vv interface{})
 		s := C.int32_t(t / time.Second)
 		fs := C.int32_t(rem)
 		if logger != nil {
-			logger.Debug("i", i, "t", t, "day", d, "hour", h, "minute", m, "second", s, "fsecond", fs)
+			logger.Debug("dataSetIntervalDS", "i", i, "t", t, "day", d, "hour", h, "minute", m, "second", s, "fsecond", fs)
 		}
 		C.dpiData_setIntervalDS(&data[i], d, h, m, s, fs)
 		if logger != nil {
-			logger.Debug("i", i, "t", t, "data", data[i])
+			logger.Debug("dataSetIntervalDS", "i", i, "t", t, "data", data[i])
 		}
 	}
 	return nil

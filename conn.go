@@ -30,7 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/godror/godror/dsn"
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 const getConnection = "--GET_CONNECTION--"
@@ -616,7 +616,7 @@ func (c *conn) initTZ() error {
 
 	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, tz.Location != nil
 	if logger != nil {
-		logger.Debug("tz", c.params.Timezone, "offSecs", c.tzOffSecs)
+		logger.Debug("initTZ", "tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
 	if c.tzValid {

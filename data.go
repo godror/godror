@@ -21,7 +21,7 @@ import (
 	"time"
 	"unsafe"
 
-	"golang.org/x/exp/slog"
+	"github.com/godror/godror/slog"
 )
 
 // Data holds the data to/from Oracle.
@@ -425,14 +425,14 @@ func (d *Data) Set(v interface{}) error {
 	//d.SetRowid(x)
 	default:
 		if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
-			logger.Debug("Set", "data", d, "nativeTypeNum")
+			logger.Debug("Set", "data", d, "type", fmt.Sprintf("%T", v))
 		}
 
 		return fmt.Errorf("data Set type %T: %w", v, ErrNotSupported)
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Debug("Set", "data", d, "nativeTypeNum")
+		logger.Debug("Set", "data", d)
 	}
 	return nil
 }
