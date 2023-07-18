@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Auto-start queue on specific failures (if possible)
 - NumberAsFloat64 option to return every number as float64
 
+## Changed
+- Log with slog (use github.com/godror/godror/slog shim or directly log/slog or golang.org/x/exp/slog)
+
 ## [v0.37.0]
 ### Changed
 - ODPI-C v4.6.1
