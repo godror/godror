@@ -402,7 +402,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	err = c.init(ctx, isNew, getOnInit(&c.params.CommonParams))
 	cancel()
 	if err != nil {
-		_ = c.closeNotLocking()
+		_ = c.closeNotLocking(true)
 		if cleanup != nil {
 			cleanup()
 		}
@@ -417,7 +417,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		}
 		if c != nil && c.dpiConn != nil {
 			fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
-			_ = c.closeNotLocking()
+			_ = c.closeNotLocking(false)
 		}
 	})
 	return &c, isNew, nil

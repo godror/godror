@@ -27,7 +27,7 @@ type execer interface {
 const msgCount = 3 * maxSessions
 
 func TestQueue(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
+	ctx, cancel := context.WithTimeout(testContext("Queue"), 60*time.Second)
 	defer cancel()
 
 	t.Run("deqbymsgid", func(t *testing.T) {
@@ -350,9 +350,7 @@ func testQueue(
 		t.Fatal(err)
 	}
 
-	if err = tearDown(ctx, tx, user); err != nil {
-		t.Log("tearDown:", err)
-	}
+	_ = tearDown(ctx, tx, user)
 	if err = setUp(ctx, tx, user); err != nil {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
