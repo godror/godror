@@ -269,7 +269,7 @@ func (c *conn) closeNotLocking(purge bool) error {
 		return nil
 	}
 	c.dpiConn = nil
-	if dpiConn.refCount <= 1 || purge {
+	if purge || dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
 	for k, v := range c.objTypes {
@@ -277,8 +277,10 @@ func (c *conn) closeNotLocking(purge bool) error {
 		delete(c.objTypes, k)
 	}
 
-	if purge || dpiConn.refCount <= 1 {
+	if purge {
 		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+	} else if dpiConn.refCount <= 1 {
+		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
 	} else {
 		// dpiConn_release decrements dpiConn's reference counting,
 		// and closes it when it reaches zero.
