@@ -1432,9 +1432,9 @@ func TestOpenCloseDB(t *testing.T) {
 	grp.SetLimit(cs.MaxSessions)
 	for i := 0; i < 32; i++ {
 		cs := cs
+		cs.WaitTimeout += time.Duration(i)
 		grp.Go(func() error {
 			// To make the connections differ
-			cs.WaitTimeout += time.Duration(i)
 			t.Log(cs.String())
 			db := sql.OpenDB(godror.NewConnector(cs))
 			defer db.Close()
