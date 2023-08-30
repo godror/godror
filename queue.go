@@ -277,7 +277,7 @@ func (Q *Queue) execQ(ctx context.Context, qry string) error {
 	return nil
 }
 func (Q *Queue) start() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return Q.execQ(ctx, `BEGIN DBMS_AQADM.start_queue(queue_name=>:1); END;`)
 }

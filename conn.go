@@ -578,7 +578,7 @@ func (c *conn) initTZ() error {
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	// https://stackoverflow.com/questions/29271224/how-to-handle-day-light-saving-in-oracle-database/29272926#29272926
 	const qry = "SELECT DBTIMEZONE as dbTZ, NVL(TO_CHAR(SYSTIMESTAMP, 'tzr'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS dbOSTZ FROM DUAL"
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	st, err := c.prepareContextNotLocked(ctx, qry)
 	if err != nil {
@@ -592,7 +592,7 @@ func (c *conn) initTZ() error {
 			logger.Error("query", "qry", qry, "error", err)
 		}
 		//fmt.Printf("initTZ END key=%q drv=%p timezones=%v err=%v\n", key, c.drv, c.drv.timezones, err)
-		return err
+		return fmt.Errorf("execute %s: %w", qry, err)
 	}
 	defer rows.Close()
 	var dbTZ, dbOSTZ string
