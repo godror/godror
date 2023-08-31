@@ -2259,3 +2259,85 @@ func TestBigXMLType(t *testing.T) {
 	}
 
 }
+
+func TestArrayOfRecords(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("ArrayOfRecords"), 10*time.Second)
+	defer cancel()
+	name := "test_aor"
+
+	cleanup := func() {
+		testDb.Exec("DROP PACKAGE " + name + "_pkg")
+	}
+	cleanup()
+	defer cleanup()
+	create_query := []string{
+		`CREATE OR REPLACE PACKAGE ` + name + `_pkg AS 
+  TYPE ` + name + `_rt IS RECORD (
+    ratecode_id PLS_INTEGER, 
+    ratecode VARCHAR2(20), 
+    ratecode_name VARCHAR2(100), 
+    rate_structure VARCHAR2(20)
+  );
+  TYPE ` + name + `_tt IS TABLE OF ` + name + `_rt;
+
+  PROCEDURE ` + name + `_proc(p_in IN ` + name + `_tt, p_out OUT VARCHAR2);
+END;`,
+
+		`CREATE OR REPLACE PACKAGE BODY ` + name + `_pkg AS
+  PROCEDURE ` + name + `_proc(p_in IN ` + name + `_tt, p_out OUT VARCHAR2) IS
+    v_result VARCHAR2(1000);
+    v_idx PLS_INTEGER;
+  BEGIN
+    v_idx := p_in.FIRST;
+    WHILE v_idx IS NOT NULL LOOP
+      v_result := v_result || p_in(v_idx).ratecode_id||'='||p_in(v_idx).ratecode||', ';
+      v_idx := p_in.NEXT(v_idx);
+    END LOOP;
+    p_out := v_result;
+  END;
+END;`,
+	}
+
+	for _, q := range create_query {
+		if _, err := testDb.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %+v", q, err)
+		}
+		if ces, err := godror.GetCompileErrors(ctx, testDb, false); err != nil {
+			t.Fatal(err)
+		} else if len(ces) != 0 {
+			t.Log(q)
+			t.Fatal(ces)
+		}
+	}
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	qry := `begin ` + name + `_pkg.` + name + `_proc(:1, :2); end;`
+	var resp string
+	if _, err := conn.ExecContext(ctx, qry, RatePlan{RateCodes: []RateCode{
+		{RateCodeId: 1, RateCode: "one"},
+		{RateCodeId: 2, RateCode: "two"},
+	}},
+		sql.Out{Dest: &resp},
+	); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	t.Log(resp)
+}
+
+type RatePlan struct {
+	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_tt" json:"-"`
+	RateCodes             []RateCode `json:"rateCodes"`
+}
+
+type RateCode struct {
+	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_rt" json:"-"`
+	RateCodeId            int    `godror:"RATECODE_ID" json:"rateCodeId" db:"RATECODE_ID"`
+	RateCode              string `json:"rateCode" db:"RATECODE"`
+	RateCodeName          string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
+	RateStucture          string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
+}
