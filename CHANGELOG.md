@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [v0.39.2]
+### Changed
+- simplify handleDeadline, hopefully eliminiate SIGSEGVs
+
+## [v0.39.1]
+### Changed
+- Update golang.org/x/exp/slog
+- Raise 3s default first connection timeout to 10s
 
 ## [v0.39.0]
 ### Changed
