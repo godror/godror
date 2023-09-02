@@ -423,14 +423,12 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	defer st.conn.mu.RUnlock()
 
 	// HandleDeadline for all ODPI calls called below
-	done, closeDone := newDoneCh()
-	defer closeDone()
-	if err := st.handleDeadline(ctx, done); err != nil {
+	cleanup, err := st.handleDeadline(ctx)
+	if err != nil {
 		return nil, err
 	}
-	var err error
 	closeIfBadConn := func(err error) error {
-		closeDone()
+		cleanup()
 		if err == nil {
 			return nil
 		}
@@ -576,14 +574,12 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return args[0].Value.(driver.Rows), nil
 	}
 
-	done, closeDone := newDoneCh()
-	defer closeDone()
-	if err := st.handleDeadline(ctx, done); err != nil {
+	cleanup, err := st.handleDeadline(ctx)
+	if err != nil {
 		return nil, err
 	}
-	var err error
 	closeIfBadConn := func(err error) error {
-		closeDone()
+		cleanup()
 		if err == nil {
 			return nil
 		}

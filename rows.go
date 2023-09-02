@@ -42,7 +42,6 @@ var _ = driver.RowsNextResultSet((*rows)(nil))
 type rows struct {
 	err       error
 	nextRsErr error
-	done      chan struct{}
 	*statement
 	origSt         *statement
 	nextRs         *C.dpiStmt
@@ -71,11 +70,8 @@ func (r *rows) Close() error {
 	if r == nil {
 		return nil
 	}
-	vars, st, nextRs, done := r.vars, r.statement, r.nextRs, r.done
-	r.columns, r.vars, r.data, r.statement, r.nextRs, r.done = nil, nil, nil, nil, nil, nil
-	if done != nil {
-		close(done)
-	}
+	vars, st, nextRs := r.vars, r.statement, r.nextRs
+	r.columns, r.vars, r.data, r.statement, r.nextRs = nil, nil, nil, nil, nil
 	fromData := r.fromData
 	r.fromData = false
 	for _, v := range vars[:cap(vars)] {
@@ -299,28 +295,19 @@ func (r *rows) Next(dest []driver.Value) error {
 
 	if r.fetched == 0 {
 		// Start the watchdog only once See issue #113 (https://github.com/godror/godror/issues/113)
-		if r.done == nil {
-			if ctx := r.statement.ctx; ctx != nil {
-				// nil can be present when Next is issued on cursor returned from DB
-				if r.err = ctx.Err(); r.err != nil {
-					return r.err
-				}
-				if _, hasDeadline := r.statement.ctx.Deadline(); hasDeadline {
-					r.done = make(chan struct{})
-					// handle deadline for dpiStmt_fetchRows. context reused from stmt
-					if err := r.statement.handleDeadline(ctx, r.done); err != nil {
-						return err
-					}
-				}
+		if ctx := r.statement.ctx; ctx != nil {
+			// nil can be present when Next is issued on cursor returned from DB
+			if r.err = ctx.Err(); r.err != nil {
+				return r.err
 			}
-		}
-		if r.done != nil {
-			defer func() {
-				if r.err != nil && r.done != nil {
-					close(r.done)
-					r.done = nil
+			if _, hasDeadline := r.statement.ctx.Deadline(); hasDeadline {
+				// handle deadline for dpiStmt_fetchRows. context reused from stmt
+				cleanup, err := r.statement.handleDeadline(ctx)
+				if err != nil {
+					return err
 				}
-			}()
+				defer cleanup()
+			}
 		}
 
 		var moreRows C.int

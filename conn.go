@@ -87,15 +87,15 @@ func (c *conn) checkExecNoLOT(f func() C.int) error {
 }
 
 // used before an ODPI call to force it to return within the context deadline
-func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
+func (c *conn) handleDeadline(ctx context.Context) (cleanup func(), err error) {
+	cleanup = func() {}
 	logger := c.getLogger(ctx)
 	if err := ctx.Err(); err != nil {
 		if logger != nil {
 			logger.Error("handleDeadline", "error", err)
 		}
-		return err
+		return cleanup, err
 	}
-	var eraseTimeout func()
 	if dl, hasDeadline := ctx.Deadline(); hasDeadline && func() bool {
 		c.mu.RLock()
 		defer c.mu.RUnlock()
@@ -123,41 +123,13 @@ func (c *conn) handleDeadline(ctx context.Context, done <-chan struct{}) error {
 		// nosemgrep: trailofbits.go.missing-runlock-on-rwmutex.missing-runlock-on-rwmutex
 		return false
 	}() {
-		eraseTimeout = func() {
+		return func() {
 			_ = C.dpiConn_setCallTimeout(c.dpiConn, 0)
-		}
+		}, nil
 
 	}
 
-	go func() {
-		select {
-		case <-done:
-			if eraseTimeout != nil {
-				eraseTimeout()
-			}
-			return
-		case <-ctx.Done():
-			// select again to avoid race condition if both are done
-			select {
-			case <-done:
-				if eraseTimeout != nil {
-					eraseTimeout()
-				}
-				return
-			default:
-				err := ctx.Err()
-				if logger != nil {
-					logger.Error("BREAK context statement", "conn", fmt.Sprintf("%p", c), "error", err)
-				}
-				_ = c.Break()
-				if eraseTimeout != nil {
-					eraseTimeout()
-				}
-				return
-			}
-		}
-	}()
-	return nil
+	return cleanup, nil
 }
 
 // Break signals the server to stop the execution on the connection.
@@ -203,17 +175,17 @@ func (c *conn) Ping(ctx context.Context) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	done := make(chan struct{})
 	logger := getLogger(ctx)
 	if logger != nil {
 		dl, ok := ctx.Deadline()
 		logger.Debug("Ping", "deadline", dl, "ok", ok)
 	}
-	if err := c.handleDeadline(ctx, done); err != nil {
+	cleanup, err := c.handleDeadline(ctx)
+	if err != nil {
 		return err
 	}
-	err := c.checkExec(func() C.int { return C.dpiConn_ping(c.dpiConn) })
-	close(done)
+	err = c.checkExec(func() C.int { return C.dpiConn_ping(c.dpiConn) })
+	cleanup()
 	if err != nil {
 		return maybeBadConn(fmt.Errorf("Ping: %w", err), c)
 	}
