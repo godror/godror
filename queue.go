@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -100,7 +99,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		return nil, fmt.Errorf("newQueue %q: %w", name, err)
 	}
 
-	if atomic.LoadUint32(&logLingeringResourceStack) == 0 {
+	if !logLingeringResourceStack.Load() {
 		runtime.SetFinalizer(&Q, func(Q *Queue) {
 			if Q != nil && Q.dpiQueue != nil {
 				fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)

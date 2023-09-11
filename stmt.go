@@ -3548,7 +3548,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 var maxStackSize uint32 = 2048
 
 func stmtSetFinalizer(st *statement, tag string) {
-	if atomic.LoadUint32(&logLingeringResourceStack) == 0 {
+	if !logLingeringResourceStack.Load() {
 		runtime.SetFinalizer(st, func(st *statement) {
 			if st != nil && st.dpiStmt != nil {
 				if logger := getLogger(context.TODO()); logger != nil {

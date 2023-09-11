@@ -410,7 +410,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
-	if atomic.LoadUint32(&logLingeringResourceStack) == 0 {
+	if !logLingeringResourceStack.Load() {
 		runtime.SetFinalizer(&c, func(c *conn) {
 			if cleanup != nil {
 				cleanup()
@@ -1260,7 +1260,7 @@ func nvlD(a, b time.Duration) time.Duration {
 	return a
 }
 
-var logLingeringResourceStack uint32
+var logLingeringResourceStack atomic.Bool
 
 // LogLingeringResourceStack sets whether to log the lingering resource's (allocation) stack in Finalizer.
 // Default is to not log, as it consumes a few kiB for each resource (stmt, conn, queue, object type).
@@ -1269,10 +1269,4 @@ var logLingeringResourceStack uint32
 //
 // For programs that'd benefit this stack, enabling it may raise memory consumption
 // significantly over time. So enable it only for debugging!
-func LogLingeringResourceStack(b bool) {
-	var x uint32
-	if b {
-		x = 1
-	}
-	atomic.StoreUint32(&logLingeringResourceStack, x)
-}
+func LogLingeringResourceStack(b bool) { logLingeringResourceStack.Store(b) }
