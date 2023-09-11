@@ -216,7 +216,7 @@ func FuzzOCINum(f *testing.F) {
 		s := n.String()
 		var gotF big.Float
 		if _, _, err = gotF.Parse(s, 10); err != nil {
-			t.Fatalf("%q results %q which cannot parse: %+v", pS, s, err)
+			t.Fatalf("%q results %q which cannot be parsed: %+v (n=%#v)", pS, s, err, n)
 		}
 		var diffF big.Float
 		diffF.Sub(&wantF, &gotF)

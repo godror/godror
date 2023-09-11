@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2023 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -87,6 +87,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -409,17 +410,29 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
-	runtime.SetFinalizer(&c, func(c *conn) {
-		if cleanup != nil {
-			cleanup()
-		}
-		if c != nil && c.dpiConn != nil {
-			fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
-			_ = c.closeNotLocking(false)
-		}
-	})
+	if atomic.LoadUint32(&logLingeringResourceStack) == 0 {
+		runtime.SetFinalizer(&c, func(c *conn) {
+			if cleanup != nil {
+				cleanup()
+			}
+			if c != nil && c.dpiConn != nil {
+				fmt.Printf("ERROR: conn %p of createConn is not Closed!\n", c)
+				_ = c.closeNotLocking(false)
+			}
+		})
+	} else {
+		var a [4096]byte
+		stack := a[:runtime.Stack(a[:], false)]
+		runtime.SetFinalizer(&c, func(c *conn) {
+			if cleanup != nil {
+				cleanup()
+			}
+			if c != nil && c.dpiConn != nil {
+				fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
+				_ = c.closeNotLocking(false)
+			}
+		})
+	}
 	return &c, isNew, nil
 }
 
@@ -1245,4 +1258,21 @@ func nvlD(a, b time.Duration) time.Duration {
 		return b
 	}
 	return a
+}
+
+var logLingeringResourceStack uint32
+
+// LogLingeringResourceStack sets whether to log the lingering resource's (allocation) stack in Finalizer.
+// Default is to not log, as it consumes a few kiB for each resource (stmt, conn, queue, object type).
+//
+// Should not cause problem with bug-free program, that closes all stmt's ASAP.
+//
+// For programs that'd benefit this stack, enabling it may raise memory consumption
+// significantly over time. So enable it only for debugging!
+func LogLingeringResourceStack(b bool) {
+	var x uint32
+	if b {
+		x = 1
+	}
+	atomic.StoreUint32(&logLingeringResourceStack, x)
 }

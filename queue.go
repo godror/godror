@@ -1,4 +1,4 @@
-// Copyright 2019, 2022 The Godror Authors
+// Copyright 2019, 2023 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -99,14 +100,23 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		return nil, fmt.Errorf("newQueue %q: %w", name, err)
 	}
 
-	var a [4096]byte
-	stack := a[:runtime.Stack(a[:], false)]
-	runtime.SetFinalizer(&Q, func(Q *Queue) {
-		if Q != nil && Q.dpiQueue != nil {
-			fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
-			Q.Close()
-		}
-	})
+	if atomic.LoadUint32(&logLingeringResourceStack) == 0 {
+		runtime.SetFinalizer(&Q, func(Q *Queue) {
+			if Q != nil && Q.dpiQueue != nil {
+				fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
+				Q.Close()
+			}
+		})
+	} else {
+		var a [4096]byte
+		stack := a[:runtime.Stack(a[:], false)]
+		runtime.SetFinalizer(&Q, func(Q *Queue) {
+			if Q != nil && Q.dpiQueue != nil {
+				fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+				Q.Close()
+			}
+		})
+	}
 
 	enqOpts := DefaultEnqOptions
 	deqOpts := DefaultDeqOptions
