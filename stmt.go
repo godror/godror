@@ -3545,9 +3545,39 @@ func (c *conn) ResetSession(ctx context.Context) error {
 }
 */
 
+var logLingeringStmtStack uint32
+
+// LogLingeringStmtStack sets whether to log the lingering statements' stacks in Finalizer. Default is to not log, as it consumes a few kiB for each stmt.
+//
+// Should not cause problem with bug-free program, that closes all stmt's ASAP.
+//
+// For programs that'd benefit this stack, enabling it may raise memory consumption
+// significantly over time. So enable it only for debugging!
+func LogLingeringStmtStack(b bool) {
+	var x uint32
+	if b {
+		x = 1
+	}
+	atomic.StoreUint32(&logLingeringStmtStack, x)
+}
+
 var maxStackSize uint32 = 2048
 
 func stmtSetFinalizer(st *statement, tag string) {
+	if atomic.LoadUint32(&logLingeringStmtStack) == 0 {
+		runtime.SetFinalizer(st, func(st *statement) {
+			if st != nil && st.dpiStmt != nil {
+				if logger := getLogger(context.TODO()); logger != nil {
+					logger.Error("statement is not closed", "stmt", st, "tag", tag)
+				} else {
+					fmt.Printf("ERROR: statement %p of %s is not closed!", st, tag)
+				}
+				_ = st.closeNotLocking()
+			}
+		})
+		return
+	}
+
 	// Store the current stack for printing later.
 	n := atomic.LoadUint32(&maxStackSize)
 	var stack []byte
