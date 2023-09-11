@@ -63,8 +63,6 @@ var (
 func (num OCINum) IsNull() bool { return len(num) < 2 }
 
 // Print the number into the given byte slice.
-//
-//
 func (num OCINum) Print(buf []byte) []byte {
 	if len(num) == 0 {
 		// NULL
@@ -172,7 +170,7 @@ func (num OCINum) String() string {
 
 // SetString sets the OCINum to the number in s.
 func (num *OCINum) SetString(s string) error {
-	s = strings.TrimSpace(s)
+	s = strings.TrimLeft(strings.TrimSpace(s), "+")
 	if len(s) == 0 {
 		return io.EOF
 	}
