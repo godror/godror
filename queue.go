@@ -99,7 +99,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		return nil, fmt.Errorf("newQueue %q: %w", name, err)
 	}
 
-	if !noFinalizer.Load() {
+	if guardWithFinalizers.Load() {
 		if !logLingeringResourceStack.Load() {
 			runtime.SetFinalizer(&Q, func(Q *Queue) {
 				if Q != nil && Q.dpiQueue != nil {

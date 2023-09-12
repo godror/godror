@@ -3548,7 +3548,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 var maxStackSize uint32 = 2048
 
 func stmtSetFinalizer(st *statement, tag string) {
-	if noFinalizer.Load() {
+	if !guardWithFinalizers.Load() {
 		return
 	}
 	if !logLingeringResourceStack.Load() {

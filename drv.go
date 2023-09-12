@@ -410,7 +410,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
-	if noFinalizer.Load() {
+	if !guardWithFinalizers.Load() {
 		return &c, isNew, nil
 	}
 
@@ -1275,7 +1275,7 @@ var logLingeringResourceStack atomic.Bool
 // significantly over time. So enable it only for debugging!
 func LogLingeringResourceStack(b bool) { logLingeringResourceStack.Store(b) }
 
-var noFinalizer atomic.Bool
+var guardWithFinalizers atomic.Bool
 
-// NoFinalizers sets whether we should guard resources with Finalizers.
-func NoFinalizers(b bool) { noFinalizer.Store(b) }
+// GuardWithFinalizers sets whether we should guard resources with Finalizers.
+func GuardWithFinalizers(b bool) { guardWithFinalizers.Store(b) }

@@ -974,7 +974,7 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
-	if noFinalizer.Load() {
+	if !guardWithFinalizers.Load() {
 		return O, O.ResetAttributes()
 	}
 
@@ -1151,7 +1151,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if cache != nil {
 		cache[t.FullName()] = t
 	}
-	if noFinalizer.Load() {
+	if !guardWithFinalizers.Load() {
 		return nil
 	}
 	if closeObjectWithFinalizer {
