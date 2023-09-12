@@ -974,6 +974,10 @@ func (t *ObjectType) NewObject() (*Object, error) {
 		return nil, err
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
+	if noFinalizer.Load() {
+		return O, O.ResetAttributes()
+	}
+
 	if warnMissingObjectClose {
 		runtime.SetFinalizer(O, func(O *Object) {
 			if O == nil || O.dpiObject == nil {
@@ -1144,12 +1148,14 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
-
-	if closeObjectWithFinalizer {
-		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
-	}
 	if cache != nil {
 		cache[t.FullName()] = t
+	}
+	if noFinalizer.Load() {
+		return nil
+	}
+	if closeObjectWithFinalizer {
+		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
 	}
 	return nil
 }

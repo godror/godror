@@ -99,22 +99,24 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		return nil, fmt.Errorf("newQueue %q: %w", name, err)
 	}
 
-	if !logLingeringResourceStack.Load() {
-		runtime.SetFinalizer(&Q, func(Q *Queue) {
-			if Q != nil && Q.dpiQueue != nil {
-				fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
-				Q.Close()
-			}
-		})
-	} else {
-		var a [4096]byte
-		stack := a[:runtime.Stack(a[:], false)]
-		runtime.SetFinalizer(&Q, func(Q *Queue) {
-			if Q != nil && Q.dpiQueue != nil {
-				fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
-				Q.Close()
-			}
-		})
+	if !noFinalizer.Load() {
+		if !logLingeringResourceStack.Load() {
+			runtime.SetFinalizer(&Q, func(Q *Queue) {
+				if Q != nil && Q.dpiQueue != nil {
+					fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
+					Q.Close()
+				}
+			})
+		} else {
+			var a [4096]byte
+			stack := a[:runtime.Stack(a[:], false)]
+			runtime.SetFinalizer(&Q, func(Q *Queue) {
+				if Q != nil && Q.dpiQueue != nil {
+					fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+					Q.Close()
+				}
+			})
+		}
 	}
 
 	enqOpts := DefaultEnqOptions

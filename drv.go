@@ -410,6 +410,10 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		return nil, false, err
 	}
 
+	if noFinalizer.Load() {
+		return &c, isNew, nil
+	}
+
 	if !logLingeringResourceStack.Load() {
 		runtime.SetFinalizer(&c, func(c *conn) {
 			if cleanup != nil {
@@ -1270,3 +1274,8 @@ var logLingeringResourceStack atomic.Bool
 // For programs that'd benefit this stack, enabling it may raise memory consumption
 // significantly over time. So enable it only for debugging!
 func LogLingeringResourceStack(b bool) { logLingeringResourceStack.Store(b) }
+
+var noFinalizer atomic.Bool
+
+// NoFinalizers sets whether we should guard resources with Finalizers.
+func NoFinalizers(b bool) { noFinalizer.Store(b) }
