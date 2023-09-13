@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logfmt/logfmt"
@@ -73,7 +74,8 @@ type CommonParams struct {
 
 // String returns the string representation of CommonParams.
 func (P CommonParams) String() string {
-	q := newParamsArray(8)
+	q := acquireParamsArray(8)
+	defer releaseParamsArray(q)
 	q.Add("user", P.Username)
 	q.Add("password", P.Password.String())
 	q.Add("connectString", P.ConnectString)
@@ -124,7 +126,8 @@ type ConnParams struct {
 
 // String returns the string representation of the ConnParams.
 func (P ConnParams) String() string {
-	q := newParamsArray(8)
+	q := acquireParamsArray(8)
+	defer releaseParamsArray(q)
 	if P.ConnClass != "" {
 		q.Add("connectionClass", P.ConnClass)
 	}
@@ -164,7 +167,8 @@ type PoolParams struct {
 
 // String returns the string representation of PoolParams.
 func (P PoolParams) String() string {
-	q := newParamsArray(8)
+	q := acquireParamsArray(8)
+	defer releaseParamsArray(q)
 	q.Add("poolMinSessions", strconv.Itoa(P.MinSessions))
 	q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	if P.MaxSessionsPerShard != 0 {
@@ -243,7 +247,8 @@ func (P ConnectionParams) StringWithPassword() string {
 }
 
 func (P ConnectionParams) string(class, withPassword bool) string {
-	q := newParamsArray(32)
+	q := acquireParamsArray(32)
+	defer releaseParamsArray(q)
 	q.Add("connectString", P.ConnectString)
 	s := P.ConnClass
 	if !class {
@@ -301,7 +306,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
 	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	q.Add("pingInterval", P.PingInterval.String())
-	as := newParamsArray(1)
+	as := acquireParamsArray(1)
+	defer releaseParamsArray(as)
 	for _, kv := range P.AlterSession {
 		as.Reset()
 		as.Add(kv[0], kv[1])
@@ -626,15 +632,32 @@ type paramsArray struct {
 	url.Values
 }
 
+var paramsArrayPool8 = sync.Pool{New: func() any { return newParamsArray(8) }}
+var paramsArrayPool32 = sync.Pool{New: func() any { return newParamsArray(32) }}
+
+func acquireParamsArray(cap int) *paramsArray {
+	if cap <= 8 {
+		return paramsArrayPool8.Get().(*paramsArray)
+	}
+	return paramsArrayPool32.Get().(*paramsArray)
+}
+func releaseParamsArray(p *paramsArray) {
+	if len(p.Values) < 32 {
+		paramsArrayPool8.Put(p)
+	} else {
+		paramsArrayPool32.Put(p)
+	}
+}
+
 // newParamsArray returns a new paramsArray with the given capacity of parameters.
 //
 // You can use this to build a dataSourceName for godror.
-func newParamsArray(cap int) paramsArray { return paramsArray{Values: make(url.Values, cap)} }
+func newParamsArray(cap int) *paramsArray { return &paramsArray{Values: make(url.Values, cap)} }
 
 // WriteTo the given writer, logfmt-encoded,
 // starting with username, password, connectString,
 // then the rest sorted alphabetically.
-func (p paramsArray) WriteTo(w io.Writer) (int64, error) {
+func (p *paramsArray) WriteTo(w io.Writer) (int64, error) {
 	firstKeys := make([]string, 0, len(p.Values))
 	keys := make([]string, 0, len(p.Values))
 	for k := range p.Values {
@@ -681,7 +704,7 @@ func (p paramsArray) WriteTo(w io.Writer) (int64, error) {
 
 // String returns the values in the params array, logfmt-formatted,
 // starting with username, password, connectString, then the rest sorted alphabetically.
-func (p paramsArray) String() string {
+func (p *paramsArray) String() string {
 	var buf strings.Builder
 	var n int
 	for k, vv := range p.Values {
@@ -695,7 +718,7 @@ func (p paramsArray) String() string {
 	}
 	return buf.String()
 }
-func (p paramsArray) Reset() {
+func (p *paramsArray) Reset() {
 	for k := range p.Values {
 		delete(p.Values, k)
 	}
