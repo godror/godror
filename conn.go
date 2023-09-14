@@ -1095,13 +1095,13 @@ func (c *conn) ResetSession(ctx context.Context) error {
 					P.ConnectString = params.ConnectString
 				}
 				if logger != nil {
-					logger.Info("paramsFromContext", "params", P)
+					logger.Debug("paramsFromContext", "params", P)
 				}
 			}
 		}
 	}
 	if logger != nil {
-		logger.Info("ResetSession re-acquire session", "pool", pool.key)
+		logger.Debug("ResetSession re-acquire session", "pool", pool.key)
 	}
 	c.mu.Lock()
 	// Close and then reacquire a fresh dpiConn
