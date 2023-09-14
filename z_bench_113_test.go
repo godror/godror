@@ -66,6 +66,7 @@ func BenchmarkSelect113(b *testing.B) {
 		fetchRows(b, rows, (i+1)*100, i == 0)
 	}
 
+	b.ResetTimer()
 	b.StartTimer()
 	b.Run("a=?,p=?", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
@@ -87,7 +88,7 @@ func BenchmarkSelect113(b *testing.B) {
 		}
 	})
 
-	for i := 1; i <= 8192; i *= 2 {
+	for i := 128; i <= 8192; i *= 2 {
 		arraySize := i
 		b.Run(fmt.Sprintf("a=%d,p=%d", i, i+1), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

@@ -437,6 +437,7 @@ func BenchmarkSelectDate(b *testing.B) {
 }
 
 func BenchmarkSelectGeo(b *testing.B) {
+	b.StopTimer()
 	geoTableName := "test_geo" + tblSuffix
 	const geoTableRowCount = 100000
 	if err := createGeoTable(geoTableName, geoTableRowCount); err != nil {
@@ -444,25 +445,16 @@ func BenchmarkSelectGeo(b *testing.B) {
 	}
 	defer testDb.Exec("DROP TABLE " + geoTableName)
 
-	for _, i := range []int{1, 10, 100, 1000} {
-		b.Run(fmt.Sprintf("Prefetch%d", i), func(b *testing.B) {
-			benchSelect(b, geoTableName, i)
-		})
-	}
-}
-
-func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
-	b.ResetTimer()
+	b.StartTimer()
 	for i := 0; i < b.N; {
-		b.StopTimer()
 		rows, err := testDb.Query(
 			"SELECT location FROM "+geoTableName, //nolint:gas
-			godror.FetchRowCount(prefetchLen))
+			godror.FetchArraySize(1024), godror.PrefetchCount(1025))
 		if err != nil {
 			b.Fatal(err)
 		}
+		defer rows.Close()
 		var readBytes, recNo int64
-		b.StartTimer()
 		for rows.Next() && i < b.N {
 			var loc string
 			if err = rows.Scan(&loc); err != nil {
@@ -473,9 +465,8 @@ func benchSelect(b *testing.B, geoTableName string, prefetchLen int) {
 			readBytes += int64(len(loc))
 			recNo++
 		}
-		b.StopTimer()
-		b.SetBytes(readBytes / recNo)
 		rows.Close()
+		b.SetBytes(readBytes / recNo)
 	}
 }
 
@@ -567,12 +558,13 @@ func BenchmarkPlSqlObj(b *testing.B) {
 // go tool pprof c.pprof
 // go tool pprof m.pprof
 func BenchmarkSelectWide(b *testing.B) {
+	b.StopTimer()
 	StopConnStats()
-
 	tblName := func(suffix string) string { return "tst_wide_n" + strings.Replace(suffix, ",", "_", 1) }
 	for _, typ := range []string{"9", "18", "19", "20,4", "20,4B"} {
 		typ := typ
 		b.Run(typ, func(b *testing.B) {
+			b.StopTimer()
 			tbl := tblName(typ)
 			colTyp := strings.TrimRight(typ, "B")
 			createWideTable := `CREATE TABLE ` + tbl + ` (
@@ -737,20 +729,13 @@ BEGIN
       v_ne_key, v_now, v_year, v_month, v_day, v_hour, SYSDATE, v_vendor_id, v_coll_source);
   END LOOP;
 END;`
+			if _, err := testDb.ExecContext(ctx, insQry, 1_000); err != nil {
+				b.Fatalf("%s: %+v", insQry, err)
+			}
 
-			first := true
-			var rowNum int64
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				j := (i + 1)
-				if _, err := testDb.ExecContext(ctx, insQry, j); err != nil {
-					b.Fatalf("%s: %+v", insQry, err)
-				}
-
-				qry := "SELECT * FROM " + tbl + " FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
-				if strings.HasSuffix(typ, "B") {
-					qry = `SELECT 
+			qry := "SELECT * FROM " + tbl
+			if strings.HasSuffix(typ, "B") {
+				qry = `SELECT 
 	  NE_KEY, STATISTIC_TIME, YEAR, MONTH, DAY, HOUR, INSERT_TIME, VENDOR_ID, COLL_SOURCE,
 	  CAST(COL_001 AS BINARY_DOUBLE), CAST(COL_002 AS BINARY_DOUBLE), CAST(COL_003 AS BINARY_DOUBLE), CAST(COL_004 AS BINARY_DOUBLE), CAST(COL_005 AS BINARY_DOUBLE), CAST(COL_006 AS BINARY_DOUBLE), CAST(COL_007 AS BINARY_DOUBLE), CAST(COL_008 AS BINARY_DOUBLE), CAST(COL_009 AS BINARY_DOUBLE), CAST(COL_010 AS BINARY_DOUBLE), 
 	  CAST(COL_011 AS BINARY_DOUBLE), CAST(COL_012 AS BINARY_DOUBLE), CAST(COL_013 AS BINARY_DOUBLE), CAST(COL_014 AS BINARY_DOUBLE), CAST(COL_015 AS BINARY_DOUBLE), CAST(COL_016 AS BINARY_DOUBLE), CAST(COL_017 AS BINARY_DOUBLE), CAST(COL_018 AS BINARY_DOUBLE), CAST(COL_019 AS BINARY_DOUBLE), CAST(COL_020 AS BINARY_DOUBLE), 
@@ -762,10 +747,16 @@ END;`
 	  CAST(COL_071 AS BINARY_DOUBLE), CAST(COL_072 AS BINARY_DOUBLE), CAST(COL_073 AS BINARY_DOUBLE), CAST(COL_074 AS BINARY_DOUBLE), CAST(COL_075 AS BINARY_DOUBLE), CAST(COL_076 AS BINARY_DOUBLE), CAST(COL_077 AS BINARY_DOUBLE), CAST(COL_078 AS BINARY_DOUBLE), CAST(COL_079 AS BINARY_DOUBLE), CAST(COL_080 AS BINARY_DOUBLE), 
 	  CAST(COL_081 AS BINARY_DOUBLE), CAST(COL_082 AS BINARY_DOUBLE), CAST(COL_083 AS BINARY_DOUBLE), CAST(COL_084 AS BINARY_DOUBLE), CAST(COL_085 AS BINARY_DOUBLE), CAST(COL_086 AS BINARY_DOUBLE), CAST(COL_087 AS BINARY_DOUBLE), CAST(COL_088 AS BINARY_DOUBLE), CAST(COL_089 AS BINARY_DOUBLE), CAST(COL_090 AS BINARY_DOUBLE), 
 	  CAST(COL_091 AS BINARY_DOUBLE), CAST(COL_092 AS BINARY_DOUBLE), CAST(COL_093 AS BINARY_DOUBLE), CAST(COL_094 AS BINARY_DOUBLE), CAST(COL_095 AS BINARY_DOUBLE), CAST(COL_096 AS BINARY_DOUBLE), CAST(COL_097 AS BINARY_DOUBLE), CAST(COL_098 AS BINARY_DOUBLE), CAST(COL_099 AS BINARY_DOUBLE), CAST(COL_100 AS BINARY_DOUBLE)
-				FROM ` + tbl + " FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
-				}
+				FROM ` + tbl
+			}
 
-				rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(1025), godror.FetchArraySize(1024))
+			first := true
+			var rowNum int64
+			b.ResetTimer()
+			b.StartTimer()
+			for i := 0; i < b.N; i++ {
+				qry := qry + " FETCH FIRST " + strconv.Itoa(b.N) + " ROWS ONLY"
+				rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(17), godror.FetchArraySize(16))
 				if err != nil {
 					b.Fatalf("%s: %+v", qry, err)
 				}
@@ -785,7 +776,6 @@ END;`
 					col91, col92, col93, col94, col95, col96, col97, col98, col99, col100 int64
 				)
 
-				b.StartTimer()
 				for rows.Next() {
 					if err := rows.Scan(&neKey, &statisticTime, &year, &month, &day, &hour,
 						&insertTime, &vendorId, &collSource,
@@ -816,7 +806,6 @@ END;`
 							100*8,
 					))
 				}
-				b.StopTimer()
 			}
 		})
 	}
