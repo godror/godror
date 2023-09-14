@@ -15,11 +15,7 @@ import (
 var globalLogger atomic.Value
 
 // SetLogger sets the global logger.
-func SetLogger(logger *slog.Logger) {
-	if logger != nil {
-		globalLogger.Store(logger)
-	}
-}
+func SetLogger(logger *slog.Logger) { globalLogger.Store(logger) }
 
 type logCtxKey struct{}
 

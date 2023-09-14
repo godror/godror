@@ -667,7 +667,7 @@ func (st *statement) NumInput() int {
 	}
 	if cnt < 2 { // 1 can't decrease...
 		if logger != nil {
-			logger.Info("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
+			logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 		}
 		return int(cnt)
 	}
@@ -3526,24 +3526,6 @@ func isInvalidErr(err error) bool {
 	// ORA-04068: "existing state of packages has been discarded"
 	return code == 4061 || code == 4065 || code == 4068
 }
-
-/*
-// ResetSession is called while a connection is in the connection
-// pool. No queries will run on this connection until this method returns.
-//
-// If the connection is bad this should return driver.ErrBadConn to prevent
-// the connection from being returned to the connection pool. Any other
-// error will be discarded.
-func (c *conn) ResetSession(ctx context.Context) error {
-	if logger := ctxGetLog(ctx); logger != nil {
-		logger.Log("msg", "ResetSession", "conn", c.dpiConn)
-	}
-	//subCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	//err := c.Ping(subCtx)
-	//cancel()
-	return c.Ping(ctx)
-}
-*/
 
 var maxStackSize uint32 = 2048
 

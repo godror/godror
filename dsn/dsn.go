@@ -702,10 +702,13 @@ func (p *paramsArray) WriteTo(w io.Writer) (int64, error) {
 	return cw.N, firstErr
 }
 
+var paSB = sync.Pool{New: func() any { return new(strings.Builder) }}
+
 // String returns the values in the params array, logfmt-formatted,
 // starting with username, password, connectString, then the rest sorted alphabetically.
 func (p *paramsArray) String() string {
-	var buf strings.Builder
+	buf := paSB.Get().(*strings.Builder)
+	defer func() { buf.Reset(); paSB.Put(buf) }()
 	var n int
 	for k, vv := range p.Values {
 		for _, v := range vv {
@@ -713,8 +716,8 @@ func (p *paramsArray) String() string {
 		}
 	}
 	buf.Grow(n)
-	if _, err := p.WriteTo(&buf); err != nil {
-		fmt.Fprintf(&buf, "\tERROR: %+v", err)
+	if _, err := p.WriteTo(buf); err != nil {
+		fmt.Fprintf(buf, "\tERROR: %+v", err)
 	}
 	return buf.String()
 }
@@ -724,28 +727,15 @@ func (p *paramsArray) Reset() {
 	}
 }
 
-/*
-func quoteRunes(s, runes string) string {
-	if !strings.ContainsAny(s, runes) {
-		return s
-	}
-	var buf strings.Builder
-	buf.Grow(2 * len(s))
-	for _, r := range s {
-		if strings.ContainsRune(runes, r) {
-			buf.WriteByte('\\')
-		}
-		buf.WriteRune(r)
-	}
-	return buf.String()
-}
-*/
+var unquoteSB = sync.Pool{New: func() any { return new(strings.Builder) }}
+
 // unquote replaces quoted ("\\n") with the quoted.
 func unquote(s string) string {
 	if !strings.ContainsRune(s, '\\') {
 		return s
 	}
-	var buf strings.Builder
+	buf := unquoteSB.Get().(*strings.Builder)
+	defer func() { buf.Reset(); unquoteSB.Put(buf) }()
 	buf.Grow(len(s))
 	var quoted bool
 	for _, r := range s {
