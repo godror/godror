@@ -47,24 +47,12 @@ const (
 	DefaultStandaloneConnection = false
 )
 
-// CommonParams holds the common parameters for pooled or standalone connections.
-//
-// For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
-type CommonParams struct {
-	// Logger is the per-pool or per-connection logger.
-	// The default nil logger does not log.
-	Logger *slog.Logger
-	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
-	OnInit                  func(context.Context, driver.ConnPrepareContext) error
+type CommonSimpleParams struct {
 	Timezone                *time.Location
 	ConfigDir, LibDir       string
 	Username, ConnectString string
 	Password                Password
 	Charset                 string
-	// OnInitStmts are executed on session init, iff OnInit is nil.
-	OnInitStmts []string
-	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
-	AlterSession [][2]string
 	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache completely
 	StmtCacheSize int
 	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
@@ -72,8 +60,38 @@ type CommonParams struct {
 	EnableEvents, NoTZCheck bool
 }
 
-// String returns the string representation of CommonParams.
+// CommonParams holds the common parameters for pooled or standalone connections.
+//
+// For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
+type CommonParams struct {
+	CommonSimpleParams
+	// Logger is the per-pool or per-connection logger.
+	// The default nil logger does not log.
+	Logger *slog.Logger
+	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
+	OnInit func(context.Context, driver.ConnPrepareContext) error
+	// OnInitStmts are executed on session init, iff OnInit is nil.
+	OnInitStmts []string
+	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
+	AlterSession [][2]string
+}
+
 func (P CommonParams) String() string {
+	return P.CommonSimpleParams.String()
+}
+
+var cacheCPSMu sync.RWMutex
+var cacheCPS = make(map[CommonSimpleParams]string)
+
+// String returns the string representation of CommonParams.
+func (P CommonSimpleParams) String() string {
+	cacheCPSMu.RLock()
+	s, ok := cacheCPS[P]
+	cacheCPSMu.RUnlock()
+	if ok {
+		return s
+	}
+
 	q := acquireParamsArray(8)
 	defer releaseParamsArray(q)
 	q.Add("user", P.Username)
@@ -85,7 +103,6 @@ func (P CommonParams) String() string {
 	if P.LibDir != "" {
 		q.Add("libDir", P.LibDir)
 	}
-	var s string
 	tz := P.Timezone
 	if tz != nil {
 		if tz == time.Local {
@@ -111,7 +128,11 @@ func (P CommonParams) String() string {
 		q.Add("initOnNewConnection", "1")
 	}
 
-	return q.String()
+	s = q.String()
+	cacheCPSMu.Lock()
+	cacheCPS[P] = s
+	cacheCPSMu.Unlock()
+	return s
 }
 
 // ConnParams holds the connection-specific parameters.

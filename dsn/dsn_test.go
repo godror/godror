@@ -23,9 +23,11 @@ func TestParse(t *testing.T) {
 	}
 	wantAt := ConnectionParams{
 		CommonParams: CommonParams{
-			Username:      "cc",
-			Password:      NewPassword("c@c*1"),
-			ConnectString: "192.168.1.1/cc",
+			CommonSimpleParams: CommonSimpleParams{
+				Username:      "cc",
+				Password:      NewPassword("c@c*1"),
+				ConnectString: "192.168.1.1/cc",
+			},
 		},
 		PoolParams: PoolParams{
 			MaxLifeTime:    DefaultMaxLifeTime,
@@ -37,13 +39,16 @@ func TestParse(t *testing.T) {
 	wantDefault := ConnectionParams{
 		StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
-			Username:      "user",
-			Password:      NewPassword("pass"),
-			ConnectString: "sid",
+			CommonSimpleParams: CommonSimpleParams{
+				Username:      "user",
+				Password:      NewPassword("pass"),
+				ConnectString: "sid",
+			},
 		},
 		ConnParams: ConnParams{
 			ConnClass: DefaultConnectionClass,
 		},
+
 		PoolParams: PoolParams{
 			MinSessions:      DefaultPoolMinSessions,
 			MaxSessions:      DefaultPoolMaxSessions,
@@ -135,7 +140,9 @@ func TestParse(t *testing.T) {
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+					CommonSimpleParams: CommonSimpleParams{
+						Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+					},
 				},
 				ConnParams: ConnParams{
 					ConnClass: "TestClassName", IsSysOper: true,
@@ -161,7 +168,9 @@ func TestParse(t *testing.T) {
 			Want: ConnectionParams{
 				StandaloneConnection: DefaultStandaloneConnection,
 				CommonParams: CommonParams{
-					ConnectString: "[::1]:12345/dbname",
+					CommonSimpleParams: CommonSimpleParams{
+						ConnectString: "[::1]:12345/dbname",
+					},
 				},
 				ConnParams: ConnParams{
 					ConnClass: cc,
@@ -192,7 +201,9 @@ func TestParse(t *testing.T) {
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				CommonParams: CommonParams{
-					Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+					CommonSimpleParams: CommonSimpleParams{
+						Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
+					},
 					OnInitStmts: []string{"a", "b"},
 				},
 				ConnParams: ConnParams{
