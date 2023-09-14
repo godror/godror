@@ -394,7 +394,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			if b.length < 10 {
 				//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
 				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
-				dest[i] = internBytes(bb)
+				dest[i] = string(bb)
 			} else {
 				dest[i] = C.GoStringN(b.ptr, C.int(b.length))
 			}
@@ -449,14 +449,14 @@ func (r *rows) Next(dest []driver.Value) error {
 				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
 
 				if nass {
-					dest[i] = internBytes(bb)
+					dest[i] = string(bb)
 				} else if naf {
 					var err error
-					if dest[i], err = strconv.ParseFloat(internBytes(bb), 64); err != nil {
+					if dest[i], err = strconv.ParseFloat(string(bb), 64); err != nil {
 						return fmt.Errorf("parse %q as float64: %w", string(bb), err)
 					}
 				} else {
-					dest[i] = internNumberBytes(bb)
+					dest[i] = Number(bb)
 				}
 			}
 
@@ -802,12 +802,12 @@ func printFloat(f float64) Number {
 	b := strconv.AppendFloat(a[:0], f, 'f', -1, 64)
 	i := bytes.IndexByte(b, '.')
 	if i < 0 {
-		return internNumberBytes(b)
+		return Number(b)
 	}
 	for j := i + 1; j < len(b); j++ {
 		if b[j] != '0' {
-			return internNumberBytes(b)
+			return Number(b)
 		}
 	}
-	return internNumberBytes(b[:i])
+	return Number(b[:i])
 }

@@ -445,7 +445,9 @@ func BenchmarkSelectGeo(b *testing.B) {
 	defer testDb.Exec("DROP TABLE " + geoTableName)
 
 	for _, i := range []int{1, 10, 100, 1000} {
-		b.Run(fmt.Sprintf("Prefetch%d", i), func(b *testing.B) { benchSelect(b, geoTableName, i) })
+		b.Run(fmt.Sprintf("Prefetch%d", i), func(b *testing.B) {
+			benchSelect(b, geoTableName, i)
+		})
 	}
 }
 
@@ -741,7 +743,7 @@ END;`
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
-				j := (i + 1) * 10
+				j := (i + 1)
 				if _, err := testDb.ExecContext(ctx, insQry, j); err != nil {
 					b.Fatalf("%s: %+v", insQry, err)
 				}
@@ -763,7 +765,7 @@ END;`
 				FROM ` + tbl + " FETCH FIRST " + strconv.Itoa(j) + " ROWS ONLY"
 				}
 
-				rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(5000), godror.FetchArraySize(5000))
+				rows, err := testDb.QueryContext(ctx, qry, godror.PrefetchCount(1025), godror.FetchArraySize(1024))
 				if err != nil {
 					b.Fatalf("%s: %+v", qry, err)
 				}
@@ -808,10 +810,14 @@ END;`
 						}
 					}
 					rowNum++
+					b.SetBytes(int64(
+						2*16 +
+							len(neKey) + len(year) + len(month) + len(day) + len(hour) + len(vendorId) + len(collSource) +
+							100*8,
+					))
 				}
 				b.StopTimer()
 			}
-			b.SetBytes(rowNum)
 		})
 	}
 }

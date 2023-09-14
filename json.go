@@ -436,7 +436,7 @@ func (j JSONScalar) GetValue() (val interface{}, err error) {
 func getJSONScalarNumber(d Data) (val interface{}) {
 	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
-		val = internNumberBytes(b.([]byte))
+		val = Number(b.([]byte))
 	} else {
 		val = b.(float64)
 	}
