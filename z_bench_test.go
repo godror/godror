@@ -823,7 +823,7 @@ func BenchmarkSelect301(b *testing.B) {
 			select {
 			case <-ticker.C:
 				runtime.ReadMemStats(&m)
-				b.Log(m.Alloc, m.TotalAlloc)
+				fmt.Println("alloc:", m.Alloc, "total:", m.TotalAlloc)
 			case <-ctx.Done():
 				ticker.Stop()
 				select {

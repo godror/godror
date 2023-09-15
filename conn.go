@@ -521,7 +521,10 @@ func (c *conn) initTZ() error {
 	}
 	c.params.Timezone = time.Local
 
-	key := time.Local.String() + "\t" + c.params.String()
+	key := time.Local.String() + "\t" + c.params.ConnectString
+	if c.params.Timezone != nil {
+		key += "\t" + c.params.Timezone.String()
+	}
 	c.drv.mu.RLock()
 	tz, ok := c.drv.timezones[key]
 	c.drv.mu.RUnlock()
