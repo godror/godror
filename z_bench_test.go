@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -809,4 +810,47 @@ END;`
 			}
 		})
 	}
+}
+
+func BenchmarkSelect301(b *testing.B) {
+	StopConnStats()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		var m runtime.MemStats
+		for {
+			select {
+			case <-ticker.C:
+				runtime.ReadMemStats(&m)
+				b.Log(m.Alloc, m.TotalAlloc)
+			case <-ctx.Done():
+				ticker.Stop()
+				select {
+				case <-ticker.C:
+				default:
+				}
+				return
+			}
+		}
+	}()
+	var nm, typ, ts string
+	var oid uint64
+	for i := 0; i < b.N; {
+		const qry = "SELECT A.object_name, A.object_id, A.object_type, SYSTIMESTAMP FROM all_objects A"
+		rows, err := testDb.QueryContext(ctx, qry, godror.FetchArraySize(1024), godror.PrefetchCount(1025))
+		if err != nil {
+			b.Fatalf("%s: %+v", qry, err)
+		}
+		func() {
+			defer rows.Close()
+			for rows.Next() && i < b.N {
+				if err = rows.Scan(&nm, &oid, &typ, &ts); err != nil {
+					b.Fatalf("scan %s: %+v", qry, err)
+				}
+				i++
+			}
+		}()
+	}
+	b.Log(nm, oid, typ, ts)
 }
