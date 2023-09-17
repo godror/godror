@@ -82,6 +82,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"runtime"
 	"strconv"
@@ -799,7 +800,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	// create pool
 	var dp *C.dpiPool
 	logger := P.Logger
-	if logger != nil {
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("C.dpiPool_create",
 			"user", P.Username,
 			"ConnectString", P.ConnectString,

@@ -22,6 +22,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"reflect"
 	"runtime"
@@ -80,7 +81,8 @@ func (r *rows) Close() error {
 		}
 	}
 	if nextRs != nil {
-		if logger := getLogger(context.TODO()); logger != nil {
+		ctx := context.TODO()
+		if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("rows Close", "nextRs", fmt.Sprintf("%p", nextRs))
 		}
 		C.dpiStmt_release(nextRs)

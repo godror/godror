@@ -339,7 +339,7 @@ func (st *statement) closeNotLocking() error {
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
 
-	if logger := getLogger(context.TODO()); logger != nil {
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
 		if printStack {
 			var a [4096]byte
@@ -403,7 +403,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, err
 	}
 	logger := st.conn.getLogger(ctx)
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("ExecContext", "stmt", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
 
@@ -461,7 +461,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		f = func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, nil) }
 	}
 	for i := 0; i < 3; i++ {
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
 		}
 		if err = st.checkExec(f); err == nil {
@@ -638,8 +638,9 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
-	logger := getLogger(context.TODO())
-	if logger != nil {
+	ctx := context.TODO()
+	logger := getLogger(ctx)
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NumInput", "stmt", fmt.Sprintf("%p", st), "dpiStmt", fmt.Sprintf("%p", st.dpiStmt), "query", st.query)
 	}
 	if st.query == wrapResultset {
@@ -666,7 +667,7 @@ func (st *statement) NumInput() int {
 		panic(err)
 	}
 	if cnt < 2 { // 1 can't decrease...
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 		}
 		return int(cnt)
@@ -702,7 +703,7 @@ func (st *statement) NumInput() int {
 		}
 		panic(err)
 	}
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 	}
 
@@ -721,7 +722,8 @@ type argInfo struct {
 
 // bindVars binds the given args into new variables.
 func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) error {
-	if logger != nil {
+	ctx := context.TODO()
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("enter bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
 	var named bool
@@ -810,7 +812,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) err
 			}
 		}
 
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("bindVars", "i", i, "in", info.isIn, "out", info.isOut, "value", fmt.Sprintf("%[1]p %[1]T %#[1]v", st.dests[i]))
 		}
 	}
@@ -898,7 +900,7 @@ func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) err
 		}
 
 		if !st.isSlice[i] {
-			if logger != nil {
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("set", "i", i, "value", fmt.Sprintf("%T=%#v", value, value))
 			}
 			if err := info.set(dv, data[:1], value); err != nil {
@@ -949,9 +951,10 @@ func (st *statement) bindVars(args []driver.NamedValue, logger *slog.Logger) err
 }
 
 func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
+	ctx := context.TODO()
 	nilPtr := false
-	logger := getLogger(context.TODO())
-	if logger != nil {
+	logger := getLogger(ctx)
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		defer func() {
 			logger.Debug("bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%#v", value, value))
 		}()
@@ -1276,7 +1279,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 		if value, err = vlr.Value(); err != nil {
 			return value, fmt.Errorf("arg.Value(): %w", err)
 		}
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("valuer", "old", fmt.Sprintf("[%T]%#v.Value()", oval, oval), "new", fmt.Sprintf("[%T]%#v", value, value))
 		}
 		return st.bindVarTypeSwitch(info, get, value)
@@ -2436,19 +2439,20 @@ func (st *statement) dataGetStmtC(row *driver.Rows, data *C.dpiData) error {
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
 
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	var n C.uint32_t
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st2.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("dataGetStmtC.getNumQueryColumns: %+v: %w", err, io.EOF)
 		*row = &rows{err: err}
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetStmtC", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
 		}
 		return nil
 	}
 	r2, err := st2.openRows(int(n))
 	if err != nil {
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Error("dataGetStmtC.openRows", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
 		}
 		st2.Close()
@@ -2530,7 +2534,8 @@ func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error
 		return nil
 	}
 
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 
 	// For small reads it is faster to set it as byte slice
 	var a [1 << 20]byte
@@ -2568,7 +2573,7 @@ func (c *conn) dataSetLOBOne(dv *C.dpiVar, data []C.dpiData, i int, L Lob) error
 	lw := &dpiLobWriter{dpiLob: lob, drv: c.drv, isClob: L.IsClob}
 	defer lw.Close() // Do NOT close before dpiVar_setFromLob !
 	written, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("setLOB", "written", written, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
 	}
 	if err != nil {
@@ -2808,12 +2813,13 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 	if ot == nil {
 		panic("dataSetObjectStruct with nil ObjectType")
 	}
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	rv := reflect.ValueOf(vv)
 	if rv.Type().Kind() == reflect.Ptr {
 		rv = rv.Elem()
 	}
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataSetObjectStruct", "v", fmt.Sprintf("%T", vv))
 	}
 	if vv == nil || rv.IsZero() {
@@ -2838,14 +2844,15 @@ func (c *conn) dataSetObjectStruct(ot *ObjectType, dv *C.dpiVar, data *C.dpiData
 	return obj.Close()
 }
 func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	switch out := v.(type) {
 	case *ObjectCollection:
 		d := Data{
 			ObjectType: out.Object.ObjectType,
 			dpiData:    data[0],
 		}
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObject", "typ", "ObjectCollection", "v", fmt.Sprintf("%T", v), "d", d)
 		}
 		obj := d.GetObject()
@@ -2861,7 +2868,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			ObjectType: out.ObjectType,
 			dpiData:    data[0],
 		}
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObject", "typ", "Object", "v", fmt.Sprintf("%T", v), "d", d)
 		}
 		obj := d.GetObject()
@@ -2875,7 +2882,7 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			ObjectType: out.ObjectRef().ObjectType,
 			dpiData:    data[0],
 		}
-		if logger != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", d.GetObject())
 		}
 		obj := d.GetObject()
@@ -3065,7 +3072,8 @@ Loop:
 
 // dataGetObjectStruct reads the object from data and writes it to v.
 func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiData) error {
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() == reflect.Ptr {
@@ -3078,7 +3086,7 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		ObjectType: ot,
 		dpiData:    data[0],
 	}
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
 	}
 	obj := d.GetObject()

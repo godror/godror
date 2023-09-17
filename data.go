@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -352,7 +353,7 @@ func (d *Data) Get() interface{} {
 	case C.DPI_NATIVE_TYPE_JSON_OBJECT:
 		return d.GetJSONObject()
 	default:
-		panic(fmt.Sprintf("unknown NativeTypeNum=%d", d.NativeTypeNum))
+		panic("unknown NativeTypeNum=" + strconv.FormatInt(int64(d.NativeTypeNum), 10))
 	}
 }
 

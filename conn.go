@@ -745,7 +745,8 @@ func maybeBadConn(err error, c *conn) error {
 		return nil
 	}
 	cl := func() {}
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	if c != nil {
 		cl = func() {
 			if logger != nil {
@@ -758,8 +759,8 @@ func maybeBadConn(err error, c *conn) error {
 		cl()
 		return driver.ErrBadConn
 	}
-	if logger != nil {
-		logger.Error("maybeBadConn", "error", err, "errS", fmt.Sprintf("%q", err.Error()), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+		logger.Error("maybeBadConn", "error", err, "errS", err.Error(), "errT", err == nil, "errV", fmt.Sprintf("%#v", err))
 	}
 	if IsBadConn(err) {
 		cl()
@@ -961,7 +962,9 @@ type (
 )
 
 func (up UserPasswdConnClassTag) String() string {
-	return fmt.Sprintf("user=%q passw=%q class=%q", up.Username, up.Password, up.ConnClass)
+	return "user=" + strconv.Quote(up.Username) +
+		" passw=" + strconv.Quote(up.Password.String()) +
+		" class=" + strconv.Quote(up.ConnClass)
 }
 
 // ContextWithParams returns a context with the specified parameters. These parameters are used
@@ -1198,8 +1201,10 @@ func (c *conn) isHealthy() bool {
 
 func (c *conn) String() string {
 	currentTT, _ := c.currentTT.Load().(TraceTag)
-	return fmt.Sprintf("%s&%s&serverVersion=%s&tzOffSecs=%d",
-		currentTT, c.params, c.Server.String(), c.tzOffSecs)
+	return currentTT.String() +
+		"&" + c.params.String() +
+		"&serverVersion=" + c.Server.String() +
+		"&tzOffSecs=" + strconv.FormatInt(int64(c.tzOffSecs), 10)
 }
 
 func (c *conn) getLogger(ctx context.Context) *slog.Logger {
