@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -812,18 +813,37 @@ END;`
 	}
 }
 
+var benchmarkSelect301LogFh *os.File
+
 func BenchmarkSelect301(b *testing.B) {
 	StopConnStats()
+	P, err := godror.ParseConnString(testConStr)
+	if err != nil {
+		b.Fatal(err)
+	}
+	P.PoolParams.MaxSessions = 1
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
+	db.SetMaxIdleConns(0)
+	db.SetMaxOpenConns(1)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+	if benchmarkSelect301LogFh == nil {
+		if benchmarkSelect301LogFh, err = os.CreateTemp("", "BenchmarkSelect301-*.txt"); err != nil {
+			b.Fatal(err)
+		}
+		b.Log("alloc log: " + benchmarkSelect301LogFh.Name())
+	}
+	defer benchmarkSelect301LogFh.Sync()
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		var m runtime.MemStats
 		for {
 			select {
-			case <-ticker.C:
+			case t := <-ticker.C:
 				runtime.ReadMemStats(&m)
-				fmt.Println("alloc:", m.Alloc, "total:", m.TotalAlloc)
+				fmt.Fprintf(benchmarkSelect301LogFh, "%s\t%d\n", t.Format(time.RFC3339), m.Alloc)
 			case <-ctx.Done():
 				ticker.Stop()
 				select {
@@ -838,7 +858,7 @@ func BenchmarkSelect301(b *testing.B) {
 	var oid uint64
 	for i := 0; i < b.N; {
 		const qry = "SELECT A.object_name, A.object_id, A.object_type, SYSTIMESTAMP FROM all_objects A"
-		rows, err := testDb.QueryContext(ctx, qry, godror.FetchArraySize(1024), godror.PrefetchCount(1025))
+		rows, err := db.QueryContext(ctx, qry, godror.FetchArraySize(1024), godror.PrefetchCount(1025))
 		if err != nil {
 			b.Fatalf("%s: %+v", qry, err)
 		}

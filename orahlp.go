@@ -156,10 +156,24 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 			return 0, nil
 		}
 		return string(*x), nil
-	case int8, int16, int32, int64, uint16, uint32, uint64:
-		return fmt.Sprintf("%d", x), nil
-	case float32, float64:
-		return fmt.Sprintf("%f", x), nil
+	case int8:
+		return strconv.FormatInt(int64(x), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(x), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(x), 10), nil
+	case int64:
+		return strconv.FormatInt(x, 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(x), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(x), 10), nil
+	case uint64:
+		return strconv.FormatUint(x, 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64), nil
 	case decimalDecompose:
 		var n Number
 		err := n.Compose(x.Decompose(nil))
@@ -192,10 +206,24 @@ func (n *Number) Scan(v interface{}) error {
 		} else {
 			*n = *x
 		}
-	case int8, int16, int32, int64, uint16, uint32, uint64:
-		*n = Number(fmt.Sprintf("%d", x))
-	case float32, float64:
-		*n = Number(fmt.Sprintf("%f", x))
+	case int8:
+		*n = Number(strconv.FormatInt(int64(x), 10))
+	case int16:
+		*n = Number(strconv.FormatInt(int64(x), 10))
+	case int32:
+		*n = Number(strconv.FormatInt(int64(x), 10))
+	case int64:
+		*n = Number(strconv.FormatInt(x, 10))
+	case uint16:
+		*n = Number(strconv.FormatUint(uint64(x), 10))
+	case uint32:
+		*n = Number(strconv.FormatUint(uint64(x), 10))
+	case uint64:
+		*n = Number(strconv.FormatUint(x, 10))
+	case float32:
+		*n = Number(strconv.FormatFloat(float64(x), 'f', -1, 32))
+	case float64:
+		*n = Number(strconv.FormatFloat(x, 'f', -1, 64))
 	case decimalDecompose:
 		return n.Compose(x.Decompose(nil))
 	default:
