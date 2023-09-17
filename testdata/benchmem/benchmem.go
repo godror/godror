@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"database/sql/driver"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -27,7 +27,8 @@ var (
 type Config struct {
 	Connection string
 
-	db *sql.DB
+	connector driver.Connector
+	db        *sql.DB
 }
 
 type Exporter struct {
@@ -75,59 +76,40 @@ func (e *Exporter) Query(ctx context.Context, query string, function func(rows *
 func (e *Exporter) Connect(ctx context.Context) error {
 	config := e.config
 
-	params, err := godror.ParseConnString(config.Connection)
-	if err != nil {
-		return err
-	}
-	params.StandaloneConnection = true
-
-	db := sql.OpenDB(godror.NewConnector(params))
-	if err = db.PingContext(ctx); err != nil {
-		slog.Info("open db", "params", params, "error", err)
-		e.Close()
-
-		return err
-	}
-
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-
-	config.db = db
-
-	query := "SELECT object_name, object_type, object_id FROM all_objects FETCH FIRST 1 ROW ONLY"
-
-	up := e.Query(ctx, query, func(rows *sql.Rows) bool {
-		var name, typ string
-		var id int64
-		err := rows.Scan(&name, &typ, &id)
-		if err != nil {
-			slog.Error("scan", "query", query, "error", err)
-			return false
+	if config.db == nil {
+		if config.connector == nil {
+			params, err := godror.ParseConnString(config.Connection)
+			if err != nil {
+				return err
+			}
+			params.StandaloneConnection = true
+			config.connector = godror.NewConnector(params)
 		}
-		slog.Debug("scan", "obj", name, "type", typ, "id", id)
 
-		return false
-	})
+		db := sql.OpenDB(config.connector)
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
 
-	if !up {
-		return e.Close()
+		config.db = db
 	}
+
 	return nil
 }
 
 // Close Connections
 func (e *Exporter) Close() error {
-	if e.config.db == nil {
+	db := e.config.db
+	e.config.db = nil
+	if db == nil {
 		return nil
 	}
 	slog.Debug("Closing", "connection", e.config.Connection)
 
-	err := e.config.db.Close()
-	e.config.db = nil
-	if err != nil {
+	if err := db.Close(); err != nil {
 		slog.Error("close", "connection", e.config.Connection, "error", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 func main() {
@@ -164,25 +146,42 @@ func Main() error {
 	ctx, cancel = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	exporter := NewExporter(config)
+	if err := exporter.Connect(ctx); err != nil {
+		return err
+	}
+	defer exporter.Close()
+
 	var memstats runtime.MemStats
+	ticker := time.NewTicker(500 * time.Millisecond)
+Loop:
 	for {
-		var err error
-		if err = exporter.Connect(ctx); err == nil {
-			err = exporter.Close()
-		}
+		const query = "SELECT object_name, object_type, object_id FROM all_objects FETCH FIRST 1 ROW ONLY"
+		ok := exporter.Query(ctx, query, func(rows *sql.Rows) bool {
+			var name, typ string
+			var id int64
+			err := rows.Scan(&name, &typ, &id)
+			if err != nil {
+				slog.Error("scan", "query", query, "error", err)
+				return false
+			}
+			slog.Debug("scan", "obj", name, "type", typ, "id", id)
+
+			return false
+		})
 
 		runtime.GC()
 		runtime.ReadMemStats(&memstats)
 		fmt.Println(memstats.Alloc)
 
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				break
-			}
-			return err
+		if !ok {
+			break
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			break Loop
+		}
 	}
 	return nil
 }
