@@ -9,7 +9,6 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 	"time"
 )
@@ -68,23 +67,7 @@ func TestCalculateTZ(t *testing.T) {
 }
 
 func TestTZName(t *testing.T) {
-	f := func(dbTZ string) (*time.Location, error) {
-		t.Log("try", dbTZ)
-		tz, err := time.LoadLocation(dbTZ)
-		if err != nil {
-			if i := strings.Index(tzNamesLC, "\n"+dbTZ+"\n"); i >= 0 {
-				tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
-			}
-		}
-		if err == nil {
-			if tz == nil {
-				tz = time.UTC
-			}
-			return tz, nil
-		}
-		return nil, err
-	}
-
+	t.Log("tzNamesLC", tzNamesLC)
 	chicago, err := time.LoadLocation("America/Chicago")
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +90,7 @@ func TestTZName(t *testing.T) {
 		"AMERICA/CHICAGO":  {chicago, nil},
 		"AMERICA/NeW_yORk": {newYork, nil},
 	} {
-		got, err := f(in)
+		got, err := findProperTZName(in)
 		if err != want.error {
 			t.Errorf("%q got error %+v, wanted %v", in, err, want.error)
 		} else if got != want.Location && got.String() != want.Location.String() {

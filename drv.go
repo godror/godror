@@ -449,8 +449,8 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// used when a standalone connection is being created; when a connection is
 	// being acquired from the pool this structure is not needed
 	var commonCreateParamsPtr *C.dpiCommonCreateParams
-	var commonCreateParams C.dpiCommonCreateParams
 	if pool == nil {
+		var commonCreateParams C.dpiCommonCreateParams
 		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize, P.Charset); err != nil {
 			return nil, false, nil, err
 		}

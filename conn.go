@@ -16,6 +16,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -620,8 +621,30 @@ func (c *conn) initTZ() error {
 	return nil
 }
 
-//go:generate go run generate_tznames.go -pkg godror -o tznames_generated.go
-var tzNames, tzNamesLC string
+//go:generate go run generate_tznames.go -o tznames_generated.txt
+//go:embed tznames_generated.txt
+var tzNames string
+var tzNamesLC string
+var tzNamesLCOnce sync.Once
+
+func findProperTZName(dbTZ string) (*time.Location, error) {
+	tzNamesLCOnce.Do(func() { tzNamesLC = strings.ToLower(tzNames) })
+	tz, err := time.LoadLocation(dbTZ)
+	if err != nil {
+		if i := strings.Index(tzNamesLC,
+			"\n"+strings.ToLower(dbTZ)+"\n",
+		); i >= 0 {
+			tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
+		}
+	}
+	if err == nil {
+		if tz == nil {
+			return time.UTC, nil
+		}
+		return tz, nil
+	}
+	return nil, err
+}
 
 func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*time.Location, int, error) {
 	if dbTZ == "" && dbOSTZ != "" {
@@ -678,17 +701,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 	// If it's a name, try to use it.
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
-		if tz, err = time.LoadLocation(dbTZ); err != nil {
-			if i := strings.Index(tzNamesLC,
-				"\n"+strings.ToLower(dbTZ)+"\n",
-			); i >= 0 {
-				tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
-			}
-		}
-		if err == nil {
-			if tz == nil {
-				tz = time.UTC
-			}
+		if tz, err = findProperTZName(dbTZ); err == nil {
 			_, off = now.In(tz).Zone()
 			return tz, off, nil
 		}
