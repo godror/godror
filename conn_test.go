@@ -72,11 +72,8 @@ func TestTZName(t *testing.T) {
 		t.Log("try", dbTZ)
 		tz, err := time.LoadLocation(dbTZ)
 		if err != nil {
-			for _, nm := range tzNames {
-				if strings.EqualFold(nm, dbTZ) {
-					tz, err = time.LoadLocation(nm)
-					break
-				}
+			if i := strings.Index(tzNamesLC, "\n"+dbTZ+"\n"); i >= 0 {
+				tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
 			}
 		}
 		if err == nil {

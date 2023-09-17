@@ -822,10 +822,6 @@ func BenchmarkSelect301(b *testing.B) {
 		b.Fatal(err)
 	}
 	P.PoolParams.MaxSessions = 1
-	db := sql.OpenDB(godror.NewConnector(P))
-	defer db.Close()
-	db.SetMaxIdleConns(0)
-	db.SetMaxOpenConns(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
@@ -841,9 +837,9 @@ func BenchmarkSelect301(b *testing.B) {
 		var m runtime.MemStats
 		for {
 			select {
-			case t := <-ticker.C:
+			case <-ticker.C:
 				runtime.ReadMemStats(&m)
-				fmt.Fprintf(benchmarkSelect301LogFh, "%s\t%d\n", t.Format(time.RFC3339), m.Alloc)
+				fmt.Fprintf(benchmarkSelect301LogFh, "%d\n", m.Alloc)
 			case <-ctx.Done():
 				ticker.Stop()
 				select {
@@ -857,12 +853,16 @@ func BenchmarkSelect301(b *testing.B) {
 	var nm, typ, ts string
 	var oid uint64
 	for i := 0; i < b.N; {
-		const qry = "SELECT A.object_name, A.object_id, A.object_type, SYSTIMESTAMP FROM all_objects A"
-		rows, err := db.QueryContext(ctx, qry, godror.FetchArraySize(1024), godror.PrefetchCount(1025))
-		if err != nil {
-			b.Fatalf("%s: %+v", qry, err)
-		}
 		func() {
+			db := sql.OpenDB(godror.NewConnector(P))
+			defer db.Close()
+			db.SetMaxIdleConns(0)
+			db.SetMaxOpenConns(1)
+			const qry = "SELECT A.object_name, A.object_id, A.object_type, SYSTIMESTAMP FROM all_objects A FETCH FIRST 10 ROWS ONLY"
+			rows, err := db.QueryContext(ctx, qry, godror.FetchArraySize(1024), godror.PrefetchCount(1025))
+			if err != nil {
+				b.Fatalf("%s: %+v", qry, err)
+			}
 			defer rows.Close()
 			for rows.Next() && i < b.N {
 				if err = rows.Scan(&nm, &oid, &typ, &ts); err != nil {

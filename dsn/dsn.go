@@ -422,7 +422,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 
 	if paramsString != "" {
 		if q == nil {
-			q = make(url.Values, 32)
+			pa := acquireParamsArray(32)
+			defer releaseParamsArray(pa)
+			q = pa.Values
 		}
 		// Parse the logfmt-formatted parameters string
 		d := logfmt.NewDecoder(strings.NewReader(paramsString))
@@ -663,7 +665,11 @@ func acquireParamsArray(cap int) *paramsArray {
 	return paramsArrayPool32.Get().(*paramsArray)
 }
 func releaseParamsArray(p *paramsArray) {
-	if len(p.Values) < 32 {
+	length := len(p.Values)
+	for k := range p.Values {
+		delete(p.Values, k)
+	}
+	if length < 32 {
 		paramsArrayPool8.Put(p)
 	} else {
 		paramsArrayPool32.Put(p)

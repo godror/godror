@@ -621,7 +621,7 @@ func (c *conn) initTZ() error {
 }
 
 //go:generate go run generate_tznames.go -pkg godror -o tznames_generated.go
-var tzNames []string
+var tzNames, tzNamesLC string
 
 func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*time.Location, int, error) {
 	if dbTZ == "" && dbOSTZ != "" {
@@ -679,11 +679,10 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 	if dbTZ != "" && strings.Contains(dbTZ, "/") {
 		var err error
 		if tz, err = time.LoadLocation(dbTZ); err != nil {
-			for _, nm := range tzNames {
-				if strings.EqualFold(nm, dbTZ) {
-					tz, err = time.LoadLocation(nm)
-					break
-				}
+			if i := strings.Index(tzNamesLC,
+				"\n"+strings.ToLower(dbTZ)+"\n",
+			); i >= 0 {
+				tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
 			}
 		}
 		if err == nil {
