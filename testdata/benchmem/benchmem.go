@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	connection = flag.String("connection", os.Getenv("GODROR_TEST_DSN"), "connection string")
-	memProfFn  = flag.String("memprofile", "godror-benchmem.pprof", "memory profile file name")
-	timeout    = flag.Duration("timeout", 5*time.Minute, "test timeout")
+	flagConnection = flag.String("connection", os.Getenv("GODROR_TEST_DSN"), "connection string")
+	flagMemProfFn  = flag.String("memprofile", "godror-benchmem.pprof", "memory profile file name")
+	flagTimeout    = flag.Duration("timeout", 5*time.Minute, "test timeout")
+	flagOpenClose  = flag.Bool("open-close", false, "close-and-reopen connection for every query")
 )
 
 type Config struct {
@@ -123,11 +124,11 @@ func Main() error {
 	flag.Parse()
 
 	config := &Config{
-		Connection: *connection,
+		Connection: *flagConnection,
 	}
 
 	{
-		fh, err := os.Create(*memProfFn)
+		fh, err := os.Create(*flagMemProfFn)
 		if err != nil {
 			return err
 		}
@@ -141,7 +142,7 @@ func Main() error {
 		}()
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), *flagTimeout)
 	defer cancel()
 	ctx, cancel = signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -152,9 +153,14 @@ func Main() error {
 	defer exporter.Close()
 
 	var memstats runtime.MemStats
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 Loop:
-	for {
+	for i := 0; ; i++ {
+		if *flagOpenClose {
+			if err := exporter.Connect(ctx); err != nil {
+				return err
+			}
+		}
 		const query = "SELECT object_name, object_type, object_id FROM all_objects FETCH FIRST 1 ROW ONLY"
 		ok := exporter.Query(ctx, query, func(rows *sql.Rows) bool {
 			var name, typ string
@@ -169,9 +175,13 @@ Loop:
 			return false
 		})
 
+		if *flagOpenClose {
+			exporter.Close()
+		}
+
 		runtime.GC()
 		runtime.ReadMemStats(&memstats)
-		fmt.Println(memstats.Alloc)
+		fmt.Println(i, memstats.HeapAlloc)
 
 		if !ok {
 			break
