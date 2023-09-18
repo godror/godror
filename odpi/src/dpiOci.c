@@ -382,6 +382,8 @@ typedef int (*dpiOciFnType__sodaIndexCreate)(void *svchp, const void *coll,
         const char *indexspec, uint32_t speclen, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaIndexDrop)(void *svchp, const char *indexname,
         uint32_t indexnamelen, int *isDropped, void *errhp, uint32_t mode);
+typedef int (*dpiOciFnType__sodaIndexList)(void *svchp, const void *collection,
+        uint32_t flags, void **indexList, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaInsert)(void *svchp, void *collection,
         void *document, void *errhp, uint32_t mode);
 typedef int (*dpiOciFnType__sodaInsertAndGet)(void *svchp, void *collection,
@@ -628,6 +630,7 @@ static struct {
     dpiOciFnType__sodaFindOne fnSodaFindOne;
     dpiOciFnType__sodaIndexCreate fnSodaIndexCreate;
     dpiOciFnType__sodaIndexDrop fnSodaIndexDrop;
+    dpiOciFnType__sodaIndexList fnSodaIndexList;
     dpiOciFnType__sodaInsert fnSodaInsert;
     dpiOciFnType__sodaInsertAndGet fnSodaInsertAndGet;
     dpiOciFnType__sodaInsertAndGetWithOpts fnSodaInsertAndGetWithOpts;
@@ -3560,6 +3563,23 @@ int dpiOci__sodaIndexDrop(dpiSodaColl *coll, const char *name,
     status = (*dpiOciSymbols.fnSodaIndexDrop)(coll->db->conn->handle, name,
             nameLength, isDropped, error->handle, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn, "drop index");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__sodaIndexList() [INTERNAL]
+//   Wrapper for OCISodaIndexList().
+//-----------------------------------------------------------------------------
+int dpiOci__sodaIndexList(dpiSodaColl *coll, uint32_t flags, void **handle,
+        dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCISodaIndexList", dpiOciSymbols.fnSodaIndexList)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnSodaIndexList)(coll->db->conn->handle,
+            coll->handle, flags, handle, error->handle, DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, coll->db->conn, "get index list");
 }
 
 

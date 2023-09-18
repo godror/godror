@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.40.0]
+### Changed
+- ODPI-C v5.0.0
+
 ## [v0.39.3]
 ### Changed
 - Make resources' (last resort) Close with Finalizers opt-in with GuardWithFinalizers().

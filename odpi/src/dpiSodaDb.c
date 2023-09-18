@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -51,17 +51,13 @@ static int dpiSodaDb__checkConnected(dpiSodaDb *db, const char *fnName,
 // or there are no more collections to find.
 //-----------------------------------------------------------------------------
 static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
-        uint32_t limit, dpiSodaCollNames *names, char **namesBuffer,
-        dpiError *error)
+        uint32_t limit, dpiStringList *names, dpiError *error)
 {
-    uint32_t numAllocatedNames, namesBufferUsed, namesBufferAllocated;
-    uint32_t i, nameLength, *tempNameLengths;
-    char *name, *tempNamesBuffer, *ptr;
+    uint32_t numAllocatedStrings = 0, nameLength;
     void *collectionHandle;
+    char *name;
 
-    ptr = *namesBuffer;
-    namesBufferUsed = namesBufferAllocated = numAllocatedNames = 0;
-    while (names->numNames < limit || limit == 0) {
+    while (names->numStrings < limit || limit == 0) {
 
         // get next collection from cursor
         if (dpiOci__sodaCollGetNext(db->conn, cursorHandle, &collectionHandle,
@@ -74,71 +70,20 @@ static int dpiSodaDb__getCollectionNames(dpiSodaDb *db, void *cursorHandle,
         if (dpiOci__attrGet(collectionHandle, DPI_OCI_HTYPE_SODA_COLLECTION,
                 (void*) &name, &nameLength, DPI_OCI_ATTR_SODA_COLL_NAME,
                 "get collection name", error) < 0) {
-            dpiOci__handleFree(collectionHandle,
-                    DPI_OCI_HTYPE_SODA_COLLECTION);
+            dpiOci__handleFree(collectionHandle, DPI_OCI_HTYPE_SODA_COLLECTION);
             return DPI_FAILURE;
         }
 
-        // allocate additional space for the lengths array, if needed
-        if (numAllocatedNames <= names->numNames) {
-            numAllocatedNames += 256;
-            if (dpiUtils__allocateMemory(numAllocatedNames, sizeof(uint32_t),
-                    0, "allocate lengths array", (void**) &tempNameLengths,
-                    error) < 0) {
-                dpiOci__handleFree(collectionHandle,
-                        DPI_OCI_HTYPE_SODA_COLLECTION);
-                return DPI_FAILURE;
-            }
-            if (names->nameLengths) {
-                memcpy(tempNameLengths, names->nameLengths,
-                        names->numNames * sizeof(uint32_t));
-                dpiUtils__freeMemory(names->nameLengths);
-            }
-            names->nameLengths = tempNameLengths;
+        // add element to list
+        if (dpiStringList__addElement(names, name, nameLength,
+                &numAllocatedStrings, error) < 0) {
+            dpiOci__handleFree(collectionHandle, DPI_OCI_HTYPE_SODA_COLLECTION);
+            return DPI_FAILURE;
         }
-
-        // allocate additional space for the names buffer, if needed
-        if (namesBufferUsed + nameLength > namesBufferAllocated) {
-            namesBufferAllocated += 32768;
-            if (dpiUtils__allocateMemory(namesBufferAllocated, 1, 0,
-                    "allocate names buffer", (void**) &tempNamesBuffer,
-                    error) < 0) {
-                dpiOci__handleFree(collectionHandle,
-                        DPI_OCI_HTYPE_SODA_COLLECTION);
-                return DPI_FAILURE;
-            }
-            if (*namesBuffer) {
-                memcpy(tempNamesBuffer, *namesBuffer, namesBufferUsed);
-                dpiUtils__freeMemory(*namesBuffer);
-            }
-            *namesBuffer = tempNamesBuffer;
-            ptr = *namesBuffer + namesBufferUsed;
-        }
-
-        // store name in buffer and length in array
-        // the names array itself is created and populated afterwards in order
-        // to avoid unnecessary copying
-        memcpy(ptr, name, nameLength);
-        namesBufferUsed += nameLength;
-        names->nameLengths[names->numNames] = nameLength;
-        names->numNames++;
-        ptr += nameLength;
 
         // free collection now that we have processed it successfully
         dpiOci__handleFree(collectionHandle, DPI_OCI_HTYPE_SODA_COLLECTION);
 
-    }
-
-    // now that all of the names have been determined, populate names array
-    if (names->numNames > 0) {
-        if (dpiUtils__allocateMemory(names->numNames, sizeof(char*), 0,
-                "allocate names array", (void**) &names->names, error) < 0)
-            return DPI_FAILURE;
-        ptr = *namesBuffer;
-        for (i = 0; i < names->numNames; i++) {
-            names->names[i] = ptr;
-            ptr += names->nameLengths[i];
-        }
     }
 
     return DPI_SUCCESS;
@@ -286,9 +231,10 @@ int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
 //-----------------------------------------------------------------------------
 // dpiSodaDb_freeCollectionNames() [PUBLIC]
 //   Free the names of the collections allocated earlier with a call to
-// dpiSodaDb_getCollectionNames().
+// dpiSodaDb_getCollectionNames(). This method is deprecated and should be
+// replaced with a call to dpiContext_freeStringList().
 //-----------------------------------------------------------------------------
-int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiSodaCollNames *names)
+int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiStringList *names)
 {
     dpiError error;
 
@@ -297,19 +243,7 @@ int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiSodaCollNames *names)
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(db, names)
 
-    // perform frees; note that the memory for the names themselves is stored
-    // in one contiguous block pointed to by the first name
-    if (names->names) {
-        dpiUtils__freeMemory((void*) names->names[0]);
-        dpiUtils__freeMemory((void*) names->names);
-        names->names = NULL;
-    }
-    if (names->nameLengths) {
-        dpiUtils__freeMemory(names->nameLengths);
-        names->nameLengths = NULL;
-    }
-    names->numNames = 0;
-
+    dpiStringList__free(names);
     return dpiGen__endPublicFn(db, DPI_SUCCESS, &error);
 }
 
@@ -349,9 +283,8 @@ int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
 //-----------------------------------------------------------------------------
 int dpiSodaDb_getCollectionNames(dpiSodaDb *db, const char *startName,
         uint32_t startNameLength, uint32_t limit, uint32_t flags,
-        dpiSodaCollNames *names)
+        dpiStringList *names)
 {
-    char *namesBuffer;
     dpiError error;
     uint32_t mode;
     void *handle;
@@ -362,11 +295,6 @@ int dpiSodaDb_getCollectionNames(dpiSodaDb *db, const char *startName,
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
     DPI_CHECK_PTR_AND_LENGTH(db, startName)
     DPI_CHECK_PTR_NOT_NULL(db, names)
-
-    // initialize output structure
-    names->numNames = 0;
-    names->names = NULL;
-    names->nameLengths = NULL;
 
     // determine OCI mode to use
     mode = DPI_OCI_DEFAULT;
@@ -379,25 +307,11 @@ int dpiSodaDb_getCollectionNames(dpiSodaDb *db, const char *startName,
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
 
     // iterate over cursor to acquire collection names
-    namesBuffer = NULL;
-    status = dpiSodaDb__getCollectionNames(db, handle, limit, names,
-            &namesBuffer, &error);
+    memset(names, 0, sizeof(dpiStringList));
+    status = dpiSodaDb__getCollectionNames(db, handle, limit, names, &error);
     dpiOci__handleFree(handle, DPI_OCI_HTYPE_SODA_COLL_CURSOR);
-    if (status < 0) {
-        names->numNames = 0;
-        if (namesBuffer) {
-            dpiUtils__freeMemory(namesBuffer);
-            namesBuffer = NULL;
-        }
-        if (names->names) {
-            dpiUtils__freeMemory((void*) names->names);
-            names->names = NULL;
-        }
-        if (names->nameLengths) {
-            dpiUtils__freeMemory(names->nameLengths);
-            names->nameLengths = NULL;
-        }
-    }
+    if (status < 0)
+        dpiStringList__free(names);
     return dpiGen__endPublicFn(db, status, &error);
 }
 

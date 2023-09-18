@@ -609,16 +609,18 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         mode |= DPI_OCI_STMT_SCROLLABLE_READONLY;
 
     // perform execution
-    // re-execute statement for ORA-01007: variable not in select list
-    // drop statement from cache for all errors (except those which are due to
-    // invalid data which may be fixed in subsequent execution)
+    // re-execute statement for ORA-01007: variable not in select list and
+    // ORA-00932: inconsistent data types; drop statement from cache for all
+    // errors (except those which are due to invalid data which may be fixed in
+    // subsequent execution)
     if (dpiOci__stmtExecute(stmt, numIters, mode, error) < 0) {
         dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &tempOffset, 0,
                 DPI_OCI_ATTR_PARSE_ERROR_OFFSET, "set parse offset", error);
         error->buffer->offset = tempOffset;
         switch (error->buffer->code) {
+            case 932:
             case 1007:
-                if (reExecute)
+                if (reExecute && stmt->statementType == DPI_STMT_TYPE_SELECT)
                     return dpiStmt__reExecute(stmt, numIters, mode, error);
                 stmt->deleteFromCache = 1;
                 break;

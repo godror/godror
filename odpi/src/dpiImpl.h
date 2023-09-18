@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -285,6 +285,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_ECONTEXT_ID                    371
 #define DPI_OCI_ATTR_ADMIN_PFILE                    389
 #define DPI_OCI_ATTR_SUBSCR_PORTNO                  390
+#define DPI_OCI_ATTR_INSTNAME                       392
 #define DPI_OCI_ATTR_CHNF_ROWIDS                    402
 #define DPI_OCI_ATTR_CHNF_OPERATIONS                403
 #define DPI_OCI_ATTR_CHDES_DBNAME                   405
@@ -323,6 +324,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
+#define DPI_OCI_ATTR_JSON_COL                       534
 #define DPI_OCI_ATTR_SODA_COLL_NAME                 535
 #define DPI_OCI_ATTR_SODA_COLL_DESCRIPTOR           536
 #define DPI_OCI_ATTR_SODA_CTNT_SQL_TYPE             549
@@ -339,6 +341,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_FILTER                    576
 #define DPI_OCI_ATTR_SODA_SKIP                      577
 #define DPI_OCI_ATTR_SODA_LIMIT                     578
+#define DPI_OCI_ATTR_SODA_LOCK                      579
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
 #define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
@@ -469,6 +472,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_JZNVAL_ORA_SIGNED_INT                   28
 #define DPI_JZNVAL_ORA_SIGNED_LONG                  29
 #define DPI_JZNVAL_ORA_DECIMAL128                   30
+#define DPI_JZNVAL_ID                               31
 #define DPI_JZNVAL_OCI_NUMBER                       32
 #define DPI_JZNVAL_OCI_DATE                         33
 #define DPI_JZNVAL_OCI_DATETIME                     34
@@ -696,69 +700,6 @@ typedef struct {
     const char *sqlState;
     int isRecoverable;
 } dpiErrorInfo__v33;
-
-// structure used for common parameters used for creating standalone
-// connections and session pools
-typedef struct {
-    dpiCreateMode createMode;
-    const char *encoding;
-    const char *nencoding;
-    const char *edition;
-    uint32_t editionLength;
-    const char *driverName;
-    uint32_t driverNameLength;
-} dpiCommonCreateParams__v41;
-
-// structure used for common parameters used for creating standalone
-// connections and session pools
-typedef struct {
-    dpiCreateMode createMode;
-    const char *encoding;
-    const char *nencoding;
-    const char *edition;
-    uint32_t editionLength;
-    const char *driverName;
-    uint32_t driverNameLength;
-    int sodaMetadataCache;
-    uint32_t stmtCacheSize;
-} dpiCommonCreateParams__v43;
-
-// structure used for SODA operations (find/replace/remove)
-typedef struct {
-    uint32_t numKeys;
-    const char **keys;
-    uint32_t *keyLengths;
-    const char *key;
-    uint32_t keyLength;
-    const char *version;
-    uint32_t versionLength;
-    const char *filter;
-    uint32_t filterLength;
-    uint32_t skip;
-    uint32_t limit;
-    uint32_t fetchArraySize;
-} dpiSodaOperOptions__v41;
-
-// structure used for creating pools
-typedef struct {
-    uint32_t minSessions;
-    uint32_t maxSessions;
-    uint32_t sessionIncrement;
-    int pingInterval;
-    int pingTimeout;
-    int homogeneous;
-    int externalAuth;
-    dpiPoolGetMode getMode;
-    const char *outPoolName;
-    uint32_t outPoolNameLength;
-    uint32_t timeout;
-    uint32_t waitTimeout;
-    uint32_t maxLifetimeSession;
-    const char *plsqlFixupCallback;
-    uint32_t plsqlFixupCallbackLength;
-    uint32_t maxSessionsPerShard;
-} dpiPoolCreateParams__v43;
-
 
 //-----------------------------------------------------------------------------
 // forward declarations for recursive OCI JSON type definitions
@@ -2113,6 +2054,8 @@ int dpiOci__sodaIndexCreate(dpiSodaColl *coll, const char *indexSpec,
         uint32_t indexSpecLength, uint32_t mode, dpiError *error);
 int dpiOci__sodaIndexDrop(dpiSodaColl *coll, const char *name,
         uint32_t nameLength, uint32_t mode, int *isDropped, dpiError *error);
+int dpiOci__sodaIndexList(dpiSodaColl *coll, uint32_t flags, void **handle,
+        dpiError *error);
 int dpiOci__sodaInsert(dpiSodaColl *coll, void *handle, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaInsertAndGet(dpiSodaColl *coll, void **handle, uint32_t mode,
@@ -2217,6 +2160,14 @@ int dpiHandleList__addHandle(dpiHandleList *list, void *handle,
 int dpiHandleList__create(dpiHandleList **list, dpiError *error);
 void dpiHandleList__free(dpiHandleList *list);
 void dpiHandleList__removeHandle(dpiHandleList *list, uint32_t slotNum);
+
+
+//-----------------------------------------------------------------------------
+// definition of internal dpiStringList methods
+//-----------------------------------------------------------------------------
+void dpiStringList__free(dpiStringList *list);
+int dpiStringList__addElement(dpiStringList *list, const char *value,
+        uint32_t valueLength, uint32_t *numStringsAllocated, dpiError *error);
 
 
 //-----------------------------------------------------------------------------

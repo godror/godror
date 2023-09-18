@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -456,8 +456,8 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 {
     const dpiOracleType *oracleType = NULL;
     dpiNativeTypeNum nativeTypeNum;
+    uint8_t charsetForm, isJson;
     uint32_t dataTypeAttribute;
-    uint8_t charsetForm;
     uint16_t ociSize;
 
     // acquire data type
@@ -563,6 +563,15 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
             info->oracleTypeNum = DPI_ORACLE_TYPE_LONG_VARCHAR;
             info->defaultNativeTypeNum = DPI_NATIVE_TYPE_BYTES;
         }
+    }
+
+    // determine if the data refers to a JSON column
+    if (handleType == DPI_OCI_HTYPE_DESCRIBE &&
+            conn->env->versionInfo->versionNum >= 19) {
+        if (dpiOci__attrGet(handle, handleType, (void*) &isJson, 0,
+                DPI_OCI_ATTR_JSON_COL, "get is JSON column", error) < 0)
+            return DPI_FAILURE;
+        info->isJson = isJson;
     }
 
     return DPI_SUCCESS;

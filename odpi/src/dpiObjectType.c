@@ -348,10 +348,8 @@ int dpiObjectType_getInfo(dpiObjectType *objType, dpiObjectTypeInfo *info)
     DPI_CHECK_PTR_NOT_NULL(objType, info)
     info->name = objType->name;
     info->nameLength = objType->nameLength;
-    if (objType->env->context->dpiMinorVersion > 5) {
-        info->packageName = objType->packageName;
-        info->packageNameLength = objType->packageNameLength;
-    }
+    info->packageName = objType->packageName;
+    info->packageNameLength = objType->packageNameLength;
     info->schema = objType->schema;
     info->schemaLength = objType->schemaLength;
     info->isCollection = objType->isCollection;

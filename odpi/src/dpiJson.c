@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -267,6 +267,7 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
     switch (scalar.valueType) {
         case DPI_JZNVAL_BINARY:
         case DPI_JZNVAL_STRING:
+        case DPI_JZNVAL_ID:
             node->oracleTypeNum = (scalar.valueType == DPI_JZNVAL_STRING) ?
                     DPI_ORACLE_TYPE_VARCHAR : DPI_ORACLE_TYPE_RAW;
             node->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
@@ -275,8 +276,8 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
             return DPI_SUCCESS;
         case DPI_JZNVAL_FLOAT:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
-            node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
-            node->value->asDouble = scalar.value.asFloat.value;
+            node->nativeTypeNum = DPI_NATIVE_TYPE_FLOAT;
+            node->value->asFloat = scalar.value.asFloat.value;
             return DPI_SUCCESS;
         case DPI_JZNVAL_DOUBLE:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
@@ -626,7 +627,6 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
     dpiJznDomDoc *domDoc;
     void *oracleTopNode;
     int mutable = 1;
-    uint32_t jsonFlags = 0;
 
     // first, set the JSON descriptor as mutable
     if (dpiOci__attrSet(json->handle, DPI_OCI_DTYPE_JSON,
@@ -635,13 +635,13 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
         return DPI_FAILURE;
 
     // write a dummy value to the JSON descriptor
-    if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue),
-            jsonFlags, error) < 0)
+    if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue), 0,
+            error) < 0)
         return DPI_FAILURE;
 
     // acquire the DOM doc which will be used to create the Oracle nodes
     if (dpiOci__jsonDomDocGet(json, &domDoc, error) < 0)
-        return dpiGen__endPublicFn(json, DPI_FAILURE, error);
+        return DPI_FAILURE;
 
     // convert the top node (and all of the child nodes to Oracle nodes)
     if (dpiJsonNode__toOracleFromNative(json, topNode, domDoc, &oracleTopNode,
