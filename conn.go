@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -623,18 +624,26 @@ func (c *conn) initTZ() error {
 
 //go:generate go run generate_tznames.go -o tznames_generated.txt
 //go:embed tznames_generated.txt
-var tzNames string
-var tzNamesLC string
-var tzNamesLCOnce sync.Once
+var tzNamesRaw string
+var tzNames, tzNamesLC []string
+var tzNamesOnce sync.Once
 
 func findProperTZName(dbTZ string) (*time.Location, error) {
-	tzNamesLCOnce.Do(func() { tzNamesLC = strings.ToLower(tzNames) })
+	tzNamesOnce.Do(func() {
+		lines := strings.Split(tzNamesRaw, "\n")
+		tzNames = make([]string, len(lines))
+		tzNamesLC = make([]string, len(tzNames))
+		for i, line := range lines {
+			length := len(line) / 2
+			tzNames[i] = line[length:]
+			tzNamesLC[i] = line[:length]
+		}
+	})
 	tz, err := time.LoadLocation(dbTZ)
 	if err != nil {
-		if i := strings.Index(tzNamesLC,
-			"\n"+strings.ToLower(dbTZ)+"\n",
-		); i >= 0 {
-			tz, err = time.LoadLocation(tzNames[i+1 : i+1+len(dbTZ)])
+		needle := strings.ToLower(dbTZ)
+		if i := sort.SearchStrings(tzNamesLC, needle); i < len(tzNames) && tzNamesLC[i] == needle {
+			tz, err = time.LoadLocation(tzNames[i])
 		}
 	}
 	if err == nil {

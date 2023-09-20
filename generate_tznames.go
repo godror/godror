@@ -7,14 +7,16 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -41,17 +43,25 @@ func Main() error {
 		return err
 	}
 	defer zr.Close()
-	var buf bytes.Buffer
-	buf.WriteByte('\n')
+	names := make([]string, 0, len(zr.File))
 	for _, f := range zr.File {
 		if f.Mode().IsDir() {
 			continue
 		}
-		fmt.Fprintf(&buf, "%s\n", f.Name)
+		names = append(names, strings.ToLower(f.Name)+f.Name)
 	}
-	if *flagOut == "" || *flagOut == "-" {
-		fmt.Println(buf.String())
-		return nil
+	sort.Strings(names)
+	fh := os.Stdout
+	if !(*flagOut == "" || *flagOut == "-") {
+		if fh, err = os.Create(*flagOut); err != nil {
+			return err
+		}
 	}
-	return os.WriteFile(*flagOut, buf.Bytes(), 0640)
+	defer fh.Close()
+	bw := bufio.NewWriter(fh)
+	for _, name := range names {
+		bw.WriteString(name)
+		bw.WriteByte('\n')
+	}
+	return fh.Close()
 }

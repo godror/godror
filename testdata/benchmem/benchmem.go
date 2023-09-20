@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -21,10 +22,11 @@ import (
 )
 
 var (
-	flagConnection = flag.String("connection", os.Getenv("GODROR_TEST_DSN"), "connection string")
-	flagMemProfFn  = flag.String("memprofile", "godror-benchmem.pprof", "memory profile file name")
-	flagTimeout    = flag.Duration("timeout", 1*time.Minute, "test timeout")
-	flagOpenClose  = flag.Bool("open-close", false, "close-and-reopen connection for every query")
+	flagConnection        = flag.String("connection", os.Getenv("GODROR_TEST_DSN"), "connection string")
+	flagMemProfFn         = flag.String("memprofile", "godror-benchmem.pprof", "memory profile file name")
+	flagTimeout           = flag.Duration("timeout", 1*time.Minute, "test timeout")
+	flagOpenClose         = flag.Bool("open-close", false, "close-and-reopen connection for every query")
+	flagWantSlopeLessThen = flag.Float64("want-slope-less-than", 6, "want memory raise slope to be less than this number")
 )
 
 type Config struct {
@@ -214,6 +216,11 @@ Loop:
 	fmt.Printf("Estimated offset is: %.6f\n", alpha)
 	fmt.Printf("Estimated slope is:  %.6f\n", beta)
 	fmt.Printf("R^2: %.6f\n", r2)
+	if beta > *flagWantSlopeLessThen {
+		return fmt.Errorf("%w: %.6f", ErrBigSlope, beta)
+	}
 
 	return nil
 }
+
+var ErrBigSlope = errors.New("slope is big")
