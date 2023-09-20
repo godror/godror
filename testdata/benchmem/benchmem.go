@@ -15,13 +15,15 @@ import (
 	"time"
 
 	"github.com/godror/godror"
+	"github.com/prometheus/procfs"
+	"gonum.org/v1/gonum/stat"
 	// "github.com/jmoiron/sqlx"
 )
 
 var (
 	flagConnection = flag.String("connection", os.Getenv("GODROR_TEST_DSN"), "connection string")
 	flagMemProfFn  = flag.String("memprofile", "godror-benchmem.pprof", "memory profile file name")
-	flagTimeout    = flag.Duration("timeout", 5*time.Minute, "test timeout")
+	flagTimeout    = flag.Duration("timeout", 1*time.Minute, "test timeout")
 	flagOpenClose  = flag.Bool("open-close", false, "close-and-reopen connection for every query")
 )
 
@@ -154,6 +156,7 @@ func Main() error {
 
 	var memstats runtime.MemStats
 	ticker := time.NewTicker(100 * time.Millisecond)
+	var xs, ys []float64
 Loop:
 	for i := 0; ; i++ {
 		if *flagOpenClose {
@@ -181,7 +184,17 @@ Loop:
 
 		runtime.GC()
 		runtime.ReadMemStats(&memstats)
-		fmt.Println(i, memstats.HeapAlloc)
+		self, err := procfs.Self()
+		if err != nil {
+			return err
+		}
+		procStat, err := self.Stat()
+		if err != nil {
+			return err
+		}
+		fmt.Println(i, memstats.HeapAlloc, procStat.RSS)
+		xs = append(xs, float64(i))
+		ys = append(ys, float64(procStat.RSS))
 
 		if !ok {
 			break
@@ -193,5 +206,12 @@ Loop:
 			break Loop
 		}
 	}
+
+	alpha, beta := stat.LinearRegression(xs, ys, nil, false)
+	r2 := stat.RSquared(xs, ys, nil, alpha, beta)
+	fmt.Printf("Estimated offset is: %.6f\n", alpha)
+	fmt.Printf("Estimated slope is:  %.6f\n", beta)
+	fmt.Printf("R^2: %.6f\n", r2)
+
 	return nil
 }
