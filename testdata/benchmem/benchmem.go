@@ -155,8 +155,10 @@ func Main() error {
 	defer exporter.Close()
 
 	var memstats runtime.MemStats
-	ticker := time.NewTicker(100 * time.Millisecond)
-	var xs, ys []float64
+	dur := 100 * time.Millisecond
+	ticker := time.NewTicker(dur)
+	xs := make([]float64, 0, *flagTimeout/dur+1)
+	ys := make([]float64, 0, cap(xs))
 Loop:
 	for i := 0; ; i++ {
 		if *flagOpenClose {
