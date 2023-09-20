@@ -936,7 +936,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		C.free(unsafe.Pointer(objType))
 		if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
 			err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
-			_ = c.closeNotLocking(false)
+			_ = c.closeNotLocking()
 			return nil, err
 		}
 		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)

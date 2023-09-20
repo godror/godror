@@ -220,20 +220,10 @@ func (c *conn) Close() error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.closeNotLocking(false)
+	return c.closeNotLocking()
 }
 
-// Purge forcibly closes the connection.
-func (c *conn) Purge() error {
-	if c == nil {
-		return nil
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.closeNotLocking(true)
-}
-
-func (c *conn) closeNotLocking(purge bool) error {
+func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
@@ -243,7 +233,7 @@ func (c *conn) closeNotLocking(purge bool) error {
 		return nil
 	}
 	c.dpiConn = nil
-	if purge || dpiConn.refCount <= 1 {
+	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
 	for k, v := range c.objTypes {
@@ -251,17 +241,11 @@ func (c *conn) closeNotLocking(purge bool) error {
 		delete(c.objTypes, k)
 	}
 
-	if purge {
-		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
-	} else if dpiConn.refCount <= 1 {
-		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
-	} else {
-		// dpiConn_release decrements dpiConn's reference counting,
-		// and closes it when it reaches zero.
-		//
-		// To track reference counting, use DPI_DEBUG_LEVEL=2
-		C.dpiConn_release(dpiConn)
-	}
+	// dpiConn_release decrements dpiConn's reference counting,
+	// and closes it when it reaches zero.
+	//
+	// To track reference counting, use DPI_DEBUG_LEVEL=2
+	C.dpiConn_release(dpiConn)
 	return nil
 }
 
@@ -761,7 +745,7 @@ func maybeBadConn(err error, c *conn) error {
 			if logger != nil {
 				logger.Error("maybeBadConn close", "conn", c, "error", err)
 			}
-			_ = c.closeNotLocking(true)
+			_ = c.closeNotLocking()
 		}
 	}
 	if errors.Is(err, driver.ErrBadConn) {
@@ -1134,7 +1118,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	// Close and then reacquire a fresh dpiConn
 	if c.dpiConn != nil {
 		// Just release
-		_ = c.closeNotLocking(false)
+		_ = c.closeNotLocking()
 	}
 	dpiConn, isNew, cleanup, err := c.drv.acquireConn(pool, P)
 	c.mu.Unlock()
@@ -1190,7 +1174,7 @@ func (c *conn) IsValid() bool {
 	// See https://github.com/godror/godror/issues/57 for example.
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_ = c.closeNotLocking(false)
+	_ = c.closeNotLocking()
 	c.released = true
 	return true
 }
