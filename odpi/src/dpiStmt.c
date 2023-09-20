@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -261,8 +248,7 @@ static void dpiStmt__clearBindVars(dpiStmt *stmt, dpiError *error)
 
     if (stmt->bindVars) {
         for (i = 0; i < stmt->numBindVars; i++) {
-            if (stmt->bindVars[i].var)
-                dpiGen__setRefCount(stmt->bindVars[i].var, error, -1);
+            dpiGen__setRefCount(stmt->bindVars[i].var, error, -1);
             if (stmt->bindVars[i].name)
                 dpiUtils__freeMemory( (void*) stmt->bindVars[i].name);
         }
@@ -609,18 +595,16 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         mode |= DPI_OCI_STMT_SCROLLABLE_READONLY;
 
     // perform execution
-    // re-execute statement for ORA-01007: variable not in select list and
-    // ORA-00932: inconsistent data types; drop statement from cache for all
-    // errors (except those which are due to invalid data which may be fixed in
-    // subsequent execution)
+    // re-execute statement for ORA-01007: variable not in select list
+    // drop statement from cache for all errors (except those which are due to
+    // invalid data which may be fixed in subsequent execution)
     if (dpiOci__stmtExecute(stmt, numIters, mode, error) < 0) {
         dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &tempOffset, 0,
                 DPI_OCI_ATTR_PARSE_ERROR_OFFSET, "set parse offset", error);
         error->buffer->offset = tempOffset;
         switch (error->buffer->code) {
-            case 932:
             case 1007:
-                if (reExecute && stmt->statementType == DPI_STMT_TYPE_SELECT)
+                if (reExecute)
                     return dpiStmt__reExecute(stmt, numIters, mode, error);
                 stmt->deleteFromCache = 1;
                 break;
@@ -1991,21 +1975,5 @@ int dpiStmt_setPrefetchRows(dpiStmt *stmt, uint32_t numRows)
     if (dpiStmt__check(stmt, __func__, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     stmt->prefetchRows = numRows;
-    return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiStmt_deleteFromCache() [PUBLIC]
-//   Excludes the associated SQL statement from the statement cache. If the SQL
-// statment was not already in the cache, it will not be added.
-//-----------------------------------------------------------------------------
-int dpiStmt_deleteFromCache(dpiStmt *stmt)
-{
-    dpiError error;
-
-    if (dpiStmt__check(stmt, __func__, &error) < 0)
-        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
-    stmt->deleteFromCache = 1;
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }

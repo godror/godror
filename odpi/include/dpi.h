@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -68,8 +55,8 @@ extern "C" {
 #endif
 
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   5
-#define DPI_MINOR_VERSION   0
+#define DPI_MAJOR_VERSION   4
+#define DPI_MINOR_VERSION   1
 #define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
@@ -99,14 +86,11 @@ extern "C" {
 // define default number of rows to prefetch
 #define DPI_DEFAULT_PREFETCH_ROWS               2
 
-// define default ping interval (in seconds) used when getting connections
+// define ping interval (in seconds) used when getting connections
 #define DPI_DEFAULT_PING_INTERVAL               60
 
-// define default ping timeout (in milliseconds) used when getting connections
+// define ping timeout (in milliseconds) used when getting connections
 #define DPI_DEFAULT_PING_TIMEOUT                5000
-
-// define default statement cache size
-#define DPI_DEFAULT_STMT_CACHE_SIZE             20
 
 // define constants for dequeue wait (AQ)
 #define DPI_DEQ_WAIT_NO_WAIT                    0
@@ -289,9 +273,7 @@ typedef uint32_t dpiOracleTypeNum;
 #define DPI_ORACLE_TYPE_JSON                        2027
 #define DPI_ORACLE_TYPE_JSON_OBJECT                 2028
 #define DPI_ORACLE_TYPE_JSON_ARRAY                  2029
-#define DPI_ORACLE_TYPE_UROWID                      2030
-#define DPI_ORACLE_TYPE_LONG_NVARCHAR               2031
-#define DPI_ORACLE_TYPE_MAX                         2032
+#define DPI_ORACLE_TYPE_MAX                         2030
 
 // session pool close modes
 typedef uint32_t dpiPoolCloseMode;
@@ -379,18 +361,6 @@ typedef uint32_t dpiSubscrQOS;
 #define DPI_SUBSCR_QOS_QUERY                        0x08
 #define DPI_SUBSCR_QOS_BEST_EFFORT                  0x10
 
-// two-phase commit (flags for dpiConn_tpcBegin())
-typedef uint32_t dpiTpcBeginFlags;
-#define DPI_TPC_BEGIN_JOIN                          0x00000002
-#define DPI_TPC_BEGIN_NEW                           0x00000001
-#define DPI_TPC_BEGIN_PROMOTE                       0x00000008
-#define DPI_TPC_BEGIN_RESUME                        0x00000004
-
-// two-phase commit (flags for dpiConn_tpcEnd())
-typedef uint32_t dpiTpcEndFlags;
-#define DPI_TPC_END_NORMAL                          0
-#define DPI_TPC_END_SUSPEND                         0x00100000
-
 // visibility of messages in advanced queuing
 typedef uint32_t dpiVisibility;
 #define DPI_VISIBILITY_IMMEDIATE                    1
@@ -401,35 +371,28 @@ typedef uint32_t dpiVisibility;
 // Handle Types
 //-----------------------------------------------------------------------------
 typedef struct dpiConn dpiConn;
-typedef struct dpiContext dpiContext;
-typedef struct dpiDeqOptions dpiDeqOptions;
-typedef struct dpiEnqOptions dpiEnqOptions;
+typedef struct dpiPool dpiPool;
+typedef struct dpiStmt dpiStmt;
+typedef struct dpiVar dpiVar;
 typedef struct dpiJson dpiJson;
 typedef struct dpiLob dpiLob;
-typedef struct dpiMsgProps dpiMsgProps;
 typedef struct dpiObject dpiObject;
 typedef struct dpiObjectAttr dpiObjectAttr;
 typedef struct dpiObjectType dpiObjectType;
-typedef struct dpiPool dpiPool;
-typedef struct dpiQueue dpiQueue;
 typedef struct dpiRowid dpiRowid;
-typedef struct dpiSodaColl dpiSodaColl;
-typedef struct dpiSodaCollCursor dpiSodaCollCursor;
-typedef struct dpiSodaDb dpiSodaDb;
-typedef struct dpiSodaDoc dpiSodaDoc;
-typedef struct dpiSodaDocCursor dpiSodaDocCursor;
-typedef struct dpiStmt dpiStmt;
 typedef struct dpiSubscr dpiSubscr;
-typedef struct dpiVar dpiVar;
+typedef struct dpiDeqOptions dpiDeqOptions;
+typedef struct dpiEnqOptions dpiEnqOptions;
+typedef struct dpiMsgProps dpiMsgProps;
 
 
 //-----------------------------------------------------------------------------
 // Forward Declarations of Other Types
 //-----------------------------------------------------------------------------
-typedef struct dpiAccessToken dpiAccessToken;
 typedef struct dpiAppContext dpiAppContext;
 typedef struct dpiCommonCreateParams dpiCommonCreateParams;
 typedef struct dpiConnCreateParams dpiConnCreateParams;
+typedef struct dpiContext dpiContext;
 typedef struct dpiContextCreateParams dpiContextCreateParams;
 typedef struct dpiData dpiData;
 typedef union dpiDataBuffer dpiDataBuffer;
@@ -437,30 +400,26 @@ typedef struct dpiDataTypeInfo dpiDataTypeInfo;
 typedef struct dpiEncodingInfo dpiEncodingInfo;
 typedef struct dpiErrorInfo dpiErrorInfo;
 typedef struct dpiJsonNode dpiJsonNode;
-typedef struct dpiMsgRecipient dpiMsgRecipient;
 typedef struct dpiObjectAttrInfo dpiObjectAttrInfo;
 typedef struct dpiObjectTypeInfo dpiObjectTypeInfo;
 typedef struct dpiPoolCreateParams dpiPoolCreateParams;
 typedef struct dpiQueryInfo dpiQueryInfo;
+typedef struct dpiQueue dpiQueue;
 typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
-typedef struct dpiStringList dpiSodaCollNames;
+typedef struct dpiSodaColl dpiSodaColl;
+typedef struct dpiSodaCollNames dpiSodaCollNames;
+typedef struct dpiSodaCollCursor dpiSodaCollCursor;
+typedef struct dpiSodaDb dpiSodaDb;
+typedef struct dpiSodaDoc dpiSodaDoc;
+typedef struct dpiSodaDocCursor dpiSodaDocCursor;
 typedef struct dpiSodaOperOptions dpiSodaOperOptions;
 typedef struct dpiStmtInfo dpiStmtInfo;
-typedef struct dpiStringList dpiStringList;
 typedef struct dpiSubscrCreateParams dpiSubscrCreateParams;
 typedef struct dpiSubscrMessage dpiSubscrMessage;
 typedef struct dpiSubscrMessageQuery dpiSubscrMessageQuery;
 typedef struct dpiSubscrMessageRow dpiSubscrMessageRow;
 typedef struct dpiSubscrMessageTable dpiSubscrMessageTable;
 typedef struct dpiVersionInfo dpiVersionInfo;
-typedef struct dpiXid dpiXid;
-
-
-//-----------------------------------------------------------------------------
-// Declaration for function pointers
-//-----------------------------------------------------------------------------
-typedef int (*dpiAccessTokenCallback)(void *context,
-        dpiAccessToken *accessToken);
 
 
 //-----------------------------------------------------------------------------
@@ -575,9 +534,6 @@ struct dpiCommonCreateParams {
     uint32_t editionLength;
     const char *driverName;
     uint32_t driverNameLength;
-    int sodaMetadataCache;
-    uint32_t stmtCacheSize;
-    dpiAccessToken *accessToken;
 };
 
 // structure used for creating connections
@@ -633,15 +589,6 @@ struct dpiDataTypeInfo {
     int8_t scale;
     uint8_t fsPrecision;
     dpiObjectType *objectType;
-    int isJson;
-};
-
-// structure used for storing token authentication data
-struct dpiAccessToken {
-    const char *token;
-    uint32_t tokenLength;
-    const char *privateKey;
-    uint32_t privateKeyLength;
 };
 
 // structure used for transferring encoding information from ODPI-C
@@ -683,8 +630,6 @@ struct dpiObjectTypeInfo {
     int isCollection;
     dpiDataTypeInfo elementTypeInfo;
     uint16_t numAttributes;
-    const char *packageName;
-    uint32_t packageNameLength;
 };
 
 // structure used for creating pools
@@ -705,8 +650,6 @@ struct dpiPoolCreateParams {
     const char *plsqlFixupCallback;
     uint32_t plsqlFixupCallbackLength;
     uint32_t maxSessionsPerShard;
-    dpiAccessTokenCallback accessTokenCallback;
-    void *accessTokenCallbackContext;
 };
 
 // structure used for transferring query metadata from ODPI-C
@@ -717,12 +660,6 @@ struct dpiQueryInfo {
     int nullOk;
 };
 
-// structure used for recipients list
-struct dpiMsgRecipient {
-    const char *name;
-    uint32_t nameLength;
-};
-
 // structure used for sharding key columns
 struct dpiShardingKeyColumn {
     dpiOracleTypeNum oracleTypeNum;
@@ -730,22 +667,11 @@ struct dpiShardingKeyColumn {
     dpiDataBuffer value;
 };
 
-// structure used for getting an array of strings from the database; the unions
-// are for aliases for the names used when the structure was called
-// dpiSodaCollNames instead
-struct dpiStringList {
-    union {
-        uint32_t numStrings;
-        uint32_t numNames;
-    };
-    union {
-        const char **strings;
-        const char **names;
-    };
-    union {
-        uint32_t *stringLengths;
-        uint32_t *nameLengths;
-    };
+// structure used for getting collection names from the database
+struct dpiSodaCollNames {
+    uint32_t numNames;
+    const char **names;
+    uint32_t *nameLengths;
 };
 
 // structure used for SODA operations (find/replace/remove)
@@ -762,9 +688,6 @@ struct dpiSodaOperOptions {
     uint32_t skip;
     uint32_t limit;
     uint32_t fetchArraySize;
-    const char *hint;
-    uint32_t hintLength;
-    int lock;
 };
 
 // structure used for transferring statement information from ODPI-C
@@ -820,8 +743,6 @@ struct dpiSubscrMessage {
     uint32_t queueNameLength;
     const char *consumerName;
     uint32_t consumerNameLength;
-    const void *aqMsgId;
-    uint32_t aqMsgIdLength;
 };
 
 // structure used for transferring query information in messages in
@@ -861,15 +782,6 @@ struct dpiVersionInfo {
     uint32_t fullVersionNum;
 };
 
-// structure used for defining two-phase commit transaction ids (XIDs)
-struct dpiXid {
-    long formatId;
-    const char *globalTransactionId;
-    uint32_t globalTransactionIdLength;
-    const char *branchQualifier;
-    uint32_t branchQualifierLength;
-};
-
 
 //-----------------------------------------------------------------------------
 // Context Methods (dpiContext)
@@ -887,10 +799,6 @@ DPI_EXPORT int dpiContext_createWithParams(unsigned int majorVersion,
 
 // destroy context handle
 DPI_EXPORT int dpiContext_destroy(dpiContext *context);
-
-// free string list contents
-DPI_EXPORT int dpiContext_freeStringList(dpiContext *context,
-        dpiStringList *list);
 
 // return the OCI client version in use
 DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
@@ -927,6 +835,11 @@ DPI_EXPORT int dpiContext_initSubscrCreateParams(const dpiContext *context,
 
 // add a reference to a connection
 DPI_EXPORT int dpiConn_addRef(dpiConn *conn);
+
+// begin a distributed transaction
+DPI_EXPORT int dpiConn_beginDistribTrans(dpiConn *conn, long formatId,
+        const char *transactionId, uint32_t transactionIdLength,
+        const char *branchId, uint32_t branchIdLength);
 
 // break execution of the statement running on the connection
 DPI_EXPORT int dpiConn_breakExecution(dpiConn *conn);
@@ -982,16 +895,9 @@ DPI_EXPORT int dpiConn_getExternalName(dpiConn *conn, const char **value,
 // get the OCI service context handle associated with the connection
 DPI_EXPORT int dpiConn_getHandle(dpiConn *conn, void **handle);
 
-// get instance name associated with the connection
-DPI_EXPORT int dpiConn_getInstanceName(dpiConn *conn, const char **value,
-        uint32_t *valueLength);
-
 // get internal name associated with the connection
 DPI_EXPORT int dpiConn_getInternalName(dpiConn *conn, const char **value,
         uint32_t *valueLength);
-
-// get the health of a connection
-DPI_EXPORT int dpiConn_getIsHealthy(dpiConn *conn, int *isHealthy);
 
 // get logical transaction id associated with the connection
 DPI_EXPORT int dpiConn_getLTXID(dpiConn *conn, const char **value,
@@ -1023,13 +929,6 @@ DPI_EXPORT int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options);
 // create a new enqueue options object and return it
 DPI_EXPORT int dpiConn_newEnqOptions(dpiConn *conn, dpiEnqOptions **options);
 
-// create a new, empty JSON
-DPI_EXPORT int dpiConn_newJson(dpiConn *conn, dpiJson **json);
-
-// create a new AQ queue with JSON payload
-DPI_EXPORT int dpiConn_newJsonQueue(dpiConn *conn, const char *name,
-        uint32_t nameLength, dpiQueue **queue);
-
 // create a new message properties object and return it
 DPI_EXPORT int dpiConn_newMsgProps(dpiConn *conn, dpiMsgProps **props);
 
@@ -1049,6 +948,9 @@ DPI_EXPORT int dpiConn_newVar(dpiConn *conn, dpiOracleTypeNum oracleTypeNum,
 
 // ping the connection to see if it is still alive
 DPI_EXPORT int dpiConn_ping(dpiConn *conn);
+
+// prepare a distributed transaction for commit
+DPI_EXPORT int dpiConn_prepareDistribTrans(dpiConn *conn, int *commitNeeded);
 
 // prepare a statement and return it for subsequent execution/fetching
 DPI_EXPORT int dpiConn_prepareStmt(dpiConn *conn, int scrollable,
@@ -1082,10 +984,6 @@ DPI_EXPORT int dpiConn_setCurrentSchema(dpiConn *conn, const char *value,
 
 // set database operation associated with the connection
 DPI_EXPORT int dpiConn_setDbOp(dpiConn *conn, const char *value,
-        uint32_t valueLength);
-
-// set execution context id associated with the connection
-DPI_EXPORT int dpiConn_setEcontextId(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
 // set external name associated with the connection
@@ -1122,26 +1020,6 @@ DPI_EXPORT int dpiConn_startupDatabaseWithPfile(dpiConn *conn,
 DPI_EXPORT int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
         dpiSubscr **subscr);
 
-// begin a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcBegin(dpiConn *conn, dpiXid *xid,
-        uint32_t transactionTimeout, uint32_t flags);
-
-// commit a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcCommit(dpiConn *conn, dpiXid *xid, int onePhase);
-
-// end (detach from) a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcEnd(dpiConn *conn, dpiXid *xid, uint32_t flags);
-
-// forget a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcForget(dpiConn *conn, dpiXid *xid);
-
-// prepare a TPC (two-phase commit) transaction for commit
-DPI_EXPORT int dpiConn_tpcPrepare(dpiConn *conn, dpiXid *xid,
-        int *commitNeeded);
-
-// rollback a TPC (two-phase commit) transaction
-DPI_EXPORT int dpiConn_tpcRollback(dpiConn *conn, dpiXid *xid);
-
 // unsubscribe from events in the database
 DPI_EXPORT int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr);
 
@@ -1173,15 +1051,6 @@ DPI_EXPORT dpiIntervalYM *dpiData_getIntervalYM(dpiData *data);
 
 // return whether data value is null or not
 DPI_EXPORT int dpiData_getIsNull(dpiData *data);
-
-// return the JSON portion of the data
-DPI_EXPORT dpiJson *dpiData_getJson(dpiData *data);
-
-// return the JSON Array portion of the data
-DPI_EXPORT dpiJsonArray *dpiData_getJsonArray(dpiData *data);
-
-// return the JSON Object portion of the data
-DPI_EXPORT dpiJsonObject *dpiData_getJsonObject(dpiData *data);
 
 // return the LOB portion of the data
 DPI_EXPORT dpiLob *dpiData_getLOB(dpiData *data);
@@ -1372,10 +1241,6 @@ DPI_EXPORT int dpiJson_getValue(dpiJson *json, uint32_t options,
 // release a reference to the JSON
 DPI_EXPORT int dpiJson_release(dpiJson *json);
 
-// parse textual JSON into JSON handle
-DPI_EXPORT int dpiJson_setFromText(dpiJson *json, const char *value,
-        uint64_t valueLength, uint32_t flags);
-
 // set the value of the JSON object, given a hierarchy of nodes
 DPI_EXPORT int dpiJson_setValue(dpiJson *json, dpiJsonNode *topNode);
 
@@ -1416,9 +1281,6 @@ DPI_EXPORT int dpiLob_getIsResourceOpen(dpiLob *lob, int *isOpen);
 
 // return the current size of the LOB
 DPI_EXPORT int dpiLob_getSize(dpiLob *lob, uint64_t *size);
-
-// return the type of the LOB
-DPI_EXPORT int dpiLob_getType(dpiLob *lob, dpiOracleTypeNum *type);
 
 // open the LOB's resources (used to improve performance of multiple
 // read/writes operations)
@@ -1491,9 +1353,6 @@ DPI_EXPORT int dpiMsgProps_getOriginalMsgId(dpiMsgProps *props,
 DPI_EXPORT int dpiMsgProps_getPayload(dpiMsgProps *props, dpiObject **obj,
         const char **value, uint32_t *valueLength);
 
-// return the payload of the message (JSON)
-DPI_EXPORT int dpiMsgProps_getPayloadJson(dpiMsgProps *props, dpiJson **json);
-
 // return the priority of the message
 DPI_EXPORT int dpiMsgProps_getPriority(dpiMsgProps *props, int32_t *value);
 
@@ -1526,9 +1385,6 @@ DPI_EXPORT int dpiMsgProps_setOriginalMsgId(dpiMsgProps *props,
 DPI_EXPORT int dpiMsgProps_setPayloadBytes(dpiMsgProps *props,
         const char *value, uint32_t valueLength);
 
-// set the payload of the message (as JSON)
-DPI_EXPORT int dpiMsgProps_setPayloadJson(dpiMsgProps *props, dpiJson *json);
-
 // set the payload of the message (as an object)
 DPI_EXPORT int dpiMsgProps_setPayloadObject(dpiMsgProps *props,
         dpiObject *obj);
@@ -1536,9 +1392,6 @@ DPI_EXPORT int dpiMsgProps_setPayloadObject(dpiMsgProps *props,
 // set the priority of the message
 DPI_EXPORT int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value);
 
-// set recipients associated with the message
-DPI_EXPORT int dpiMsgProps_setRecipients(dpiMsgProps *props,
-        dpiMsgRecipient *recipients, uint32_t numRecipients);
 
 //-----------------------------------------------------------------------------
 // Object Methods (dpiObject)
@@ -1675,14 +1528,8 @@ DPI_EXPORT int dpiPool_getGetMode(dpiPool *pool, dpiPoolGetMode *value);
 // get the pool's maximum lifetime session
 DPI_EXPORT int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value);
 
-// get the pool's maximum sessions per shard
-DPI_EXPORT int dpiPool_getMaxSessionsPerShard(dpiPool *pool, uint32_t *value);
-
 // get the pool's open count
 DPI_EXPORT int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value);
-
-// return whether the SODA metadata cache is enabled or not
-DPI_EXPORT int dpiPool_getSodaMetadataCache(dpiPool *pool, int *enabled);
 
 // return the statement cache size
 DPI_EXPORT int dpiPool_getStmtCacheSize(dpiPool *pool, uint32_t *cacheSize);
@@ -1693,26 +1540,14 @@ DPI_EXPORT int dpiPool_getTimeout(dpiPool *pool, uint32_t *value);
 // get the pool's wait timeout value
 DPI_EXPORT int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value);
 
-// get the pool-ping-interval
-DPI_EXPORT int dpiPool_getPingInterval(dpiPool *pool, int *value);
-
 // release a reference to the pool
 DPI_EXPORT int dpiPool_release(dpiPool *pool);
-
-// set token parameter for token based authentication
-DPI_EXPORT int dpiPool_setAccessToken(dpiPool *pool, dpiAccessToken *params);
 
 // set the pool's "get" mode
 DPI_EXPORT int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value);
 
 // set the pool's maximum lifetime session
 DPI_EXPORT int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value);
-
-// set the pool's maximum sessions per shard
-DPI_EXPORT int dpiPool_setMaxSessionsPerShard(dpiPool *pool, uint32_t value);
-
-// set whether the SODA metadata cache is enabled or not
-DPI_EXPORT int dpiPool_setSodaMetadataCache(dpiPool *pool, int enabled);
 
 // set the statement cache size
 DPI_EXPORT int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t cacheSize);
@@ -1722,9 +1557,6 @@ DPI_EXPORT int dpiPool_setTimeout(dpiPool *pool, uint32_t value);
 
 // set the pool's wait timeout value
 DPI_EXPORT int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value);
-
-// set the pool-ping-interval value
-DPI_EXPORT int dpiPool_setPingInterval(dpiPool *pool, int value);
 
 
 //-----------------------------------------------------------------------------
@@ -1759,9 +1591,6 @@ DPI_EXPORT int dpiQueue_getEnqOptions(dpiQueue *queue,
 // release a reference to the queue
 DPI_EXPORT int dpiQueue_release(dpiQueue *queue);
 
-// reconfigure the current pool
-DPI_EXPORT int dpiPool_reconfigure(dpiPool *pool, uint32_t minSessions,
-        uint32_t maxSessions, uint32_t sessionIncrement);
 
 //-----------------------------------------------------------------------------
 // SODA Collection Methods (dpiSodaColl)
@@ -1811,23 +1640,9 @@ DPI_EXPORT int dpiSodaColl_getName(dpiSodaColl *coll, const char **value,
 DPI_EXPORT int dpiSodaColl_insertMany(dpiSodaColl *coll, uint32_t numDocs,
         dpiSodaDoc **docs, uint32_t flags, dpiSodaDoc **insertedDocs);
 
-// insert multiple documents into the SODA collection (with options)
-DPI_EXPORT int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll,
-        uint32_t numDocs, dpiSodaDoc **docs, dpiSodaOperOptions *options,
-        uint32_t flags, dpiSodaDoc **insertedDocs);
-
 // insert a document into the SODA collection
 DPI_EXPORT int dpiSodaColl_insertOne(dpiSodaColl *coll, dpiSodaDoc *doc,
         uint32_t flags, dpiSodaDoc **insertedDoc);
-
-// insert a document into the SODA collection (with options)
-DPI_EXPORT int dpiSodaColl_insertOneWithOptions(dpiSodaColl *coll,
-        dpiSodaDoc *doc, dpiSodaOperOptions *options, uint32_t flags,
-        dpiSodaDoc **insertedDoc);
-
-// get a list of indexes associated with the collection
-DPI_EXPORT int dpiSodaColl_listIndexes(dpiSodaColl *coll, uint32_t flags,
-        dpiStringList *list);
 
 // release a reference to the SODA collection
 DPI_EXPORT int dpiSodaColl_release(dpiSodaColl *coll);
@@ -1844,10 +1659,6 @@ DPI_EXPORT int dpiSodaColl_replaceOne(dpiSodaColl *coll,
 // save a document to a SODA collection
 DPI_EXPORT int dpiSodaColl_save(dpiSodaColl *coll, dpiSodaDoc *doc,
         uint32_t flags, dpiSodaDoc **savedDoc);
-
-// save a document to a SODA collection (with options)
-DPI_EXPORT int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
-        dpiSodaOperOptions *options, uint32_t flags, dpiSodaDoc **savedDoc);
 
 // remove all of the documents from a SODA collection
 DPI_EXPORT int dpiSodaColl_truncate(dpiSodaColl *coll);
@@ -1891,7 +1702,7 @@ DPI_EXPORT int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
 
 // free the memory allocated when getting an array of SODA collection names
 DPI_EXPORT int dpiSodaDb_freeCollectionNames(dpiSodaDb *db,
-        dpiStringList *names);
+        dpiSodaCollNames *names);
 
 // return a cursor to iterate over SODA collections
 DPI_EXPORT int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
@@ -1900,7 +1711,7 @@ DPI_EXPORT int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
 // return an array of SODA collection names
 DPI_EXPORT int dpiSodaDb_getCollectionNames(dpiSodaDb *db,
         const char *startName, uint32_t startNameLength, uint32_t limit,
-        uint32_t flags, dpiStringList *names);
+        uint32_t flags, dpiSodaCollNames *names);
 
 // open an existing SODA collection
 DPI_EXPORT int dpiSodaDb_openCollection(dpiSodaDb *db, const char *name,
@@ -2101,10 +1912,6 @@ DPI_EXPORT int dpiStmt_setOciAttr(dpiStmt *stmt, uint32_t attribute,
 DPI_EXPORT int dpiStmt_setPrefetchRows(dpiStmt *stmt,
         uint32_t numRows);
 
-// set the flag to exclude the current SQL statement from the statement
-// cache
-DPI_EXPORT int dpiStmt_deleteFromCache(dpiStmt *stmt);
-
 
 //-----------------------------------------------------------------------------
 // Rowid Methods (dpiRowid)
@@ -2165,9 +1972,6 @@ DPI_EXPORT int dpiVar_release(dpiVar *var);
 // set the value of the variable from a byte string
 DPI_EXPORT int dpiVar_setFromBytes(dpiVar *var, uint32_t pos,
         const char *value, uint32_t valueLength);
-
-// set the value of the variable from a JSON handle
-DPI_EXPORT int dpiVar_setFromJson(dpiVar *var, uint32_t pos, dpiJson *json);
 
 // set the value of the variable from a LOB
 DPI_EXPORT int dpiVar_setFromLob(dpiVar *var, uint32_t pos, dpiLob *lob);

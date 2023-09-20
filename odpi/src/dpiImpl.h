@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -97,9 +84,6 @@ extern unsigned long dpiDebugLevel;
 // define context name for ping interval
 #define DPI_CONTEXT_LAST_TIME_USED                  "DPI_LAST_TIME_USED"
 
-// define context name for server version information
-#define DPI_CONTEXT_SERVER_VERSION                  "DPI_SERVER_VERSION"
-
 // define size of buffer used for numbers transferred to/from Oracle as text
 #define DPI_NUMBER_AS_TEXT_CHARS                    172
 
@@ -117,6 +101,9 @@ extern unsigned long dpiDebugLevel;
 
 // define subscription grouping repeat count
 #define DPI_SUBSCR_GROUPING_FOREVER                 -1
+
+// define number of rows to prefetch
+#define DPI_PREFETCH_ROWS_DEFAULT                   2
 
 // define default load error URL
 #if defined _WIN32 || defined __CYGWIN__
@@ -171,7 +158,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DTYPE_AQENQ_OPTIONS                 57
 #define DPI_OCI_DTYPE_AQDEQ_OPTIONS                 58
 #define DPI_OCI_DTYPE_AQMSG_PROPERTIES              59
-#define DPI_OCI_DTYPE_AQAGENT                       60
 #define DPI_OCI_DTYPE_INTERVAL_YM                   62
 #define DPI_OCI_DTYPE_INTERVAL_DS                   63
 #define DPI_OCI_DTYPE_AQNFY_DESCRIPTOR              64
@@ -200,7 +186,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SCHEMA_NAME                    9
 #define DPI_OCI_ATTR_ROW_COUNT                      9
 #define DPI_OCI_ATTR_PREFETCH_ROWS                  11
-#define DPI_OCI_ATTR_PACKAGE_NAME                   12
 #define DPI_OCI_ATTR_PARAM_COUNT                    18
 #define DPI_OCI_ATTR_ROWID                          19
 #define DPI_OCI_ATTR_USERNAME                       22
@@ -224,14 +209,11 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_EXPIRATION                     57
 #define DPI_OCI_ATTR_CORRELATION                    58
 #define DPI_OCI_ATTR_ATTEMPTS                       59
-#define DPI_OCI_ATTR_RECIPIENT_LIST                 60
 #define DPI_OCI_ATTR_EXCEPTION_QUEUE                61
 #define DPI_OCI_ATTR_ENQ_TIME                       62
 #define DPI_OCI_ATTR_MSG_STATE                      63
-#define DPI_OCI_ATTR_AGENT_NAME                     64
 #define DPI_OCI_ATTR_ORIGINAL_MSGID                 69
 #define DPI_OCI_ATTR_QUEUE_NAME                     70
-#define DPI_OCI_ATTR_NFY_MSGID                      71
 #define DPI_OCI_ATTR_NUM_DML_ERRORS                 73
 #define DPI_OCI_ATTR_DML_ROW_OFFSET                 74
 #define DPI_OCI_ATTR_SUBSCR_NAME                    94
@@ -282,10 +264,8 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_MODULE                         366
 #define DPI_OCI_ATTR_ACTION                         367
 #define DPI_OCI_ATTR_CLIENT_INFO                    368
-#define DPI_OCI_ATTR_ECONTEXT_ID                    371
 #define DPI_OCI_ATTR_ADMIN_PFILE                    389
 #define DPI_OCI_ATTR_SUBSCR_PORTNO                  390
-#define DPI_OCI_ATTR_INSTNAME                       392
 #define DPI_OCI_ATTR_CHNF_ROWIDS                    402
 #define DPI_OCI_ATTR_CHNF_OPERATIONS                403
 #define DPI_OCI_ATTR_CHDES_DBNAME                   405
@@ -324,7 +304,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
-#define DPI_OCI_ATTR_JSON_COL                       534
 #define DPI_OCI_ATTR_SODA_COLL_NAME                 535
 #define DPI_OCI_ATTR_SODA_COLL_DESCRIPTOR           536
 #define DPI_OCI_ATTR_SODA_CTNT_SQL_TYPE             549
@@ -341,17 +320,9 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_FILTER                    576
 #define DPI_OCI_ATTR_SODA_SKIP                      577
 #define DPI_OCI_ATTR_SODA_LIMIT                     578
-#define DPI_OCI_ATTR_SODA_LOCK                      579
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
 #define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
-#define DPI_OCI_ATTR_SODA_METADATA_CACHE            624
-#define DPI_OCI_ATTR_SODA_HINT                      627
-#define DPI_OCI_ATTR_TOKEN                          636
-#define DPI_OCI_ATTR_IAM_PRIVKEY                    637
-#define DPI_OCI_ATTR_TOKEN_CBK                      638
-#define DPI_OCI_ATTR_TOKEN_CBKCTX                   639
-#define DPI_OCI_ATTR_TOKEN_ISBEARER                 657
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -400,11 +371,8 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_TYPECODE_BINARY_INTEGER             265
 #define DPI_OCI_TYPECODE_PLS_INTEGER                266
 
-// define session pool destroy constants
+// define session pool constants
 #define DPI_OCI_SPD_FORCE                           0x0001
-
-// define session pool creation constants
-#define DPI_OCI_SPC_REINITIALIZE                    0x0001
 #define DPI_OCI_SPC_HOMOGENEOUS                     0x0002
 #define DPI_OCI_SPC_STMTCACHE                       0x0004
 
@@ -469,10 +437,6 @@ extern unsigned long dpiDebugLevel;
 #define DPI_JZNVAL_ORA_TIMESTAMPTZ                  20
 #define DPI_JZNVAL_ORA_YEARMONTH_DUR                21
 #define DPI_JZNVAL_ORA_DAYSECOND_DUR                22
-#define DPI_JZNVAL_ORA_SIGNED_INT                   28
-#define DPI_JZNVAL_ORA_SIGNED_LONG                  29
-#define DPI_JZNVAL_ORA_DECIMAL128                   30
-#define DPI_JZNVAL_ID                               31
 #define DPI_JZNVAL_OCI_NUMBER                       32
 #define DPI_JZNVAL_OCI_DATE                         33
 #define DPI_JZNVAL_OCI_DATETIME                     34
@@ -498,6 +462,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SESSRLS_MULTIPROPERTY_TAG           4
 #define DPI_OCI_SERVER_NORMAL                       1
 #define DPI_OCI_TYPEGET_ALL                         1
+#define DPI_OCI_TRANS_NEW                           1
 #define DPI_OCI_LOCK_NONE                           1
 #define DPI_OCI_TEMP_BLOB                           1
 #define DPI_OCI_CRED_RDBMS                          1
@@ -630,11 +595,6 @@ typedef enum {
     DPI_ERR_UNHANDLED_JSON_NODE_TYPE,
     DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE,
     DPI_ERR_UNHANDLED_CONVERSION_TO_JSON,
-    DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI,
-    DPI_ERR_CONN_CLOSED,
-    DPI_ERR_TOKEN_BASED_AUTH,
-    DPI_ERR_POOL_TOKEN_BASED_AUTH,
-    DPI_ERR_STANDALONE_TOKEN_BASED_AUTH,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -700,6 +660,7 @@ typedef struct {
     const char *sqlState;
     int isRecoverable;
 } dpiErrorInfo__v33;
+
 
 //-----------------------------------------------------------------------------
 // forward declarations for recursive OCI JSON type definitions
@@ -1190,8 +1151,8 @@ typedef struct {
     dpiMsgProps **props;                // array of dpiMsgProps handles
     void **handles;                     // array of OCI msg prop handles
     void **instances;                   // array of instances
-    void **indicators;                  // array of indicator pointers
-    int16_t *scalarIndicators;          // array of scalar indicator buffers
+    void **indicators;                  // array of indicators
+    int16_t *rawIndicators;             // array of indicators (RAW queues)
     void **msgIds;                      // array of OCI message ids
 } dpiQueueBuffer;
 
@@ -1208,13 +1169,10 @@ struct dpiPool {
     void *handle;                       // OCI session pool handle
     const char *name;                   // pool name (CHAR encoding)
     uint32_t nameLength;                // length of pool name
-    uint32_t stmtCacheSize;             // statement cache size
     int pingInterval;                   // interval (seconds) between pings
     int pingTimeout;                    // timeout (milliseconds) for ping
     int homogeneous;                    // homogeneous pool?
     int externalAuth;                   // use external authentication?
-    dpiAccessTokenCallback accessTokenCallback; // access token callback
-    void *accessTokenCallbackContext;   // context pointer for callback
 };
 
 // represents connections to the database and is exposed publicly as a handle
@@ -1231,11 +1189,9 @@ struct dpiConn {
     void *sessionHandle;                // OCI session handle
     void *shardingKey;                  // OCI sharding key descriptor
     void *superShardingKey;             // OCI supper sharding key descriptor
-    void *transactionHandle;            // OCI transaction handle
     const char *releaseString;          // cached release string or NULL
     uint32_t releaseStringLength;       // cached release string length or 0
     void *rawTDO;                       // cached RAW TDO
-    void *jsonTDO;                      // cached JSON TDO
     dpiVersionInfo versionInfo;         // Oracle database version info
     uint32_t commitMode;                // commit mode (for two-phase commits)
     uint16_t charsetId;                 // database character set ID
@@ -1245,7 +1201,6 @@ struct dpiConn {
     int externalHandle;                 // OCI handle provided directly?
     int deadSession;                    // dead session (drop from pool)?
     int standalone;                     // standalone connection (not pooled)?
-    int creating;                       // connection is being created?
     int closing;                        // connection is being closed?
 };
 
@@ -1366,8 +1321,6 @@ struct dpiObjectType {
     const char *schema;                 // schema owning type (CHAR encoding)
     uint32_t schemaLength;              // length of schema owning type
     const char *name;                   // name of type (CHAR encoding)
-    uint32_t packageNameLength;         // length of package name
-    const char *packageName;            // package name of type (CHAR ENCODING)
     uint32_t nameLength;                // length of name of type
     dpiDataTypeInfo elementTypeInfo;    // type info of elements of collection
     int isCollection;                   // is type a collection?
@@ -1422,7 +1375,6 @@ struct dpiDeqOptions {
     dpiType_HEAD
     dpiConn *conn;                      // connection which created this
     void *handle;                       // OCI dequeue options handle
-    void *msgIdRaw;                     // Message ID to be dequeued
 };
 
 // represents the available options for enqueueing messages when using advanced
@@ -1443,7 +1395,6 @@ struct dpiMsgProps {
     void *handle;                       // OCI message properties handle
     dpiObject *payloadObj;              // payload (object)
     void *payloadRaw;                   // payload (RAW)
-    dpiJson *payloadJson;               // payload (JSON)
     void *msgIdRaw;                     // message ID (RAW)
 };
 
@@ -1504,7 +1455,6 @@ struct dpiQueue {
     dpiDeqOptions *deqOptions;          // dequeue options
     dpiEnqOptions *enqOptions;          // enqueue options
     dpiQueueBuffer buffer;              // buffer area
-    int isJson;                         // is JSON payload?
 };
 
 
@@ -1569,7 +1519,7 @@ int dpiDataBuffer__toOracleTimestampFromDouble(dpiDataBuffer *data,
 void dpiEnv__free(dpiEnv *env, dpiError *error);
 int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         const dpiCommonCreateParams *params, void *externalHandle,
-        dpiCreateMode createMode, dpiError *error);
+        dpiError *error);
 int dpiEnv__getBaseDate(dpiEnv *env, uint32_t dataType, void **baseDate,
         dpiError *error);
 int dpiEnv__getEncodingInfo(dpiEnv *env, dpiEncodingInfo *info);
@@ -1635,7 +1585,6 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error);
 void dpiConn__free(dpiConn *conn, dpiError *error);
-int dpiConn__getJsonTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
         dpiError *error);
@@ -1724,8 +1673,8 @@ void dpiObject__free(dpiObject *obj, dpiError *error);
 //-----------------------------------------------------------------------------
 // definition of internal dpiObjectType methods
 //-----------------------------------------------------------------------------
-int dpiObjectType__allocate(dpiConn *conn, void *handle, uint32_t handleType,
-        dpiObjectType **objType, dpiError *error);
+int dpiObjectType__allocate(dpiConn *conn, void *param,
+        uint32_t nameAttribute, dpiObjectType **objType, dpiError *error);
 void dpiObjectType__free(dpiObjectType *objType, dpiError *error);
 int dpiObjectType__isXmlType(dpiObjectType *objType);
 
@@ -1812,8 +1761,7 @@ void dpiSodaDocCursor__free(dpiSodaDocCursor *cursor, dpiError *error);
 // definition of internal dpiQueue methods
 //-----------------------------------------------------------------------------
 int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
-        dpiObjectType *payloadType, dpiQueue **queue, int isJson,
-        dpiError *error);
+        dpiObjectType *payloadType, dpiQueue **queue, dpiError *error);
 void dpiQueue__free(dpiQueue *queue, dpiError *error);
 
 
@@ -1915,9 +1863,9 @@ int dpiOci__intervalSetYearMonth(void *envHandle, int32_t year, int32_t month,
 int dpiOci__jsonDomDocGet(dpiJson *json, dpiJznDomDoc **domDoc,
         dpiError *error);
 int dpiOci__jsonTextBufferParse(dpiJson *json, const char *value,
-        uint64_t valueLength, uint32_t flags, dpiError *error);
+        uint64_t valueLength, dpiError *error);
 int dpiOci__loadLib(dpiContextCreateParams *params,
-        dpiVersionInfo *clientVersionInfo, dpiError *error);
+        dpiVersionInfo **clientVersionInfo, dpiError *error);
 int dpiOci__lobClose(dpiLob *lob, dpiError *error);
 int dpiOci__lobCreateTemporary(dpiLob *lob, dpiError *error);
 int dpiOci__lobFileExists(dpiLob *lob, int *exists, dpiError *error);
@@ -2024,16 +1972,13 @@ int dpiOci__sodaBulkInsert(dpiSodaColl *coll, void **documents,
 int dpiOci__sodaBulkInsertAndGet(dpiSodaColl *coll, void **documents,
         uint32_t numDocuments, void *outputOptions, uint32_t mode,
         dpiError *error);
-int dpiOci__sodaBulkInsertAndGetWithOpts(dpiSodaColl *coll, void **documents,
-        uint32_t numDocuments, void *operOptions, void *outputOptions,
-        uint32_t mode, dpiError *error);
 int dpiOci__sodaCollCreateWithMetadata(dpiSodaDb *db, const char *name,
         uint32_t nameLength, const char *metadata, uint32_t metadataLength,
         uint32_t mode, void **handle, dpiError *error);
 int dpiOci__sodaCollDrop(dpiSodaColl *coll, int *isDropped, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaCollGetNext(dpiConn *conn, void *cursorHandle,
-        void **collectionHandle, dpiError *error);
+        void **collectionHandle, uint32_t mode, dpiError *error);
 int dpiOci__sodaCollList(dpiSodaDb *db, const char *startingName,
         uint32_t startingNameLength, void **handle, uint32_t mode,
         dpiError *error);
@@ -2045,7 +1990,7 @@ int dpiOci__sodaDataGuideGet(dpiSodaColl *coll, void **handle, uint32_t mode,
 int dpiOci__sodaDocCount(dpiSodaColl *coll, void *options, uint32_t mode,
         uint64_t *count, dpiError *error);
 int dpiOci__sodaDocGetNext(dpiSodaDocCursor *cursor, void **handle,
-        dpiError *error);
+        uint32_t mode, dpiError *error);
 int dpiOci__sodaFind(dpiSodaColl *coll, const void *options, uint32_t flags,
         uint32_t mode, void **handle, dpiError *error);
 int dpiOci__sodaFindOne(dpiSodaColl *coll, const void *options, uint32_t flags,
@@ -2054,14 +1999,10 @@ int dpiOci__sodaIndexCreate(dpiSodaColl *coll, const char *indexSpec,
         uint32_t indexSpecLength, uint32_t mode, dpiError *error);
 int dpiOci__sodaIndexDrop(dpiSodaColl *coll, const char *name,
         uint32_t nameLength, uint32_t mode, int *isDropped, dpiError *error);
-int dpiOci__sodaIndexList(dpiSodaColl *coll, uint32_t flags, void **handle,
-        dpiError *error);
 int dpiOci__sodaInsert(dpiSodaColl *coll, void *handle, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaInsertAndGet(dpiSodaColl *coll, void **handle, uint32_t mode,
         dpiError *error);
-int dpiOci__sodaInsertAndGetWithOpts(dpiSodaColl *coll, void **handle,
-        void *operOptions, uint32_t mode, dpiError *error);
 int dpiOci__sodaOperKeysSet(const dpiSodaOperOptions *options, void *handle,
         dpiError *error);
 int dpiOci__sodaRemove(dpiSodaColl *coll, void *options, uint32_t mode,
@@ -2074,8 +2015,6 @@ int dpiOci__sodaSave(dpiSodaColl *coll, void *handle, uint32_t mode,
         dpiError *error);
 int dpiOci__sodaSaveAndGet(dpiSodaColl *coll, void **handle, uint32_t mode,
         dpiError *error);
-int dpiOci__sodaSaveAndGetWithOpts(dpiSodaColl *coll, void **handle,
-        void *operOptions, uint32_t mode, dpiError *error);
 int dpiOci__stmtExecute(dpiStmt *stmt, uint32_t numIters, uint32_t mode,
         dpiError *error);
 int dpiOci__stmtFetch2(dpiStmt *stmt, uint32_t numRows, uint16_t fetchMode,
@@ -2118,12 +2057,9 @@ int dpiOci__threadKeyInit(void *envHandle, void *errorHandle, void **key,
 int dpiOci__threadKeySet(void *envHandle, void *errorHandle, void *key,
         void *value, dpiError *error);
 int dpiOci__transCommit(dpiConn *conn, uint32_t flags, dpiError *error);
-int dpiOci__transDetach(dpiConn *conn, uint32_t flags, dpiError *error);
-int dpiOci__transForget(dpiConn *conn, dpiError *error);
 int dpiOci__transPrepare(dpiConn *conn, int *commitNeeded, dpiError *error);
 int dpiOci__transRollback(dpiConn *conn, int checkError, dpiError *error);
-int dpiOci__transStart(dpiConn *conn, uint32_t transactionTimeout,
-        uint32_t flags, dpiError *error);
+int dpiOci__transStart(dpiConn *conn, dpiError *error);
 int dpiOci__typeByFullName(dpiConn *conn, const char *name,
         uint32_t nameLength, void **tdo, dpiError *error);
 int dpiOci__typeByName(dpiConn *conn, const char *schema,
@@ -2138,9 +2074,7 @@ int dpiMsgProps__allocate(dpiConn *conn, dpiMsgProps **props, dpiError *error);
 void dpiMsgProps__extractMsgId(dpiMsgProps *props, const char **msgId,
         uint32_t *msgIdLength);
 void dpiMsgProps__free(dpiMsgProps *props, dpiError *error);
-int dpiMsgProps__setRecipients(dpiMsgProps *props,
-        dpiMsgRecipient *recipients, uint32_t numRecipients,
-        void **aqAgents, dpiError *error);
+
 
 //-----------------------------------------------------------------------------
 // definition of internal dpiHandlePool methods
@@ -2163,23 +2097,12 @@ void dpiHandleList__removeHandle(dpiHandleList *list, uint32_t slotNum);
 
 
 //-----------------------------------------------------------------------------
-// definition of internal dpiStringList methods
-//-----------------------------------------------------------------------------
-void dpiStringList__free(dpiStringList *list);
-int dpiStringList__addElement(dpiStringList *list, const char *value,
-        uint32_t valueLength, uint32_t *numStringsAllocated, dpiError *error);
-
-
-//-----------------------------------------------------------------------------
 // definition of internal dpiUtils methods
 //-----------------------------------------------------------------------------
 int dpiUtils__allocateMemory(size_t numMembers, size_t memberSize,
         int clearMemory, const char *action, void **ptr, dpiError *error);
 int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
         int minVersionNum, int minReleaseNum, dpiError *error);
-int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
-        int minVersionNum1, int minReleaseNum1, int minVersionNum2,
-        int minReleaseNum2, dpiError *error);
 int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
         int minReleaseNum, dpiError *error);
 void dpiUtils__clearMemory(void *ptr, size_t length);
@@ -2201,9 +2124,6 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
         dpiError *error);
 int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
         uint32_t handleType, const dpiCommonCreateParams *params,
-        dpiError *error);
-int dpiUtils__setAccessTokenAttributes(void *handle,
-        dpiAccessToken *accessToken, dpiVersionInfo *versionInfo,
         dpiError *error);
 
 

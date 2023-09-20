@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -267,7 +254,6 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
     switch (scalar.valueType) {
         case DPI_JZNVAL_BINARY:
         case DPI_JZNVAL_STRING:
-        case DPI_JZNVAL_ID:
             node->oracleTypeNum = (scalar.valueType == DPI_JZNVAL_STRING) ?
                     DPI_ORACLE_TYPE_VARCHAR : DPI_ORACLE_TYPE_RAW;
             node->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
@@ -276,24 +262,15 @@ static int dpiJsonNode__fromOracleScalarToNative(dpiJson *json,
             return DPI_SUCCESS;
         case DPI_JZNVAL_FLOAT:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
-            node->nativeTypeNum = DPI_NATIVE_TYPE_FLOAT;
-            node->value->asFloat = scalar.value.asFloat.value;
+            node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
+            node->value->asDouble = scalar.value.asFloat.value;
             return DPI_SUCCESS;
         case DPI_JZNVAL_DOUBLE:
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
             node->nativeTypeNum = DPI_NATIVE_TYPE_DOUBLE;
             node->value->asDouble = scalar.value.asDouble.value;
             return DPI_SUCCESS;
-        case DPI_JZNVAL_ORA_SIGNED_INT:
-        case DPI_JZNVAL_ORA_SIGNED_LONG:
-        case DPI_JZNVAL_ORA_DECIMAL128:
         case DPI_JZNVAL_ORA_NUMBER:
-            if (scalar.valueType != DPI_JZNVAL_ORA_NUMBER) {
-                ociVal.asJsonNumber[0] =
-                        (uint8_t) scalar.value.asOciVal.valueLength;
-                memcpy(&ociVal.asJsonNumber[1], scalar.value.asOciVal.value,
-                        scalar.value.asOciVal.valueLength);
-            }
             node->oracleTypeNum = DPI_ORACLE_TYPE_NUMBER;
             if (options & DPI_JSON_OPT_NUMBER_AS_STRING) {
                 node->nativeTypeNum = DPI_NATIVE_TYPE_BYTES;
@@ -486,10 +463,6 @@ static int dpiJsonNode__toOracleFromNative(dpiJson *json, dpiJsonNode *node,
                 if (dpiDataBuffer__toOracleNumberFromInteger(node->value,
                         error, &dataBuffer.asNumber) < 0)
                     return DPI_FAILURE;
-            } else if (node->nativeTypeNum == DPI_NATIVE_TYPE_UINT64) {
-                if (dpiDataBuffer__toOracleNumberFromUnsignedInteger(
-                        node->value, error, &dataBuffer.asNumber) < 0)
-                    return DPI_FAILURE;
             } else if (node->nativeTypeNum == DPI_NATIVE_TYPE_BYTES) {
                 if (dpiDataBuffer__toOracleNumberFromText(node->value,
                         json->env, error, &dataBuffer.asNumber) < 0)
@@ -499,18 +472,6 @@ static int dpiJsonNode__toOracleFromNative(dpiJson *json, dpiJsonNode *node,
             }
             *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
                     DPI_JZNVAL_OCI_NUMBER, &dataBuffer.asNumber);
-            return DPI_SUCCESS;
-        case DPI_ORACLE_TYPE_NATIVE_DOUBLE:
-            if (node->nativeTypeNum != DPI_NATIVE_TYPE_DOUBLE)
-                break;
-            *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
-                    DPI_JZNVAL_DOUBLE, node->value->asDouble);
-            return DPI_SUCCESS;
-        case DPI_ORACLE_TYPE_NATIVE_FLOAT:
-            if (node->nativeTypeNum != DPI_NATIVE_TYPE_FLOAT)
-                break;
-            *oracleNode = domDoc->methods->fnNewScalarVal(domDoc,
-                    DPI_JZNVAL_FLOAT, node->value->asFloat);
             return DPI_SUCCESS;
         case DPI_ORACLE_TYPE_RAW:
         case DPI_ORACLE_TYPE_VARCHAR:
@@ -635,13 +596,13 @@ static int dpiJson__setValue(dpiJson *json, dpiJsonNode *topNode,
         return DPI_FAILURE;
 
     // write a dummy value to the JSON descriptor
-    if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue), 0,
+    if (dpiOci__jsonTextBufferParse(json, dummyValue, strlen(dummyValue),
             error) < 0)
         return DPI_FAILURE;
 
     // acquire the DOM doc which will be used to create the Oracle nodes
     if (dpiOci__jsonDomDocGet(json, &domDoc, error) < 0)
-        return DPI_FAILURE;
+        return dpiGen__endPublicFn(json, DPI_FAILURE, error);
 
     // convert the top node (and all of the child nodes to Oracle nodes)
     if (dpiJsonNode__toOracleFromNative(json, topNode, domDoc, &oracleTopNode,
@@ -769,17 +730,15 @@ int dpiJson_getValue(dpiJson *json, uint32_t options, dpiJsonNode **topNode)
 
     if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
         return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    dpiJsonNode__free(&json->topNode);
-    json->topNode.value = &json->topNodeBuffer;
-    json->topNode.oracleTypeNum = DPI_ORACLE_TYPE_NONE;
-    json->topNode.nativeTypeNum = DPI_NATIVE_TYPE_NULL;
-    if (dpiOci__jsonDomDocGet(json, &domDoc, &error) < 0)
-        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    if (domDoc) {
-        oracleNode = (*domDoc->methods->fnGetRootNode)(domDoc);
-        if (dpiJsonNode__fromOracleToNative(json, &json->topNode, domDoc,
-                oracleNode, options, &error) < 0)
+    if (json->topNode.oracleTypeNum == DPI_ORACLE_TYPE_NONE) {
+        if (dpiOci__jsonDomDocGet(json, &domDoc, &error) < 0)
             return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+        if (domDoc) {
+            oracleNode = (*domDoc->methods->fnGetRootNode)(domDoc);
+            if (dpiJsonNode__fromOracleToNative(json, &json->topNode, domDoc,
+                    oracleNode, options, &error) < 0)
+                return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
+        }
     }
 
     *topNode = &json->topNode;
@@ -794,25 +753,6 @@ int dpiJson_getValue(dpiJson *json, uint32_t options, dpiJsonNode **topNode)
 int dpiJson_release(dpiJson *json)
 {
     return dpiGen__release(json, DPI_HTYPE_JSON, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiJson_setFromText() [PUBLIC]
-//   Sets the value of the JSON handle, given a JSON string.
-//-----------------------------------------------------------------------------
-int dpiJson_setFromText(dpiJson *json, const char *value, uint64_t valueLength,
-        uint32_t flags)
-{
-    dpiError error;
-    int status;
-
-    if (dpiGen__startPublicFn(json, DPI_HTYPE_JSON, __func__, &error) < 0)
-        return dpiGen__endPublicFn(json, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_AND_LENGTH(json, value)
-    status = dpiOci__jsonTextBufferParse(json, value, valueLength,
-                flags, &error);
-    return dpiGen__endPublicFn(json, status, &error);
 }
 
 

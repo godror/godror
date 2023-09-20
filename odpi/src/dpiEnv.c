@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -139,10 +126,8 @@ int dpiEnv__getEncodingInfo(dpiEnv *env, dpiEncodingInfo *info)
 //-----------------------------------------------------------------------------
 int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         const dpiCommonCreateParams *params, void *externalHandle,
-        dpiCreateMode createMode, dpiError *error)
+        dpiError *error)
 {
-    int temp;
-
     // store context and version information
     env->context = context;
     env->versionInfo = context->versionInfo;
@@ -183,7 +168,8 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
         }
 
         // create new environment handle
-        if (dpiOci__envNlsCreate(&env->handle, createMode | DPI_OCI_OBJECT,
+        if (dpiOci__envNlsCreate(&env->handle,
+                params->createMode | DPI_OCI_OBJECT,
                 env->charsetId, env->ncharsetId, error) < 0)
             return DPI_FAILURE;
 
@@ -195,7 +181,7 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
     error->env = env;
 
     // if threaded, create mutex for reference counts
-    if (createMode & DPI_OCI_THREADED)
+    if (params->createMode & DPI_OCI_THREADED)
         dpiMutex__initialize(env->mutex);
 
     // determine encodings in use
@@ -218,24 +204,12 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
     else env->nmaxBytesPerCharacter = 4;
 
     // set whether or not we are threaded
-    if (createMode & DPI_MODE_CREATE_THREADED)
+    if (params->createMode & DPI_MODE_CREATE_THREADED)
         env->threaded = 1;
 
     // set whether or not events mode has been set
-    if (createMode & DPI_MODE_CREATE_EVENTS)
+    if (params->createMode & DPI_MODE_CREATE_EVENTS)
         env->events = 1;
-
-    // enable SODA metadata cache, if applicable
-    if (params->sodaMetadataCache) {
-        if (dpiUtils__checkClientVersionMulti(env->versionInfo, 19, 11, 21, 3,
-                error) < 0)
-            return DPI_FAILURE;
-        temp = 1;
-        if (dpiOci__attrSet(env->handle, DPI_OCI_HTYPE_ENV, &temp, 0,
-                DPI_OCI_ATTR_SODA_METADATA_CACHE, "set SODA metadata cache",
-                error) < 0)
-            return DPI_FAILURE;
-    }
 
     return DPI_SUCCESS;
 }

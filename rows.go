@@ -115,7 +115,7 @@ func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 		return int64(10), true
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
+		// C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
 		C.DPI_NATIVE_TYPE_BYTES:
 		return int64(col.Size), true
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
@@ -142,8 +142,8 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 		return "CHAR"
 	case C.DPI_ORACLE_TYPE_NCHAR:
 		return "NCHAR"
-	case C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
-		return "LONG"
+	// case C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
+	// return "LONG"
 	case C.DPI_NATIVE_TYPE_BYTES, C.DPI_ORACLE_TYPE_RAW:
 		return "RAW"
 	case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
@@ -263,12 +263,12 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 		return reflect.TypeOf(&statement{})
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
 		return reflect.TypeOf(false)
-	case C.DPI_ORACLE_TYPE_JSON:
-		return reflect.TypeOf(JSON{})
-	case C.DPI_ORACLE_TYPE_JSON_OBJECT:
-		return reflect.TypeOf(JSONObject{})
-	case C.DPI_ORACLE_TYPE_JSON_ARRAY:
-		return reflect.TypeOf(JSONArray{})
+	// case C.DPI_ORACLE_TYPE_JSON:
+	// 	return reflect.TypeOf(JSON{})
+	// case C.DPI_ORACLE_TYPE_JSON_OBJECT:
+	// 	return reflect.TypeOf(JSONObject{})
+	// case C.DPI_ORACLE_TYPE_JSON_ARRAY:
+	// 	return reflect.TypeOf(JSONArray{})
 	default:
 		return reflect.TypeOf("")
 	}
@@ -380,8 +380,8 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
-			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
+			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR:
+			// C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 			//fmt.Printf("CHAR\n")
 			if isNull {
 				dest[i] = ""
@@ -637,30 +637,30 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			dest[i] = o
 
-		case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			switch col.NativeType {
-			case C.DPI_NATIVE_TYPE_JSON:
-				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
-				dest[i] = JSON{dpiJson: dj}
-			default:
-			}
+		// case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
+		// 	if isNull {
+		// 		dest[i] = nil
+		// 		continue
+		// 	}
+		// 	switch col.NativeType {
+		// 	case C.DPI_NATIVE_TYPE_JSON:
+		// 		dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
+		// 		dest[i] = JSON{dpiJson: dj}
+		// 	default:
+		// 	}
 
-		case C.DPI_NATIVE_TYPE_JSON_OBJECT:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
-		case C.DPI_NATIVE_TYPE_JSON_ARRAY:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
+		// case C.DPI_NATIVE_TYPE_JSON_OBJECT:
+		// 	if isNull {
+		// 		dest[i] = nil
+		// 		continue
+		// 	}
+		// 	dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
+		// case C.DPI_NATIVE_TYPE_JSON_ARRAY:
+		// 	if isNull {
+		// 		dest[i] = nil
+		// 		continue
+		// 	}
+		// 	dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
 
 		default:
 			return fmt.Errorf("unsupported column type %d", typ)

@@ -277,13 +277,13 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 			return 0, err
 		}
 
-		var lobType C.dpiOracleTypeNum
-		if err := dlr.checkExecNoLOT(func() C.int {
-			return C.dpiLob_getType(dlr.dpiLob, &lobType)
-		}); err == nil &&
-			(2017 <= lobType && lobType <= 2019) {
-			dlr.IsClob = lobType == 2017 || lobType == 2018 // CLOB and NCLOB
-		}
+		// var lobType C.dpiOracleTypeNum
+		// if err := dlr.checkExecNoLOT(func() C.int {
+		// 	return C.dpiLob_getType(dlr.dpiLob, &lobType)
+		// }); err == nil &&
+		// 	(2017 <= lobType && lobType <= 2019) {
+		// 	dlr.IsClob = lobType == 2017 || lobType == 2018 // CLOB and NCLOB
+		// }
 	}
 	n := C.uint64_t(len(p))
 	amount := n

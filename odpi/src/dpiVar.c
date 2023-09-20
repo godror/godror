@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -755,7 +742,6 @@ int dpiVar__getValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
                 case DPI_ORACLE_TYPE_ROWID:
                 case DPI_ORACLE_TYPE_RAW:
                 case DPI_ORACLE_TYPE_LONG_VARCHAR:
-                case DPI_ORACLE_TYPE_LONG_NVARCHAR:
                 case DPI_ORACLE_TYPE_LONG_RAW:
                     if (buffer->dynamicBytes)
                         return dpiVar__setBytesFromDynamicBytes(bytes,
@@ -1786,28 +1772,6 @@ int dpiVar_setFromBytes(dpiVar *var, uint32_t pos, const char *value,
         return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
     }
     status = dpiVar__setFromBytes(var, pos, value, valueLength, &error);
-    return dpiGen__endPublicFn(var, status, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiVar_setFromJson() [PUBLIC]
-//  Set the value of the variable at the given position from a JSON value.
-// Checks on the array position and the validity of the passed value.
-// A reference to the JSON value is retained by the variable.
-//-----------------------------------------------------------------------------
-int dpiVar_setFromJson( dpiVar *var, uint32_t pos, dpiJson *json)
-{
-    dpiError error;
-    int status;
-
-    if (dpiVar__checkArraySize(var, pos, __func__, &error) < 0)
-        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
-    if (var->nativeTypeNum != DPI_NATIVE_TYPE_JSON) {
-        dpiError__set(&error, "native type", DPI_ERR_NOT_SUPPORTED);
-        return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
-    }
-    status = dpiVar__setFromJson(var, pos, json, &error);
     return dpiGen__endPublicFn(var, status, &error);
 }
 

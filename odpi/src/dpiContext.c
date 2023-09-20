@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -136,7 +123,6 @@ void dpiContext__initCommonCreateParams(const dpiContext *context,
         params->driverName = DPI_DEFAULT_DRIVER_NAME;
         params->driverNameLength = (uint32_t) strlen(params->driverName);
     }
-    params->stmtCacheSize = DPI_DEFAULT_STMT_CACHE_SIZE;
 }
 
 
@@ -218,6 +204,8 @@ int dpiContext_createWithParams(unsigned int majorVersion,
     if (!localParams.loadErrorUrl)
         localParams.loadErrorUrl = DPI_DEFAULT_LOAD_ERROR_URL;
 
+    if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
+        dpiDebug__print("fn start %s\n", __func__);
     status = dpiContext__create(__func__, majorVersion, minorVersion,
             &localParams, context, &error);
     if (status < 0) {
@@ -253,23 +241,6 @@ int dpiContext_destroy(dpiContext *context)
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("%s\n", message);
     return DPI_SUCCESS;
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiContext_freeStringList() [PUBLIC]
-//   Frees the contents of a string list.
-//-----------------------------------------------------------------------------
-int dpiContext_freeStringList(dpiContext *context, dpiStringList *list)
-{
-    dpiError error;
-
-    if (dpiGen__startPublicFn(context, DPI_HTYPE_CONTEXT, __func__,
-            &error) < 0)
-        return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(context, list)
-    dpiStringList__free(list);
-    return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
 
@@ -320,7 +291,6 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
     dpiContext__initCommonCreateParams(context, params);
-
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -357,8 +327,8 @@ int dpiContext_initPoolCreateParams(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initPoolCreateParams(params);
 
+    dpiContext__initPoolCreateParams(params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 
@@ -376,8 +346,8 @@ int dpiContext_initSodaOperOptions(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, options)
-    dpiContext__initSodaOperOptions(options);
 
+    dpiContext__initSodaOperOptions(options);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

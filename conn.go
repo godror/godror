@@ -1187,16 +1187,17 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) isHealthy() bool {
-	dpiConnOK := true
-	c.mu.Lock()
-	var isHealthy C.int
-	if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) == C.DPI_FAILURE {
-		dpiConnOK = false
-	} else {
-		dpiConnOK = isHealthy == 1
-	}
-	c.mu.Unlock()
-	return dpiConnOK
+	return true
+	// dpiConnOK := true
+	// c.mu.Lock()
+	// var isHealthy C.int
+	// if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) == C.DPI_FAILURE {
+	// 	dpiConnOK = false
+	// } else {
+	// 	dpiConnOK = isHealthy == 1
+	// }
+	// c.mu.Unlock()
+	// return dpiConnOK
 }
 
 func (c *conn) String() string {

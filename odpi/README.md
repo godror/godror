@@ -1,4 +1,4 @@
-# ODPI-C
+# ODPI-C version 4.1
 
 Oracle Database Programming Interface for C (ODPI-C) is an open source library
 of C code that simplifies access to Oracle Database for applications written in
@@ -21,7 +21,7 @@ See the [ODPI-C Documentation](https://oracle.github.io/odpi/doc/index.html) and
 
 ## Samples
 
-See [/samples](https://github.com/oracle/odpi/tree/main/samples).
+See [/samples](https://github.com/oracle/odpi/tree/master/samples).
 
 ## Help
 
@@ -29,16 +29,16 @@ Please report bugs and ask questions using [GitHub issues](https://github.com/or
 
 ## Tests
 
-See [/test](https://github.com/oracle/odpi/tree/main/test).
+See [/test](https://github.com/oracle/odpi/tree/master/test).
 
 ## Contributing
 
-See [CONTRIBUTING](https://github.com/oracle/odpi/blob/main/CONTRIBUTING.md).
+See [CONTRIBUTING](https://github.com/oracle/odpi/blob/master/CONTRIBUTING.md).
 
 ## Drivers Using ODPI-C
 
 Oracle Drivers:
-* [python-oracledb](https://oracle.github.io/python-oracledb) Python interface (previously known as [cx_Oracle](https://oracle.github.io/python-cx_Oracle)).
+* [cx_Oracle](https://oracle.github.io/python-cx_Oracle) Python interface.
 * [node-oracledb](https://oracle.github.io/node-oracledb) Node.js module.
 
 Third-party Drivers:
@@ -52,24 +52,12 @@ Third-party Drivers:
 
 ## License
 
-Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+Copyright (c) 2016, 2020, Oracle and/or its affiliates.  All rights reserved.
 
-This software is dual-licensed to you under the Universal Permissive License
-(UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-either license.
+This program is free software: you can modify it and/or redistribute it under
+the terms of:
 
-If you elect to accept the software under the Apache License, Version 2.0,
-the following applies:
+(i)  the Universal Permissive License v 1.0 or at your option, any
+     later version (<http://oss.oracle.com/licenses/upl>); and/or
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+(ii) the Apache License v 2.0. (<http://www.apache.org/licenses/LICENSE-2.0>)

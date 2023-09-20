@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2019, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -44,8 +31,7 @@ static int dpiQueue__getPayloadTDO(dpiQueue *queue, void **tdo,
 //   Allocate and initialize a queue.
 //-----------------------------------------------------------------------------
 int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
-        dpiObjectType *payloadType, dpiQueue **queue, int isJson,
-        dpiError *error)
+        dpiObjectType *payloadType, dpiQueue **queue, dpiError *error)
 {
     dpiQueue *tempQueue;
     char *buffer;
@@ -56,10 +42,9 @@ int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
         return DPI_FAILURE;
     dpiGen__setRefCount(conn, error, 1);
     tempQueue->conn = conn;
-    tempQueue->isJson = isJson;
 
     // store payload type, which is either an object type or NULL (meaning that
-    // RAW or JSON payloads are being enqueued and dequeued)
+    // RAW payloads are being enqueued and dequeued)
     if (payloadType) {
         dpiGen__setRefCount(payloadType, error, 1);
         tempQueue->payloadType = payloadType;
@@ -110,8 +95,8 @@ static int dpiQueue__allocateBuffer(dpiQueue *queue, uint32_t numElements,
         return DPI_FAILURE;
     if (!queue->payloadType) {
         if (dpiUtils__allocateMemory(numElements, sizeof(int16_t), 1,
-                "allocate array of OCI scalar indicator buffers",
-                (void**) &queue->buffer.scalarIndicators, error) < 0)
+                "allocate OCI raw indicators array",
+                (void**) &queue->buffer.rawIndicators, error) < 0)
             return DPI_FAILURE;
     }
     if (dpiUtils__allocateMemory(numElements, sizeof(void*), 1,
@@ -192,7 +177,6 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
     dpiMsgProps *prop;
     void *payloadTDO;
     uint32_t i;
-    int status;
 
     // create dequeue options, if necessary
     if (!queue->deqOptions && dpiQueue__createDeqOptions(queue, error) < 0)
@@ -220,23 +204,14 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
                 &prop->payloadObj, error) < 0)
             return DPI_FAILURE;
 
-        // create JSON payload object, if applicable
-        if (queue->isJson) {
-            if (dpiJson__allocate(queue->conn, &prop->payloadJson, error) < 0)
-                return DPI_FAILURE;
-        }
-
         // set OCI arrays
         queue->buffer.handles[i] = prop->handle;
         if (queue->payloadType) {
             queue->buffer.instances[i] = prop->payloadObj->instance;
             queue->buffer.indicators[i] = prop->payloadObj->indicator;
-        } else if (queue->isJson) {
-            queue->buffer.instances[i] = prop->payloadJson->handle;
-            queue->buffer.indicators[i] = &queue->buffer.scalarIndicators[i];
         } else {
             queue->buffer.instances[i] = prop->payloadRaw;
-            queue->buffer.indicators[i] = &queue->buffer.scalarIndicators[i];
+            queue->buffer.indicators[i] = &queue->buffer.rawIndicators[i];
         }
         queue->buffer.msgIds[i] = prop->msgIdRaw;
 
@@ -245,46 +220,21 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
     // perform dequeue
     if (dpiQueue__getPayloadTDO(queue, &payloadTDO, error) < 0)
         return DPI_FAILURE;
-    if (*numProps == 1) {
-        status = dpiOci__aqDeq(queue->conn, queue->name,
-                queue->deqOptions->handle, queue->buffer.handles[0],
-                payloadTDO, queue->buffer.instances, queue->buffer.indicators,
-                queue->buffer.msgIds, error);
-        if (status < 0)
-            *numProps = 0;
-    } else if (queue->isJson) {
-        status = DPI_SUCCESS;
-        for (i = 0; i < *numProps; i++) {
-            status = dpiOci__aqDeq(queue->conn, queue->name,
-                    queue->deqOptions->handle, queue->buffer.handles[i],
-                    payloadTDO, &queue->buffer.instances[i],
-                    &queue->buffer.indicators[i],
-                    &queue->buffer.msgIds[i], error);
-            if (status < 0) {
-                *numProps = i;
-                break;
-            }
-        }
-    } else {
-        status = dpiOci__aqDeqArray(queue->conn, queue->name,
-                queue->deqOptions->handle, numProps, queue->buffer.handles,
-                payloadTDO, queue->buffer.instances, queue->buffer.indicators,
-                queue->buffer.msgIds, error);
-    }
-    if (status < 0 && error->buffer->code != 25228) {
+    if (dpiOci__aqDeqArray(queue->conn, queue->name, queue->deqOptions->handle,
+            numProps, queue->buffer.handles, payloadTDO,
+            queue->buffer.instances, queue->buffer.indicators,
+            queue->buffer.msgIds, error) < 0) {
+        if (error->buffer->code != 25228)
+            return DPI_FAILURE;
         error->buffer->offset = *numProps;
-        return DPI_FAILURE;
     }
 
     // transfer message properties to destination array
     for (i = 0; i < *numProps; i++) {
         props[i] = queue->buffer.props[i];
         queue->buffer.props[i] = NULL;
-        if (queue->isJson) {
-            props[i]->payloadJson->handle = queue->buffer.instances[i];
-        } else if (!queue->payloadType) {
+        if (!queue->payloadType)
             props[i]->payloadRaw = queue->buffer.instances[i];
-        }
         props[i]->msgIdRaw = queue->buffer.msgIds[i];
     }
 
@@ -319,14 +269,11 @@ static int dpiQueue__enq(dpiQueue *queue, uint32_t numProps,
     for (i = 0; i < numProps; i++) {
 
         // perform checks
-        if (!props[i]->payloadObj && !props[i]->payloadRaw &&
-                !props[i]->payloadJson)
+        if (!props[i]->payloadObj && !props[i]->payloadRaw)
             return dpiError__set(error, "check payload",
                     DPI_ERR_QUEUE_NO_PAYLOAD);
-        if ((queue->isJson && !props[i]->payloadJson) ||
-                (queue->payloadType && !props[i]->payloadObj) ||
-                (!queue->isJson && !queue->payloadType &&
-                        !props[i]->payloadRaw))
+        if ((queue->payloadType && !props[i]->payloadObj) ||
+                (!queue->payloadType && props[i]->payloadObj))
             return dpiError__set(error, "check payload",
                     DPI_ERR_QUEUE_WRONG_PAYLOAD_TYPE);
         if (queue->payloadType && props[i]->payloadObj &&
@@ -347,12 +294,9 @@ static int dpiQueue__enq(dpiQueue *queue, uint32_t numProps,
         if (queue->payloadType) {
             queue->buffer.instances[i] = props[i]->payloadObj->instance;
             queue->buffer.indicators[i] = props[i]->payloadObj->indicator;
-        } else if (props[i]->payloadJson) {
-            queue->buffer.instances[i] = props[i]->payloadJson->handle;
-            queue->buffer.indicators[i] = &queue->buffer.scalarIndicators[i];
         } else {
             queue->buffer.instances[i] = props[i]->payloadRaw;
-            queue->buffer.indicators[i] = &queue->buffer.scalarIndicators[i];
+            queue->buffer.indicators[i] = &queue->buffer.rawIndicators[i];
         }
         queue->buffer.msgIds[i] = props[i]->msgIdRaw;
 
@@ -446,9 +390,9 @@ static void dpiQueue__freeBuffer(dpiQueue *queue, dpiError *error)
         dpiUtils__freeMemory(buffer->indicators);
         buffer->indicators = NULL;
     }
-    if (buffer->scalarIndicators) {
-        dpiUtils__freeMemory(buffer->scalarIndicators);
-        buffer->indicators = NULL;
+    if (buffer->rawIndicators) {
+        dpiUtils__freeMemory(buffer->rawIndicators);
+        buffer->rawIndicators = NULL;
     }
     if (buffer->msgIds) {
         dpiUtils__freeMemory(buffer->msgIds);
@@ -460,19 +404,14 @@ static void dpiQueue__freeBuffer(dpiQueue *queue, dpiError *error)
 //-----------------------------------------------------------------------------
 // dpiQueue__getPayloadTDO() [INTERNAL]
 //   Acquire the TDO to use for the payload. This will either be the TDO of the
-// object type (if one was specified when the queue was created), the RAW TDO
-// cached on the connection (for RAW queues) or the JSON TDO cached on the
-// connection (for JSON queues).
+// object type (if one was specified when the queue was created) or it will be
+// the RAW TDO cached on the connection.
 //-----------------------------------------------------------------------------
 static int dpiQueue__getPayloadTDO(dpiQueue *queue, void **tdo,
         dpiError *error)
 {
     if (queue->payloadType) {
         *tdo = queue->payloadType->tdo;
-    } else if (queue->isJson) {
-        if (dpiConn__getJsonTDO(queue->conn, error) < 0)
-            return DPI_FAILURE;
-        *tdo = queue->conn->jsonTDO;
     } else {
         if (dpiConn__getRawTDO(queue->conn, error) < 0)
             return DPI_FAILURE;

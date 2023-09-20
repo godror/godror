@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -30,16 +17,16 @@
 #include "dpiImpl.h"
 
 // forward declarations of internal functions only used in this file
-static int dpiObjectType__init(dpiObjectType *objType, void *handle,
-        uint32_t handleType, dpiError *error);
+static int dpiObjectType__init(dpiObjectType *objType, void *param,
+        uint32_t nameAttribute, dpiError *error);
 
 
 //-----------------------------------------------------------------------------
 // dpiObjectType__allocate() [INTERNAL]
 //   Allocate and initialize an object type structure.
 //-----------------------------------------------------------------------------
-int dpiObjectType__allocate(dpiConn *conn, void *handle, uint32_t handleType,
-        dpiObjectType **objType, dpiError *error)
+int dpiObjectType__allocate(dpiConn *conn, void *param,
+        uint32_t nameAttribute, dpiObjectType **objType, dpiError *error)
 {
     dpiObjectType *tempObjType;
 
@@ -52,7 +39,7 @@ int dpiObjectType__allocate(dpiConn *conn, void *handle, uint32_t handleType,
     tempObjType->conn = conn;
 
     // perform initialization
-    if (dpiObjectType__init(tempObjType, handle, handleType, error) < 0) {
+    if (dpiObjectType__init(tempObjType, param, nameAttribute, error) < 0) {
         dpiObjectType__free(tempObjType, error);
         return DPI_FAILURE;
     }
@@ -105,24 +92,6 @@ static int dpiObjectType__describe(dpiObjectType *objType,
         return DPI_FAILURE;
     objType->typeCode = typeCode;
 
-    // determine the schema of the type
-    if (dpiUtils__getAttrStringWithDup("get schema", param,
-            DPI_OCI_DTYPE_PARAM, DPI_OCI_ATTR_SCHEMA_NAME, &objType->schema,
-            &objType->schemaLength, error) < 0)
-        return DPI_FAILURE;
-
-    // determine the name of the type
-    if (dpiUtils__getAttrStringWithDup("get name", param, DPI_OCI_DTYPE_PARAM,
-            DPI_OCI_ATTR_NAME, &objType->name, &objType->nameLength,
-            error) < 0)
-        return DPI_FAILURE;
-
-    // determine the package name of the type
-    if (dpiUtils__getAttrStringWithDup("get package name", param,
-            DPI_OCI_DTYPE_PARAM, DPI_OCI_ATTR_PACKAGE_NAME,
-            &objType->packageName, &objType->packageNameLength, error) < 0)
-        return DPI_FAILURE;
-
     // determine the number of attributes
     if (dpiOci__attrGet(param, DPI_OCI_DTYPE_PARAM,
             (void*) &objType->numAttributes, 0, DPI_OCI_ATTR_NUM_TYPE_ATTRS,
@@ -172,10 +141,6 @@ void dpiObjectType__free(dpiObjectType *objType, dpiError *error)
         dpiUtils__freeMemory((void*) objType->name);
         objType->name = NULL;
     }
-    if (objType->packageName) {
-        dpiUtils__freeMemory((void*) objType->packageName);
-        objType->packageName = NULL;
-    }
     dpiUtils__freeMemory(objType);
 }
 
@@ -184,13 +149,25 @@ void dpiObjectType__free(dpiObjectType *objType, dpiError *error)
 // dpiObjectType__init() [INTERNAL]
 //   Initialize the object type.
 //-----------------------------------------------------------------------------
-static int dpiObjectType__init(dpiObjectType *objType, void *handle,
-        uint32_t handleType, dpiError *error)
+static int dpiObjectType__init(dpiObjectType *objType, void *param,
+        uint32_t nameAttribute, dpiError *error)
 {
-    void *describeHandle, *tdoReference;
+    void *describeHandle;
+    void *tdoReference;
+
+    // determine the schema of the type
+    if (dpiUtils__getAttrStringWithDup("get schema", param,
+            DPI_OCI_DTYPE_PARAM, DPI_OCI_ATTR_SCHEMA_NAME, &objType->schema,
+            &objType->schemaLength, error) < 0)
+        return DPI_FAILURE;
+
+    // determine the name of the type
+    if (dpiUtils__getAttrStringWithDup("get name", param, DPI_OCI_DTYPE_PARAM,
+            nameAttribute, &objType->name, &objType->nameLength, error) < 0)
+        return DPI_FAILURE;
 
     // retrieve TDO of the parameter and pin it in the cache
-    if (dpiOci__attrGet(handle, handleType, (void*) &tdoReference, 0,
+    if (dpiOci__attrGet(param, DPI_OCI_DTYPE_PARAM, (void*) &tdoReference, 0,
             DPI_OCI_ATTR_REF_TDO, "get TDO reference", error) < 0)
         return DPI_FAILURE;
     if (dpiOci__objectPin(objType->env->handle, tdoReference, &objType->tdo,
@@ -348,8 +325,6 @@ int dpiObjectType_getInfo(dpiObjectType *objType, dpiObjectTypeInfo *info)
     DPI_CHECK_PTR_NOT_NULL(objType, info)
     info->name = objType->name;
     info->nameLength = objType->nameLength;
-    info->packageName = objType->packageName;
-    info->packageNameLength = objType->packageNameLength;
     info->schema = objType->schema;
     info->schemaLength = objType->schemaLength;
     info->isCollection = objType->isCollection;

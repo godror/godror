@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -105,9 +92,4 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1076: JSON node type %d is not supported", // DPI_ERR_UNHANDLED_JSON_NODE_TYPE
     "DPI-1077: JSON scalar type %d is not supported", // DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE
     "DPI-1078: native type %d with Oracle type %d is not supported by JSON", // DPI_ERR_UNHANDLED_CONVERSION_TO_JSON
-    "DPI-1079: Oracle Client library is at version %d.%d but either version %d.%d (or later DBRU) or version %d.%d (or higher) is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI
-    "DPI-1080: connection was closed by ORA-%d", // DPI_ERR_CONN_CLOSED
-    "DPI-1081: invalid dpiAccessToken structure. The token must contain a value", // DPI_ERR_TOKEN_BASED_AUTH
-    "DPI-1082: invalid connection pool configuration for token based authentication. Both homogeneous and externalAuth fields in the dpiPoolCreateParams structure must be set to 1", //DPI_ERR_POOL_TOKEN_BASED_AUTH
-    "DPI-1083: invalid standalone connection configuration for token based authentication. The externalAuth field in the dpiConnCreateParams structure must be set to 1", // DPI_ERR_STANDALONE_TOKEN_BASED_AUTH
 };

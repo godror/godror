@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -74,34 +61,6 @@ static int dpiPool__checkConnected(dpiPool *pool, const char *fnName,
 }
 
 
-//----------------------------------------------------------------------------
-// dpiPool__accessTokenCallback() [INTERNAL]
-//   Callback used to execute the registered callback when the authentication
-// token expires and the connection pool needs to create a new connection.
-// -----------------------------------------------------------------------------
-int dpiPool__accessTokenCallback(dpiPool *pool, void *authInfo,
-        UNUSED uint32_t mode)
-{
-    dpiAccessToken accessToken;
-    dpiError error;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    memset(&accessToken, 0, sizeof(dpiAccessToken));
-
-    if ((*pool->accessTokenCallback)(pool->accessTokenCallbackContext,
-            &accessToken) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    if (dpiUtils__setAccessTokenAttributes(authInfo, &accessToken,
-               pool->env->versionInfo, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
-}
-
-
 //-----------------------------------------------------------------------------
 // dpiPool__create() [INTERNAL]
 //   Internal method for creating a session pool.
@@ -142,33 +101,6 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
     if (dpiUtils__setAttributesFromCommonCreateParams(authInfo,
             DPI_OCI_HTYPE_AUTHINFO, commonParams, error) < 0)
         return DPI_FAILURE;
-
-    // set token based authentication attributes
-    if (commonParams->accessToken) {
-
-        // homogeneous must be set to true for token based authentication
-        if (!createParams->homogeneous || !createParams->externalAuth)
-            return dpiError__set(error, "check homogeneous and externalAuth",
-                    DPI_ERR_POOL_TOKEN_BASED_AUTH);
-
-        if (dpiUtils__setAccessTokenAttributes(authInfo,
-                commonParams->accessToken, pool->env->versionInfo, error) < 0)
-            return DPI_FAILURE;
-
-        if (createParams->accessTokenCallback) {
-            // set token based auth context callback on session handle
-            if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
-                    (void*) pool, 0, DPI_OCI_ATTR_TOKEN_CBKCTX,
-                    "set token callback context", error) < 0)
-                return DPI_FAILURE;
-
-            // set token based auth callback on session handle
-            if (dpiOci__attrSet(authInfo, DPI_OCI_HTYPE_SESSION,
-                    (void*) dpiPool__accessTokenCallback, 0,
-                    DPI_OCI_ATTR_TOKEN_CBK, "set token callback", error) < 0)
-                return DPI_FAILURE;
-        }
-    }
 
     // set PL/SQL session state fixup callback, if applicable
     if (createParams->plsqlFixupCallback &&
@@ -238,27 +170,11 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             passwordLength, poolMode, error) < 0)
         return DPI_FAILURE;
 
-    // set the statement cache size
-    if (dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL,
-            (void*) &commonParams->stmtCacheSize, 0,
-            DPI_OCI_ATTR_SPOOL_STMTCACHESIZE, "set stmt cache size",
-            error) < 0)
-        return DPI_FAILURE;
-
-    // set remaining attributes directly
+    // set reamining attributes directly
     pool->homogeneous = createParams->homogeneous;
     pool->externalAuth = createParams->externalAuth;
     pool->pingInterval = createParams->pingInterval;
     pool->pingTimeout = createParams->pingTimeout;
-    pool->stmtCacheSize = commonParams->stmtCacheSize;
-
-    if (commonParams->accessToken) {
-        pool->accessTokenCallback = createParams->accessTokenCallback;
-        pool->accessTokenCallbackContext =
-                createParams->accessTokenCallbackContext;
-        // force externalAuth to false for token based authentication
-        pool->externalAuth = 0;
-    }
 
     return DPI_SUCCESS;
 }
@@ -289,40 +205,37 @@ void dpiPool__free(dpiPool *pool, dpiError *error)
 static int dpiPool__getAttributeUint(dpiPool *pool, uint32_t attribute,
         uint32_t *value, const char *fnName)
 {
+    int status, supported = 1;
     dpiError error;
-    int status;
 
     if (dpiPool__checkConnected(pool, fnName, &error) < 0)
         return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(pool, value)
     switch (attribute) {
         case DPI_OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 12, 1,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            if (pool->env->versionInfo->versionNum < 12)
+                supported = 0;
             break;
         case DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 12, 2,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            if (pool->env->versionInfo->versionNum < 12 ||
+                    (pool->env->versionInfo->versionNum == 12 &&
+                     pool->env->versionInfo->releaseNum < 2))
+                supported = 0;
             break;
         case DPI_OCI_ATTR_SPOOL_BUSY_COUNT:
         case DPI_OCI_ATTR_SPOOL_OPEN_COUNT:
         case DPI_OCI_ATTR_SPOOL_STMTCACHESIZE:
         case DPI_OCI_ATTR_SPOOL_TIMEOUT:
             break;
-        case DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 18, 3,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-            break;
         default:
-            dpiError__set(&error, "get attribute value",
-                    DPI_ERR_NOT_SUPPORTED);
-            return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            supported = 0;
+            break;
     }
-    status = dpiOci__attrGet(pool->handle, DPI_OCI_HTYPE_SPOOL, value,
-            NULL, attribute, "get attribute value", &error);
+    if (supported)
+        status = dpiOci__attrGet(pool->handle, DPI_OCI_HTYPE_SPOOL, value,
+                NULL, attribute, "get attribute value", &error);
+    else status = dpiError__set(&error, "get attribute value",
+            DPI_ERR_NOT_SUPPORTED);
     return dpiGen__endPublicFn(pool, status, &error);
 }
 
@@ -334,10 +247,10 @@ static int dpiPool__getAttributeUint(dpiPool *pool, uint32_t attribute,
 static int dpiPool__setAttributeUint(dpiPool *pool, uint32_t attribute,
         uint32_t value, const char *fnName)
 {
+    int status, supported = 1;
     void *ociValue = &value;
     uint8_t shortValue;
     dpiError error;
-    int status;
 
     // make sure session pool is connected
     if (dpiPool__checkConnected(pool, fnName, &error) < 0)
@@ -350,32 +263,29 @@ static int dpiPool__setAttributeUint(dpiPool *pool, uint32_t attribute,
             ociValue = &shortValue;
             break;
         case DPI_OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 12, 1,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            if (pool->env->versionInfo->versionNum < 12)
+                supported = 0;
             break;
         case DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 12, 2,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            if (pool->env->versionInfo->versionNum < 12 ||
+                    (pool->env->versionInfo->versionNum == 12 &&
+                     pool->env->versionInfo->releaseNum < 2))
+                supported = 0;
             break;
         case DPI_OCI_ATTR_SPOOL_STMTCACHESIZE:
         case DPI_OCI_ATTR_SPOOL_TIMEOUT:
             break;
-        case DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD:
-            if (dpiUtils__checkClientVersion(pool->env->versionInfo, 18, 3,
-                    &error) < 0)
-                return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-            break;
         default:
-            dpiError__set(&error, "set attribute value",
-                    DPI_ERR_NOT_SUPPORTED);
-            return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
+            supported = 0;
+            break;
     }
 
     // set value in the OCI
-    status = dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL, ociValue, 0,
-            attribute, "set attribute value", &error);
+    if (supported)
+        status = dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL, ociValue,
+                0, attribute, "set attribute value", &error);
+    else status = dpiError__set(&error, "set attribute value",
+            DPI_ERR_NOT_SUPPORTED);
     return dpiGen__endPublicFn(pool, status, &error);
 }
 
@@ -485,8 +395,7 @@ int dpiPool_create(const dpiContext *context, const char *userName,
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
 
     // initialize environment
-    if (dpiEnv__init(tempPool->env, context, commonParams, NULL,
-            commonParams->createMode | DPI_MODE_CREATE_THREADED, &error) < 0) {
+    if (dpiEnv__init(tempPool->env, context, commonParams, NULL, &error) < 0) {
         dpiPool__free(tempPool, &error);
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     }
@@ -565,17 +474,6 @@ int dpiPool_getMaxLifetimeSession(dpiPool *pool, uint32_t *value)
 
 
 //-----------------------------------------------------------------------------
-// dpiPool_getMaxSessionsPerShard() [PUBLIC]
-//   Return the pool's maximum sessions per shard.
-//-----------------------------------------------------------------------------
-int dpiPool_getMaxSessionsPerShard(dpiPool *pool, uint32_t *value)
-{
-    return dpiPool__getAttributeUint(pool, DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD,
-            value, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiPool_getOpenCount() [PUBLIC]
 //   Return the pool's open count.
 //-----------------------------------------------------------------------------
@@ -583,29 +481,6 @@ int dpiPool_getOpenCount(dpiPool *pool, uint32_t *value)
 {
     return dpiPool__getAttributeUint(pool, DPI_OCI_ATTR_SPOOL_OPEN_COUNT,
             value, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiPool_getSodaMetadataCache() [PUBLIC]
-//   Return whether the SODA metadata cache is enabled or not.
-//-----------------------------------------------------------------------------
-int dpiPool_getSodaMetadataCache(dpiPool *pool, int *enabled)
-{
-    dpiError error;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(pool, enabled)
-    if (dpiUtils__checkClientVersionMulti(pool->env->versionInfo, 19, 11, 21,
-            3, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    if (dpiOci__attrGet(pool->env->handle, DPI_OCI_HTYPE_ENV, enabled, NULL,
-            DPI_OCI_ATTR_SODA_METADATA_CACHE, "get SODA metadata cache",
-            &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
 }
 
 
@@ -643,50 +518,12 @@ int dpiPool_getWaitTimeout(dpiPool *pool, uint32_t *value)
 
 
 //-----------------------------------------------------------------------------
-// dpiPool_getPingInterval() [PUBLIC]
-//   Return the pool's ping-interval value.
-//-----------------------------------------------------------------------------
-int dpiPool_getPingInterval(dpiPool *pool, int *value)
-{
-    dpiError error;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(pool, value);
-    *value = pool->pingInterval;
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiPool_release() [PUBLIC]
 //   Release a reference to the pool.
 //-----------------------------------------------------------------------------
 int dpiPool_release(dpiPool *pool)
 {
     return dpiGen__release(pool, DPI_HTYPE_POOL, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiPool_reconfigure() [PUBLIC]
-//   Reconfigure the pool - OCI only allows poolMin, poolMax, poolIncr
-//   properties
-//-----------------------------------------------------------------------------
-int dpiPool_reconfigure(dpiPool *pool, uint32_t minSessions,
-        uint32_t maxSessions, uint32_t sessionIncrement)
-{
-    dpiError error;
-    uint32_t mode = DPI_OCI_SPC_REINITIALIZE;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    if (dpiOci__sessionPoolCreate(pool, NULL, 0, minSessions, maxSessions,
-            sessionIncrement, NULL, 0, NULL, 0, mode, &error) < 0)
-        return DPI_FAILURE;
-
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
 }
 
 
@@ -702,32 +539,6 @@ int dpiPool_setGetMode(dpiPool *pool, dpiPoolGetMode value)
 
 
 //-----------------------------------------------------------------------------
-// dpiPool_setAccessToken() [PUBLIC]
-//   Sets the token and private key for token based authentication
-//-----------------------------------------------------------------------------
-int dpiPool_setAccessToken(dpiPool *pool, dpiAccessToken *accessToken)
-{
-    dpiError error;
-    void * authInfo;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(pool, accessToken)
-
-    if (dpiOci__attrGet(pool->handle, DPI_OCI_HTYPE_SPOOL, (void *)&authInfo,
-            NULL, DPI_OCI_ATTR_SPOOL_AUTH,
-            "get attribute value", &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    if (dpiUtils__setAccessTokenAttributes(authInfo, accessToken,
-            pool->env->versionInfo, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiPool_setMaxLifetimeSession() [PUBLIC]
 //   Set the pool's maximum lifetime session.
 //-----------------------------------------------------------------------------
@@ -739,45 +550,11 @@ int dpiPool_setMaxLifetimeSession(dpiPool *pool, uint32_t value)
 
 
 //-----------------------------------------------------------------------------
-// dpiPool_setMaxSessionsPerShard() [PUBLIC]
-//   Set the pool's maximum sessions per shard.
-//-----------------------------------------------------------------------------
-int dpiPool_setMaxSessionsPerShard(dpiPool *pool, uint32_t value)
-{
-    return dpiPool__setAttributeUint(pool, DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD,
-            value, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiPool_setSodaMetadataCache() [PUBLIC]
-//   Set whether the SODA metadata cache is enabled or not.
-//-----------------------------------------------------------------------------
-int dpiPool_setSodaMetadataCache(dpiPool *pool, int enabled)
-{
-    dpiError error;
-
-    if (dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    if (dpiUtils__checkClientVersionMulti(pool->env->versionInfo, 19, 11, 21,
-            3, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    if (dpiOci__attrSet(pool->env->handle, DPI_OCI_HTYPE_ENV, &enabled, 0,
-            DPI_OCI_ATTR_SODA_METADATA_CACHE, "set SODA metadata cache",
-            &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiPool_setStmtCacheSize() [PUBLIC]
 //   Set the pool's default statement cache size.
 //-----------------------------------------------------------------------------
 int dpiPool_setStmtCacheSize(dpiPool *pool, uint32_t value)
 {
-    pool->stmtCacheSize = value;
     return dpiPool__setAttributeUint(pool, DPI_OCI_ATTR_SPOOL_STMTCACHESIZE,
             value, __func__);
 }
@@ -802,19 +579,4 @@ int dpiPool_setWaitTimeout(dpiPool *pool, uint32_t value)
 {
     return dpiPool__setAttributeUint(pool, DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT,
             value, __func__);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiPool_setPingInterval() [PUBLIC]
-//   Set the pool-ping-interval value.
-//-----------------------------------------------------------------------------
-int dpiPool_setPingInterval(dpiPool *pool, int value)
-{
-    dpiError error;
-
-    if(dpiPool__checkConnected(pool, __func__, &error) < 0)
-        return dpiGen__endPublicFn(pool, DPI_FAILURE, &error);
-    pool->pingInterval = value;
-    return dpiGen__endPublicFn(pool, DPI_SUCCESS, &error);
 }

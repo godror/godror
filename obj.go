@@ -171,8 +171,8 @@ func maybeString(v interface{}, ot *ObjectType) interface{} {
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
 		C.DPI_ORACLE_TYPE_NUMBER,
-		C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
-		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
+		C.DPI_ORACLE_TYPE_CLOB: //, C.DPI_ORACLE_TYPE_NCLOB:
+		//C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 
 		if b, ok := v.([]byte); ok {
 			return string(b)
@@ -1086,7 +1086,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	}
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
-	t.PackageName = C.GoStringN(info.packageName, C.int(info.packageNameLength))
+	// t.PackageName = C.GoStringN(info.packageName, C.int(info.packageNameLength))
 	t.CollectionOf = nil
 
 	numAttributes := int(info.numAttributes)

@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -63,30 +50,6 @@ int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
         return dpiError__set(error, "check Oracle Client version",
                 DPI_ERR_ORACLE_CLIENT_TOO_OLD, versionInfo->versionNum,
                 versionInfo->releaseNum, minVersionNum, minReleaseNum);
-    return DPI_SUCCESS;
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiUtils__checkClientVersionMulti() [INTERNAL]
-//   Check the Oracle Client version and verify that it is at least at the
-// minimum version that is required.
-//-----------------------------------------------------------------------------
-int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
-        int minVersionNum1, int minReleaseNum1, int minVersionNum2,
-        int minReleaseNum2, dpiError *error)
-{
-    if (versionInfo->versionNum < minVersionNum1 ||
-            (versionInfo->versionNum == minVersionNum1 &&
-                    versionInfo->releaseNum < minReleaseNum1) ||
-            (versionInfo->versionNum > minVersionNum1 &&
-                    versionInfo->versionNum < minVersionNum2) ||
-            (versionInfo->versionNum == minVersionNum2 &&
-                    versionInfo->releaseNum < minReleaseNum2))
-        return dpiError__set(error, "check Oracle Client version",
-                DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI, versionInfo->versionNum,
-                versionInfo->releaseNum, minVersionNum1, minReleaseNum1,
-                minVersionNum2, minReleaseNum2);
     return DPI_SUCCESS;
 }
 
@@ -176,14 +139,10 @@ int dpiUtils__getAttrStringWithDup(const char *action, const void *ociHandle,
     if (dpiOci__attrGet(ociHandle, ociHandleType, (void*) &source,
             valueLength, ociAttribute, action, error) < 0)
         return DPI_FAILURE;
-    if (*valueLength == 0) {
-        *value = NULL;
-    } else {
-        if (dpiUtils__allocateMemory(1, *valueLength, 0, action,
-                (void**) &temp, error) < 0)
-            return DPI_FAILURE;
-        *value = (const char*) memcpy(temp, source, *valueLength);
-    }
+    if (dpiUtils__allocateMemory(1, *valueLength, 0, action, (void**) &temp,
+            error) < 0)
+        return DPI_FAILURE;
+    *value = (const char*) memcpy(temp, source, *valueLength);
     return DPI_SUCCESS;
 }
 
@@ -522,64 +481,6 @@ int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
                     (void*) params->edition, params->editionLength,
                     DPI_OCI_ATTR_EDITION, "set edition", error) < 0)
         return DPI_FAILURE;
-
-    return DPI_SUCCESS;
-}
-
-
-
-//-----------------------------------------------------------------------------
-// dpiUtils__setAccessTokenAttributes() [INTERNAL]
-//   Set the token and private key for token based authentication on the auth
-// handle.
-//-----------------------------------------------------------------------------
-int dpiUtils__setAccessTokenAttributes(void *handle,
-        dpiAccessToken *accessToken, dpiVersionInfo *versionInfo,
-        dpiError *error)
-{
-    int isBearer = 1;
-
-    // check validity of access token
-    if (!accessToken->token || accessToken->tokenLength == 0 ||
-            (accessToken->privateKey && accessToken->privateKeyLength == 0))
-        return dpiError__set(error,
-                "check token based authentication parameters",
-                DPI_ERR_TOKEN_BASED_AUTH);
-
-    // IAM feature only available in Oracle Client 19.14+ and 21.5+ libraries
-    if (accessToken->privateKey) {
-        if (dpiUtils__checkClientVersionMulti(versionInfo, 19, 14, 21, 5,
-                error) < 0)
-            return DPI_FAILURE;
-
-    // OAuth feature only available in Oracle Client 19.15+ and 21.7+ libraries
-    } else {
-        if (dpiUtils__checkClientVersionMulti(versionInfo, 19, 15, 21, 7,
-                error) < 0)
-            return DPI_FAILURE;
-    }
-
-    // set token on auth handle
-    if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
-            (void*) accessToken->token, accessToken->tokenLength,
-            DPI_OCI_ATTR_TOKEN, "set access token", error) < 0)
-        return DPI_FAILURE;
-
-    // set IAM private key on auth handle
-    if (accessToken->privateKey) {
-        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
-                (void*) accessToken->privateKey,
-                accessToken->privateKeyLength, DPI_OCI_ATTR_IAM_PRIVKEY,
-                "set access token private key", error) < 0)
-            return DPI_FAILURE;
-
-    // set OAuth bearer flag on auth handle
-    } else {
-        if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_AUTHINFO,
-                (void*) &isBearer, 0, DPI_OCI_ATTR_TOKEN_ISBEARER,
-                "set bearer flag", error) < 0)
-            return DPI_FAILURE;
-    }
 
     return DPI_SUCCESS;
 }

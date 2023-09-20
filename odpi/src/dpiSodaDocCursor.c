@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -120,16 +107,20 @@ int dpiSodaDocCursor_close(dpiSodaDocCursor *cursor)
 // dpiSodaDocCursor_getNext() [PUBLIC]
 //   Return the next document available from the cursor.
 //-----------------------------------------------------------------------------
-int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, UNUSED uint32_t flags,
+int dpiSodaDocCursor_getNext(dpiSodaDocCursor *cursor, uint32_t flags,
         dpiSodaDoc **doc)
 {
     dpiError error;
+    uint32_t mode;
     void *handle;
 
     if (dpiSodaDocCursor__check(cursor, __func__, &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(cursor, doc)
-    if (dpiOci__sodaDocGetNext(cursor, &handle, &error) < 0)
+    mode = DPI_OCI_DEFAULT;
+    if (flags & DPI_SODA_FLAGS_ATOMIC_COMMIT)
+        mode |= DPI_OCI_SODA_ATOMIC_COMMIT;
+    if (dpiOci__sodaDocGetNext(cursor, &handle, mode, &error) < 0)
         return dpiGen__endPublicFn(cursor, DPI_FAILURE, &error);
     *doc = NULL;
     if (handle) {

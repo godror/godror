@@ -1,25 +1,12 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2020, Oracle and/or its affiliates. All rights reserved.
+// This program is free software: you can modify it and/or redistribute it
+// under the terms of:
 //
-// This software is dual-licensed to you under the Universal Permissive License
-// (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
-// 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose
-// either license.
+// (i)  the Universal Permissive License v 1.0 or at your option, any
+//      later version (http://oss.oracle.com/licenses/upl); and/or
 //
-// If you elect to accept the software under the Apache License, Version 2.0,
-// the following applies:
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// (ii) the Apache License v 2.0. (http://www.apache.org/licenses/LICENSE-2.0)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -303,47 +290,7 @@ static const dpiOracleType
         0,                                  // is character data
         0,                                  // can be in array
         1                                   // requires pre-fetch
-    },
-    {
-        DPI_ORACLE_TYPE_JSON_OBJECT,        // public Oracle type
-        DPI_NATIVE_TYPE_JSON_OBJECT,        // default native type
-        0,                                  // internal Oracle type
-        DPI_SQLCS_IMPLICIT,                 // charset form
-        sizeof(dpiJsonObject),              // buffer size
-        0,                                  // is character data
-        0,                                  // can be in array
-        0                                   // requires pre-fetch
-    },
-    {
-        DPI_ORACLE_TYPE_JSON_ARRAY,         // public Oracle type
-        DPI_NATIVE_TYPE_JSON_ARRAY,         // default native type
-        0,                                  // internal Oracle type
-        DPI_SQLCS_IMPLICIT,                 // charset form
-        sizeof(dpiJsonArray),               // buffer size
-        0,                                  // is character data
-        0,                                  // can be in array
-        0                                   // requires pre-fetch
-    },
-    {
-        DPI_ORACLE_TYPE_UROWID,             // public Oracle type
-        DPI_NATIVE_TYPE_ROWID,              // default native type
-        DPI_SQLT_RDD,                       // internal Oracle type
-        DPI_SQLCS_IMPLICIT,                 // charset form
-        sizeof(void*),                      // buffer size
-        1,                                  // is character data
-        1,                                  // can be in array
-        1                                   // requires pre-fetch
-    },
-    {
-        DPI_ORACLE_TYPE_LONG_NVARCHAR,      // public Oracle type
-        DPI_NATIVE_TYPE_BYTES,              // default native type
-        DPI_SQLT_CHR,                       // internal Oracle type
-        DPI_SQLCS_NCHAR,                    // charset form
-        DPI_MAX_BASIC_BUFFER_SIZE + 1,      // buffer size
-        1,                                  // is character data
-        0,                                  // can be in array
-        0                                   // requires pre-fetch
-    },
+    }
 };
 
 
@@ -456,8 +403,8 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 {
     const dpiOracleType *oracleType = NULL;
     dpiNativeTypeNum nativeTypeNum;
-    uint8_t charsetForm, isJson;
     uint32_t dataTypeAttribute;
+    uint8_t charsetForm;
     uint16_t ociSize;
 
     // acquire data type
@@ -553,7 +500,7 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 
     // acquire object type, if applicable
     if (info->oracleTypeNum == DPI_ORACLE_TYPE_OBJECT) {
-        if (dpiObjectType__allocate(conn, handle, handleType,
+        if (dpiObjectType__allocate(conn, handle, DPI_OCI_ATTR_TYPE_NAME,
                 &info->objectType, error) < 0)
             return DPI_FAILURE;
         if (dpiObjectType__isXmlType(info->objectType)) {
@@ -563,15 +510,6 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
             info->oracleTypeNum = DPI_ORACLE_TYPE_LONG_VARCHAR;
             info->defaultNativeTypeNum = DPI_NATIVE_TYPE_BYTES;
         }
-    }
-
-    // determine if the data refers to a JSON column
-    if (handleType == DPI_OCI_HTYPE_DESCRIBE &&
-            conn->env->versionInfo->versionNum >= 19) {
-        if (dpiOci__attrGet(handle, handleType, (void*) &isJson, 0,
-                DPI_OCI_ATTR_JSON_COL, "get is JSON column", error) < 0)
-            return DPI_FAILURE;
-        info->isJson = isJson;
     }
 
     return DPI_SUCCESS;

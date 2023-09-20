@@ -358,13 +358,13 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 	if enableEvents {
 		P.createMode |= C.DPI_MODE_CREATE_EVENTS
 	}
-	if stmtCacheSize != 0 {
-		if stmtCacheSize < 0 {
-			P.stmtCacheSize = 0
-		} else {
-			P.stmtCacheSize = C.uint32_t(stmtCacheSize)
-		}
-	}
+	// if stmtCacheSize != 0 {
+	// 	if stmtCacheSize < 0 {
+	// 		P.stmtCacheSize = 0
+	// 	} else {
+	// 		P.stmtCacheSize = C.uint32_t(stmtCacheSize)
+	// 	}
+	// }
 
 	return nil
 }
