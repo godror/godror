@@ -956,7 +956,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 	logger := getLogger(ctx)
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		defer func() {
-			logger.Debug("bindVarTypeSwitch", "info", info, "value", fmt.Sprintf("[%T]%#v", value, value))
+			logger.Debug("bindVarTypeSwitch", "info", fmt.Sprintf("%v", info), "value", fmt.Sprintf("[%T]%#v", value, value))
 		}()
 	}
 	vlr, isValuer := value.(driver.Valuer)
@@ -1024,7 +1024,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 				*get = dataGetNumber
 			}
 		}
-	case int32, []int32:
+	case int32, []int32, sql.NullInt32, []sql.NullInt32:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64
 		if !nilPtr {
 			info.set = dataSetNumber
@@ -1249,7 +1249,7 @@ func (st *statement) bindVarTypeSwitch(info *argInfo, get *dataGetter, value int
 
 	default:
 		if logger != nil {
-			logger.Debug("bindVarTypeSwitch default", "value", value)
+			logger.Debug("bindVarTypeSwitch default", "value", fmt.Sprintf("%T", value))
 		}
 		if !isValuer {
 			if ot, err := st.conn.getStructObjectType(value, ""); err != nil {
