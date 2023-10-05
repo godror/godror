@@ -7,11 +7,17 @@
 
 package godror
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func stringsCutPrefix(s, prefix string) (after string, found bool) {
 	return strings.CutPrefix(s, prefix)
 }
 func stringsCut(s, prefix string) (before, after string, found bool) {
 	return strings.Cut(s, prefix)
+}
+func multiErrorf(pattern, _ string, args ...interface{}) error {
+	return fmt.Errorf(pattern, args...)
 }

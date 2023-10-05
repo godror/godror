@@ -7,7 +7,10 @@
 
 package godror
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func stringsCutPrefix(s, prefix string) (after string, found bool) {
 	if strings.HasPrefix(s, prefix) {
@@ -20,4 +23,8 @@ func stringsCut(s, sep string) (before, after string, found bool) {
 		return s[:i], s[i+len(sep):], true
 	}
 	return s, "", false
+}
+
+func multiErrorf(_, pattern string, args ...interface{}) error {
+	return fmt.Errorf(pattern, args...)
 }

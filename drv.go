@@ -82,7 +82,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+	"github.com/godror/godror/slog"
 	"math"
 	"runtime"
 	"strconv"

@@ -910,6 +910,9 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		name = strings.ToUpper(name)
 	}
+	if name == "" {
+		return nil, errors.New("empty name")
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.dpiConn == nil {

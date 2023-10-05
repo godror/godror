@@ -22,7 +22,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"log/slog"
+	"github.com/godror/godror/slog"
 	"math"
 	"reflect"
 	"runtime"
