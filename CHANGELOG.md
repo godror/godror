@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.40.3]
+### Changed
+- Fix compilation regression with Go 1.19, caused by introducing log/slog.
+
+## [v0.40.2]
+### Changed
+- Fix performance issue of #301.
+
 ## [v0.40.0]
 ### Changed
 - ODPI-C v5.0.0
