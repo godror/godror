@@ -561,6 +561,10 @@ void dpiConn__free(dpiConn *conn, dpiError *error)
         conn->pool = NULL;
         conn->env = NULL;
     }
+    if (conn->transactionHandle) {
+        dpiOci__handleFree(conn->transactionHandle, DPI_OCI_HTYPE_TRANS);
+        conn->transactionHandle = NULL;
+    }
     if (conn->env) {
         dpiEnv__free(conn->env, error);
         conn->env = NULL;
@@ -580,10 +584,6 @@ void dpiConn__free(dpiConn *conn, dpiError *error)
     if (conn->objects) {
         dpiHandleList__free(conn->objects);
         conn->objects = NULL;
-    }
-    if (conn->transactionHandle) {
-        dpiOci__handleFree(conn->transactionHandle, DPI_OCI_HTYPE_TRANS);
-        conn->transactionHandle = NULL;
     }
     dpiUtils__freeMemory(conn);
 }
