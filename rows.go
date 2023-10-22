@@ -21,8 +21,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"io"
 	"github.com/godror/godror/slog"
+	"io"
 	"math"
 	"reflect"
 	"runtime"
@@ -519,10 +519,10 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			//dest[i] = uint64(C.dpiData_getUint64(d))
 			dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
-		case C.DPI_ORACLE_TYPE_TIMESTAMP,
+		case C.DPI_ORACLE_TYPE_DATE, C.DPI_ORACLE_TYPE_TIMESTAMP,
 			C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
-			C.DPI_NATIVE_TYPE_TIMESTAMP,
-			C.DPI_ORACLE_TYPE_DATE:
+			C.DPI_NATIVE_TYPE_TIMESTAMP:
+
 			if isNull {
 				dest[i] = nullDate
 				continue
@@ -535,12 +535,17 @@ func (r *rows) Next(dest []driver.Value) error {
 					nil, // just obey to what's included in the data
 				)
 			}
-			if tz == nil {
-				if logger != nil {
-					logger.Debug("DATE", "i", i, "tz", tz, "params", r.conn.params)
-				}
+			if tz == nil && logger != nil {
+				logger.Debug("DATE", "i", i, "tz", tz, "params", r.conn.params)
 			}
-			dest[i] = time.Date(int(ts.year), time.Month(ts.month), int(ts.day), int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond), tz)
+			dest[i] = time.Date(
+				int(ts.year), time.Month(ts.month), int(ts.day),
+				int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
+				tz,
+			)
+			if logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
+				logger.Debug("DATE", "i", i, "oraTyp", col.OracleType, "tz", fmt.Sprintf("%+v", tz), "ts", fmt.Sprintf("%+v", ts), "dest", dest[i])
+			}
 		case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
 			if isNull {
 				dest[i] = nil
