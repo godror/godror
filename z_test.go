@@ -2953,6 +2953,52 @@ func TestNumberAsStringBool(t *testing.T) {
 	}
 }
 
+func TestDST(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("DST"), 10*time.Minute)
+	defer cancel()
+
+	defer tl.enableLogging(t)()
+	t.Parallel()
+
+	start := time.Date(1950, 1, 1, 0, 0, 0, 0, time.Local)
+	now := time.Now()
+	maxNum := (365*4 + 1) * (now.Year() - start.Year() + 1) / 4
+	qry := `SELECT dt, TO_CHAR(dt, 'YYYY-MM-DD') as tx FROM (
+		SELECT TO_DATE('` + start.Format("2006-01-02") + `', 'YYYY-MM-DD')+rn AS dt 
+			FROM (SELECT ROWNUM AS rn FROM DUAL CONNECT BY LEVEL <= ` + strconv.Itoa(maxNum) + "))"
+	rows, err := testDb.QueryContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	var want string
+	first := true
+	var token struct{}
+	knownBadDates := map[string]struct{}{
+		"1954-05-23": token,
+		"1980-04-06": token,
+		"1981-03-29": token,
+		"1982-03-28": token,
+		"1983-03-27": token,
+	}
+	for rows.Next() {
+		var tim time.Time
+		if err := rows.Scan(&tim, &want); err != nil {
+			t.Fatalf("scan %s: %+v", qry, err)
+		}
+		if got := tim.Format("2006-01-02 15:04:05"); !strings.HasSuffix(got, " 00:00:00") {
+			if _, ok := knownBadDates[got[:10]]; ok {
+				t.Logf("got %s, wanted %s", tim.Format(time.RFC3339), want)
+			} else {
+				t.Errorf("got %s, wanted %s", tim.Format(time.RFC3339), want)
+			}
+		} else if first {
+			t.Log("first:", want)
+			first = false
+		}
+	}
+	t.Log("last:", want)
+}
+
 func TestNumberBool(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
