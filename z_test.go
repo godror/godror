@@ -2980,18 +2980,33 @@ func TestDST(t *testing.T) {
 		"1982-03-28": token,
 		"1983-03-27": token,
 	}
+	var stmt *sql.Stmt
+	{
+		const qry = `SELECT TO_CHAR(:1, 'YYYY-MM-DD HH24:MI:SS') FROM DUAL`
+		if stmt, err = testDb.PrepareContext(ctx, qry); err != nil {
+			t.Fatal(err)
+		}
+		defer stmt.Close()
+	}
+
 	for rows.Next() {
 		var tim time.Time
 		if err := rows.Scan(&tim, &want); err != nil {
 			t.Fatalf("scan %s: %+v", qry, err)
 		}
 		if got := tim.Format("2006-01-02 15:04:05"); !strings.HasSuffix(got, " 00:00:00") {
-			if _, ok := knownBadDates[got[:10]]; ok {
-				t.Logf("got %s, wanted %s", tim.Format(time.RFC3339), want)
-			} else {
+			if _, ok := knownBadDates[got[:10]]; !ok {
 				t.Errorf("got %s, wanted %s", tim.Format(time.RFC3339), want)
 			}
-		} else if first {
+			var s string
+			if err := stmt.QueryRowContext(ctx, tim).Scan(&s); err != nil {
+				t.Fatalf("scan [%v]: %+v", tim, err)
+			}
+			if s != want+" 00:00:00" {
+				t.Errorf("wanted %q, got %q", want, s)
+			}
+		}
+		if first {
 			t.Log("first:", want)
 			first = false
 		}

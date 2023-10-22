@@ -1493,40 +1493,12 @@ func (c *conn) dataSetTime(dv *C.dpiVar, data []C.dpiData, vv interface{}) error
 	}
 
 	//tzHour, tzMin := C.int8_t(c.tzOffSecs/3600), C.int8_t((c.tzOffSecs%3600)/60)
-	logger := getLogger(context.TODO())
 	tz := c.Timezone()
 	for i, t := range times {
 		if data[i].isNull == 1 {
 			continue
 		}
-		tz, tzOff := tz, 0
-		if tz != time.UTC && // Against ORA-08192
-			date8192begin.Before(t) && date8192end.After(t) {
-			tz = time.UTC
-		}
-		if t.Location() != tz {
-			t = t.In(tz)
-		}
-		if tz != time.UTC {
-			_, tzOff = t.Zone()
-		}
-		Y, M, D := t.Date()
-		if Y <= 0 { // Oracle skips year 0, 0001-01-01 follows -0001-12-31 !
-			Y--
-		}
-		if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841
-			return fmt.Errorf("%v: %w", t, ErrBadDate)
-		}
-		h, m, s := t.Clock()
-		if logger != nil {
-			logger.Debug("setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,
-				"Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", t.Nanosecond(), "tzHour", tzOff/3600, "tzMin", (tzOff%3600)/60)
-		}
-		C.dpiData_setTimestamp(&data[i],
-			C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
-			C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(t.Nanosecond()),
-			C.int8_t(tzOff/3600), C.int8_t((tzOff%3600)/60),
-		)
+		dataSetTime(&data[i], t, tz)
 	}
 	return nil
 }

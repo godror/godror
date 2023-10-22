@@ -609,8 +609,12 @@ func (c *conn) initTZ() error {
 //go:generate go run generate_tznames.go -o tznames_generated.txt
 //go:embed tznames_generated.txt
 var tzNamesRaw string
-var tzNames, tzNamesLC []string
-var tzNamesOnce sync.Once
+var (
+	tzNames, tzNamesLC      []string
+	tzNamesOnce             sync.Once
+	tzEuropeBudapest        *time.Location
+	tzLocalIsEuropeBudapest bool
+)
 
 func findProperTZName(dbTZ string) (*time.Location, error) {
 	tzNamesOnce.Do(func() {
