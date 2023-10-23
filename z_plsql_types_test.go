@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -32,8 +33,9 @@ var _ godror.ObjectScanner = new(MyTable)
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
 	*godror.Object
-	Txt string
-	ID  int64
+	Txt, AClob string
+	ID         int64
+	DT         time.Time
 }
 
 type coder interface{ Code() int }
@@ -55,6 +57,23 @@ func (r *MyRecord) Scan(src interface{}) error {
 	}
 	r.Txt = txt.(string)
 
+	dt, err := obj.Get("DT")
+	if err != nil {
+		return err
+	}
+	r.DT = dt.(time.Time)
+
+	aclob, err := obj.Get("ACLOB")
+	if err != nil {
+		return err
+	}
+	if aclob != nil {
+		if lob, ok := aclob.(*godror.Lob); ok && lob != nil {
+			b, err := io.ReadAll(lob)
+			r.AClob = string(b)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -83,6 +102,24 @@ func (r MyRecord) WriteObject() error {
 
 		data.SetBytes([]byte(r.Txt))
 		r.SetAttribute("TXT", &data)
+	}
+
+	if !r.DT.IsZero() {
+		err = r.GetAttribute(&data, "DT")
+		if err != nil {
+			return err
+		}
+		data.SetTime(r.DT)
+		r.SetAttribute("DT", &data)
+	}
+
+	if r.AClob != "" {
+		err = r.GetAttribute(&data, "ACLOB")
+		if err != nil {
+			return err
+		}
+		data.SetBytes([]byte(r.AClob))
+		r.SetAttribute("ACLOB", &data)
 	}
 
 	return nil
@@ -174,6 +211,7 @@ func createPackages(ctx context.Context) error {
 		id    NUMBER(5),
 		other test_pkg_types.my_other_record,
 		txt   VARCHAR2(200),
+		dt    DATE,
 		aclob CLOB
 	);
 	TYPE my_table IS TABLE OF my_record;
@@ -321,9 +359,10 @@ func dropPackages(ctx context.Context) {
 
 type objectStruct struct {
 	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
-	ID                    int32  `godror:"ID"`
-	Txt                   string `godror:"TXT"`
-	AClob                 string `godror:"ACLOB"`
+	ID                    int32     `godror:"ID"`
+	Txt                   string    `godror:"TXT"`
+	DT                    time.Time `godror:"DT"`
+	AClob                 string    `godror:"ACLOB"`
 }
 
 type sliceStruct struct {
