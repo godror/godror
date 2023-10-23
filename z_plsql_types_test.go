@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/UNO-SOFT/zlog/v2"
 	godror "github.com/godror/godror"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/sync/errgroup"
@@ -264,6 +265,7 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		rec.id := id;
 		rec.txt := txt;
+		rec.dt := SYSDATE;
 		--DBMS_LOB.createtemporary(rec.aclob, TRUE);
 		--DBMS_LOB.write(rec.aclob, LENGTH(txt)*2+1, 1, txt||'+'||txt);
 	END test_record;
@@ -273,7 +275,8 @@ func createPackages(ctx context.Context) error {
 	) IS
 	BEGIN
 		rec.id := rec.id + 1;
-		rec.txt := rec.txt || ' changed';
+		rec.txt := rec.txt || ' changed '||TO_CHAR(rec.dt, 'YYYY-MM-DD HH24:MI:SS');
+		rec.dt := SYSDATE;
 		--IF rec.aclob IS NOT NULL AND DBMS_LOB.isopen(rec.aclob) <> 0 THEN
 		--  DBMS_LOB.writeappend(rec.aclob, 7, ' changed');
 		--END IF;
@@ -295,6 +298,7 @@ func createPackages(ctx context.Context) error {
 				level <= x
 		) LOOP
 			item.id := c.lev;
+			item.dt := SYSDATE;
 			item.txt := 'test - ' || ( c.lev * 2 );
 			tb.extend();
 			tb(tb.count) := item;
@@ -325,6 +329,7 @@ func createPackages(ctx context.Context) error {
 			res_list.extend();
 			rec.id := i;
 			rec.rec.id := 2*i+1;  --initialize sub-record for #283
+			rec.rec.dt := SYSDATE;
 			--test_record(rec.id, rec.id, rec.rec);
 			res_list(res_list.count) := rec;
 		END LOOP;
@@ -431,6 +436,10 @@ func TestPlSqlTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if false && Verbose {
+		defer tl.enableLogging(t)()
+		godror.SetLogger(zlog.NewT(t).SLog())
+	}
 
 	t.Run("Struct", func(t *testing.T) {
 		var s objectStruct
@@ -512,8 +521,8 @@ func TestPlSqlTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if rec != tCase.want {
-				t.Errorf("%s: record got %v, wanted %v", tName, rec, tCase.want)
+			if d := cmp.Diff(rec.String(), tCase.want.String()); d != "" {
+				t.Errorf("%s: record got %v, wanted %v\n%s", tName, rec, tCase.want, d)
 			}
 		}
 	})
@@ -530,9 +539,9 @@ func TestPlSqlTypes(t *testing.T) {
 			in      MyRecord
 			wantID  int64
 		}{
-			"zeroValues": {in: MyRecord{}, wantID: 1, wantTxt: " changed"},
-			"default":    {in: MyRecord{ID: 1, Txt: "test"}, wantID: 2, wantTxt: "test changed"},
-			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed"},
+			"zeroValues": {in: MyRecord{}, wantID: 1, wantTxt: " changed "},
+			"default":    {in: MyRecord{ID: 1, Txt: "test"}, wantID: 2, wantTxt: "test changed "},
+			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed "},
 		} {
 
 			obj, err := objType.NewObject()

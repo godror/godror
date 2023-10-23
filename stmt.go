@@ -2854,10 +2854,10 @@ func (c *conn) dataGetObject(v interface{}, data []C.dpiData) error {
 			ObjectType: out.ObjectRef().ObjectType,
 			dpiData:    data[0],
 		}
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", d.GetObject())
-		}
 		obj := d.GetObject()
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
+		}
 		err := out.Scan(obj)
 		obj.Close()
 		return err
@@ -2875,7 +2875,11 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 	rvt := rv.Type()
 
 	if obj == nil {
-		rv.Set(reflect.Zero(rvt))
+		if rv.CanSet() {
+			rv.SetZero()
+		} else {
+			rv.Addr().SetZero()
+		}
 		return nil
 	}
 	if logger != nil {
@@ -2973,6 +2977,8 @@ Loop:
 		}
 		v := ad.Get()
 		switch x := v.(type) {
+		case time.Time:
+			rf.Set(reflect.ValueOf(x))
 		case *Object:
 			err := c.dataGetObjectStructObj(rf, x)
 			x.Close()
@@ -3052,7 +3058,7 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		rv = rv.Elem()
 	}
 	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
-		return fmt.Errorf("dataGetObjectStruct: not a struct: %T: %w", v, errUnknownType)
+		return fmt.Errorf("dataGetObjectStruct: not a struct or slice: %T: %w", v, errUnknownType)
 	}
 	d := Data{
 		ObjectType: ot,
@@ -3062,6 +3068,11 @@ func (c *conn) dataGetObjectStruct(ot *ObjectType, v interface{}, data []C.dpiDa
 		logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
 	}
 	obj := d.GetObject()
+	switch v.(type) {
+	case time.Time, *time.Time:
+		rv.Set(reflect.ValueOf(d.GetTime()))
+		return nil
+	}
 	err := c.dataGetObjectStructObj(rv, obj)
 	obj.Close()
 	return err

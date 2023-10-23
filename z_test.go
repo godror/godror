@@ -51,6 +51,7 @@ var (
 )
 
 var tblSuffix string
+var Verbose bool
 
 const maxSessions = 16
 const useDefaultFetchValue = -99
@@ -65,6 +66,7 @@ func TestMain(m *testing.M) {
 }
 
 func setUp() func() {
+	Verbose, _ = strconv.ParseBool(os.Getenv("VERBOSE"))
 	hsh := sha256.New()
 	bi, ok := debug.ReadBuildInfo()
 	if ok && bi != nil {
@@ -75,7 +77,7 @@ func setUp() func() {
 	}
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil)[:4])
 
-	if b, _ := strconv.ParseBool(os.Getenv("VERBOSE")); b {
+	if Verbose {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
 		logger = slog.New(slog.NewTextHandler(tl, nil))
 	}

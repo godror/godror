@@ -80,7 +80,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 		logger.Debug("getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
 			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
-			"data", data.dpiData, "p", fmt.Sprintf("%p", data))
+			"p", fmt.Sprintf("%p", data))
 	}
 	return nil
 }
