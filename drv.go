@@ -171,12 +171,6 @@ func init() {
 	if len(DriverName) > 30 {
 		DriverName = DriverName[:30]
 	}
-	tzEuropeBudapest, _ = time.LoadLocation("Europe/Budapest")
-	now := time.Now()
-	ebZone, ebOff := now.In(tzEuropeBudapest).Zone()
-	localZone, localOff := now.In(time.Local).Zone()
-	// fmt.Println("tzEB", tzEuropeBudapest.String(), "local", time.Local.String(), "ebZone", ebZone, "localZone", localZone)
-	tzLocalIsEuropeBudapest = ebZone == localZone && ebOff == localOff
 }
 
 var _ driver.Driver = (*drv)(nil)

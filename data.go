@@ -316,15 +316,14 @@ func dataSetTime(dpiData *C.dpiData, t time.Time, connTZ *time.Location) {
 	}
 	h, m, s := t.Clock()
 	ns := t.Nanosecond()
-	if h == 1 && m == 0 && s == 0 && ns == 0 &&
-		(tzEuropeBudapest != nil && tz == tzEuropeBudapest ||
-			tzLocalIsEuropeBudapest && tz == time.Local) &&
-		(Y == 1954 && M == 5 && D == 23 ||
-			Y == 1980 && M == 4 && D == 6 ||
-			M == 3 && (Y == 1981 && D == 29 ||
-				Y == 1982 && D == 28 ||
-				Y == 1983 && D == 27)) {
-		h = 0
+	// DST transition creates a gap and both times may be correct.
+	if (h == 1 || h == 23) && m == 0 && s == 0 && ns == 0 &&
+		tz != nil && tz != time.UTC {
+		zs, ze := t.ZoneBounds()
+		if zs.Equal(t) || ze.Equal(t) {
+			h = 0
+		}
+		// fmt.Printf("bounds: %s - %s (%s -> h=%d)\n", zs, ze, t, h)
 	}
 	if logger != nil {
 		logger.Debug("setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,

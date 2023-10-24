@@ -610,10 +610,8 @@ func (c *conn) initTZ() error {
 //go:embed tznames_generated.txt
 var tzNamesRaw string
 var (
-	tzNames, tzNamesLC      []string
-	tzNamesOnce             sync.Once
-	tzEuropeBudapest        *time.Location
-	tzLocalIsEuropeBudapest bool
+	tzNames, tzNamesLC []string
+	tzNamesOnce        sync.Once
 )
 
 func findProperTZName(dbTZ string) (*time.Location, error) {
