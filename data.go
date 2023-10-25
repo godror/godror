@@ -244,6 +244,10 @@ func (d *Data) GetObject() *Object {
 // SetObject sets Object to data.
 func (d *Data) SetObject(o *Object) {
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+	if o == nil {
+		d.SetNull()
+		return
+	}
 	d.ObjectType = o.ObjectType
 	C.dpiData_setObject(&d.dpiData, o.dpiObject)
 }

@@ -213,7 +213,8 @@ func createPackages(ctx context.Context) error {
 		other test_pkg_types.my_other_record,
 		txt   VARCHAR2(200),
 		dt    DATE,
-		aclob CLOB
+		aclob CLOB,
+		child test_pkg_types.my_other_record
 	);
 	TYPE my_table IS TABLE OF my_record;
 
@@ -364,10 +365,16 @@ func dropPackages(ctx context.Context) {
 
 type objectStruct struct {
 	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
-	ID                    int32     `godror:"ID"`
-	Txt                   string    `godror:"TXT"`
-	DT                    time.Time `godror:"DT"`
-	AClob                 string    `godror:"ACLOB"`
+	ID                    int32       `godror:"ID"`
+	Txt                   string      `godror:"TXT"`
+	DT                    time.Time   `godror:"DT"`
+	AClob                 string      `godror:"ACLOB"`
+	Child                 childStruct `godror:"CHILD"`
+}
+type childStruct struct {
+	godror.ObjectTypeName `godror:"test_pkg_types.my_other_record"`
+	ID                    int    `godror:"ID"`
+	Name                  string `godror:"TXT"`
 }
 
 type sliceStruct struct {
