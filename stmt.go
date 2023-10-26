@@ -3012,15 +3012,39 @@ Loop:
 				rf.SetBytes(buf.Bytes())
 			}
 		default:
+			if logger != nil {
+				logger.Debug("set", "src", fmt.Sprintf("%#v", v), "dst", rf)
+			}
 			switch vv := reflect.ValueOf(v); vv.Kind() {
 			case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				switch null := rf.Addr().Interface().(type) {
+				case *sql.NullInt32:
+					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetUint64())}
+				case *sql.NullInt64:
+					*null = sql.NullInt64{Valid: true, Int64: int64(ad.GetUint64())}
+				}
 				rf.SetUint(ad.GetUint64())
 			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
-				rf.SetInt(ad.GetInt64())
+				switch null := rf.Addr().Interface().(type) {
+				case *sql.NullInt32:
+					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetInt64())}
+				case *sql.NullInt64:
+					*null = sql.NullInt64{Valid: true, Int64: ad.GetInt64()}
+				default:
+					rf.SetInt(ad.GetInt64())
+				}
 			case reflect.Float32:
-				rf.SetFloat(float64(ad.GetFloat32()))
+				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
+					*null = sql.NullFloat64{Valid: true, Float64: float64(ad.GetFloat32())}
+				} else {
+					rf.SetFloat(float64(ad.GetFloat32()))
+				}
 			case reflect.Float64:
-				rf.SetFloat(ad.GetFloat64())
+				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
+					*null = sql.NullFloat64{Valid: true, Float64: ad.GetFloat64()}
+				} else {
+					rf.SetFloat(ad.GetFloat64())
+				}
 			default:
 				// TODO: slice/Collection of sth
 				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {

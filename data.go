@@ -415,8 +415,20 @@ func (d *Data) Set(v interface{}) error {
 		d.SetInt64(int64(x))
 	case int32:
 		d.SetInt64(int64(x))
+	case sql.NullInt32:
+		if x.Valid {
+			d.SetInt64(int64(x.Int32))
+		} else {
+			d.SetNull()
+		}
 	case int64:
 		d.SetInt64(x)
+	case sql.NullInt64:
+		if x.Valid {
+			d.SetInt64(x.Int64)
+		} else {
+			d.SetNull()
+		}
 	case int:
 		d.SetInt64(int64(x))
 	case uint8:
@@ -433,6 +445,12 @@ func (d *Data) Set(v interface{}) error {
 		d.SetFloat32(x)
 	case float64:
 		d.SetFloat64(x)
+	case sql.NullFloat64:
+		if x.Valid {
+			d.SetFloat64(x.Float64)
+		} else {
+			d.SetNull()
+		}
 	case string:
 		d.SetBytes([]byte(x))
 	case []byte:
@@ -467,6 +485,12 @@ func (d *Data) Set(v interface{}) error {
 	//d.SetStmt(x)
 	case bool:
 		d.SetBool(x)
+	case sql.NullBool:
+		if x.Valid {
+			d.SetBool(x.Bool)
+		} else {
+			d.SetNull()
+		}
 	//case rowid:
 	//d.NativeTypeNum = C.DPI_NATIVE_TYPE_ROWID
 	//d.SetRowid(x)
