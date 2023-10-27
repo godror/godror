@@ -2917,8 +2917,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 			if err := coll.GetItem(&d, i); err != nil {
 				return err
 			}
-			elt := d.Get()
-			switch x := elt.(type) {
+			switch x := d.Get().(type) {
 			case *Object:
 				err := c.dataGetObjectStructObj(re, x)
 				x.Close()
@@ -2926,7 +2925,7 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 					return err
 				}
 			default:
-				ev := reflect.ValueOf(elt)
+				ev := reflect.ValueOf(x)
 				if ev.Type() != ret {
 					ev = ev.Convert(ret)
 				}
@@ -2975,34 +2974,36 @@ Loop:
 		if err := obj.GetAttribute(&ad, nm); err != nil {
 			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
 		}
-		v := ad.Get()
-		switch x := v.(type) {
+		if ad.IsNull() {
+			rf.SetZero()
+			continue
+		}
+		switch v := ad.Get().(type) {
 		case time.Time:
-			rf.Set(reflect.ValueOf(x))
+			rf.Set(reflect.ValueOf(v))
 		case *Object:
-			err := c.dataGetObjectStructObj(rf, x)
-			x.Close()
+			err := c.dataGetObjectStructObj(rf, v)
+			v.Close()
 			if err != nil {
 				return err
 			}
-			x.Close()
 			continue Loop
 		case string:
 			if rf.Kind() == reflect.String {
-				rf.SetString(x)
+				rf.SetString(v)
 			} else {
-				rf.SetBytes([]byte(x))
+				rf.SetBytes([]byte(v))
 			}
 		case []byte:
 			if rf.Kind() == reflect.String {
-				rf.SetString(string(x))
+				rf.SetString(string(v))
 			} else {
-				rf.SetBytes(x)
+				rf.SetBytes(v)
 			}
 		case *Lob:
 			var buf bytes.Buffer
-			if x != nil && x.Reader != nil {
-				if _, err := buf.ReadFrom(x.Reader); err != nil {
+			if v != nil && v.Reader != nil {
+				if _, err := buf.ReadFrom(v.Reader); err != nil {
 					return fmt.Errorf("GetLobAttribute(%q): %w", nm, err)
 				}
 			}
