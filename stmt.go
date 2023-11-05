@@ -2766,7 +2766,9 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 				if logger != nil {
 					logger.Error("SetAttribute", "obj", ot.Name, "nm", nm,
 						"index", f.Index, "kind", f.Type.Kind(),
-						"value", rv.Interface(), "data", ad.Get(),
+						"value", rv.Interface(),
+						"isObject", attr.IsObject(),
+						"data", ad.Get(),
 						"dataNative", ad.NativeTypeNum, "dataObject", ad.ObjectType,
 						"attrNative", attr.NativeTypeNum, "dataObject", attr.ObjectType,
 					)

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"runtime"
 	"strings"
 	"sync"
@@ -703,6 +704,50 @@ func TestPlSqlTypes(t *testing.T) {
 					}
 				}
 			}
+		}
+	})
+
+	t.Run("open-close", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if Verbose {
+			godror.SetLogger(zlog.NewT(t).SLog())
+			defer godror.SetLogger(slog.Default())
+		}
+
+		Exec := func(ctx context.Context, qry string, params ...any) error {
+			tx, err := testDb.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			stmt, err := tx.PrepareContext(ctx, qry)
+			if err != nil {
+				t.Fatalf("prepare %s: %+v", qry, err)
+			}
+			defer stmt.Close()
+			_, err = stmt.ExecContext(ctx, params...)
+			return err
+		}
+
+		for i := 0; i < 5; i++ {
+			c := childStruct{ID: 1, Name: "test"}
+			p := objectStruct{ID: 1, Child: c}
+			var res int
+
+			if err := Exec(ctx, `DECLARE
+  v_parent test_pkg_types.my_record;
+BEGIN
+  v_parent := :p;
+  v_parent.id := v_parent.id + 1;
+  :res := v_parent.id;
+END;`,
+				sql.Named("p", p),
+				sql.Named("res", sql.Out{Dest: &res}),
+			); err != nil {
+				t.Fatalf("%d: %+v", i, err)
+			}
+			t.Logf("%d. result: %d", i, res)
 		}
 	})
 

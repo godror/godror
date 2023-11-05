@@ -102,9 +102,12 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		data.ObjectType = attr.ObjectType
 		data.dpiData.isNull = 1
 	}
-	return O.drv.checkExec(func() C.int {
+	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
-	})
+	}); err != nil {
+		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v: %w", data.NativeTypeNum, data.ObjectType, err)
+	}
+	return nil
 }
 
 // Set is a convenience function to set the named attribute with the given value.

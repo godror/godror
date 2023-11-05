@@ -536,7 +536,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				)
 			}
 			if tz == nil && logger != nil {
-				logger.Debug("DATE", "i", i, "tz", tz, "params", r.conn.params)
+				logger.Warn("DATE", "i", i, "tz", tz, "params", r.conn.params)
 			}
 			dest[i] = time.Date(
 				int(ts.year), time.Month(ts.month), int(ts.day),
