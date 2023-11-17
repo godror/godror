@@ -2454,6 +2454,7 @@ func TestIssue319(t *testing.T) {
 		p := parentObject{ID: 1, Child: c}
 		var res int
 
+		pre := testDb.Stats()
 		if err := Exec(ctx, `DECLARE
   v_parent test_parent_ot;
 BEGIN
@@ -2467,5 +2468,10 @@ END;`,
 			t.Fatalf("%d: %+v", i, err)
 		}
 		t.Logf("%d. result: %d", i, res)
+		post := testDb.Stats()
+		t.Logf("pre: %+v; post: %+v", pre, post)
+		if post.OpenConnections > pre.OpenConnections+1 {
+			t.Errorf("session leakage: was %d, have %d open connections", pre.OpenConnections, post.OpenConnections)
+		}
 	}
 }
