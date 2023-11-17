@@ -52,7 +52,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}
 	attr, ok := O.Attributes[name]
 	if !ok {
-		return fmt.Errorf("%s: %w", name, ErrNoSuchKey)
+		return fmt.Errorf("get %s[%s]: %w (have: %q)", O.Name, name, ErrNoSuchKey, O.AttributeNames())
 	}
 
 	data.reset()
@@ -92,7 +92,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	}
 	attr, ok := O.Attributes[name]
 	if !ok {
-		return fmt.Errorf("%s[%q]: %w", O, name, ErrNoSuchKey)
+		return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
 	}
 	if data.NativeTypeNum == 0 {
 		if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelWarn) {
@@ -921,6 +921,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
+
 	if t := c.objTypes[name]; t != nil {
 		if t.drv != nil {
 			//fmt.Println("GetObjectType CACHED", name)
@@ -1095,7 +1096,6 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	t.PackageName = C.GoStringN(info.packageName, C.int(info.packageNameLength))
 	t.CollectionOf = nil
 
-	numAttributes := int(info.numAttributes)
 	if info.isCollection == 1 {
 		t.CollectionOf = &ObjectType{drv: t.drv}
 		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo, cache); err != nil {
@@ -1109,13 +1109,22 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 			C.dpiObjectType_addRef(t.CollectionOf.dpiObjectType)
 		}
 	}
-	if numAttributes == 0 {
+	if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
+		logger.Debug("ObjectType.init", "schema", t.Schema, "package", t.PackageName, "name", t.Name, "isColl", info.isCollection, "numAttrs", info.numAttributes, "info", fmt.Sprintf("%+v", info))
+	}
+
+	numAttributes := int(info.numAttributes)
+	if numAttributes == 0 && info.isCollection == 0 {
+		if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelWarn) {
+			logger.Warn("ObjectType.init type has no attributes", "schema", t.Schema, "package", t.PackageName, "name", t.Name, "info", fmt.Sprintf("%+v", info))
+		}
 		t.Attributes = map[string]ObjectAttribute{}
 		if cache != nil {
 			cache[t.FullName()] = t
 		}
 		return nil
 	}
+
 	t.Attributes = make(map[string]ObjectAttribute, numAttributes)
 	attrs := make([]*C.dpiObjectAttr, numAttributes)
 	if C.dpiObjectType_getAttributes(d,

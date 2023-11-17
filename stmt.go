@@ -2720,7 +2720,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 		}
 
 		obj, err := ot.NewObject()
-		if err != nil {
+		if err != nil || obj == nil {
 			return nil, err
 		}
 		for i, n := 0, rvt.NumField(); i < n; i++ {
@@ -2738,7 +2738,9 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 			}
 			attr, ok := obj.Attributes[nm]
 			if !ok {
-				return nil, fmt.Errorf("%s[%q]: %w", obj, nm, ErrNoSuchKey)
+				return nil, fmt.Errorf("copy %s to %s.%s: %w (have: %q)",
+					f.Name,
+					obj.Name, nm, ErrNoSuchKey, obj.AttributeNames())
 			}
 			var ad Data
 			if !attr.IsObject() {

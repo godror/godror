@@ -371,15 +371,8 @@ type objectStruct struct {
 	Txt                   string        `godror:"TXT"`
 	DT                    time.Time     `godror:"DT"`
 	AClob                 string        `godror:"ACLOB"`
-	Child                 childStruct   `godror:"CHILD"`
 	NInt32                sql.NullInt32 `godror:"INT32"`
 }
-type childStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.my_other_record"`
-	ID                    int    `godror:"ID"`
-	Name                  string `godror:"TXT"`
-}
-
 type sliceStruct struct {
 	godror.ObjectTypeName `json:"-"`
 	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
@@ -704,50 +697,6 @@ func TestPlSqlTypes(t *testing.T) {
 					}
 				}
 			}
-		}
-	})
-
-	t.Run("open-close", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		if Verbose {
-			godror.SetLogger(zlog.NewT(t).SLog())
-			defer godror.SetLogger(slog.Default())
-		}
-
-		Exec := func(ctx context.Context, qry string, params ...any) error {
-			tx, err := testDb.BeginTx(ctx, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer tx.Rollback()
-			stmt, err := tx.PrepareContext(ctx, qry)
-			if err != nil {
-				t.Fatalf("prepare %s: %+v", qry, err)
-			}
-			defer stmt.Close()
-			_, err = stmt.ExecContext(ctx, params...)
-			return err
-		}
-
-		for i := 0; i < 5; i++ {
-			c := childStruct{ID: 1, Name: "test"}
-			p := objectStruct{ID: 1, Child: c}
-			var res int
-
-			if err := Exec(ctx, `DECLARE
-  v_parent test_pkg_types.my_record;
-BEGIN
-  v_parent := :p;
-  v_parent.id := v_parent.id + 1;
-  :res := v_parent.id;
-END;`,
-				sql.Named("p", p),
-				sql.Named("res", sql.Out{Dest: &res}),
-			); err != nil {
-				t.Fatalf("%d: %+v", i, err)
-			}
-			t.Logf("%d. result: %d", i, res)
 		}
 	})
 
@@ -2442,4 +2391,81 @@ type RateCode struct {
 	RateCode              string `json:"rateCode" db:"RATECODE"`
 	RateCodeName          string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
 	RateStucture          string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
+}
+
+type parentObject struct {
+	godror.ObjectTypeName `godror:"test_parent_ot"`
+	ID                    int         `godror:"ID"`
+	Child                 childObject `godror:"CHILD"`
+}
+type childObject struct {
+	godror.ObjectTypeName `godror:"test_child_ot"`
+	ID                    int    `godror:"ID"`
+	Name                  string `godror:"NAME"`
+}
+
+func TestIssue319(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("Issue319"), 10*time.Second)
+	defer cancel()
+	if Verbose {
+		godror.SetLogger(zlog.NewT(t).SLog())
+		defer godror.SetLogger(slog.Default())
+	}
+
+	cleanup := func() {
+		for _, qry := range []string{
+			"DROP TYPE test_parent_ot",
+			"DROP TYPE test_child_ot",
+		} {
+			if _, err := testDb.ExecContext(context.Background(), qry); err != nil {
+				t.Logf("%s: %+v", qry, err)
+			}
+		}
+	}
+
+	cleanup()
+	defer cleanup()
+	for _, qry := range []string{
+		"CREATE OR REPLACE TYPE test_child_ot AS OBJECT (id NUMBER(3), name VARCHAR2(128));",
+		"CREATE OR REPLACE TYPE test_parent_ot AS OBJECT (id NUMBER(3), child test_child_ot);",
+	} {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+
+	Exec := func(ctx context.Context, qry string, params ...any) error {
+		tx, err := testDb.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		stmt, err := tx.PrepareContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("prepare %s: %+v", qry, err)
+		}
+		defer stmt.Close()
+		_, err = stmt.ExecContext(ctx, params...)
+		return err
+	}
+
+	for i := 0; i < 5; i++ {
+		c := childObject{ID: 1, Name: "test"}
+		p := parentObject{ID: 1, Child: c}
+		var res int
+
+		if err := Exec(ctx, `DECLARE
+  v_parent test_parent_ot;
+BEGIN
+  v_parent := :p;
+  v_parent.id := v_parent.id + 1;
+  :res := v_parent.id;
+END;`,
+			sql.Named("p", p),
+			sql.Named("res", sql.Out{Dest: &res}),
+		); err != nil {
+			t.Fatalf("%d: %+v", i, err)
+		}
+		t.Logf("%d. result: %d", i, res)
+	}
 }
