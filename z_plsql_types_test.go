@@ -2433,9 +2433,17 @@ func TestIssue319(t *testing.T) {
 			t.Fatalf("%s: %+v", qry, err)
 		}
 	}
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.MinSessions, P.MaxSessions = 1, 1
+	t.Logf("params: %s", P)
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
 
 	Exec := func(ctx context.Context, qry string, params ...any) error {
-		tx, err := testDb.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2454,7 +2462,7 @@ func TestIssue319(t *testing.T) {
 		p := parentObject{ID: 1, Child: c}
 		var res int
 
-		pre := testDb.Stats()
+		pre := db.Stats()
 		if err := Exec(ctx, `DECLARE
   v_parent test_parent_ot;
 BEGIN
@@ -2468,8 +2476,8 @@ END;`,
 			t.Fatalf("%d: %+v", i, err)
 		}
 		t.Logf("%d. result: %d", i, res)
-		post := testDb.Stats()
-		t.Logf("pre: %+v; post: %+v", pre, post)
+		post := db.Stats()
+		t.Logf("\npre: %+v\npost: %+v", pre, post)
 		if post.OpenConnections > pre.OpenConnections+1 {
 			t.Errorf("session leakage: was %d, have %d open connections", pre.OpenConnections, post.OpenConnections)
 		}
