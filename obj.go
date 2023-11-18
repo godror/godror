@@ -208,9 +208,37 @@ func (O *Object) Close() error {
 	if obj == nil {
 		return nil
 	}
-	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	logger := getLogger(context.TODO())
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", obj))
 	}
+
+	// Close sub-objects first
+	for _, a := range O.Attributes {
+		if !a.IsObject() {
+			continue
+		}
+		if err := func() error {
+			data := scratch.Get()
+			defer scratch.Put(data)
+			if err := O.GetAttribute(data, a.Name); err != nil {
+				return fmt.Errorf("get attribute %q: %w", a.Name, err)
+			}
+			obj := data.GetObject()
+			if obj == nil {
+				return nil
+			}
+			if logger != nil && logger.Enabled(context.TODO(), slog.LevelInfo) {
+				logger.Info("Object.Close close sub-object", "attribute", a.Name, "object", fmt.Sprintf("%p", obj))
+			}
+
+			return obj.Close()
+		}(); err != nil && logger != nil {
+			logger.Error("Close sub-object", "name", a.Name, "error", err)
+		}
+	}
+	// Reset all attributes
+	O.ResetAttributes()
 
 	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
@@ -1109,14 +1137,18 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 			C.dpiObjectType_addRef(t.CollectionOf.dpiObjectType)
 		}
 	}
-	if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
+	ctx := context.TODO()
+	logger := getLogger(ctx)
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("ObjectType.init", "schema", t.Schema, "package", t.PackageName, "name", t.Name, "isColl", info.isCollection, "numAttrs", info.numAttributes, "info", fmt.Sprintf("%+v", info))
 	}
 
 	numAttributes := int(info.numAttributes)
-	if numAttributes == 0 && info.isCollection == 0 {
-		if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelWarn) {
-			logger.Warn("ObjectType.init type has no attributes", "schema", t.Schema, "package", t.PackageName, "name", t.Name, "info", fmt.Sprintf("%+v", info))
+	if numAttributes == 0 {
+		if info.isCollection == 0 {
+			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
+				logger.Warn("ObjectType.init type has no attributes", "schema", t.Schema, "package", t.PackageName, "name", t.Name, "info", fmt.Sprintf("%+v", info))
+			}
 		}
 		t.Attributes = map[string]ObjectAttribute{}
 		if cache != nil {
@@ -1133,13 +1165,12 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getAttributes: %w", t, t.drv.getError())
 	}
-	logger := getLogger(context.TODO())
 	for i, attr := range attrs {
 		var attrInfo C.dpiObjectAttrInfo
 		if C.dpiObjectAttr_getInfo(attr, &attrInfo) == C.DPI_FAILURE {
 			return fmt.Errorf("%v.attr_getInfo: %w", attr, t.drv.getError())
 		}
-		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("getAttributes", "i", i, "attrInfo", attrInfo)
 		}
 
