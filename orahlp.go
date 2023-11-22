@@ -175,6 +175,9 @@ func (numType) ConvertValue(v interface{}) (driver.Value, error) {
 	case float64:
 		return strconv.FormatFloat(x, 'f', -1, 64), nil
 	case decimalDecompose:
+		if x == nil {
+			return "", fmt.Errorf("nil Decomposer")
+		}
 		var n Number
 		err := n.Compose(x.Decompose(nil))
 		return string(n), err
@@ -358,6 +361,9 @@ func (ce CompileError) Error() string {
 //
 // If all is false, only errors are returned; otherwise, warnings, too.
 func GetCompileErrors(ctx context.Context, queryer Querier, all bool) ([]CompileError, error) {
+	if queryer == nil {
+		return nil, fmt.Errorf("nil queryer")
+	}
 	rows, err := queryer.QueryContext(ctx, `
 	SELECT USER owner, name, type, line, position, message_number, text, attribute
 		FROM user_errors
@@ -590,6 +596,9 @@ var getConnMu sync.Mutex
 
 // getConn will acquire a separate connection to the same DB as what ex is connected to.
 func getConn(ctx context.Context, ex Execer) (*conn, error) {
+	if ex == nil {
+		return nil, fmt.Errorf("nil ex")
+	}
 	getConnMu.Lock()
 	defer getConnMu.Unlock()
 	var c interface{}
@@ -659,6 +668,9 @@ type ConnPool struct {
 func NewConnPool(pool interface {
 	Conn(context.Context) (*sql.Conn, error)
 }, size int) *ConnPool {
+	if pool == nil {
+		panic(fmt.Errorf("nil pool"))
+	}
 	if size < 1 {
 		size = 1
 	}
@@ -669,6 +681,9 @@ func NewConnPool(pool interface {
 //
 // You must call Close on the returned PooledConn to return it to the pool!
 func (p *ConnPool) Conn(ctx context.Context) (*PooledConn, error) {
+	if p == nil {
+		return nil, fmt.Errorf("nil ConnPool")
+	}
 	select {
 	case c := <-p.freeList:
 		return c, nil

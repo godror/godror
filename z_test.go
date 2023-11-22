@@ -280,10 +280,17 @@ var statTicker *time.Ticker
 var statTicks chan time.Time
 
 func PrintConnStats() {
-	statTicks <- time.Now()
+	if statTicks != nil {
+		select {
+		case statTicks <- time.Now():
+		default:
+		}
+	}
 }
 func StopConnStats() {
-	statTicker.Stop()
+	if statTicker != nil {
+		statTicker.Stop()
+	}
 }
 
 func testContext(name string) context.Context {

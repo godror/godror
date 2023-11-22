@@ -14,7 +14,7 @@ var Version = "v0.40.4"
 
 // Version of this driver
 func init() {
-	if info, ok := debug.ReadBuildInfo(); ok {
+	if info, ok := debug.ReadBuildInfo(); ok && info != nil {
 		for _, m := range info.Deps {
 			if m == nil || m.Path != "github.com/godror/godror" {
 				continue
