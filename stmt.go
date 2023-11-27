@@ -2763,6 +2763,7 @@ func (c *conn) dataSetObjectStructObj(ot *ObjectType, rv reflect.Value) (*Object
 					return nil, err
 				}
 				ad.SetObject(sub)
+				defer sub.Close()
 			}
 			if err := obj.SetAttribute(nm, &ad); err != nil {
 				if logger != nil {
