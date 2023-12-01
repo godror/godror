@@ -104,6 +104,8 @@ const (
 
 	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ArraySize statement option).
 	DefaultArraySize = 1 << 10
+
+	baseWaitTimeout = 30 * time.Second
 )
 
 // DriverName is set on the connection to be seen in the DB
@@ -201,7 +203,7 @@ func (d *drv) Close() error {
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(baseWaitTimeout):
 	}
 
 	go func() {
@@ -213,7 +215,7 @@ func (d *drv) Close() error {
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(5 * time.Second):
+	case <-time.After(baseWaitTimeout):
 		return fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
 	}
 }
