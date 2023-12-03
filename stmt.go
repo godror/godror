@@ -2935,6 +2935,9 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 					ev = ev.Convert(ret)
 				}
 				re.Set(ev)
+				if c, ok := x.(io.Closer); ok {
+					c.Close()
+				}
 			}
 			rv = reflect.Append(rv, re)
 		}
@@ -2983,7 +2986,8 @@ Loop:
 			rf.SetZero()
 			continue
 		}
-		switch v := ad.Get().(type) {
+		x := ad.Get()
+		switch v := x.(type) {
 		case time.Time:
 			rf.Set(reflect.ValueOf(v))
 		case *Object:
@@ -3011,6 +3015,11 @@ Loop:
 				if _, err := buf.ReadFrom(v.Reader); err != nil {
 					return fmt.Errorf("GetLobAttribute(%q): %w", nm, err)
 				}
+			}
+			if c, ok := x.(io.Closer); ok {
+				c.Close()
+			} else if c, ok := v.Reader.(io.Closer); ok {
+				c.Close()
 			}
 			if rf.Kind() == reflect.String {
 				rf.SetString(buf.String())
