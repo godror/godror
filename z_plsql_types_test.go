@@ -2531,7 +2531,7 @@ func TestObjLobClose(t *testing.T) {
 		var res float64
 		err := Exec(ctx, db, `
 	declare
-		v_child typeClob;
+		v_child test_clob_ot;
 	begin
 		v_child := :c;
 		v_child.id := v_child.id + 5;
@@ -2549,7 +2549,7 @@ func TestObjLobClose(t *testing.T) {
 
 		err := Exec(ctx, db, `
 	declare
-		v_child typeClob := typeClob(id => null, value => null);
+		v_child test_clob_ot := test_clob_ot(id => null, value => null);
 	begin
 		v_child.id :=:i + 5;
 		v_child.value := 'hello world ' || v_child.id;
@@ -2558,7 +2558,7 @@ func TestObjLobClose(t *testing.T) {
 			sql.Named(`i`, i),
 			sql.Named(`v_res`, sql.Out{In: false, Dest: &c}),
 		)
-		fmt.Println("result", i, c, err)
+		t.Log("result", i, c, err)
 	}
 
 	P, err := godror.ParseDSN(testConStr)
@@ -2566,20 +2566,20 @@ func TestObjLobClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	P.PoolParams.SessionTimeout = time.Duration(10) * time.Second
-	P.PoolParams.WaitTimeout = time.Duration(2) * time.Second
-	P.PoolParams.MaxLifeTime = time.Duration(30) * time.Second
-	P.PoolParams.SessionIncrement = int(1)
-	P.PoolParams.MinSessions = int(1)
-	P.PoolParams.MaxSessions = int(3)
+	P.PoolParams.SessionTimeout = 30 * time.Second
+	P.PoolParams.WaitTimeout = 10 * time.Second
+	P.PoolParams.MaxLifeTime = 30 * time.Second
+	P.PoolParams.SessionIncrement = 1
+	P.PoolParams.MinSessions = 1
+	P.PoolParams.MaxSessions = 3
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		testConnectInClob(ctx, db, float64(i))
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		testConnectOutClob(ctx, db, float64(i))
 	}
 }
