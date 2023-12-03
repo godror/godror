@@ -2483,3 +2483,103 @@ END;`,
 		}
 	}
 }
+
+func TestObjLobClose(t *testing.T) {
+	const dropQry = `DROP TYPE test_clob_ot`
+	cleanup := func() { testDb.ExecContext(context.Background(), dropQry) }
+	cleanup()
+	const qry = `create or replace type test_clob_ot as object(
+  id number,
+  value clob
+)`
+	ctx, cancel := context.WithTimeout(testContext("ObjLobClose"), 10*time.Second)
+	defer cancel()
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer cleanup()
+
+	Exec := func(ctx context.Context, db *sql.DB, query string, variables ...any) error {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		stmt, err := tx.PrepareContext(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		_, err = stmt.ExecContext(ctx, variables...)
+		return err
+	}
+
+	type clob struct {
+		godror.ObjectTypeName `godror:"test_clob_ot"`
+		Id                    float64 `godror:"ID"`
+		Value                 string  `godror:"VALUE"`
+	}
+
+	testConnectInClob := func(ctx context.Context, db *sql.DB, i float64) {
+		t.Log("start In clob", i)
+		var c clob
+		c.Id = 1
+		c.Value = `test`
+
+		var res float64
+		err := Exec(ctx, db, `
+	declare
+		v_child typeClob;
+	begin
+		v_child := :c;
+		v_child.id := v_child.id + 5;
+		:res := v_child.id;
+	end;`,
+			sql.Named(`c`, c),
+			sql.Named(`res`, sql.Out{In: false, Dest: &res}),
+		)
+		t.Log("result", i, res, err)
+	}
+
+	testConnectOutClob := func(ctx context.Context, db *sql.DB, i float64) {
+		t.Log("start Out clob", i)
+		var c clob
+
+		err := Exec(ctx, db, `
+	declare
+		v_child typeClob := typeClob(id => null, value => null);
+	begin
+		v_child.id :=:i + 5;
+		v_child.value := 'hello world ' || v_child.id;
+		:v_res := v_child;
+	end;`,
+			sql.Named(`i`, i),
+			sql.Named(`v_res`, sql.Out{In: false, Dest: &c}),
+		)
+		fmt.Println("result", i, c, err)
+	}
+
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	P.PoolParams.SessionTimeout = time.Duration(10) * time.Second
+	P.PoolParams.WaitTimeout = time.Duration(2) * time.Second
+	P.PoolParams.MaxLifeTime = time.Duration(30) * time.Second
+	P.PoolParams.SessionIncrement = int(1)
+	P.PoolParams.MinSessions = int(1)
+	P.PoolParams.MaxSessions = int(3)
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
+
+	for i := 0; i < 5; i++ {
+		testConnectInClob(ctx, db, float64(i))
+	}
+
+	for i := 0; i < 5; i++ {
+		testConnectOutClob(ctx, db, float64(i))
+	}
+}
