@@ -889,13 +889,15 @@ type ObjectType struct {
 	drv                                 *drv
 	dpiObjectType                       *C.dpiObjectType
 	Schema, Name, PackageName           string
+	Annotations                         []Annotation
 	DBSize, ClientSizeInBytes, CharSize int
 	mu                                  sync.RWMutex
 	OracleTypeNum                       C.dpiOracleTypeNum
 	NativeTypeNum                       C.dpiNativeTypeNum
-	Precision                           int16
-	Scale                               int8
-	FsPrecision                         uint8
+	DomainAnnotation
+	Precision   int16
+	Scale       int8
+	FsPrecision uint8
 }
 
 // AttributeNames returns the Attributes' names ordered as on the database (by ObjectAttribute.Sequence).
@@ -1211,8 +1213,10 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*O
 	t.Precision = int16(typ.precision)
 	t.Scale = int8(typ.scale)
 	t.FsPrecision = uint8(typ.fsPrecision)
+	t.DomainAnnotation.init(typ)
 	return t.init(cache)
 }
+
 func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]*ObjectType) (*ObjectType, error) {
 	if d == nil {
 		panic("drv is nil")

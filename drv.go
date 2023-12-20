@@ -396,6 +396,28 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		poolKey:  poolKey,
 		objTypes: make(map[string]*ObjectType),
 	}
+	logger := P.Logger
+	var cs *C.char
+	var length C.uint
+	for _, td := range []struct {
+		Name string
+		Dest *string
+		f    func() C.int
+	}{
+		{"DbDomain", &c.DomainName, func() C.int { return C.dpiConn_getDbDomain(c.dpiConn, &cs, &length) }},
+		{"Edition", &c.Edition, func() C.int { return C.dpiConn_getEdition(c.dpiConn, &cs, &length) }},
+		{"DbName", &c.DBName, func() C.int { return C.dpiConn_getDbName(c.dpiConn, &cs, &length) }},
+		{"ServiceName", &c.ServiceName, func() C.int { return C.dpiConn_getServiceName(c.dpiConn, &cs, &length) }},
+	} {
+		if err := c.checkExec(td.f); err != nil {
+			if logger != nil {
+				logger.Error(td.Name, "error", err)
+			}
+		} else if length != 0 && cs != nil {
+			*td.Dest = C.GoStringN(cs, C.int(length))
+		}
+	}
+
 	if pool != nil {
 		c.params.PoolParams = pool.params.PoolParams
 		if c.params.Username == "" {

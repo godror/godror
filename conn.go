@@ -54,19 +54,21 @@ var _ driver.Validator = (*conn)(nil)
 //var _ driver.NamedValueChecker = (*conn)(nil)
 
 type conn struct {
-	drv           *drv
-	dpiConn       *C.dpiConn
-	currentTT     atomic.Value
-	tranParams    tranParams
-	poolKey       string
-	Server        VersionInfo
-	params        dsn.ConnectionParams
-	mu            sync.RWMutex
-	objTypes      map[string]*ObjectType
-	tzOffSecs     int
-	inTransaction bool
-	released      bool
-	tzValid       bool
+	drv                 *drv
+	dpiConn             *C.dpiConn
+	currentTT           atomic.Value
+	tranParams          tranParams
+	poolKey             string
+	Edition, DomainName string
+	DBName, ServiceName string
+	Server              VersionInfo
+	params              dsn.ConnectionParams
+	mu                  sync.RWMutex
+	objTypes            map[string]*ObjectType
+	tzOffSecs           int
+	inTransaction       bool
+	released            bool
+	tzValid             bool
 }
 
 func (c *conn) getError() error {
@@ -1198,8 +1200,10 @@ func (c *conn) String() string {
 	currentTT, _ := c.currentTT.Load().(TraceTag)
 	return currentTT.String() +
 		"&" + c.params.String() +
-		"&serverVersion=" + c.Server.String() +
-		"&tzOffSecs=" + strconv.FormatInt(int64(c.tzOffSecs), 10)
+		"&serverVersion=" + url.QueryEscape(c.Server.String()) +
+		"&tzOffSecs=" + strconv.FormatInt(int64(c.tzOffSecs), 10) +
+		"&dbName=" + url.QueryEscape(c.DBName) + "&serviceName=" + url.QueryEscape(c.ServiceName) +
+		"&edition=" + url.QueryEscape(c.Edition) + "&domainName=" + url.QueryEscape(c.DomainName)
 }
 
 func (c *conn) getLogger(ctx context.Context) *slog.Logger {
@@ -1213,3 +1217,22 @@ func (c *conn) getLogger(ctx context.Context) *slog.Logger {
 	}
 	return nil
 }
+
+func (c *conn) GetCurrentSchema(name string) (string, error) {
+	var cs *C.char
+	var length C.uint
+	if err := c.checkExec(func() C.int { return C.dpiConn_getCurrentSchema(c.dpiConn, &cs, &length) }); err != nil {
+		return "", err
+	}
+	s := C.GoStringN(cs, C.int(length))
+	C.free(unsafe.Pointer(cs))
+	return s, nil
+}
+func (c *conn) SetCurrentSchema(name string) error {
+	cs := C.CString(name)
+	err := c.checkExec(func() C.int { return C.dpiConn_setCurrentSchema(c.dpiConn, cs, C.uint(len(name))) })
+	C.free(unsafe.Pointer(cs))
+	return err
+}
+
+//TODO[tgulacsi]: dpiConn_getMaxOpenCursors, dpiConn_getTransactionInProgress

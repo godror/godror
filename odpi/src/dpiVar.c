@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -757,6 +757,7 @@ int dpiVar__getValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
                 case DPI_ORACLE_TYPE_LONG_VARCHAR:
                 case DPI_ORACLE_TYPE_LONG_NVARCHAR:
                 case DPI_ORACLE_TYPE_LONG_RAW:
+                case DPI_ORACLE_TYPE_XMLTYPE:
                     if (buffer->dynamicBytes)
                         return dpiVar__setBytesFromDynamicBytes(bytes,
                                 &buffer->dynamicBytes[pos], error);

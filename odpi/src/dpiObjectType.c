@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -353,8 +353,17 @@ int dpiObjectType_getInfo(dpiObjectType *objType, dpiObjectTypeInfo *info)
     info->schema = objType->schema;
     info->schemaLength = objType->schemaLength;
     info->isCollection = objType->isCollection;
-    info->elementTypeInfo = objType->elementTypeInfo;
     info->numAttributes = objType->numAttributes;
+
+    // the size of the dpiDataTypeInfo structure changed in version 5.1; this
+    // check and memcpy() for version 5.0 can be removed once 6.0 is released
+    if (objType->env->context->dpiMinorVersion > 0) {
+        info->elementTypeInfo = objType->elementTypeInfo;
+    } else {
+        memcpy(&info->elementTypeInfo, &objType->elementTypeInfo,
+                sizeof(dpiDataTypeInfo__v50));
+    }
+
     return dpiGen__endPublicFn(objType, DPI_SUCCESS, &error);
 }
 

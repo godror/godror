@@ -690,6 +690,9 @@ static int dpiConn__getAttributeText(dpiConn *conn, uint32_t attribute,
         case DPI_OCI_ATTR_INSTNAME:
         case DPI_OCI_ATTR_INTERNAL_NAME:
         case DPI_OCI_ATTR_EXTERNAL_NAME:
+        case DPI_OCI_ATTR_DBNAME:
+        case DPI_OCI_ATTR_DBDOMAIN:
+        case DPI_OCI_ATTR_SERVICENAME:
             status = dpiOci__attrGet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
                     (void*) value, valueLength, attribute, "get server value",
                     &error);
@@ -1807,6 +1810,29 @@ int dpiConn_getCurrentSchema(dpiConn *conn, const char **value,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_getDbDomain() [PUBLIC]
+//   Returns the name of the database domain.
+//-----------------------------------------------------------------------------
+int dpiConn_getDbDomain(dpiConn *conn, const char **value,
+        uint32_t *valueLength)
+{
+  return dpiConn__getAttributeText(conn, DPI_OCI_ATTR_DBDOMAIN, value,
+          valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getDbName() [PUBLIC]
+//   Returns the name of the database.
+//-----------------------------------------------------------------------------
+int dpiConn_getDbName(dpiConn *conn, const char **value, uint32_t *valueLength)
+{
+    return dpiConn__getAttributeText(conn, DPI_OCI_ATTR_DBNAME, value,
+            valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_getEdition() [PUBLIC]
 //   Return the edition associated with the connection.
 //-----------------------------------------------------------------------------
@@ -1923,6 +1949,28 @@ int dpiConn_getLTXID(dpiConn *conn, const char **value, uint32_t *valueLength)
 {
     return dpiConn__getAttributeText(conn, DPI_OCI_ATTR_LTXID, value,
             valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getMaxOpenCursors() [PUBLIC]
+//   Returns the maximum number of cursors that can be opened by the database.
+// This is the value of the "open_cursors" parameter in init.ora.
+//-----------------------------------------------------------------------------
+int dpiConn_getMaxOpenCursors(dpiConn *conn, uint32_t *maxOpenCursors)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, maxOpenCursors)
+
+    status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+            maxOpenCursors, NULL, DPI_OCI_ATTR_MAX_OPEN_CURSORS,
+            "get max open cursors", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -2057,6 +2105,18 @@ int dpiConn_getServerVersion(dpiConn *conn, const char **releaseString,
         *releaseStringLength = conn->releaseStringLength;
     memcpy(versionInfo, &conn->versionInfo, sizeof(dpiVersionInfo));
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getServiceName() [PUBLIC]
+//   Returns the name of the service used to connect to the database.
+//-----------------------------------------------------------------------------
+int dpiConn_getServiceName(dpiConn *conn, const char **value,
+        uint32_t *valueLength)
+{
+    return dpiConn__getAttributeText(conn, DPI_OCI_ATTR_SERVICENAME, value,
+            valueLength, __func__);
 }
 
 
@@ -2512,6 +2572,30 @@ int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &cacheSize, 0,
             DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getTransactionInProgress() [PUBLIC]
+//   Returns whether or not a transaction is in progress. This can be used to
+// determine if a COMMIT is required or not.
+//----------------------------------------------------------------------------_
+int dpiConn_getTransactionInProgress(dpiConn *conn, int *value)
+{
+    dpiError error;
+    uint32_t temp;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value);
+
+    status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+            &temp, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
+            "get Transaction in progress", &error);
+    *value = (temp == 0) ? 0: 1;
     return dpiGen__endPublicFn(conn, status, &error);
 }
 

@@ -344,6 +344,16 @@ static const dpiOracleType
         0,                                  // can be in array
         0                                   // requires pre-fetch
     },
+    {
+        DPI_ORACLE_TYPE_XMLTYPE,            // public Oracle type
+        DPI_NATIVE_TYPE_BYTES,              // default native type
+        DPI_SQLT_CHR,                       // internal Oracle type
+        DPI_SQLCS_IMPLICIT,                 // charset form
+        DPI_MAX_BASIC_BUFFER_SIZE + 1,      // buffer size
+        1,                                  // is character data
+        0,                                  // can be in array
+        0                                   // requires pre-fetch
+    },
 };
 
 
@@ -456,8 +466,10 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 {
     const dpiOracleType *oracleType = NULL;
     dpiNativeTypeNum nativeTypeNum;
+    uint32_t dataTypeAttribute, i;
+    void *listParam, *itemParam;
     uint8_t charsetForm, isJson;
-    uint32_t dataTypeAttribute;
+    dpiAnnotation *annotation;
     uint16_t ociSize;
 
     // acquire data type
@@ -560,7 +572,7 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
             dpiObjectType__free(info->objectType, error);
             info->objectType = NULL;
             info->ociTypeCode = DPI_SQLT_CHR;
-            info->oracleTypeNum = DPI_ORACLE_TYPE_LONG_VARCHAR;
+            info->oracleTypeNum = DPI_ORACLE_TYPE_XMLTYPE;
             info->defaultNativeTypeNum = DPI_NATIVE_TYPE_BYTES;
         }
     }
@@ -572,6 +584,62 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
                 DPI_OCI_ATTR_JSON_COL, "get is JSON column", error) < 0)
             return DPI_FAILURE;
         info->isJson = isJson;
+    }
+
+    // get domain and annotations, if applicable
+    if (handleType == DPI_OCI_HTYPE_DESCRIBE &&
+            conn->env->versionInfo->versionNum >= 23) {
+
+        // check for domain
+        if (dpiOci__attrGet(handle, handleType, (void*) &info->domainSchema,
+                &info->domainSchemaLength, DPI_OCI_ATTR_DOMAIN_SCHEMA,
+                "get domain schema", error) < 0)
+            return DPI_FAILURE;
+        if (dpiOci__attrGet(handle, handleType, (void*) &info->domainName,
+                &info->domainNameLength, DPI_OCI_ATTR_DOMAIN_NAME,
+                "get domain name", error) < 0)
+            return DPI_FAILURE;
+
+        // check for annotations
+        if (dpiOci__attrGet(handle, handleType, (void*) &info->numAnnotations,
+                0, DPI_OCI_ATTR_NUM_ANNOTATIONS, "get number of annotations",
+                error) < 0)
+            return DPI_FAILURE;
+        if (info->numAnnotations > 0) {
+
+            // allocate memory for the array
+            if (dpiUtils__allocateMemory(info->numAnnotations,
+                    sizeof(dpiAnnotation), 1, "allocate annotation array",
+                    (void**) &info->annotations, error) < 0)
+                return DPI_FAILURE;
+
+            // get the list parameter
+            if (dpiOci__attrGet(handle, handleType,
+                    (void*) &listParam, 0, DPI_OCI_ATTR_LIST_ANNOTATIONS,
+                    "get annotation list param", error) < 0)
+                return DPI_FAILURE;
+
+            // populate the arrays
+            for (i = 0 ; i < info->numAnnotations; i++) {
+                annotation = &info->annotations[i];
+                if (dpiOci__paramGet(listParam, DPI_OCI_DTYPE_PARAM,
+                        &itemParam, (uint32_t) i + 1, "get annotation",
+                        error) < 0)
+                    return DPI_FAILURE;
+                if (dpiOci__attrGet(itemParam, DPI_OCI_DTYPE_PARAM,
+                        (void*) &annotation->key, &annotation->keyLength,
+                        DPI_OCI_ATTR_ANNOTATION_KEY,
+                        "get annotation key", error) < 0)
+                    return DPI_FAILURE;
+                if (dpiOci__attrGet(itemParam, DPI_OCI_DTYPE_PARAM,
+                        (void*) &annotation->value, &annotation->valueLength,
+                        DPI_OCI_ATTR_ANNOTATION_VALUE,
+                        "get annotation value", error) < 0)
+                    return DPI_FAILURE;
+            }
+
+        }
+
     }
 
     return DPI_SUCCESS;

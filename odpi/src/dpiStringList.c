@@ -63,7 +63,7 @@ int dpiStringList__addElement(dpiStringList *list, const char *value,
         uint32_t valueLength, uint32_t *numStringsAllocated, dpiError *error)
 {
     uint32_t *tempStringLengths;
-    const char **tempStrings;
+    char **tempStrings;
     char *ptr;
 
     // allocate more space in the array, if needed
@@ -85,9 +85,9 @@ int dpiStringList__addElement(dpiStringList *list, const char *value,
         if (list->strings) {
             memcpy(tempStrings, list->strings,
                     list->numStrings * sizeof(char*));
-            dpiUtils__freeMemory(list->strings);
+            dpiUtils__freeMemory((void*) list->strings);
         }
-        list->strings = tempStrings;
+        list->strings = (const char**) tempStrings;
     }
 
     // add a copy of the string to the list

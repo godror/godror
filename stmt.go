@@ -19,6 +19,10 @@ void godror_setFromString(dpiVar *dv, uint32_t pos, const _GoString_ value) {
 	}
 	dpiVar_setFromBytes(dv, pos, _GoStringPtr(value), length);
 }
+
+dpiAnnotation godror_getAnnotation(dpiAnnotation *annotations, int32_t idx) {
+	return annotations[idx];
+}
 */
 import "C"
 import (
@@ -3474,7 +3478,7 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 				ti.defaultNativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 			}
 		}
-		r.columns[i] = Column{
+		col := Column{
 			Name:           C.GoStringN(info.name, C.int(info.nameLength)),
 			OracleType:     effTypeNum,
 			OrigOracleType: ti.oracleTypeNum,
@@ -3487,6 +3491,9 @@ func (st *statement) openRows(colCount int) (*rows, error) {
 			SizeInChars:    ti.sizeInChars,
 			DBSize:         ti.dbSizeInBytes,
 		}
+		col.DomainAnnotation.init(ti)
+		r.columns[i] = col
+
 		var err error
 		//fmt.Printf("%d. %+v\n", i, r.columns[i])
 		vi := varInfo{
@@ -3525,6 +3532,29 @@ type Column struct {
 	Precision                  C.int16_t
 	Scale                      C.int8_t
 	Nullable                   bool
+	DomainAnnotation
+}
+
+type DomainAnnotation struct {
+	DomainName  string
+	Annotations []Annotation
+}
+type Annotation struct{ Key, Value string }
+
+func (da *DomainAnnotation) init(ti C.dpiDataTypeInfo) {
+	if ti.domainNameLength != 0 {
+		da.DomainName = C.GoStringN(ti.domainName, C.int(ti.domainNameLength))
+	}
+	if ti.numAnnotations != 0 {
+		da.Annotations = make([]Annotation, int(ti.numAnnotations))
+		for j := range da.Annotations {
+			a := C.godror_getAnnotation(ti.annotations, C.int(j))
+			da.Annotations[j] = Annotation{
+				Key:   C.GoStringN(a.key, C.int(a.keyLength)),
+				Value: C.GoStringN(a.value, C.int(a.valueLength)),
+			}
+		}
+	}
 }
 
 func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {

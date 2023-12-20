@@ -342,10 +342,9 @@ func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, e
 
 // CompileError represents a compile-time error as in user_errors view.
 type CompileError struct {
-	Owner, Name, Type    string
-	Line, Position, Code int64
-	Text                 string
-	Warning              bool
+	Owner, Name, Type, Text string
+	Line, Position, Code    int64
+	Warning                 bool
 }
 
 func (ce CompileError) Error() string {

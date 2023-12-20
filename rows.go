@@ -122,7 +122,8 @@ func (r *rows) ColumnTypeLength(index int) (length int64, ok bool) {
 		C.DPI_ORACLE_TYPE_BLOB,
 		C.DPI_ORACLE_TYPE_BFILE,
 		C.DPI_NATIVE_TYPE_LOB,
-		C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY:
+		C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY,
+		C.DPI_ORACLE_TYPE_XMLTYPE:
 		return math.MaxInt64, true
 	default:
 		return 0, false
@@ -188,6 +189,8 @@ func (r *rows) ColumnTypeDatabaseTypeName(index int) string {
 		return "OBJECT"
 	case C.DPI_ORACLE_TYPE_JSON, C.DPI_ORACLE_TYPE_JSON_OBJECT, C.DPI_ORACLE_TYPE_JSON_ARRAY:
 		return "JSON"
+	case C.DPI_ORACLE_TYPE_XMLTYPE:
+		return "XMLTYPE"
 	default:
 		return fmt.Sprintf("OTHER[%d]", r.columns[index].OracleType)
 	}
@@ -381,7 +384,8 @@ func (r *rows) Next(dest []driver.Value) error {
 		switch typ {
 		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
+			C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
+			C.DPI_ORACLE_TYPE_XMLTYPE:
 			//fmt.Printf("CHAR\n")
 			if isNull {
 				dest[i] = ""

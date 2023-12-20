@@ -285,7 +285,10 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_ECONTEXT_ID                    371
 #define DPI_OCI_ATTR_ADMIN_PFILE                    389
 #define DPI_OCI_ATTR_SUBSCR_PORTNO                  390
+#define DPI_OCI_ATTR_DBNAME                         391
 #define DPI_OCI_ATTR_INSTNAME                       392
+#define DPI_OCI_ATTR_SERVICENAME                    393
+#define DPI_OCI_ATTR_DBDOMAIN                       399
 #define DPI_OCI_ATTR_CHNF_ROWIDS                    402
 #define DPI_OCI_ATTR_CHNF_OPERATIONS                403
 #define DPI_OCI_ATTR_CHDES_DBNAME                   405
@@ -314,6 +317,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SPOOL_AUTH                     460
 #define DPI_OCI_ATTR_LTXID                          462
 #define DPI_OCI_ATTR_DML_ROW_COUNT_ARRAY            469
+#define DPI_OCI_ATTR_MAX_OPEN_CURSORS               471
 #define DPI_OCI_ATTR_ERROR_IS_RECOVERABLE           472
 #define DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS        484
 #define DPI_OCI_ATTR_DBOP                           485
@@ -352,6 +356,12 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_TOKEN_CBK                      638
 #define DPI_OCI_ATTR_TOKEN_CBKCTX                   639
 #define DPI_OCI_ATTR_TOKEN_ISBEARER                 657
+#define DPI_OCI_ATTR_DOMAIN_SCHEMA                  659
+#define DPI_OCI_ATTR_DOMAIN_NAME                    660
+#define DPI_OCI_ATTR_LIST_ANNOTATIONS               686
+#define DPI_OCI_ATTR_NUM_ANNOTATIONS                687
+#define DPI_OCI_ATTR_ANNOTATION_KEY                 688
+#define DPI_OCI_ATTR_ANNOTATION_VALUE               689
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -700,6 +710,30 @@ typedef struct {
     const char *sqlState;
     int isRecoverable;
 } dpiErrorInfo__v33;
+
+// structure used for providing metadata about data types
+typedef struct {
+    dpiOracleTypeNum oracleTypeNum;
+    dpiNativeTypeNum defaultNativeTypeNum;
+    uint16_t ociTypeCode;
+    uint32_t dbSizeInBytes;
+    uint32_t clientSizeInBytes;
+    uint32_t sizeInChars;
+    int16_t precision;
+    int8_t scale;
+    uint8_t fsPrecision;
+    dpiObjectType *objectType;
+    int isJson;
+} dpiDataTypeInfo__v50;
+
+// structure used for transferring query metadata from ODPI-C
+typedef struct {
+    const char *name;
+    uint32_t nameLength;
+    dpiDataTypeInfo__v50 typeInfo;
+    int nullOk;
+} dpiQueryInfo__v50;
+
 
 //-----------------------------------------------------------------------------
 // forward declarations for recursive OCI JSON type definitions

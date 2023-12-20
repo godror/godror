@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -280,6 +280,7 @@ static void dpiStmt__clearBindVars(dpiStmt *stmt, dpiError *error)
 //-----------------------------------------------------------------------------
 static void dpiStmt__clearQueryVars(dpiStmt *stmt, dpiError *error)
 {
+    dpiDataTypeInfo *typeInfo;
     uint32_t i;
 
     if (stmt->queryVars) {
@@ -288,10 +289,14 @@ static void dpiStmt__clearQueryVars(dpiStmt *stmt, dpiError *error)
                 dpiGen__setRefCount(stmt->queryVars[i], error, -1);
                 stmt->queryVars[i] = NULL;
             }
-            if (stmt->queryInfo[i].typeInfo.objectType) {
-                dpiGen__setRefCount(stmt->queryInfo[i].typeInfo.objectType,
-                        error, -1);
-                stmt->queryInfo[i].typeInfo.objectType = NULL;
+            typeInfo = &stmt->queryInfo[i].typeInfo;
+            if (typeInfo->objectType) {
+                dpiGen__setRefCount(typeInfo->objectType, error, -1);
+                typeInfo->objectType = NULL;
+            }
+            if (typeInfo->annotations) {
+                dpiUtils__freeMemory(typeInfo->annotations);
+                typeInfo->annotations = NULL;
             }
         }
         dpiUtils__freeMemory(stmt->queryVars);
@@ -1722,7 +1727,15 @@ int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos, dpiQueryInfo *info)
     }
 
     // copy query information from internal cache
-    memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
+    // the size of the dpiDataTypeInfo structure changed in version 5.1; this
+    // check and alternative memcpy() for version 5.0 can be removed once 6.0
+    // is released
+    if (stmt->env->context->dpiMinorVersion > 0) {
+        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
+    } else {
+        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo__v50));
+    }
+
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
 
