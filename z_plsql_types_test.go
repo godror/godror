@@ -2583,3 +2583,99 @@ func TestObjLobClose(t *testing.T) {
 		testConnectOutClob(ctx, db, float64(i))
 	}
 }
+
+type I323Child struct {
+	godror.ObjectTypeName `godror:"I323CHILD"`
+	Id                    float64 `godror:"ID" json:"id"`
+	Name                  string  `godror:"NAME" json:"name"`
+}
+
+type I323ChildArray struct {
+	godror.ObjectTypeName
+	ChildArray []I323Child `godror:",type=I323CHILDARRAY" json:"childArray"`
+}
+
+type I323Parent struct {
+	godror.ObjectTypeName `godror:"I323PARENT"`
+	Id                    float64        `godror:"ID" json:"id"`
+	Name                  string         `godror:"NAME" json:"name"`
+	ChildArray            I323ChildArray `godror:",type=I323CHILDARRAY"`
+}
+
+type I323ParentArray struct {
+	godror.ObjectTypeName
+	ParentArray []I323Parent `godror:",type=I323PARENTARRAY" json:"parentArray"`
+}
+
+type I323Grand struct {
+	godror.ObjectTypeName `godror:"I323GRAND"`
+	ParentArray           I323ParentArray `godror:",type=I323PARENTARRAY"`
+}
+
+func TestIssue323(t *testing.T) {
+	drop := func() {
+		for _, qry := range []string{
+			"DROP TYPE I323GRAND FORCE",
+			"DROP TYPE I323PARENTARRAY FORCE",
+			"DROP TYPE I323PARENT FORCE",
+			"DROP TYPE I323CHILDARRAY FORCE",
+			"DROP TYPE I323CHILD FORCE",
+		} {
+			if _, err := testDb.ExecContext(context.Background(), qry); err != nil {
+				t.Logf("%s: %+v", qry, err)
+			}
+		}
+	}
+	drop()
+	defer drop()
+
+	ctx, cancel := context.WithTimeout(testContext("Issue323"), 10*time.Second)
+	defer cancel()
+	for _, qry := range []string{
+		"CREATE OR REPLACE TYPE I323CHILD AS OBJECT (ID NUMBER, NAME VARCHAR2(100))",
+		"CREATE OR REPLACE TYPE I323CHILDARRAY AS TABLE OF I323CHILD",
+		"CREATE OR REPLACE TYPE I323PARENT AS OBJECT(ID NUMBER, NAME varchar2(100), childArray I323CHILDARRAY)",
+		"CREATE OR REPLACE TYPE I323PARENTARRAY AS TABLE OF I323PARENT",
+		"CREATE OR REPLACE TYPE I323Grand AS OBJECT(ParentArray I323ParentArray)",
+	} {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+
+	qry := `
+	declare
+		procedure test(
+			p_grand out I323Grand
+		) is
+			v_childArray I323ChildArray := I323ChildArray();
+		begin
+			p_grand :=  I323Grand(null);
+			p_grand.parentArray := I323ParentArray();
+			for i in 1..2 loop
+				p_grand.parentArray.extend;
+				p_grand.parentArray(p_grand.parentArray.count) := I323Parent(i, 'value ' || i, null);
+				p_grand.ParentArray(p_grand.parentArray.count).childArray := I323ChildArray();
+				v_childArray := I323ChildArray();
+				for j in 1..2 loop
+					v_childArray.extend;
+					v_childArray(v_childArray.count) := I323Child((j + i) * 1000, 'value ' || to_char((j + i) * 1000));
+				end loop;
+				p_grand.ParentArray(p_grand.parentArray.count).ChildArray := v_childArray;
+			end loop;
+		end;
+	begin
+		test(
+			p_grand => :g
+		);
+	end;
+	`
+	var grand I323Grand
+	if _, err := testDb.ExecContext(ctx, qry,
+		sql.Named(`g`, sql.Out{In: false, Dest: &grand}),
+	); err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	p, _ := json.Marshal(grand)
+	t.Log("grand:", string(p))
+}
