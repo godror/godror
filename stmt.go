@@ -2912,7 +2912,7 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 				if err != nil {
 					return err
 				}
-				if rv.Cap() < length {
+				if true || rv.Cap() < length { // Forcing new slice helps #323
 					rv = reflect.MakeSlice(rvt, 0, length)
 				}
 			}
@@ -2993,7 +2993,7 @@ Loop:
 		}
 		x := ad.Get()
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("obj.GetAttribute", "name", nm, "x", x, "x.type", fmt.Sprintf("%T", x))
+			logger.Debug("dataGetObjectStructObj.GetAttribute", "name", nm, "x", x, "x.type", fmt.Sprintf("%T", x))
 		}
 		switch v := x.(type) {
 		case time.Time:
