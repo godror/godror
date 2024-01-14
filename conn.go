@@ -380,7 +380,7 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 		st.Close()
 		return nil, err
 	}
-	stmtSetFinalizer(st, "prepareContext")
+	stmtSetFinalizer(ctx, st, "prepareContext")
 	return st, nil
 }
 func (c *conn) Commit() error {

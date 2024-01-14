@@ -292,11 +292,11 @@ func (d *Data) SetTime(t time.Time) {
 		return
 	}
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
-	dataSetTime(&d.dpiData, t, nil)
+	dataSetTime(context.Background(), &d.dpiData, t, nil)
 }
 
-func dataSetTime(dpiData *C.dpiData, t time.Time, connTZ *time.Location) {
-	logger := getLogger(context.TODO())
+func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *time.Location) {
+	logger := getLogger(ctx)
 	tz, tzOff := connTZ, 0
 	if tz == nil {
 		tz = t.Location()

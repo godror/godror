@@ -1242,7 +1242,7 @@ func (A ObjectAttribute) Close() error {
 	if A.dpiObjectAttr == nil {
 		return nil
 	}
-	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
 		logger.Debug("ObjectAttribute.CloReplaceQuestionPlacholders()se", "name", A.Name)
 	}
 	if err := A.ObjectType.drv.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
