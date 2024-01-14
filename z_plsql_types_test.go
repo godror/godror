@@ -2586,7 +2586,7 @@ func TestObjLobClose(t *testing.T) {
 
 type I323Child struct {
 	godror.ObjectTypeName `godror:"I323CHILD"`
-	Id                    float64 `godror:"ID" json:"id"`
+	ID                    float64 `godror:"ID" json:"id"`
 	Name                  string  `godror:"NAME" json:"name"`
 }
 
@@ -2678,4 +2678,10 @@ func TestIssue323(t *testing.T) {
 	}
 	p, _ := json.Marshal(grand)
 	t.Log("grand:", string(p))
+
+	pa := grand.ParentArray.ParentArray
+	if pa[0].ChildArray.ChildArray[0].ID ==
+		pa[1].ChildArray.ChildArray[0].ID {
+		t.Errorf("pa[0]=%#v\n==\n%#v=pa[1]", pa[0], pa[1])
+	}
 }
