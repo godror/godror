@@ -2926,7 +2926,11 @@ func (c *conn) dataGetObjectStructObj(rv reflect.Value, obj *Object) error {
 			if err := coll.GetItem(&d, i); err != nil {
 				return err
 			}
-			switch x := d.Get().(type) {
+			x := d.Get()
+			if logger != nil {
+				logger.Debug("coll.GetItem", "i", i, "x", x, "x.type", fmt.Sprintf("%T", x))
+			}
+			switch x := x.(type) {
 			case *Object:
 				err := c.dataGetObjectStructObj(re, x)
 				x.Close()
@@ -2965,6 +2969,7 @@ Loop:
 			if f.Type.Kind() != reflect.Slice {
 				continue
 			}
+			logger.Debug("dataGetObjectStructObj", "field", f)
 			return c.dataGetObjectStructObj(rf, obj)
 		}
 		nm, typ, _ := parseStructTag(f.Tag)
@@ -2991,6 +2996,9 @@ Loop:
 			continue
 		}
 		x := ad.Get()
+		if logger != nil {
+			logger.Debug("obj.GetAttribute", "name", nm, "x", x, "x.type", fmt.Sprintf("%T", x))
+		}
 		switch v := x.(type) {
 		case time.Time:
 			rf.Set(reflect.ValueOf(v))

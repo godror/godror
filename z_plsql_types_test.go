@@ -2659,7 +2659,7 @@ func TestIssue323(t *testing.T) {
 				v_childArray := I323ChildArray();
 				for j in 1..2 loop
 					v_childArray.extend;
-					v_childArray(v_childArray.count) := I323Child((j + i) * 1000, 'value ' || to_char((j + i) * 1000));
+					v_childArray(v_childArray.count) := I323Child(i*100 + j, 'coord '||i||'/'||j);
 				end loop;
 				p_grand.ParentArray(p_grand.parentArray.count).ChildArray := v_childArray;
 			end loop;
@@ -2668,8 +2668,13 @@ func TestIssue323(t *testing.T) {
 		test(
 			p_grand => :g
 		);
-	end;
-	`
+	end;`
+
+	if Verbose {
+		godror.SetLogger(zlog.NewT(t).SLog())
+		defer godror.SetLogger(slog.Default())
+	}
+
 	var grand I323Grand
 	if _, err := testDb.ExecContext(ctx, qry,
 		sql.Named(`g`, sql.Out{In: false, Dest: &grand}),

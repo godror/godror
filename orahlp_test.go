@@ -125,6 +125,7 @@ func TestConnPool(t *testing.T) {
 		}
 		defer c2.Close()
 		old = nil
+		_ = old
 
 		c3, err := p.Conn(ctx)
 		if err != nil {
