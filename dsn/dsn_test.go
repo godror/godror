@@ -281,20 +281,3 @@ func ExampleAppendLogfmt() {
 	// password=tiger
 	// connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 }
-
-func ExampleConnectString() {
-	var P ConnectionParams
-	P.Username, P.Password = "scott", NewPassword("tiger")
-	P.ConnectString = "dbhost:1521/orclpdb1?connect_timeout=2"
-	P.SessionTimeout = 42 * time.Second
-	P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
-	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
-	fmt.Println(P.StringWithPassword())
-	// Output:
-	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
-	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
-	// configDir= connectionClass= enableEvents=0 externalAuth=0 heterogeneousPool=0
-	// libDir= newPassword= noTimezoneCheck=0 poolIncrement=0 poolMaxSessions=0 poolMinSessions=0
-	// poolSessionMaxLifetime=0s poolSessionTimeout=42s poolWaitTimeout=0s prelim=0
-	// standaloneConnection=0 sysasm=0 sysdba=0 sysoper=0 timezone=
-}

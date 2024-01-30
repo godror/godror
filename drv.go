@@ -8,33 +8,34 @@
 // The connection string for the sql.Open("godror", dataSourceName) call can be
 // the simple
 //
-//   user="login" password="password" connectString="host:port/service_name" sysdba=true
+//	user="login" password="password" connectString="host:port/service_name" sysdba=true
 //
 // with additional params (here with the defaults):
-//     sysdba=0
-//     sysoper=0
-//     poolMinSessions=1
-//     poolMaxSessions=1000
-//     poolMaxSessionsPerShard=
-//     poolPingInterval=
-//     poolIncrement=1
-//     connectionClass=
-//     standaloneConnection=0
-//     enableEvents=0
-//     heterogeneousPool=0
-//     externalAuth=0
-//     prelim=0
-//     poolWaitTimeout=5m
-//     poolSessionMaxLifetime=1h
-//     poolSessionTimeout=30s
-//     timezone=
-//     noTimezoneCheck=
-//     newPassword=
-//     onInit="ALTER SESSION SET current_schema=my_schema"
-//     configDir=
-//     libDir=
-//     stmtCacheSize=
-//     charset=UTF-8
+//
+//	sysdba=0
+//	sysoper=0
+//	poolMinSessions=1
+//	poolMaxSessions=1000
+//	poolMaxSessionsPerShard=
+//	poolPingInterval=
+//	poolIncrement=1
+//	connectionClass=
+//	standaloneConnection=0
+//	enableEvents=0
+//	heterogeneousPool=0
+//	externalAuth=0
+//	prelim=0
+//	poolWaitTimeout=5m
+//	poolSessionMaxLifetime=1h
+//	poolSessionTimeout=30s
+//	timezone=
+//	noTimezoneCheck=
+//	newPassword=
+//	onInit="ALTER SESSION SET current_schema=my_schema"
+//	configDir=
+//	libDir=
+//	stmtCacheSize=
+//	charset=UTF-8
 //
 // These are the defaults.
 // For external authentication, user and password should be empty
@@ -398,11 +399,12 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	if err := c.init(ctx, isNew, getOnInit(&c.params.CommonParams)); err != nil {
+	err = c.init(ctx, isNew, getOnInit(&c.params.CommonParams))
+	cancel()
+	if err != nil {
 		_ = c.closeNotLocking()
 		return nil, false, err
 	}
-	cancel()
 
 	var a [4096]byte
 	stack := a[:runtime.Stack(a[:], false)]
