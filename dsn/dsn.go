@@ -62,9 +62,9 @@ type CommonParams struct {
 	AlterSession [][2]string
 	Timezone     *time.Location
 	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache completely
-	StmtCacheSize           int
-	EnableEvents, NoTZCheck bool
-	Charset                 string
+	StmtCacheSize                               int
+	EnableEvents, NoTZCheck, PerSessionTimezone bool
+	Charset                                     string
 }
 
 // String returns the string representation of CommonParams.
@@ -94,6 +94,9 @@ func (P CommonParams) String() string {
 	}
 	if P.NoTZCheck {
 		q.Add("noTimezoneCheck", "1")
+	}
+	if P.PerSessionTimezone {
+		q.Add("perSessionTiemzone", "1")
 	}
 	if P.StmtCacheSize != 0 {
 		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
@@ -273,6 +276,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		return "0"
 	}
 	q.Add("noTimezoneCheck", B(P.NoTZCheck))
+	q.Add("perSessionTimezone", B(P.PerSessionTimezone))
 	if P.StmtCacheSize != 0 {
 		q.Add("stmtCacheSize", strconv.Itoa(int(P.StmtCacheSize)))
 	}
@@ -438,6 +442,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.StandaloneConnection, "standaloneConnection"},
 
 		{&P.NoTZCheck, "noTimezoneCheck"},
+		{&P.PerSessionTimezone, "perSessionTimezone"},
 		{&P.InitOnNewConn, "initOnNewConnection"},
 	} {
 		s := q.Get(task.Key)
