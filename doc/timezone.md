@@ -17,20 +17,33 @@ As I don't use CURRENT_DATE, I pick the OS' time zone.
 
 Godror will print a
 
-    godor WARNING: discrepancy between DBTIMEZONE and SYSTIMESTAMP
+    godor WARNING: discrepancy between SESSIONTIMEZONE and SYSTIMESTAMP
 
 warning that it chosen the DB's OS' time zone (`TO_CHAR(SYSTIMESTAMP, 'TZR')`),
-- as that's what SYSDATE is in - but that differs from DBTIMEZONE.
+- as that's what SYSDATE is in - but that differs from SESSIONTIMEZONE.
 
 ## How to eliminate this warning ?
 Either speak with your DBA to synchronize the 
 DB's time zone (DBTIMEZONE) with the underlying OS' time zone,
+or use 
+
+    ALTER SESSION SET TIME_ZONE='Europe/Berlin'
+
 or set one chosen timezone in the [./connection.md](connection string):
 
     timezone="Europe/Berlin"
 
 (it is parsed with `time.LoadLocation`, so such names can be used,
  or `local`, or a numeric `+0500` fixed zone).
+
+*WARNING:* time zone altered with `ALTER SESSION` may not be read each and every time,
+so either always ALTER SESSION consistently to the same timezone,
+or use the 
+
+    perSessionTimezone=1
+
+connection parameter, to force checking the time zone for each session
+(and not cache it per DB).
 
 ## Why do we need to handle time zones for DATE ?
 DATEs should use something else than time.Time, as the don't have a time zone.
