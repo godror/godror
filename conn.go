@@ -509,32 +509,34 @@ func (c *conn) initTZ() error {
 	}
 	c.params.Timezone = time.Local
 
-	key := time.Local.String() + "\t" + c.params.ConnectString
-	if c.params.Timezone != nil {
-		key += "\t" + c.params.Timezone.String()
-	}
-	c.drv.mu.RLock()
-	tz, ok := c.drv.timezones[key]
-	c.drv.mu.RUnlock()
-	if !ok {
-		c.drv.mu.Lock()
-		defer c.drv.mu.Unlock()
-		tz, ok = c.drv.timezones[key]
-	}
-	if ok {
-		c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
-		if c.params.Timezone == nil {
-			c.params.Timezone = time.UTC
+	var tz locationWithOffSecs
+	var key string
+	if !c.params.PerSessionTimezone {
+		key = time.Local.String() + "\t" + c.params.ConnectString
+		if c.params.Timezone != nil {
+			key += "\t" + c.params.Timezone.String()
 		}
-		return nil
+		var ok bool
+		c.drv.mu.RLock()
+		tz, ok = c.drv.timezones[key]
+		c.drv.mu.RUnlock()
+		if !ok {
+			c.drv.mu.Lock()
+			defer c.drv.mu.Unlock()
+			tz, ok = c.drv.timezones[key]
+		}
+		if ok {
+			c.params.Timezone, c.tzOffSecs = tz.Location, tz.offSecs
+			if c.params.Timezone == nil {
+				c.params.Timezone = time.UTC
+			}
+			return nil
+		}
 	}
 	// Prelim connections cannot be used for querying
 	if c.params.IsPrelim {
 		c.tzValid = true
 		return nil
-	}
-	if logger != nil {
-		logger.Debug("initTZ", "key", key)
 	}
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
 	// {SESSION,DB}TIMEZONE is useless, false, and misdirecting!
@@ -598,9 +600,12 @@ func (c *conn) initTZ() error {
 		logger.Debug("initTZ", "tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
-	if c.tzValid {
+	if c.tzValid && !c.params.PerSessionTimezone {
 		if c.drv.timezones == nil {
 			c.drv.timezones = make(map[string]locationWithOffSecs)
+		}
+		if logger != nil {
+			logger.Debug("initTZ", "key", key)
 		}
 		c.drv.timezones[key] = tz
 	}

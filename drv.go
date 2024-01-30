@@ -30,6 +30,7 @@
 //	poolSessionTimeout=30s
 //	timezone=
 //	noTimezoneCheck=
+//	perSessionTimezone=
 //	newPassword=
 //	onInit="ALTER SESSION SET current_schema=my_schema"
 //	configDir=
