@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -66,6 +66,17 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
         return DPI_FAILURE;
     tempContext->dpiMinorVersion = (uint8_t) minorVersion;
     tempContext->versionInfo = versionInfo;
+
+    // using a SODA JSON descriptor is only allowed with 23.4 and higher so
+    // only set the flag if that version is being used; otherwise, ignore the
+    // flag completely
+    if (versionInfo->versionNum > 23 ||
+            (versionInfo->versionNum == 23 && versionInfo->releaseNum >= 4)) {
+        tempContext->sodaUseJsonDesc = params->sodaUseJsonDesc;
+        tempContext->useJsonId = params->useJsonId;
+    } else {
+        params->sodaUseJsonDesc = 0;
+    }
 
     // store default encoding, if applicable
     if (params->defaultEncoding) {
@@ -202,16 +213,21 @@ int dpiContext_createWithParams(unsigned int majorVersion,
         unsigned int minorVersion, dpiContextCreateParams *params,
         dpiContext **context, dpiErrorInfo *errorInfo)
 {
+    int status, update_use_soda_json_desc = 0;
     dpiContextCreateParams localParams;
     dpiErrorInfo localErrorInfo;
     dpiError error;
-    int status;
 
     // make a copy of the parameters so that the addition of defaults doesn't
     // modify the original parameters that were passed; then add defaults, if
     // needed
     if (params) {
-        memcpy(&localParams, params, sizeof(localParams));
+        if (majorVersion < 5 || (majorVersion == 5 && minorVersion < 2)) {
+            memcpy(&localParams, params, sizeof(dpiContextCreateParams__v51));
+        } else {
+            memcpy(&localParams, params, sizeof(localParams));
+            update_use_soda_json_desc = 1;
+        }
     } else {
         memset(&localParams, 0, sizeof(localParams));
     }
@@ -224,6 +240,8 @@ int dpiContext_createWithParams(unsigned int majorVersion,
         dpiError__getInfo(&error, &localErrorInfo);
         memcpy(errorInfo, &localErrorInfo, sizeof(dpiErrorInfo__v33));
     }
+    if (update_use_soda_json_desc)
+        params->sodaUseJsonDesc = localParams.sodaUseJsonDesc;
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn end %s -> %d\n", __func__, status);
     return status;

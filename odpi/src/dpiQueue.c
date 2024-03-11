@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2019, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2019, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -222,7 +222,8 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
 
         // create JSON payload object, if applicable
         if (queue->isJson) {
-            if (dpiJson__allocate(queue->conn, &prop->payloadJson, error) < 0)
+            if (dpiJson__allocate(queue->conn, NULL, &prop->payloadJson,
+                    error) < 0)
                 return DPI_FAILURE;
         }
 

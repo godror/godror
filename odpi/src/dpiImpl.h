@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -184,6 +184,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_DTYPE_CQDES                         80
 #define DPI_OCI_DTYPE_SHARDING_KEY                  83
 #define DPI_OCI_DTYPE_JSON                          85
+#define DPI_OCI_DTYPE_VECTOR                        87
 
 // define values used for getting/setting OCI attributes
 #define DPI_OCI_ATTR_DATA_SIZE                      1
@@ -349,6 +350,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SODA_DOC_COUNT                 593
 #define DPI_OCI_ATTR_SPOOL_MAX_PER_SHARD            602
 #define DPI_OCI_ATTR_JSON_DOM_MUTABLE               609
+#define DPI_OCI_ATTR_OSON_COL                       623
 #define DPI_OCI_ATTR_SODA_METADATA_CACHE            624
 #define DPI_OCI_ATTR_SODA_HINT                      627
 #define DPI_OCI_ATTR_TOKEN                          636
@@ -358,10 +360,14 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_TOKEN_ISBEARER                 657
 #define DPI_OCI_ATTR_DOMAIN_SCHEMA                  659
 #define DPI_OCI_ATTR_DOMAIN_NAME                    660
+#define DPI_OCI_ATTR_SODA_JSON_DESC                 675
 #define DPI_OCI_ATTR_LIST_ANNOTATIONS               686
 #define DPI_OCI_ATTR_NUM_ANNOTATIONS                687
 #define DPI_OCI_ATTR_ANNOTATION_KEY                 688
 #define DPI_OCI_ATTR_ANNOTATION_VALUE               689
+#define DPI_OCI_ATTR_VECTOR_DIMENSION               695
+#define DPI_OCI_ATTR_VECTOR_DATA_FORMAT             696
+#define DPI_OCI_ATTR_VECTOR_PROPERTY                697
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -394,6 +400,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_SQLT_RSET                               116
 #define DPI_SQLT_JSON                               119
 #define DPI_SQLT_NCO                                122
+#define DPI_SQLT_VEC                                127
 #define DPI_SQLT_ODT                                156
 #define DPI_SQLT_DATE                               184
 #define DPI_SQLT_TIMESTAMP                          187
@@ -487,6 +494,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_JZNVAL_OCI_DATE                         33
 #define DPI_JZNVAL_OCI_DATETIME                     34
 #define DPI_JZNVAL_OCI_INTERVAL                     40
+#define DPI_JZNVAL_VECTOR                           45
 
 // define XDK miscellaneous constants
 #define DPI_JZN_ALLOW_SCALAR_DOCUMENTS              0x00000080
@@ -645,6 +653,9 @@ typedef enum {
     DPI_ERR_TOKEN_BASED_AUTH,
     DPI_ERR_POOL_TOKEN_BASED_AUTH,
     DPI_ERR_STANDALONE_TOKEN_BASED_AUTH,
+    DPI_ERR_UNSUPPORTED_VECTOR_FORMAT,
+    DPI_ERR_SODA_DOC_IS_JSON,
+    DPI_ERR_SODA_DOC_IS_NOT_JSON,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -672,6 +683,7 @@ typedef enum {
     DPI_HTYPE_SODA_DOC_CURSOR,
     DPI_HTYPE_QUEUE,
     DPI_HTYPE_JSON,
+    DPI_HTYPE_VECTOR,
     DPI_HTYPE_MAX
 } dpiHandleTypeNum;
 
@@ -697,6 +709,15 @@ typedef enum {
 //-----------------------------------------------------------------------------
 // old type definitions (to be dropped)
 //-----------------------------------------------------------------------------
+
+// structure used for creating a context
+typedef struct {
+    const char *defaultDriverName;
+    const char *defaultEncoding;
+    const char *loadErrorUrl;
+    const char *oracleClientLibDir;
+    const char *oracleClientConfigDir;
+} dpiContextCreateParams__v51;
 
 // structure used for transferring error information from ODPI-C
 typedef struct {
@@ -726,6 +747,26 @@ typedef struct {
     int isJson;
 } dpiDataTypeInfo__v50;
 
+typedef struct {
+    dpiOracleTypeNum oracleTypeNum;
+    dpiNativeTypeNum defaultNativeTypeNum;
+    uint16_t ociTypeCode;
+    uint32_t dbSizeInBytes;
+    uint32_t clientSizeInBytes;
+    uint32_t sizeInChars;
+    int16_t precision;
+    int8_t scale;
+    uint8_t fsPrecision;
+    dpiObjectType *objectType;
+    int isJson;
+    const char *domainSchema;
+    uint32_t domainSchemaLength;
+    const char *domainName;
+    uint32_t domainNameLength;
+    uint32_t numAnnotations;
+    dpiAnnotation *annotations;
+} dpiDataTypeInfo__v51;
+
 // structure used for transferring query metadata from ODPI-C
 typedef struct {
     const char *name;
@@ -733,6 +774,13 @@ typedef struct {
     dpiDataTypeInfo__v50 typeInfo;
     int nullOk;
 } dpiQueryInfo__v50;
+
+typedef struct {
+    const char *name;
+    uint32_t nameLength;
+    dpiDataTypeInfo__v51 typeInfo;
+    int nullOk;
+} dpiQueryInfo__v51;
 
 
 //-----------------------------------------------------------------------------
@@ -1147,6 +1195,7 @@ typedef union {
     dpiLob *asLOB;
     dpiRowid *asRowid;
     dpiJson *asJson;
+    dpiVector *asVector;
 } dpiReferenceBuffer;
 
 // intended to avoid the need for casts; contains the actual values that are
@@ -1174,6 +1223,7 @@ typedef union {
     void **asObject;
     void **asCollection;
     void **asJson;
+    void **asVectorDescriptor;
 } dpiOracleData;
 
 // intended to avoid the need for casts; contains the memory needed to supply
@@ -1195,6 +1245,7 @@ typedef union {
     void *asJsonDescriptor;
     void *asLobLocator;
     void *asJson;
+    void *asVectorDescriptor;
     void *asRaw;
 } dpiOracleDataBuffer;
 
@@ -1293,6 +1344,8 @@ struct dpiContext {
     char *defaultDriverName;            // default driver name to use
     dpiVersionInfo *versionInfo;        // OCI client version info
     uint8_t dpiMinorVersion;            // ODPI-C minor version of application
+    int sodaUseJsonDesc;                // use JSON descriptors in SODA?
+    int useJsonId;                      // use DPI_ORACLE_TYPE_JSON_ID?
 };
 
 // represents statements of all types (queries, DML, DDL, PL/SQL) and is
@@ -1362,6 +1415,7 @@ struct dpiJson {
     void *convTimestamp;                // timestamp (for conversions)
     void *convIntervalDS;               // interval DS (for conversions)
     void *convIntervalYM;               // interval YM (for conversions)
+    int handleIsOwned;                  // handle is owned?
 };
 
 // represents large objects (CLOB, BLOB, NCLOB and BFILE) and is exposed
@@ -1516,6 +1570,7 @@ struct dpiSodaDoc {
     dpiSodaDb *db;                      // database which created this
     void *handle;                       // OCI SODA document handle
     int binaryContent;                  // binary content?
+    dpiJson *json;                      // JSON content (only in 23c+)
 };
 
 // represents a SODA document cursor and is exposed publicly as a handle of
@@ -1539,6 +1594,19 @@ struct dpiQueue {
     dpiEnqOptions *enqOptions;          // enqueue options
     dpiQueueBuffer buffer;              // buffer area
     int isJson;                         // is JSON payload?
+};
+
+// represents vector values and is exposed publicly as a handle of type
+// DPI_HTYPE_VECTOR; the implementation for this is found in the file
+// dpiVector.c
+struct dpiVector {
+    dpiType_HEAD
+    dpiConn *conn;                      // connection which created this
+    void *handle;                       // OCI Vector descriptor
+    uint8_t format;                     // vector format
+    uint32_t numDimensions;             // number of vector dimensions
+    uint8_t dimensionSize;              // size of each dimension, in bytes
+    void *dimensions;                   // array of vector dimensions
 };
 
 
@@ -1619,6 +1687,7 @@ int dpiError__set(dpiError *error, const char *context, dpiErrorNum errorNum,
 int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
         const char *action);
 int dpiError__setFromOS(dpiError *error, const char *action);
+int dpiError__wrap(dpiError *error, dpiErrorNum errorNum, ...);
 
 
 //-----------------------------------------------------------------------------
@@ -1728,8 +1797,11 @@ int32_t dpiVar__outBindCallback(dpiVar *var, void *bindp, uint32_t iter,
 //-----------------------------------------------------------------------------
 // definition of internal dpiJson methods
 //-----------------------------------------------------------------------------
-int dpiJson__allocate(dpiConn *conn, dpiJson **json, dpiError *error);
+int dpiJson__allocate(dpiConn *conn, void *handle, dpiJson **json,
+        dpiError *error);
 void dpiJson__free(dpiJson *json, dpiError *error);
+int dpiJson__setValue(dpiJson *json, const dpiJsonNode *topNode,
+        dpiError *error);
 
 
 //-----------------------------------------------------------------------------
@@ -1849,6 +1921,13 @@ int dpiQueue__allocate(dpiConn *conn, const char *name, uint32_t nameLength,
         dpiObjectType *payloadType, dpiQueue **queue, int isJson,
         dpiError *error);
 void dpiQueue__free(dpiQueue *queue, dpiError *error);
+
+
+//-----------------------------------------------------------------------------
+// definition of internal dpiVector methods
+//-----------------------------------------------------------------------------
+int dpiVector__allocate(dpiConn *conn, dpiVector **vector, dpiError *error);
+void dpiVector__free(dpiVector *vector, dpiError *error);
 
 
 //-----------------------------------------------------------------------------
@@ -2163,6 +2242,9 @@ int dpiOci__typeByFullName(dpiConn *conn, const char *name,
 int dpiOci__typeByName(dpiConn *conn, const char *schema,
         uint32_t schemaLength, const char *name, uint32_t nameLength,
         void **tdo, dpiError *error);
+int dpiOci__vectorFromArray(dpiVector *vector, dpiVectorInfo *info,
+        dpiError *error);
+int dpiOci__vectorToArray(dpiVector *vector, dpiError *error);
 
 
 //-----------------------------------------------------------------------------

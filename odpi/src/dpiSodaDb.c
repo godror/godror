@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -40,6 +40,65 @@ static int dpiSodaDb__checkConnected(dpiSodaDb *db, const char *fnName,
         return DPI_FAILURE;
     if (!db->conn->handle || db->conn->closing)
         return dpiError__set(error, "check connection", DPI_ERR_NOT_CONNECTED);
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaDb__createDocument() [INTERNAL]
+//   Create a document and set the supplied values, if applicable.
+//-----------------------------------------------------------------------------
+static int dpiSodaDb__createDocument(dpiSodaDb *db, const char *key,
+        uint32_t keyLength, const char *content, uint32_t contentLength,
+        const char *mediaType, uint32_t mediaTypeLength, dpiSodaDoc **doc,
+        dpiError *error)
+{
+    dpiSodaDoc *tempDoc;
+    int detectEncoding;
+
+    // allocate SODA document structure
+    if (dpiSodaDoc__allocate(db, NULL, &tempDoc, error) < 0)
+        return DPI_FAILURE;
+
+    // set key, if applicable
+    if (key && keyLength > 0) {
+        if (dpiOci__attrSet(tempDoc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT,
+                (void*) key, keyLength, DPI_OCI_ATTR_SODA_KEY, "set key",
+                error) < 0) {
+            dpiSodaDoc__free(tempDoc, error);
+            return DPI_FAILURE;
+        }
+    }
+
+    // set binary or encoded text content, if applicable
+    if (content && contentLength > 0) {
+        tempDoc->binaryContent = 1;
+        detectEncoding = 1;
+        if (dpiOci__attrSet(tempDoc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT,
+                (void*) &detectEncoding, 0, DPI_OCI_ATTR_SODA_DETECT_JSON_ENC,
+                "set detect encoding", error) < 0) {
+            dpiSodaDoc__free(tempDoc, error);
+            return DPI_FAILURE;
+        }
+        if (dpiOci__attrSet(tempDoc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT,
+                (void*) content, contentLength, DPI_OCI_ATTR_SODA_CONTENT,
+                "set content", error) < 0) {
+            dpiSodaDoc__free(tempDoc, error);
+            return DPI_FAILURE;
+        }
+    }
+
+    // set media type, if applicable
+    if (mediaType && mediaTypeLength > 0) {
+        if (dpiOci__attrSet(tempDoc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT,
+                (void*) mediaType, mediaTypeLength,
+                DPI_OCI_ATTR_SODA_MEDIA_TYPE, "set media type", error) < 0) {
+            dpiSodaDoc__free(tempDoc, error);
+            return DPI_FAILURE;
+        }
+    }
+
+    *doc = tempDoc;
     return DPI_SUCCESS;
 }
 
@@ -154,17 +213,17 @@ int dpiSodaDb_createCollection(dpiSodaDb *db, const char *name,
 
 //-----------------------------------------------------------------------------
 // dpiSodaDb_createDocument() [PUBLIC]
-//   Create a SODA document that can be inserted in the collection or can be
-// used to replace an existing document in the collection.
+//   Create a SODA document with binary or encoded text content that can be
+// inserted in the collection or can be used to replace an existing document in
+// the collection.
 //-----------------------------------------------------------------------------
 int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
         uint32_t keyLength, const char *content, uint32_t contentLength,
         const char *mediaType, uint32_t mediaTypeLength, UNUSED uint32_t flags,
         dpiSodaDoc **doc)
 {
-    int detectEncoding;
-    void *docHandle;
     dpiError error;
+    int status;
 
     // validate parameters
     if (dpiSodaDb__checkConnected(db, __func__, &error) < 0)
@@ -174,56 +233,68 @@ int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
     DPI_CHECK_PTR_AND_LENGTH(db, mediaType)
     DPI_CHECK_PTR_NOT_NULL(db, doc)
 
-    // allocate SODA document handle
-    if (dpiOci__handleAlloc(db->env->handle, &docHandle,
-            DPI_OCI_HTYPE_SODA_DOCUMENT, "allocate SODA document handle",
-            &error) < 0)
+    // create document
+    status = dpiSodaDb__createDocument(db, key, keyLength, content,
+            contentLength, mediaType, mediaTypeLength, doc, &error);
+    return dpiGen__endPublicFn(db, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSodaDb_createJsonDocument() [PUBLIC]
+//   Create a SODA document with JSON content that can be inserted in the
+// collection or can be used to replace an existing document in the collection.
+// This is only supported with Oracle Client 23c and higher.
+//-----------------------------------------------------------------------------
+int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
+        uint32_t keyLength, const dpiJsonNode *content, UNUSED uint32_t flags,
+        dpiSodaDoc **doc)
+{
+    int status, jsonDesc;
+    uint32_t tempLength;
+    dpiSodaDoc *tempDoc;
+    void *jsonHandle;
+    dpiError error;
+
+    // validate parameters
+    if (dpiSodaDb__checkConnected(db, __func__, &error) < 0)
+        return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(db, key)
+    DPI_CHECK_PTR_NOT_NULL(db, doc)
+
+    // only supported in Oracle Client 23c+
+    if (dpiUtils__checkClientVersion(db->env->versionInfo, 23, 4, &error) < 0)
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
 
-    // set key, if applicable
-    if (key && keyLength > 0) {
-        if (dpiOci__attrSet(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT,
-                (void*) key, keyLength, DPI_OCI_ATTR_SODA_KEY, "set key",
-                &error) < 0) {
-            dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
-            return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-        }
-    }
-
-    // set content, if applicable
-    if (content && contentLength > 0) {
-        detectEncoding = 1;
-        if (dpiOci__attrSet(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT,
-                (void*) &detectEncoding, 0, DPI_OCI_ATTR_SODA_DETECT_JSON_ENC,
-                "set detect encoding", &error) < 0) {
-            dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
-            return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-        }
-        if (dpiOci__attrSet(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT,
-                (void*) content, contentLength, DPI_OCI_ATTR_SODA_CONTENT,
-                "set content", &error) < 0) {
-            dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
-            return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-        }
-    }
-
-    // set media type, if applicable
-    if (mediaType && mediaTypeLength > 0) {
-        if (dpiOci__attrSet(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT,
-                (void*) mediaType, mediaTypeLength,
-                DPI_OCI_ATTR_SODA_MEDIA_TYPE, "set media type", &error) < 0) {
-            dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
-            return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-        }
-    }
-
-    // allocate the ODPI-C document that will be returned
-    if (dpiSodaDoc__allocate(db, docHandle, doc, &error) < 0) {
-        dpiOci__handleFree(docHandle, DPI_OCI_HTYPE_SODA_DOCUMENT);
+    // create document
+    if (dpiSodaDb__createDocument(db, key, keyLength, NULL, 0, NULL, 0,
+            &tempDoc, &error) < 0)
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-    }
-    (*doc)->binaryContent = 1;
 
+    // populate content, if applicable
+    if (content) {
+        jsonDesc = 1;
+        status = dpiOci__attrSet(tempDoc->handle, DPI_OCI_HTYPE_SODA_DOCUMENT,
+                &jsonDesc, 0, DPI_OCI_ATTR_SODA_JSON_DESC,
+                "set JSON descriptor flag", &error);
+        if (status == DPI_SUCCESS) {
+            status = dpiOci__attrGet(tempDoc->handle,
+                    DPI_OCI_HTYPE_SODA_DOCUMENT, (void*) &jsonHandle,
+                    &tempLength, DPI_OCI_ATTR_SODA_CONTENT,
+                    "get JSON descriptor", &error);
+        }
+        if (status == DPI_SUCCESS)
+            status = dpiJson__allocate(db->conn, jsonHandle, &tempDoc->json,
+                    &error);
+        if (status == DPI_SUCCESS)
+            status = dpiJson__setValue(tempDoc->json, content, &error);
+        if (status != DPI_SUCCESS) {
+            dpiSodaDoc__free(tempDoc, &error);
+            return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
+        }
+    }
+
+    *doc = tempDoc;
     return dpiGen__endPublicFn(db, DPI_SUCCESS, &error);
 }
 

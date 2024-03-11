@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -139,8 +139,11 @@ static int dpiSodaColl__find(dpiSodaColl *coll,
         return DPI_FAILURE;
 
     // determine OCI flags to use
-    ociFlags = (coll->binaryContent) ? DPI_OCI_SODA_AS_STORED :
-            DPI_OCI_SODA_AS_AL32UTF8;
+    if (coll->binaryContent || coll->env->context->sodaUseJsonDesc) {
+        ociFlags = DPI_OCI_SODA_AS_STORED;
+    } else {
+        ociFlags = DPI_OCI_SODA_AS_AL32UTF8;
+    }
 
     // perform actual find
     if (cursor) {

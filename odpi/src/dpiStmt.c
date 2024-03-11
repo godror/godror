@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -1727,11 +1727,13 @@ int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos, dpiQueryInfo *info)
     }
 
     // copy query information from internal cache
-    // the size of the dpiDataTypeInfo structure changed in version 5.1; this
-    // check and alternative memcpy() for version 5.0 can be removed once 6.0
-    // is released
-    if (stmt->env->context->dpiMinorVersion > 0) {
+    // the size of the dpiDataTypeInfo structure changed in version 5.1 and
+    // again in 5.2; this check and memcpy() for older versions can be removed
+    // once 6.0 is released
+    if (stmt->env->context->dpiMinorVersion > 1) {
         memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
+    } else if (stmt->env->context->dpiMinorVersion == 1) {
+        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo__v51));
     } else {
         memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo__v50));
     }

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2017, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2017, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -480,6 +480,10 @@ typedef int (*dpiOciFnType__typeByName)(void *env, void *err, const void *svc,
         const char *schema_name, uint32_t s_length, const char *type_name,
         uint32_t t_length, const char *version_name, uint32_t v_length,
         uint16_t pin_duration, int get_option, void **tdo);
+typedef int (*dpiOciFnType__vectorFromArray)(void *vectord, void *errhp,
+        uint8_t vformat, uint32_t vdim, void *vecarray, uint32_t mode);
+typedef int (*dpiOciFnType__vectorToArray)(void *vectord, void *errhp,
+        uint8_t vformat, uint32_t *vdim, void *vecarray, uint32_t mode);
 
 
 // library handle for dynamically loaded OCI library
@@ -672,6 +676,8 @@ static struct {
     dpiOciFnType__transStart fnTransStart;
     dpiOciFnType__typeByFullName fnTypeByFullName;
     dpiOciFnType__typeByName fnTypeByName;
+    dpiOciFnType__vectorFromArray fnVectorFromArray;
+    dpiOciFnType__vectorToArray fnVectorToArray;
 } dpiOciSymbols;
 
 
@@ -4328,4 +4334,39 @@ int dpiOci__typeByFullName(dpiConn *conn, const char *name,
             error->handle, conn->handle, name, nameLength, NULL, 0,
             DPI_OCI_DURATION_SESSION, DPI_OCI_TYPEGET_ALL, tdo);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "get type by full name");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__vectorFromArray() [INTERNAL]
+//   Wrapper for OCIVectorFromArray().
+//-----------------------------------------------------------------------------
+int dpiOci__vectorFromArray(dpiVector *vector, dpiVectorInfo *info,
+        dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCIVectorFromArray", dpiOciSymbols.fnVectorFromArray)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnVectorFromArray)(vector->handle, error->handle,
+            info->format, info->numDimensions, info->dimensions.asPtr,
+            DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, vector->conn, "vector from array");
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiOci__vectorToArray() [INTERNAL]
+//   Wrapper for OCIVectorToArray().
+//-----------------------------------------------------------------------------
+int dpiOci__vectorToArray(dpiVector *vector, dpiError *error)
+{
+    int status;
+
+    DPI_OCI_LOAD_SYMBOL("OCIVectorToArray", dpiOciSymbols.fnVectorToArray)
+    DPI_OCI_ENSURE_ERROR_HANDLE(error)
+    status = (*dpiOciSymbols.fnVectorToArray)(vector->handle, error->handle,
+            vector->format, &vector->numDimensions, vector->dimensions,
+            DPI_OCI_DEFAULT);
+    DPI_OCI_CHECK_AND_RETURN(error, status, vector->conn, "vector to array");
 }
