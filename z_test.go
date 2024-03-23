@@ -5023,3 +5023,42 @@ func TestSelectAlterSessionIssue297(t *testing.T) {
 type ReaderFunc func([]byte) (int, error)
 
 func (rf ReaderFunc) Read(p []byte) (int, error) { return rf(p) }
+
+func TestBindNumber(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	defer cancel()
+
+	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	const qry = "SELECT DUMP(:1) FROM DUAL"
+	stmt, err := tx.PrepareContext(ctx, qry)
+	if err != nil {
+		t.Fatalf("prepare %s: %+v", qry, err)
+	}
+	defer stmt.Close()
+
+	type intLike int
+	type floatLike float64
+
+	for _, tC := range []struct {
+		In   interface{}
+		Want string
+	}{
+		{int(1), "Typ=2 Len=2: 193,2"},
+		{float32(3.14), "Typ=100 Len=4: 192,72,245,195"},
+		{intLike(2), "Typ=2 Len=2: 193,3"},
+		{floatLike(2.78), "Typ=101 Len=8: 192,6,61,112,163,215,10,61"},
+	} {
+		var got string
+		if err := stmt.QueryRowContext(ctx, tC.In).Scan(&got); err != nil {
+			t.Fatalf("scan %q [%v]: %+v", qry, tC.In, err)
+		}
+		t.Log(tC.In, "got", got)
+		if got != tC.Want {
+			t.Errorf("%v: got %q, wanted %q", tC.In, got, tC.Want)
+		}
+	}
+}

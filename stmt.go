@@ -1254,6 +1254,49 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			logger.Debug("bindVarTypeSwitch default", "value", fmt.Sprintf("%T", value))
 		}
 		if !isValuer {
+			rt := reflect.TypeOf(value)
+			kind := rt.Kind()
+			if kind == reflect.Slice {
+				kind = rt.Elem().Kind()
+			}
+			switch kind {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_INT64
+				if !nilPtr {
+					info.set = dataSetNumber
+					if info.isOut {
+						*get = dataGetNumber
+					}
+				}
+				return value, nil
+
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NUMBER, C.DPI_NATIVE_TYPE_UINT64
+				if !nilPtr {
+					info.set = dataSetNumber
+					if info.isOut {
+						*get = dataGetNumber
+					}
+				}
+				return value, nil
+
+			case reflect.Float32:
+				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
+				info.set = dataSetNumber
+				if info.isOut {
+					*get = dataGetNumber
+				}
+				return value, nil
+
+			case reflect.Float64:
+				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
+				info.set = dataSetNumber
+				if info.isOut {
+					*get = dataGetNumber
+				}
+				return value, nil
+			}
+
 			if ot, err := st.conn.getStructObjectType(ctx, value, ""); err != nil {
 				if logger != nil {
 					logger.Error("getStructObjectType", "value", fmt.Sprintf("%T", value), "error", err)
@@ -1863,6 +1906,22 @@ func dataGetNumber(ctx context.Context, v interface{}, data []C.dpiData) error {
 		return dataGetBytes(ctx, x, data)
 
 	default:
+		rv := reflect.ValueOf(v)
+		switch rv.Type().Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			x := reflect.ValueOf(new(int64)).Elem()
+			x.SetInt(rv.Int())
+			return dataGetNumber(ctx, x.Interface(), data)
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			x := reflect.ValueOf(new(uint64)).Elem()
+			x.SetUint(rv.Uint())
+			return dataGetNumber(ctx, x.Interface(), data)
+		case reflect.Float32, reflect.Float64:
+			x := reflect.ValueOf(new(float64)).Elem()
+			x.SetFloat(rv.Float())
+			return dataGetNumber(ctx, x.Interface(), data)
+		}
+
 		return fmt.Errorf("unknown number [%T] %#v", v, v)
 	}
 
@@ -2020,6 +2079,22 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv inter
 		return dataSetBytes(ctx, dv, data, vv)
 
 	default:
+		rv := reflect.ValueOf(vv)
+		switch rv.Type().Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			x := reflect.ValueOf(new(int64)).Elem()
+			x.SetInt(rv.Int())
+			return dataSetNumber(ctx, dv, data, x.Interface())
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			x := reflect.ValueOf(new(uint64)).Elem()
+			x.SetUint(rv.Uint())
+			return dataSetNumber(ctx, dv, data, x.Interface())
+		case reflect.Float32, reflect.Float64:
+			x := reflect.ValueOf(new(float64)).Elem()
+			x.SetFloat(rv.Float())
+			return dataSetNumber(ctx, dv, data, x.Interface())
+		}
+
 		return fmt.Errorf("unknown number slice [%T] %#v", vv, vv)
 	}
 
