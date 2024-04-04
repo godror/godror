@@ -8,6 +8,7 @@ package godror
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"reflect"
 )
 
@@ -37,9 +38,35 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 			b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(values[i])), 0, b.Limit)
 		}
 	}
-	for i, v := range values {
-		b.rValues[i] = reflect.Append(b.rValues[i], reflect.ValueOf(v))
-	}
+	func() {
+		var i int
+		var v any
+		defer func() {
+			if r := recover(); r != nil {
+				panic(fmt.Errorf("append %#v (%d.) to %#v: %+v", v, i, b.rValues[i], r))
+			}
+		}()
+		for i, v = range values {
+			rv := reflect.ValueOf(v)
+			// type mismatch
+			if rv.Type().Kind() != reflect.String &&
+				b.rValues[i].Type().Elem().Kind() == reflect.String {
+				vv := b.rValues[i]
+				// fmt.Println("rv", vv.Interface())
+				allZero := true
+				for j := 0; j < vv.Len(); j++ {
+					if allZero = vv.Index(j).Len() == 0; !allZero {
+						break
+					}
+				}
+				if allZero { // all zero, replace with proper typed slice
+					b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(rv.Type()), vv.Len(), vv.Cap())
+				}
+				// fmt.Println("allZero?", allZero, "vv", b.rValues[i].Interface())
+			}
+			b.rValues[i] = reflect.Append(b.rValues[i], rv)
+		}
+	}()
 	b.size++
 	if b.size < b.Limit {
 		return nil
