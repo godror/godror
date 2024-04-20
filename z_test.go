@@ -3041,6 +3041,31 @@ func TestNumberBool(t *testing.T) {
 }
 
 func TestCancel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("Cancel"), 15*time.Second)
+	defer cancel()
+	subCtx, subCancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		defer close(done)
+		const qry = `BEGIN DBMS_SESSION.sleep(10); END;`
+		if _, err := testDb.ExecContext(subCtx, qry); err != nil {
+			done <- err
+		}
+	}()
+	time.Sleep(time.Second)
+	subCancel()
+	time.Sleep(time.Second)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	default:
+		t.Error("hasn't finished yet")
+	}
+}
+
+func TestTimeout(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip cancel test")
 	}
@@ -3053,7 +3078,7 @@ func TestCancel(t *testing.T) {
 	const maxConc = maxSessions / 2
 	db.SetMaxOpenConns(maxConc - 1)
 	db.SetMaxIdleConns(1)
-	ctx, cancel := context.WithCancel(testContext("Cancel"))
+	ctx, cancel := context.WithCancel(testContext("Timeout"))
 	defer cancel()
 	const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
 	cntStmt, err := testDb.PrepareContext(ctx, qryCount)
@@ -3065,9 +3090,7 @@ func TestCancel(t *testing.T) {
 	Cnt := func() int {
 		var cnt int
 		if err := db.QueryRowContext(ctx, qryCount, pid).Scan(&cnt); err != nil {
-			if strings.Contains(err.Error(), "ORA-00942:") {
-				t.Skip(err.Error())
-			} else {
+			if !strings.Contains(err.Error(), "ORA-00942:") {
 				t.Fatal(fmt.Errorf("%s: %w", qryCount, err))
 			}
 		}
