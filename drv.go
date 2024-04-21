@@ -37,6 +37,7 @@
 //	libDir=
 //	stmtCacheSize=
 //	charset=UTF-8
+//	noBreakOnContextCancel=
 //
 // These are the defaults.
 // For external authentication, user and password should be empty

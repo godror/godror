@@ -469,21 +469,23 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			logger.Debug("dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
 		}
 		done := make(chan struct{})
-		// Forcefully BREAK execution on context cancelation
-		go func() {
-			select {
-			case <-done:
-			case <-ctx.Done():
+		if !st.conn.params.NoBreakOnContextCancel {
+			// Forcefully BREAK execution on context cancelation
+			go func() {
 				select {
 				case <-done:
-				default:
-					if logger != nil {
-						logger.Warn("BREAK dpiStmt_execute")
+				case <-ctx.Done():
+					select {
+					case <-done:
+					default:
+						if logger != nil {
+							logger.Warn("BREAK dpiStmt_execute")
+						}
+						st.conn.Break()
 					}
-					st.conn.Break()
 				}
-			}
-		}()
+			}()
+		}
 		if err = func() error { defer close(done); return st.checkExec(f) }(); err == nil {
 			break
 		}
@@ -631,21 +633,23 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	f := func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, &colCount) }
 	for i := 0; i < 3; i++ {
 		done := make(chan struct{})
-		// Forcefully BREAK execution on context cancelation
-		go func() {
-			select {
-			case <-done:
-			case <-ctx.Done():
+		if !st.conn.params.NoBreakOnContextCancel {
+			// Forcefully BREAK execution on context cancelation
+			go func() {
 				select {
 				case <-done:
-				default:
-					if logger != nil {
-						logger.Warn("BREAK dpiStmt_execute")
+				case <-ctx.Done():
+					select {
+					case <-done:
+					default:
+						if logger != nil {
+							logger.Warn("BREAK dpiStmt_execute")
+						}
+						st.conn.Break()
 					}
-					st.conn.Break()
 				}
-			}
-		}()
+			}()
+		}
 		if err = func() error { defer close(done); return st.checkExec(f) }(); err == nil {
 			break
 		}
