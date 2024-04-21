@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Obey to context cancelation (as the documentation says),
+not just deadlines
+- add noBreakOnContextCancel option as a safety valve it the previous
+change cause SIGSEGV.
 
 ## [v0.40.3]
 ### Changed
