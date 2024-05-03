@@ -500,6 +500,37 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, closeIfBadConn(err) //fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
 
+	if many {
+		if err := func() error {
+			var errInfos []C.dpiErrorInfo
+			func() {
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+				var errCnt C.uint32_t
+				if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) == C.DPI_FAILURE || errCnt == 0 {
+					return
+				}
+				errInfos = make([]C.dpiErrorInfo, int(errCnt))
+				if C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0]) == C.DPI_FAILURE {
+					errInfos = errInfos[:0]
+					return
+				}
+			}()
+			if len(errInfos) == 0 {
+				return nil
+			}
+			errs := make([]error, 0, len(errInfos))
+			for _, ei := range errInfos {
+				if e := fromErrorInfo(ei); e != nil {
+					errs = append(errs, e)
+				}
+			}
+			return errors.Join(errs...)
+		}(); err != nil {
+			return nil, err
+		}
+	}
+
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("get/set", "gets", st.gets, "dests", st.dests)
 	}
