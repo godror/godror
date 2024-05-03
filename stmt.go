@@ -51,7 +51,11 @@ const printStack = false
 // NullTime is an alias for sql.NullTime
 type NullTime = sql.NullTime
 
-var nullTime interface{} = nil
+var (
+	nullTime interface{} = nil
+
+	ErrBatch = errors.New("batch errors")
+)
 
 type stmtOptions struct {
 	boolString         boolString
@@ -500,23 +504,19 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, closeIfBadConn(err) //fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
 	}
 
+	var batchErrors error
 	if many {
-		if err := func() error {
+		if batchErrors = func() error {
 			var errInfos []C.dpiErrorInfo
-			func() {
-				runtime.LockOSThread()
-				defer runtime.UnlockOSThread()
-				var errCnt C.uint32_t
-				if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) == C.DPI_FAILURE || errCnt == 0 {
-					return
-				}
+			var errCnt C.uint32_t
+			var rc C.int
+			runtime.LockOSThread()
+			if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) != C.DPI_FAILURE && errCnt != 0 {
 				errInfos = make([]C.dpiErrorInfo, int(errCnt))
-				if C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0]) == C.DPI_FAILURE {
-					errInfos = errInfos[:0]
-					return
-				}
-			}()
-			if len(errInfos) == 0 {
+				rc = C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0])
+			}
+			runtime.UnlockOSThread()
+			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
 				return nil
 			}
 			errs := make([]error, 0, len(errInfos))
@@ -526,8 +526,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				}
 			}
 			return errors.Join(errs...)
-		}(); err != nil {
-			return nil, err
+		}(); batchErrors != nil {
+			batchErrors = fmt.Errorf("%w: %w", ErrBatch, batchErrors)
+			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
+				logger.Warn("batch", "errors", batchErrors)
+			}
 		}
 	}
 
@@ -581,9 +584,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	var count C.uint64_t
 	if st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }) != nil {
-		return nil, nil
+		return nil, batchErrors
 	}
-	return driver.RowsAffected(count), nil
+	return driver.RowsAffected(count), batchErrors
 }
 
 // QueryContext executes a query that may return rows, such as a SELECT.
