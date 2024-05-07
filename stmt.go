@@ -66,6 +66,7 @@ type stmtOptions struct {
 	deleteFromCache    bool
 	numberAsString     bool
 	numberAsFloat64    bool
+	partialBatch       bool
 }
 
 type boolString struct {
@@ -137,6 +138,7 @@ func (o stmtOptions) NullDate() interface{} {
 func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
 func (o stmtOptions) NumberAsFloat64() bool { return o.numberAsFloat64 }
+func (o stmtOptions) PartialBatch() bool    { return o.partialBatch }
 
 // Option holds statement options.
 //
@@ -284,6 +286,12 @@ func NumberAsString() Option { return func(o *stmtOptions) { o.numberAsString = 
 
 // NumberAsFloat64 is an option to return numbers as float64, not Number (which is a string).
 func NumberAsFloat64() Option { return func(o *stmtOptions) { o.numberAsFloat64 = true } }
+
+// PartialBatch is an option to allow batch executing like FORALL SAVE EXCEPTIONS.
+//
+// WARNING: this means the INSERT/UPDATE/DELETE statement may be executed partially.
+// In such case the returned error is a BatchErrors containing the failed offsets.
+func PartialBatch() Option { return func(o *stmtOptions) { o.partialBatch = true } }
 
 const minChunkSize = 1 << 16
 
@@ -460,7 +468,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
 	if many {
-		mode |= C.DPI_MODE_EXEC_BATCH_ERRORS
+		if st.PartialBatch() {
+			mode |= C.DPI_MODE_EXEC_BATCH_ERRORS
+		}
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
 	} else {
 		f = func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, nil) }
@@ -497,7 +507,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	if err != nil && !many || closeIfBadConn(err) == driver.ErrBadConn {
+	if err != nil && !many ||
+		(many && !st.PartialBatch()) ||
+		closeIfBadConn(err) == driver.ErrBadConn {
 		return nil, err
 	}
 

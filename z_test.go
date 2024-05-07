@@ -5094,7 +5094,7 @@ func TestBindNumber(t *testing.T) {
 	}
 }
 
-func TestSaveExceptions(t *testing.T) {
+func TestPartialBatch(t *testing.T) {
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
 	defer cancel()
@@ -5114,22 +5114,33 @@ func TestSaveExceptions(t *testing.T) {
 	}
 	defer testDb.Exec(dropQry)
 
-	values := []int32{-1, 0, 1, 2, 3, 4, 5}
-	var qry string
-	if true {
-		qry = "INSERT INTO " + tbl + " (id) VALUES (:1)"
-	} else {
-		qry = `DECLARE
-  TYPE pls_tt IS TABLE OF NUMBER(3) INDEX BY PLS_INTEGER;
-  v_tab pls_tt := :1;
-BEGIN
-  FORALL i IN 1..v_tab.COUNT SAVE EXCEPTIONS
-    INSERT INTO ` + tbl + ` (id) VALUES (v_tab(i));
-END;`
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, err := testDb.ExecContext(ctx, qry, values) //, godror.PlSQLArrays)
+	defer tx.Rollback()
+
+	values := []int32{-1, 0, 1, 2, 3, 4, 5}
+	qry := "INSERT INTO " + tbl + " (id) VALUES (:1)"
+
 	var be godror.BatchErrors
-	if err == nil {
+	if _, err := tx.ExecContext(ctx, qry, values); err == nil {
+		t.Errorf("wanted error, got nil")
+	} else if errors.As(err, &be) {
+		t.Errorf("wanted normal error, got %#v", be)
+	}
+
+	var got int32
+	cntQry := "SELECT COUNT(0) FROM " + tbl
+	if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
+		t.Fatalf("%s: %+v", cntQry, err)
+	}
+	t.Logf("have %d rows", got)
+	if got != 0 {
+		t.Errorf("got %d rows, wanted 0", got)
+	}
+
+	if _, err = tx.ExecContext(ctx, qry, values, godror.PartialBatch()); err == nil {
 		t.Error("wanted error, got <nil>")
 	} else if !errors.As(err, &be) {
 		t.Errorf("%s %v: %+v", qry, values, err)
@@ -5139,10 +5150,8 @@ END;`
 		}
 	}
 
-	var got int32
-	qry = "SELECT COUNT(0) FROM " + tbl
-	if err := testDb.QueryRowContext(ctx, qry).Scan(&got); err != nil {
-		t.Fatal(err)
+	if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
+		t.Fatalf("%s: %+v", cntQry, err)
 	}
 	t.Logf("have %d rows", got)
 	if want := int32(3); got != want {
