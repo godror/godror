@@ -51,11 +51,7 @@ const printStack = false
 // NullTime is an alias for sql.NullTime
 type NullTime = sql.NullTime
 
-var (
-	nullTime interface{} = nil
-
-	ErrBatch = errors.New("batch errors")
-)
+var nullTime interface{} = nil
 
 type stmtOptions struct {
 	boolString         boolString
@@ -523,15 +519,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
 				return nil
 			}
-			errs := make([]error, 0, len(errInfos))
+			errs := make(BatchErrors, 0, len(errInfos))
 			for _, ei := range errInfos {
 				if e := fromErrorInfo(ei); e != nil {
-					errs = append(errs, e)
+					errs = append(errs, e.(*OraErr))
 				}
 			}
-			return errors.Join(errs...)
+			return errs
 		}(); batchErrors != nil {
-			batchErrors = fmt.Errorf("%w: %w", ErrBatch, batchErrors)
 			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
 				logger.Warn("batch", "errors", batchErrors)
 			}

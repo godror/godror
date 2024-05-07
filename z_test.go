@@ -5128,10 +5128,15 @@ BEGIN
 END;`
 	}
 	_, err := testDb.ExecContext(ctx, qry, values) //, godror.PlSQLArrays)
+	var be godror.BatchErrors
 	if err == nil {
 		t.Error("wanted error, got <nil>")
-	} else if !errors.Is(err, godror.ErrBatch) {
+	} else if !errors.As(err, &be) {
 		t.Errorf("%s %v: %+v", qry, values, err)
+	} else {
+		for _, oe := range be {
+			t.Logf("erroneous offset: %d", oe.Offset())
+		}
 	}
 
 	var got int32
