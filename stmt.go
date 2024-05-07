@@ -500,8 +500,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	if err != nil {
-		return nil, closeIfBadConn(err) //fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
+	if err != nil && !many || closeIfBadConn(err) == driver.ErrBadConn {
+		return nil, err
 	}
 
 	var batchErrors error
@@ -514,6 +514,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) != C.DPI_FAILURE && errCnt != 0 {
 				errInfos = make([]C.dpiErrorInfo, int(errCnt))
 				rc = C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0])
+			}
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+				logger.Debug("batchErrors", "errCnt", errCnt)
 			}
 			runtime.UnlockOSThread()
 			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
@@ -531,6 +534,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
 				logger.Warn("batch", "errors", batchErrors)
 			}
+		} else {
+			batchErrors = err
 		}
 	}
 

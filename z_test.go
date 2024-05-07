@@ -79,8 +79,11 @@ func setUp() func() {
 
 	if Verbose {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
+		logger = slog.New(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	} else {
 		logger = slog.New(slog.NewTextHandler(tl, nil))
 	}
+	slog.SetDefault(logger)
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
 		if time.Local, err = time.LoadLocation(tzName); err != nil {
@@ -294,7 +297,12 @@ func StopConnStats() {
 }
 
 func testContext(name string) context.Context {
-	return godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
+	ctx := godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
+	if Verbose {
+		logger.Info("testContext", "name", name)
+		ctx = godror.ContextWithLogger(ctx, logger)
+	}
+	return ctx
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
@@ -5083,5 +5091,35 @@ func TestBindNumber(t *testing.T) {
 		if got != tC.Want {
 			t.Errorf("%v: got %q, wanted %q", tC.In, got, tC.Want)
 		}
+	}
+}
+
+func TestSaveExceptions(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	defer cancel()
+
+	tbl := "test_savexc_" + tblSuffix
+	dropQry := `DROP TABLE ` + tbl
+	testDb.ExecContext(ctx, dropQry)
+	{
+		for _, qry := range []string{
+			"CREATE TABLE " + tbl + " (id NUMBER(3) NOT NULL)",
+			"ALTER TABLE " + tbl + " ADD CONSTRAINT c_" + tbl + " check (MOD(id, 2) = 1 AND id > 0)",
+		} {
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	defer testDb.Exec(dropQry)
+
+	qry := "INSERT INTO " + tbl + " (id) VALUES (:1)"
+	values := []int{-1, 0, 1, 2, 3, 4, 5}
+	_, err := testDb.ExecContext(ctx, qry, values)
+	if err == nil {
+		t.Error("wanted error, got <nil>")
+	} else if !errors.Is(err, godror.ErrBatch) {
+		t.Errorf("%s %v: %+v", qry, values, err)
 	}
 }
