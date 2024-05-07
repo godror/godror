@@ -5114,12 +5114,33 @@ func TestSaveExceptions(t *testing.T) {
 	}
 	defer testDb.Exec(dropQry)
 
-	qry := "INSERT INTO " + tbl + " (id) VALUES (:1)"
-	values := []int{-1, 0, 1, 2, 3, 4, 5}
-	_, err := testDb.ExecContext(ctx, qry, values)
+	values := []int32{-1, 0, 1, 2, 3, 4, 5}
+	var qry string
+	if true {
+		qry = "INSERT INTO " + tbl + " (id) VALUES (:1)"
+	} else {
+		qry = `DECLARE
+  TYPE pls_tt IS TABLE OF NUMBER(3) INDEX BY PLS_INTEGER;
+  v_tab pls_tt := :1;
+BEGIN
+  FORALL i IN 1..v_tab.COUNT SAVE EXCEPTIONS
+    INSERT INTO ` + tbl + ` (id) VALUES (v_tab(i));
+END;`
+	}
+	_, err := testDb.ExecContext(ctx, qry, values) //, godror.PlSQLArrays)
 	if err == nil {
 		t.Error("wanted error, got <nil>")
 	} else if !errors.Is(err, godror.ErrBatch) {
 		t.Errorf("%s %v: %+v", qry, values, err)
+	}
+
+	var got int32
+	qry = "SELECT COUNT(0) FROM " + tbl
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("have %d rows", got)
+	if want := int32(3); got != want {
+		t.Errorf("got %d rows, wanted %d", got, want)
 	}
 }

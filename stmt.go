@@ -464,6 +464,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
 	if many {
+		mode |= C.DPI_MODE_EXEC_BATCH_ERRORS
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
 	} else {
 		f = func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, nil) }
