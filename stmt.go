@@ -35,6 +35,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -531,13 +532,25 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
 				return nil
 			}
-			errs := make(BatchErrors, 0, len(errInfos))
+			be := BatchErrors{
+				Unaffected: make([]int, 0, len(errInfos)),
+				Errs:       make([]*OraErr, 0, len(errInfos)),
+			}
 			for _, ei := range errInfos {
 				if e := fromErrorInfo(ei); e != nil {
-					errs = append(errs, e.(*OraErr))
+					oe := e.(*OraErr)
+					be.Errs = append(be.Errs, oe)
+					be.Unaffected = append(be.Unaffected, oe.offset)
 				}
 			}
-			return errs
+			sort.Ints(be.Unaffected)
+			be.Affected = make([]int, 0, len(errInfos)-len(be.Unaffected))
+			for i := 0; i < st.arrLen; i++ {
+				if j := sort.SearchInts(be.Unaffected, i); j < 0 || j >= len(be.Unaffected) || be.Unaffected[j] != i {
+					be.Affected = append(be.Affected, i)
+				}
+			}
+			return &be
 		}(); batchErrors != nil {
 			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
 				logger.Warn("batch", "errors", batchErrors)
@@ -596,7 +609,10 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 	var count C.uint64_t
-	if st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }) != nil {
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }); err != nil {
+		if logger != nil {
+			logger.Error("getRowCount", "error", err)
+		}
 		return nil, batchErrors
 	}
 	return driver.RowsAffected(count), batchErrors

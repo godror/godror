@@ -5121,40 +5121,73 @@ func TestPartialBatch(t *testing.T) {
 	defer tx.Rollback()
 
 	values := []int32{-1, 0, 1, 2, 3, 4, 5}
+	wantAffected := []int{2, 4, 6}
+	wantUnaffected := []int{0, 1, 3, 5}
 	qry := "INSERT INTO " + tbl + " (id) VALUES (:1)"
 
-	var be godror.BatchErrors
-	if _, err := tx.ExecContext(ctx, qry, values); err == nil {
-		t.Errorf("wanted error, got nil")
-	} else if errors.As(err, &be) {
-		t.Errorf("wanted normal error, got %#v", be)
-	}
-
-	var got int32
-	cntQry := "SELECT COUNT(0) FROM " + tbl
-	if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
-		t.Fatalf("%s: %+v", cntQry, err)
-	}
-	t.Logf("have %d rows", got)
-	if got != 0 {
-		t.Errorf("got %d rows, wanted 0", got)
-	}
-
-	if _, err = tx.ExecContext(ctx, qry, values, godror.PartialBatch()); err == nil {
-		t.Error("wanted error, got <nil>")
-	} else if !errors.As(err, &be) {
-		t.Errorf("%s %v: %+v", qry, values, err)
-	} else {
-		for _, oe := range be {
-			t.Logf("erroneous offset: %d", oe.Offset())
+	checkRowCount := func(t *testing.T, want int) {
+		var got int
+		cntQry := "SELECT COUNT(0) FROM " + tbl
+		if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
+			t.Fatalf("%s: %+v", cntQry, err)
+		}
+		t.Logf("have %d rows", got)
+		if got != want {
+			t.Errorf("got %d rows, wanted %d", got, want)
 		}
 	}
 
-	if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
-		t.Fatalf("%s: %+v", cntQry, err)
-	}
-	t.Logf("have %d rows", got)
-	if want := int32(3); got != want {
-		t.Errorf("got %d rows, wanted %d", got, want)
-	}
+	var be *godror.BatchErrors
+	t.Run("no-option", func(t *testing.T) {
+		res, err := tx.ExecContext(ctx, qry, values)
+		if res == nil {
+			t.Log("res is nil!")
+		} else {
+			if ra, err := res.RowsAffected(); err != nil {
+				t.Errorf("get RowsAffected: %+v", err)
+			} else if ra != 0 {
+				t.Errorf("rowsAffected=%d, wanted 0", ra)
+			}
+		}
+		if err == nil {
+			t.Errorf("wanted error, got nil")
+		} else if errors.As(err, &be) {
+			t.Errorf("wanted normal error, got %#v", be)
+		}
+		checkRowCount(t, 0)
+	})
+
+	t.Run("PartialBatch", func(t *testing.T) {
+		res, err := tx.ExecContext(ctx, qry, values, godror.PartialBatch())
+		if res == nil {
+			t.Log("res is nil!")
+		} else {
+			ra, err := res.RowsAffected()
+			if err != nil {
+				t.Errorf("get RowsAffected: %+v", err)
+			}
+			t.Logf("rowsAffected=%d", ra)
+			if ra != int64(len(wantAffected)) {
+				t.Errorf("rowsAffected=%d, wanted %d", ra, len(wantAffected))
+			}
+		}
+		if err == nil {
+			t.Error("wanted error, got <nil>")
+		} else if !errors.As(err, &be) {
+			t.Errorf("%s %v: NOT BatchError %+v", qry, values, err)
+		} else {
+			for _, oe := range be.Errs {
+				t.Logf("erroneous offset: %d", oe.Offset())
+			}
+			t.Logf("affected=%#v unaffected=%#v", be.Affected, be.Unaffected)
+			if wanted := wantAffected; !reflect.DeepEqual(be.Affected, wanted) {
+				t.Errorf("affected is %#v, wanted %#v", be.Affected, wanted)
+			}
+			if wanted := wantUnaffected; !reflect.DeepEqual(be.Unaffected, wanted) {
+				t.Errorf("affected is %#v, wanted %#v", be.Unaffected, wanted)
+			}
+		}
+
+		checkRowCount(t, len(wantAffected))
+	})
 }

@@ -1031,20 +1031,25 @@ func (oe *OraErr) Recoverable() bool { return oe.recoverable }
 
 func (oe *OraErr) IsWarning() bool { return oe.warning }
 
-// BatchErrors is returned as Batch errors.
-type BatchErrors []*OraErr
+var _ error = (*BatchErrors)(nil)
 
-func (be BatchErrors) Error() string {
+// BatchErrors is returned as Batch errors.
+type BatchErrors struct {
+	Affected, Unaffected []int
+	Errs                 []*OraErr
+}
+
+func (be *BatchErrors) Error() string {
 	var buf strings.Builder
-	for _, oe := range be {
+	for _, oe := range be.Errs {
 		fmt.Fprintf(&buf, "%d. ORA-%05d: %s\n", oe.offset, oe.code, oe.message)
 	}
 	return buf.String()
 }
 
-func (be BatchErrors) Unwrap() []error {
-	errs := make([]error, len(be))
-	for i, oe := range be {
+func (be *BatchErrors) Unwrap() []error {
+	errs := make([]error, len(be.Errs))
+	for i, oe := range be.Errs {
 		errs[i] = oe
 	}
 	return errs
