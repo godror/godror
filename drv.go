@@ -918,7 +918,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	}
 	C.dpiPool_setStmtCacheSize(dp, stmtCacheSize)
 
-	return &connPool{dpiPool: dp, params: P, tokenCallBackID: id}, nil
+	return &connPool{dpiPool: dp, params: P, tokenCallBackID: tokenCBID}, nil
 }
 
 // PoolStats contains Oracle session pool statistics
