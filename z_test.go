@@ -79,8 +79,11 @@ func setUp() func() {
 
 	if Verbose {
 		tl.enc = logfmt.NewEncoder(os.Stderr)
+		logger = slog.New(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	} else {
 		logger = slog.New(slog.NewTextHandler(tl, nil))
 	}
+	slog.SetDefault(logger)
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
 		if time.Local, err = time.LoadLocation(tzName); err != nil {
@@ -294,7 +297,12 @@ func StopConnStats() {
 }
 
 func testContext(name string) context.Context {
-	return godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
+	ctx := godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
+	if Verbose {
+		logger.Info("testContext", "name", name)
+		ctx = godror.ContextWithLogger(ctx, logger)
+	}
+	return ctx
 }
 
 var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
@@ -5084,4 +5092,102 @@ func TestBindNumber(t *testing.T) {
 			t.Errorf("%v: got %q, wanted %q", tC.In, got, tC.Want)
 		}
 	}
+}
+
+func TestPartialBatch(t *testing.T) {
+	defer tl.enableLogging(t)()
+	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	defer cancel()
+
+	tbl := "test_savexc_" + tblSuffix
+	dropQry := `DROP TABLE ` + tbl
+	testDb.ExecContext(ctx, dropQry)
+	{
+		for _, qry := range []string{
+			"CREATE TABLE " + tbl + " (id NUMBER(3) NOT NULL)",
+			"ALTER TABLE " + tbl + " ADD CONSTRAINT c_" + tbl + " check (MOD(id, 2) = 1 AND id > 0)",
+		} {
+			if _, err := testDb.ExecContext(ctx, qry); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	defer testDb.Exec(dropQry)
+
+	tx, err := testDb.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	values := []int32{-1, 0, 1, 2, 3, 4, 5}
+	wantAffected := []int{2, 4, 6}
+	wantUnaffected := []int{0, 1, 3, 5}
+	qry := "INSERT INTO " + tbl + " (id) VALUES (:1)"
+
+	checkRowCount := func(t *testing.T, want int) {
+		var got int
+		cntQry := "SELECT COUNT(0) FROM " + tbl
+		if err := tx.QueryRowContext(ctx, cntQry).Scan(&got); err != nil {
+			t.Fatalf("%s: %+v", cntQry, err)
+		}
+		t.Logf("have %d rows", got)
+		if got != want {
+			t.Errorf("got %d rows, wanted %d", got, want)
+		}
+	}
+
+	var be *godror.BatchErrors
+	t.Run("no-option", func(t *testing.T) {
+		res, err := tx.ExecContext(ctx, qry, values)
+		if res == nil {
+			t.Log("res is nil!")
+		} else {
+			if ra, err := res.RowsAffected(); err != nil {
+				t.Errorf("get RowsAffected: %+v", err)
+			} else if ra != 0 {
+				t.Errorf("rowsAffected=%d, wanted 0", ra)
+			}
+		}
+		if err == nil {
+			t.Errorf("wanted error, got nil")
+		} else if errors.As(err, &be) {
+			t.Errorf("wanted normal error, got %#v", be)
+		}
+		checkRowCount(t, 0)
+	})
+
+	t.Run("PartialBatch", func(t *testing.T) {
+		res, err := tx.ExecContext(ctx, qry, values, godror.PartialBatch())
+		if res == nil {
+			t.Log("res is nil!")
+		} else {
+			ra, err := res.RowsAffected()
+			if err != nil {
+				t.Errorf("get RowsAffected: %+v", err)
+			}
+			t.Logf("rowsAffected=%d", ra)
+			if ra != int64(len(wantAffected)) {
+				t.Errorf("rowsAffected=%d, wanted %d", ra, len(wantAffected))
+			}
+		}
+		if err == nil {
+			t.Error("wanted error, got <nil>")
+		} else if !errors.As(err, &be) {
+			t.Errorf("%s %v: NOT BatchError %+v", qry, values, err)
+		} else {
+			for _, oe := range be.Errs {
+				t.Logf("erroneous offset: %d", oe.Offset())
+			}
+			t.Logf("affected=%#v unaffected=%#v", be.Affected, be.Unaffected)
+			if wanted := wantAffected; !reflect.DeepEqual(be.Affected, wanted) {
+				t.Errorf("affected is %#v, wanted %#v", be.Affected, wanted)
+			}
+			if wanted := wantUnaffected; !reflect.DeepEqual(be.Unaffected, wanted) {
+				t.Errorf("affected is %#v, wanted %#v", be.Unaffected, wanted)
+			}
+		}
+
+		checkRowCount(t, len(wantAffected))
+	})
 }

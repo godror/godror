@@ -35,6 +35,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +67,7 @@ type stmtOptions struct {
 	deleteFromCache    bool
 	numberAsString     bool
 	numberAsFloat64    bool
+	partialBatch       bool
 }
 
 type boolString struct {
@@ -137,6 +139,7 @@ func (o stmtOptions) NullDate() interface{} {
 func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
 func (o stmtOptions) NumberAsFloat64() bool { return o.numberAsFloat64 }
+func (o stmtOptions) PartialBatch() bool    { return o.partialBatch }
 
 // Option holds statement options.
 //
@@ -284,6 +287,12 @@ func NumberAsString() Option { return func(o *stmtOptions) { o.numberAsString = 
 
 // NumberAsFloat64 is an option to return numbers as float64, not Number (which is a string).
 func NumberAsFloat64() Option { return func(o *stmtOptions) { o.numberAsFloat64 = true } }
+
+// PartialBatch is an option to allow batch executing like FORALL SAVE EXCEPTIONS.
+//
+// WARNING: this means the INSERT/UPDATE/DELETE statement may be executed partially.
+// In such case the returned error is a BatchErrors containing the failed offsets.
+func PartialBatch() Option { return func(o *stmtOptions) { o.partialBatch = true } }
 
 const minChunkSize = 1 << 16
 
@@ -460,6 +469,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
 	if many {
+		if st.PartialBatch() {
+			mode |= C.DPI_MODE_EXEC_BATCH_ERRORS
+		}
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
 	} else {
 		f = func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, nil) }
@@ -496,8 +508,54 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	if err != nil {
-		return nil, closeIfBadConn(err) //fmt.Errorf("dpiStmt_execute(mode=%d arrLen=%d): %w", mode, arrLen, err))
+	if err != nil && (!many || !st.PartialBatch() || closeIfBadConn(err) == driver.ErrBadConn) {
+		return nil, err
+	}
+
+	var batchErrors error
+	if many {
+		if batchErrors = func() error {
+			var errInfos []C.dpiErrorInfo
+			var errCnt C.uint32_t
+			var rc C.int
+			runtime.LockOSThread()
+			if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) != C.DPI_FAILURE && errCnt != 0 {
+				errInfos = make([]C.dpiErrorInfo, int(errCnt))
+				rc = C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0])
+			}
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+				logger.Debug("batchErrors", "errCnt", errCnt)
+			}
+			runtime.UnlockOSThread()
+			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
+				return nil
+			}
+			be := BatchErrors{
+				Unaffected: make([]int, 0, len(errInfos)),
+				Errs:       make([]*OraErr, 0, len(errInfos)),
+			}
+			for _, ei := range errInfos {
+				if e := fromErrorInfo(ei); e != nil {
+					oe := e.(*OraErr)
+					be.Errs = append(be.Errs, oe)
+					be.Unaffected = append(be.Unaffected, oe.offset)
+				}
+			}
+			sort.Ints(be.Unaffected)
+			be.Affected = make([]int, 0, len(errInfos)-len(be.Unaffected))
+			for i := 0; i < st.arrLen; i++ {
+				if j := sort.SearchInts(be.Unaffected, i); j < 0 || j >= len(be.Unaffected) || be.Unaffected[j] != i {
+					be.Affected = append(be.Affected, i)
+				}
+			}
+			return &be
+		}(); batchErrors != nil {
+			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
+				logger.Warn("batch", "errors", batchErrors)
+			}
+		} else {
+			batchErrors = err
+		}
 	}
 
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -549,10 +607,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 	var count C.uint64_t
-	if st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }) != nil {
-		return nil, nil
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }); err != nil {
+		if logger != nil {
+			logger.Error("getRowCount", "error", err)
+		}
+		return nil, batchErrors
 	}
-	return driver.RowsAffected(count), nil
+	return driver.RowsAffected(count), batchErrors
 }
 
 // QueryContext executes a query that may return rows, such as a SELECT.

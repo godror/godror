@@ -1031,6 +1031,30 @@ func (oe *OraErr) Recoverable() bool { return oe.recoverable }
 
 func (oe *OraErr) IsWarning() bool { return oe.warning }
 
+var _ error = (*BatchErrors)(nil)
+
+// BatchErrors is returned as Batch errors.
+type BatchErrors struct {
+	Affected, Unaffected []int
+	Errs                 []*OraErr
+}
+
+func (be *BatchErrors) Error() string {
+	var buf strings.Builder
+	for _, oe := range be.Errs {
+		fmt.Fprintf(&buf, "%d. ORA-%05d: %s\n", oe.offset, oe.code, oe.message)
+	}
+	return buf.String()
+}
+
+func (be *BatchErrors) Unwrap() []error {
+	errs := make([]error, len(be.Errs))
+	for i, oe := range be.Errs {
+		errs[i] = oe
+	}
+	return errs
+}
+
 // newErrorInfo is just for testing: testing cannot use Cgo...
 func newErrorInfo(code int, message string) C.dpiErrorInfo {
 	return C.dpiErrorInfo{code: C.int32_t(code), message: C.CString(message), messageLength: C.uint(len(message))}
