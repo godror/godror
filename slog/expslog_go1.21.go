@@ -32,6 +32,7 @@ const (
 )
 
 func Default() *slog.Logger           { return slog.Default() }
+func SetDefault(lgr *slog.Logger)     { slog.SetDefault(lgr) }
 func New(h slog.Handler) *slog.Logger { return slog.New(h) }
 func NewRecord(t time.Time, lvl slog.Level, s string, p uintptr) slog.Record {
 	return slog.NewRecord(t, lvl, s, p)
