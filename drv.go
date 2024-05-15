@@ -167,16 +167,17 @@ func ParseDSN(dataSourceName string) (P ConnectionParams, err error) {
 
 func NewPassword(s string) Password { return dsn.NewPassword(s) }
 
-func freeAccessToken(cAccessToken *C.dpiAccessToken) {
-	if cAccessToken != nil {
-		if cAccessToken.token != nil {
-			C.free(unsafe.Pointer(cAccessToken.token))
-		}
-		if cAccessToken.privateKey != nil {
-			C.free(unsafe.Pointer(cAccessToken.privateKey))
-		}
-		C.free(unsafe.Pointer(cAccessToken))
+func freeAccessToken(accessToken *C.dpiAccessToken) {
+	if accessToken == nil {
+		return
 	}
+	if accessToken.token != nil {
+		C.free(unsafe.Pointer(accessToken.token))
+	}
+	if accessToken.privateKey != nil {
+		C.free(unsafe.Pointer(accessToken.privateKey))
+	}
+	C.free(unsafe.Pointer(accessToken))
 }
 
 var defaultDrv = &drv{}
@@ -352,7 +353,7 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 // defined at the package level for convenience.
 func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool,
 	stmtCacheSize int, charset string, token string, privateKey string,
-	cAccessToken *C.dpiAccessToken) error {
+	accessToken *C.dpiAccessToken) error {
 	// initialize ODPI-C structure for common creation parameters
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initCommonCreateParams(d.dpiContext, P)
@@ -388,13 +389,13 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 
 	// Token Based Authentication.
 	if token != "" {
-		cAccessToken.token = C.CString(token)
-		cAccessToken.tokenLength = C.uint32_t(len(token))
+		accessToken.token = C.CString(token)
+		accessToken.tokenLength = C.uint32_t(len(token))
 		if privateKey != "" {
-			cAccessToken.privateKey = C.CString(privateKey)
-			cAccessToken.privateKeyLength = C.uint32_t(len(privateKey))
+			accessToken.privateKey = C.CString(privateKey)
+			accessToken.privateKeyLength = C.uint32_t(len(privateKey))
 		}
-		P.accessToken = cAccessToken
+		P.accessToken = accessToken
 	}
 
 	return nil
@@ -503,19 +504,19 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// used when a standalone connection is being created; when a connection is
 	// being acquired from the pool this structure is not needed
 	var commonCreateParamsPtr *C.dpiCommonCreateParams
-	var cAccessToken *C.dpiAccessToken
+	var accessToken *C.dpiAccessToken
 
 	if pool == nil {
 		var commonCreateParams C.dpiCommonCreateParams
 		if P.Token != "" { // Token Authentication requested.
 			mem := C.malloc(C.sizeof_dpiAccessToken)
-			cAccessToken = (*C.dpiAccessToken)(mem)
-			cAccessToken.token = nil
-			cAccessToken.privateKey = nil
-			defer freeAccessToken(cAccessToken)
+			accessToken = (*C.dpiAccessToken)(mem)
+			accessToken.token = nil
+			accessToken.privateKey = nil
+			defer freeAccessToken(accessToken)
 		}
 		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize,
-			P.Charset, P.Token, P.PrivateKey, cAccessToken); err != nil {
+			P.Charset, P.Token, P.PrivateKey, accessToken); err != nil {
 			return nil, false, nil, err
 		}
 		commonCreateParamsPtr = &commonCreateParams
@@ -783,17 +784,17 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// set up common creation parameters
 	var commonCreateParams C.dpiCommonCreateParams
-	var cAccessToken *C.dpiAccessToken
+	var accessToken *C.dpiAccessToken
 	var tokenCBID uint64 // Identifier for callback registered
 	if P.Token != "" {   // Token Based Authentication requested.
 		mem := C.malloc(C.sizeof_dpiAccessToken)
-		cAccessToken = (*C.dpiAccessToken)(mem)
-		cAccessToken.token = nil
-		cAccessToken.privateKey = nil
-		defer freeAccessToken(cAccessToken)
+		accessToken = (*C.dpiAccessToken)(mem)
+		accessToken.token = nil
+		accessToken.privateKey = nil
+		defer freeAccessToken(accessToken)
 	}
 	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize,
-		P.Charset, P.Token, P.PrivateKey, cAccessToken); err != nil {
+		P.Charset, P.Token, P.PrivateKey, accessToken); err != nil {
 		return nil, err
 	}
 
@@ -900,9 +901,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 			(**C.dpiPool)(unsafe.Pointer(&dp)),
 		)
 	}); err != nil {
-		if tokenCBID != 0 {
-			UnRegisterTokenCallback(tokenCBID)
-		}
+		UnRegisterTokenCallback(tokenCBID)
 		return nil, fmt.Errorf("dpoPool_create user=%s extAuth=%v: %w",
 			P.Username, poolCreateParams.externalAuth, err)
 	}
