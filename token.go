@@ -33,7 +33,7 @@ type accessTokenCB struct {
 //
 //export TokenCallbackHandler
 func TokenCallbackHandler(handle C.uintptr_t, accessToken *C.dpiAccessToken) {
-	h := (cgo.Handle)(handle)
+	h := cgo.Handle(handle)
 	tokenCB := h.Value().(accessTokenCB)
 	logger := getLogger(context.TODO())
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
