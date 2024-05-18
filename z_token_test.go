@@ -48,17 +48,19 @@ func TestTokenAuthCallBack(t *testing.T) {
 	P.Password.Reset()
 	const hostName = "test.clouddb.com"
 	const pno = 443
-	tokenCtx := context.WithValue(context.Background(), "host", hostName)
-	tokenCtx = context.WithValue(tokenCtx, "port", pno)
+	type hostCtx struct{}
+	type portCtx struct{}
+	tokenCtx := context.WithValue(context.Background(), hostCtx{}, hostName)
+	tokenCtx = context.WithValue(tokenCtx, portCtx{}, pno)
 	cb := func(ctx context.Context, tok *dsn.AccessToken) error {
 
-		if !strings.EqualFold(ctx.Value("host").(string), hostName) {
+		if !strings.EqualFold(ctx.Value(hostCtx{}).(string), hostName) {
 			t.Errorf("TestTokenAuthCallBack: hostName got %s, wanted %s",
-				ctx.Value("host"), hostName)
+				ctx.Value(hostCtx{}), hostName)
 		}
-		if pno != ctx.Value("port").(int) {
+		if pno != ctx.Value(portCtx{}).(int) {
 			t.Errorf("TestTokenAuthCallBack: port got %d, wanted %d",
-				ctx.Value("port").(int), pno)
+				ctx.Value(portCtx{}).(int), pno)
 		}
 		newtoken := os.Getenv("GODROR_TEST_NEWTOKEN")
 		newpvtkey := os.Getenv("GODROR_TEST_NEWPVTKEY")

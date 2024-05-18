@@ -35,15 +35,19 @@ type accessTokenCB struct {
 func TokenCallbackHandler(handle C.uintptr_t, accessToken *C.dpiAccessToken) {
 	h := cgo.Handle(handle)
 	tokenCB := h.Value().(accessTokenCB)
-	logger := getLogger(context.TODO())
-	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
-		logger.Debug("TokenCallbackHandler", "tokenCB", fmt.Sprintf("%p", tokenCB), "accessToken", accessToken)
+	ctx := tokenCB.ctx
+	if ctx == nil {
+		ctx = context.TODO()
+	}
+	logger := getLogger(ctx)
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+		logger.Debug("TokenCallbackHandler", "tokenCB", fmt.Sprintf("%p", tokenCB.callback), "accessToken", accessToken)
 	}
 
 	// Call user function which provides the new token and privateKey.
 	var refreshAccessToken dsn.AccessToken
-	if err := tokenCB.callback(tokenCB.ctx, &refreshAccessToken); err != nil {
-		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	if err := tokenCB.callback(ctx, &refreshAccessToken); err != nil {
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("tokenCB.callback", "callback", fmt.Sprintf("%p", tokenCB.callback),
 				"tokenCB", tokenCB)
 		}
@@ -79,16 +83,17 @@ func RegisterTokenCallback(poolCreateParams *C.dpiPoolCreateParams,
 // UnRegisterTokenCallback will free the token callback data registered
 // during pool creation.
 func UnRegisterTokenCallback(ptr unsafe.Pointer) {
-	if ptr != nil {
-		ctx := (*C.godrorHwrap)(ptr)
-		h := cgo.Handle(ctx.handle)
-		if ctx.token != nil {
-			C.free(unsafe.Pointer(ctx.token))
-		}
-		if ctx.privateKey != nil {
-			C.free(unsafe.Pointer(ctx.privateKey))
-		}
-		h.Delete()
-		C.free(ptr)
+	if ptr == nil {
+		return
 	}
+	ctx := (*C.godrorHwrap)(ptr)
+	h := cgo.Handle(ctx.handle)
+	if ctx.token != nil {
+		C.free(unsafe.Pointer(ctx.token))
+	}
+	if ctx.privateKey != nil {
+		C.free(unsafe.Pointer(ctx.privateKey))
+	}
+	h.Delete()
+	C.free(ptr)
 }

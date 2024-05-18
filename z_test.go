@@ -2514,12 +2514,11 @@ func TestImplicitResults(t *testing.T) {
             c1 sys_refcursor;
             c2 sys_refcursor;
         begin
+            OPEN c0 FOR SELECT 0 FROM DUAL;
 			:1 := c0;
-            open c1 for
-            select 1 from DUAL;
+            open c1 for select 1 from DUAL;
             dbms_sql.return_result(c1);
-            open c2 for
-            select 'A' from DUAL;
+            open c2 for select 'A' from DUAL;
             dbms_sql.return_result(c2);
         end;`
 	var rows driver.Rows
@@ -2528,6 +2527,9 @@ func TestImplicitResults(t *testing.T) {
 			t.Skip()
 		}
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+	}
+	if rows == nil {
+		t.Fatal("rows is nil")
 	}
 	defer rows.Close()
 	r := rows.(driver.RowsNextResultSet)
