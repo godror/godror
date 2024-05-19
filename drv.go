@@ -1049,7 +1049,7 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) error {
 		})
 	}
 	if oe.code == 0 {
-		if msg, ok := stringsCutPrefix(oe.message, "ORA-"); ok {
+		if msg, ok := strings.CutPrefix(oe.message, "ORA-"); ok {
 			if i := indexNotDigit(msg); i > 0 && msg[i] == ':' {
 				if j, _ := strconv.Atoi(msg[:i]); j > 0 {
 					oe.code, oe.message = j, strings.TrimSpace(msg[i+1:])
@@ -1059,7 +1059,7 @@ func fromErrorInfo(errInfo C.dpiErrorInfo) error {
 	}
 	if oe.code == 0 {
 		// DPI-1080: connection was closed by ORA-3113
-		if msg, num, ok := stringsCut(oe.message, " ORA-"); ok {
+		if msg, num, ok := strings.Cut(oe.message, " ORA-"); ok {
 			if j := indexNotDigit(num); j > 0 {
 				num, msg = num[:j], msg+" "+num[j:]
 			}

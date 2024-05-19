@@ -242,7 +242,7 @@ func (Q *Queue) Dequeue(messages []Message) (int, error) {
 				//return 0, nil
 			case 25226: // ORA-25226: dequeue failed, queue <owner>.<queue_name> is not enabled for dequeue
 				if startErr := Q.start(); startErr != nil {
-					return 0, multiErrorf("%w: %w", "%+v: %w", startErr, err)
+					return 0, fmt.Errorf("%w: %w", startErr, err)
 				} else {
 					// try again
 					if dequeue() == C.DPI_FAILURE {
@@ -342,7 +342,7 @@ func (Q *Queue) Enqueue(messages []Message) error {
 				Q.Close()
 			case 25207: // ORA-25207: enque failed, queue string.string is disabled from enqueuing
 				if startErr := Q.start(); startErr != nil {
-					err = multiErrorf("%w: %w", "%+v: %w", startErr, err)
+					err = fmt.Errorf("%w: %w", startErr, err)
 				} else {
 					// try again
 					if enqueue() == C.DPI_FAILURE {
