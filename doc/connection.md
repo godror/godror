@@ -20,7 +20,8 @@ Other connection and driver options can also be used:
 db, err := sql.Open("godror", `user="scott" password="tiger"
     connectString="dbhost:1521/orclpdb1?connect_timeout=2"
     poolSessionTimeout=42s configDir="/opt/oracle/configdir"
-    heterogeneousPool=false standaloneConnection=false`)
+    heterogeneousPool=false standaloneConnection=false
+    timezone="Europe/Berlin"`)
 ```
 
 All [godror
@@ -35,6 +36,7 @@ You can provide all possible options with `ConnectionParams`:
     P.SessionTimeout = 42 * time.Second
     P.SetSessionParamOnInit("NLS_NUMERIC_CHARACTERS", ",.")
     P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
+    P.Timezone = time.Local
     fmt.Println(P.StringWithPassword())
     db := sql.OpenDB(godror.NewConnector(P))
 
@@ -44,6 +46,7 @@ Or if you really want to build it "by hand", use `connstr.AppendLogfmt`:
     connstr.AppendLogfmt(&buf, "user", "scott")
     connstr.AppendLogfmt(&buf, "password", "tiger")
     connstr.AppendLogfmt(&buf, "connectString", "dbhost:1521/orclpdb1?connect_timeout=2")
+    connstr.AppendLogfmt(&buf, "timezone", "Europe/Berlin")
     fmt.Println(buf.String())
 
 Note `ConnectionParams.String()` *redacts* the password (for security, to avoid

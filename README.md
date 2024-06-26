@@ -88,7 +88,7 @@ See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
-As sql.DB will close the statemenet ASAP, for long-lived objects (LOB, REF CURSOR),
+As sql.DB will close the statement ASAP, for long-lived objects (LOB, REF CURSOR),
 you have to keep the Stmt alive: Prepare the statement, 
 and Close only after finished with the Lob/Rows.
 
