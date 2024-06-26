@@ -24,6 +24,15 @@ db, err := sql.Open("godror", `user="scott" password="tiger"
     timezone="Europe/Berlin"`)
 ```
 
+> [!TIP]
+> On MacOS, when setting `(DY)_LD_LIBRARY_PATH` for the 
+> Oracle Instant Client lib files does not work 
+> ([Variables LD_LIBRARY_PATH / DYLD_LIBRARY_PATH are not passed to the environment of a child process on macOS if System Integrity Protect (SIP) is enabled.](https://stackoverflow.com/a/60128194)), 
+> you can put that into the connection string's `libDir` parameter.
+>
+> See this [issue](https://github.com/godror/godror/issues/339#issuecomment-2190310116).
+
+
 All [godror
 parameters](https://pkg.go.dev/github.com/godror/godror?tab=doc#pkg-overview)
 should also be logfmt-ted.
