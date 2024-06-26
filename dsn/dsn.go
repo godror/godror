@@ -233,9 +233,9 @@ func (P PoolParams) String() string {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	PoolParams
 	CommonParams
 	ConnParams
+	PoolParams
 	// ConnParams.NewPassword is used iff StandaloneConnection is true!
 	StandaloneConnection bool
 }

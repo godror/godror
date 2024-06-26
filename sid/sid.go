@@ -98,9 +98,9 @@ func (cs *Statement) Parse(s string) (string, error) {
 }
 
 type DescriptionList struct {
-	Options       ListOptions
-	Descriptions  []Description
 	TypeOfService string
+	Descriptions  []Description
+	Options       ListOptions
 }
 
 func (cd DescriptionList) Print(w io.Writer, prefix, indent string) {
@@ -139,12 +139,12 @@ func (cd *DescriptionList) Parse(ss []Statement) error {
 }
 
 type Description struct {
-	ConnectData   ConnectData
-	AddressList   AddressList
-	Addresses     []Address
 	TypeOfService string
-	Bufs          BufSizes
 	Security      Security
+	Addresses     []Address
+	AddressList   AddressList
+	ConnectData   ConnectData
+	Bufs          BufSizes
 	SDU           int
 	Options       ListOptions
 	TCPKeepAlive  bool
@@ -334,8 +334,8 @@ func (lo *ListOptions) Parse(ss []Statement) error {
 }
 
 type AddressList struct {
-	Options   ListOptions
 	Addresses []Address
+	Options   ListOptions
 }
 
 func (al AddressList) Print(w io.Writer, prefix, indent string) {
@@ -374,11 +374,11 @@ func (al *AddressList) Parse(ss []Statement) error {
 }
 
 type ConnectData struct {
-	FailoverMode                          FailoverMode
 	ServiceName, SID                      string
 	GlobalName, InstanceName, RDBDatabase string
-	Hs                                    bool
 	Server                                ServiceHandler
+	FailoverMode                          FailoverMode
+	Hs                                    bool
 }
 
 func (cd ConnectData) Print(w io.Writer, prefix, indent string) {
