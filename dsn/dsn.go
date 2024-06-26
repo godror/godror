@@ -68,16 +68,16 @@ type CommonSimpleParams struct {
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
 type CommonParams struct {
-	CommonSimpleParams
 	// Logger is the per-pool or per-connection logger.
 	// The default nil logger does not log.
 	Logger *slog.Logger
 	// OnInit is executed on session init. Overrides AlterSession and OnInitStmts!
-	OnInit func(context.Context, driver.ConnPrepareContext) error
+	OnInit func(context.Context, driver.ConnPrepareContext) error `json:"-"`
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
 	AlterSession [][2]string
+	CommonSimpleParams
 }
 
 func (P CommonParams) String() string {
@@ -195,13 +195,13 @@ type AccessToken struct {
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiPoolCreateParams.html#dpipoolcreateparams
 type PoolParams struct {
+	TokenCBCtx                                 context.Context                           `json:"-"`
+	TokenCB                                    func(context.Context, *AccessToken) error `json:"-"`
 	MinSessions, MaxSessions, SessionIncrement int
 	MaxSessionsPerShard                        int
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
 	PingInterval                               time.Duration
 	Heterogeneous, ExternalAuth                bool
-	TokenCB                                    func(context.Context, *AccessToken) error
-	TokenCBCtx                                 context.Context
 }
 
 // String returns the string representation of PoolParams.
@@ -233,9 +233,9 @@ func (P PoolParams) String() string {
 // You can use ConnectionParams{...}.StringWithPassword()
 // as a connection string in sql.Open.
 type ConnectionParams struct {
-	ConnParams
-	CommonParams
 	PoolParams
+	CommonParams
+	ConnParams
 	// ConnParams.NewPassword is used iff StandaloneConnection is true!
 	StandaloneConnection bool
 }
