@@ -540,8 +540,11 @@ func (r *rows) Next(dest []driver.Value) error {
 					nil, // just obey to what's included in the data
 				)
 			}
-			if tz == nil && logger != nil {
-				logger.Warn("DATE", "i", i, "tz", tz, "params", r.conn.params)
+			if tz == nil {
+				if logger != nil {
+					logger.Warn("DATE", "i", i, "tz", tz, "params", r.conn.params)
+				}
+				tz = time.Local
 			}
 			dest[i] = time.Date(
 				int(ts.year), time.Month(ts.month), int(ts.day),
