@@ -244,7 +244,7 @@ int dpiSodaDb_createDocument(dpiSodaDb *db, const char *key,
 // dpiSodaDb_createJsonDocument() [PUBLIC]
 //   Create a SODA document with JSON content that can be inserted in the
 // collection or can be used to replace an existing document in the collection.
-// This is only supported with Oracle Client 23c and higher.
+// This is only supported with Oracle Client 23ai and higher.
 //-----------------------------------------------------------------------------
 int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
         uint32_t keyLength, const dpiJsonNode *content, UNUSED uint32_t flags,
@@ -262,7 +262,7 @@ int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
     DPI_CHECK_PTR_AND_LENGTH(db, key)
     DPI_CHECK_PTR_NOT_NULL(db, doc)
 
-    // only supported in Oracle Client 23c+
+    // only supported in Oracle Client 23ai+
     if (dpiUtils__checkClientVersion(db->env->versionInfo, 23, 4, &error) < 0)
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
 

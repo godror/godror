@@ -55,7 +55,7 @@ int dpiSodaDoc__allocate(dpiSodaDb *db, void *handle, dpiSodaDoc **doc,
                 DPI_OCI_HTYPE_SODA_DOCUMENT, "allocate SODA document handle",
                 error);
 
-    // otherwise, for Oracle 23c and higher, acquire JSON, if applicable
+    // otherwise, for Oracle 23ai and higher, acquire JSON, if applicable
     } else {
         tempDoc->handle = handle;
         if (db->env->context->sodaUseJsonDesc) {

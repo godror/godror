@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -80,6 +80,10 @@ void dpiMsgProps__free(dpiMsgProps *props, dpiError *error)
     if (props->payloadObj) {
         dpiGen__setRefCount(props->payloadObj, error, -1);
         props->payloadObj = NULL;
+    }
+    if (props->payloadJson) {
+        dpiGen__setRefCount(props->payloadJson, error, -1);
+        props->payloadJson = NULL;
     }
     if (props->payloadRaw) {
         dpiOci__rawResize(props->env->handle, &props->payloadRaw, 0, error);

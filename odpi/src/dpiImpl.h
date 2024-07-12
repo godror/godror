@@ -1570,7 +1570,7 @@ struct dpiSodaDoc {
     dpiSodaDb *db;                      // database which created this
     void *handle;                       // OCI SODA document handle
     int binaryContent;                  // binary content?
-    dpiJson *json;                      // JSON content (only in 23c+)
+    dpiJson *json;                      // JSON content (only in 23ai+)
 };
 
 // represents a SODA document cursor and is exposed publicly as a handle of

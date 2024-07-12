@@ -11,11 +11,13 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,11 +38,35 @@ func Main() error {
 	if err != nil {
 		return err
 	}
-	fn := filepath.Join(string(bytes.TrimSpace(b)), "lib", "time", "zoneinfo.zip")
+	goroot := string(bytes.TrimSpace(b))
+	fn := filepath.Join(goroot, "lib", "time", "zoneinfo.zip")
 	log.Printf("go env GOROOT: %s -> fn=%q", b, fn)
 	zr, err := zip.OpenReader(fn)
 	if err != nil {
-		return err
+		fn = filepath.Join(goroot, "src", "time", "tzdata", "zzipdata.go")
+		b, err := os.ReadFile(fn)
+		if err != nil {
+			return err
+		}
+		const prefix = "const zipdata = "
+		if i := bytes.Index(b, []byte(prefix)); i < 0 {
+			return fmt.Errorf("no const zipdata in %q", string(b[:128]))
+		} else {
+			b = b[i+len(prefix):]
+			if i = bytes.LastIndexByte(b[1:], b[0]); i < 0 {
+				return fmt.Errorf("no string end %c in %q", b[0], string(b[len(b)-128:]))
+			}
+			s, err := strconv.Unquote(string(b[:i+2]))
+			if err != nil {
+				return err
+			}
+			br := strings.NewReader(s)
+			if r, err := zip.NewReader(br, br.Size()); err != nil {
+				return fmt.Errorf("%q %q ... %q: %w", fn, string(b[:128]), string(b[len(b)-128:]), err)
+			} else {
+				zr = &zip.ReadCloser{Reader: *r}
+			}
+		}
 	}
 	defer zr.Close()
 	names := make([]string, 0, len(zr.File))
