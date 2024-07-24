@@ -548,6 +548,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_SODA_INDEX_DROP_FORCE               0x00010000
 #define DPI_OCI_TRANS_TWOPHASE                      0x01000000
 #define DPI_OCI_SECURE_NOTIFICATION                 0x20000000
+#define DPI_OCI_BIND_DEDICATED_REF_CURSOR           0x00000400
 
 //-----------------------------------------------------------------------------
 // Macros

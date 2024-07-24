@@ -857,8 +857,11 @@ int dpiOci__attrSet(void *handle, uint32_t handleType, void *ptr,
 int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
         int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error)
 {
+    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
     int status;
 
+    if (dynamicBind)
+        mode |= DPI_OCI_DATA_AT_EXEC;
     DPI_OCI_LOAD_SYMBOL("OCIBindByName", dpiOciSymbols.fnBindByName)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnBindByName)(stmt->handle, bindHandle,
@@ -871,8 +874,7 @@ int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
                     var->buffer.actualLength16,
             (dynamicBind) ? NULL : var->buffer.returnCode,
             (var->isArray) ? var->buffer.maxArraySize : 0,
-            (var->isArray) ? &var->buffer.actualArraySize : NULL,
-            (dynamicBind) ? DPI_OCI_DATA_AT_EXEC : DPI_OCI_DEFAULT);
+            (var->isArray) ? &var->buffer.actualArraySize : NULL, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, stmt->conn, "bind by name");
 }
 
@@ -884,8 +886,11 @@ int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
 int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
         int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error)
 {
+    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
     int status;
 
+    if (dynamicBind)
+        mode |= DPI_OCI_DATA_AT_EXEC;
     DPI_OCI_LOAD_SYMBOL("OCIBindByName2", dpiOciSymbols.fnBindByName2)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnBindByName2)(stmt->handle, bindHandle,
@@ -898,8 +903,7 @@ int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
                     var->buffer.actualLength32,
             (dynamicBind) ? NULL : var->buffer.returnCode,
             (var->isArray) ? var->buffer.maxArraySize : 0,
-            (var->isArray) ? &var->buffer.actualArraySize : NULL,
-            (dynamicBind) ? DPI_OCI_DATA_AT_EXEC : DPI_OCI_DEFAULT);
+            (var->isArray) ? &var->buffer.actualArraySize : NULL, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, stmt->conn, "bind by name");
 }
 
@@ -911,8 +915,11 @@ int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
 int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
         int dynamicBind, dpiVar *var, dpiError *error)
 {
+    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
     int status;
 
+    if (dynamicBind)
+        mode |= DPI_OCI_DATA_AT_EXEC;
     DPI_OCI_LOAD_SYMBOL("OCIBindByPos", dpiOciSymbols.fnBindByPos)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnBindByPos)(stmt->handle, bindHandle,
@@ -924,8 +931,7 @@ int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
                     var->buffer.actualLength16,
             (dynamicBind) ? NULL : var->buffer.returnCode,
             (var->isArray) ? var->buffer.maxArraySize : 0,
-            (var->isArray) ? &var->buffer.actualArraySize : NULL,
-            (dynamicBind) ? DPI_OCI_DATA_AT_EXEC : DPI_OCI_DEFAULT);
+            (var->isArray) ? &var->buffer.actualArraySize : NULL, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, stmt->conn, "bind by position");
 }
 
@@ -937,8 +943,11 @@ int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
 int dpiOci__bindByPos2(dpiStmt *stmt, void **bindHandle, uint32_t pos,
         int dynamicBind, dpiVar *var, dpiError *error)
 {
+    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
     int status;
 
+    if (dynamicBind)
+        mode |= DPI_OCI_DATA_AT_EXEC;
     DPI_OCI_LOAD_SYMBOL("OCIBindByPos2", dpiOciSymbols.fnBindByPos2)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnBindByPos2)(stmt->handle, bindHandle,
@@ -950,8 +959,7 @@ int dpiOci__bindByPos2(dpiStmt *stmt, void **bindHandle, uint32_t pos,
                     var->buffer.actualLength32,
             (dynamicBind) ? NULL : var->buffer.returnCode,
             (var->isArray) ? var->buffer.maxArraySize : 0,
-            (var->isArray) ? &var->buffer.actualArraySize : NULL,
-            (dynamicBind) ? DPI_OCI_DATA_AT_EXEC : DPI_OCI_DEFAULT);
+            (var->isArray) ? &var->buffer.actualArraySize : NULL, mode);
     DPI_OCI_CHECK_AND_RETURN(error, status, stmt->conn, "bind by position");
 }
 

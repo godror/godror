@@ -71,7 +71,7 @@ extern "C" {
 #define DPI_MAJOR_VERSION   5
 #define DPI_MINOR_VERSION   3
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX  "b1"
+#define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -404,6 +404,7 @@ typedef uint8_t dpiVectorFormat;
 #define DPI_VECTOR_FORMAT_FLOAT32                   2
 #define DPI_VECTOR_FORMAT_FLOAT64                   3
 #define DPI_VECTOR_FORMAT_INT8                      4
+#define DPI_VECTOR_FORMAT_BINARY                    5
 
 // visibility of messages in advanced queuing
 typedef uint32_t dpiVisibility;

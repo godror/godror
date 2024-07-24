@@ -97,6 +97,8 @@ void dpiVector__free(dpiVector *vector, dpiError *error)
 int dpiVector__getValue(dpiVector *vector, dpiVectorInfo *info,
         dpiError *error)
 {
+    uint32_t numElements;
+
     // only need to acquire information if it was not already cached
     if (!vector->dimensions) {
 
@@ -113,7 +115,12 @@ int dpiVector__getValue(dpiVector *vector, dpiVectorInfo *info,
             return DPI_FAILURE;
 
         // determine the size of each dimension
+        numElements = vector->numDimensions;
         switch (vector->format) {
+            case DPI_VECTOR_FORMAT_BINARY:
+                vector->dimensionSize = sizeof(uint8_t);
+                numElements = (uint32_t) (vector->numDimensions / 8);
+                break;
             case DPI_VECTOR_FORMAT_FLOAT32:
                 vector->dimensionSize = sizeof(float);
                 break;
@@ -129,9 +136,8 @@ int dpiVector__getValue(dpiVector *vector, dpiVectorInfo *info,
         }
 
         // allocate a buffer for the dimensions
-        if (dpiUtils__allocateMemory(vector->numDimensions,
-                vector->dimensionSize, 0, "allocate vector dimensions",
-                &vector->dimensions, error) < 0)
+        if (dpiUtils__allocateMemory(numElements, vector->dimensionSize, 0,
+                "allocate vector dimensions", &vector->dimensions, error) < 0)
             return DPI_FAILURE;
 
         // populate buffer with array data
