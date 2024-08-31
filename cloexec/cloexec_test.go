@@ -6,10 +6,8 @@
 package cloexec
 
 import (
-	"context"
 	"net/http"
 	"testing"
-	"time"
 )
 
 func TestSetNetConnections(t *testing.T) {
@@ -30,9 +28,7 @@ func TestGetFd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	connections, err := getConnections(ctx, "")
-	cancel()
+	connections, err := getConnections("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,24 +36,24 @@ func TestGetFd(t *testing.T) {
 		t.Error("no connections")
 	}
 	testLogf = t.Logf
-	for _, c := range connections {
-		t.Log(c.Fd)
-		if isSet, err := getFd(uintptr(c.Fd)); err != nil {
-			t.Errorf("%d: %+v", c.Fd, err)
+	for _, fd := range connections {
+		t.Log(fd)
+		if isSet, err := getFd(uintptr(fd)); err != nil {
+			t.Errorf("%d: %+v", fd, err)
 		} else if !isSet {
-			t.Errorf("%d: not CLOEXEC?", c.Fd)
-		} else if err = setFd(uintptr(c.Fd), false); err != nil {
-			t.Errorf("setFd(%d, false): %+v", c.Fd, err)
-		} else if isSet, err = getFd(uintptr(c.Fd)); err != nil {
-			t.Errorf("unset %d: %+v", c.Fd, err)
+			t.Errorf("%d: not CLOEXEC?", fd)
+		} else if err = setFd(uintptr(fd), false); err != nil {
+			t.Errorf("setFd(%d, false): %+v", fd, err)
+		} else if isSet, err = getFd(uintptr(fd)); err != nil {
+			t.Errorf("unset %d: %+v", fd, err)
 		} else if isSet {
-			t.Errorf("%d: CLOEXEC?", c.Fd)
-		} else if err = setFd(uintptr(c.Fd), true); err != nil {
-			t.Errorf("set %d: %+v", c.Fd, err)
-		} else if isSet, err = getFd(uintptr(c.Fd)); err != nil {
-			t.Errorf("get %d: %+v", c.Fd, err)
+			t.Errorf("%d: CLOEXEC?", fd)
+		} else if err = setFd(uintptr(fd), true); err != nil {
+			t.Errorf("set %d: %+v", fd, err)
+		} else if isSet, err = getFd(uintptr(fd)); err != nil {
+			t.Errorf("get %d: %+v", fd, err)
 		} else if !isSet {
-			t.Errorf("%d: wanted CLOEXEC, got %t", c.Fd, isSet)
+			t.Errorf("%d: wanted CLOEXEC, got %t", fd, isSet)
 		}
 	}
 }
