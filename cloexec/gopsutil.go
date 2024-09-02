@@ -1,7 +1,6 @@
 // Copied from github.com/shirou/gopsutil/v4/net/net_linux.go
 //
 // SPDX-License-Identifier: BSD-3-Clause
-//go:build linux
 
 package cloexec
 
