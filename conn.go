@@ -520,9 +520,8 @@ func (c *conn) initTZ() error {
 		c.drv.mu.RLock()
 		tz, ok = c.drv.timezones[key]
 		c.drv.mu.RUnlock()
+		c.drv.mu.Lock()
 		if !ok {
-			c.drv.mu.Lock()
-			defer c.drv.mu.Unlock()
 			tz, ok = c.drv.timezones[key]
 		}
 		if ok {
@@ -530,6 +529,9 @@ func (c *conn) initTZ() error {
 			if c.params.Timezone == nil {
 				c.params.Timezone = time.UTC
 			}
+		}
+		c.drv.mu.Unlock()
+		if ok {
 			return nil
 		}
 	}
@@ -595,6 +597,8 @@ func (c *conn) initTZ() error {
 		panic(err)
 	}
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, tz.Location != nil
 	if logger != nil {
 		logger.Debug("initTZ", "tz", c.params.Timezone, "offSecs", c.tzOffSecs)
