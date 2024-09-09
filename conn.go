@@ -1063,87 +1063,20 @@ var _ = driver.SessionResetter((*conn)(nil))
 // ResetSession is called prior to executing a query on the connection
 // if the connection has been used before. If the driver returns driver.ErrBadConn
 // the connection is discarded.
-//
-// This implementation does nothing if the connection is not pooled,
-// but reacquires a new session if it is pooled.
-//
-// This ensures that the session is not stale.
 func (c *conn) ResetSession(ctx context.Context) error {
 	if c == nil {
 		return driver.ErrBadConn
 	}
 	c.mu.RLock()
-	key, drv, params, dpiConnOK := c.poolKey, c.drv, c.params, c.dpiConn != nil
+	dpiConnOK := c.dpiConn != nil
 	c.mu.RUnlock()
 	if dpiConnOK {
 		dpiConnOK = c.isHealthy()
 	}
-	if key == "" {
-		// not pooled connection
-		if !dpiConnOK {
-			return driver.ErrBadConn
-		}
-		return nil
+	if !dpiConnOK {
+		return driver.ErrBadConn
 	}
-	// FIXME(tgulacsi): Prepared statements hold the previous session,
-	// so sometimes sessions are not released, resulting in
-	//
-	//     ORA-24459: OCISessionGet()
-	//
-	// See https://github.com/godror/godror/issues/57 for example.
-
-	drv.mu.RLock()
-	pool := drv.pools[key]
-	drv.mu.RUnlock()
-	if pool == nil {
-		if !dpiConnOK {
-			return driver.ErrBadConn
-		}
-		return nil
-	}
-	P := commonAndConnParams{CommonParams: params.CommonParams, ConnParams: params.ConnParams}
-	var paramsFromCtx bool
-	if ctxValue := ctx.Value(userPasswCtxKey{}); ctxValue != nil {
-		if cc, ok := ctxValue.(commonAndConnParams); ok {
-			P.CommonParams.Username = cc.CommonParams.Username
-			P.CommonParams.Password = cc.CommonParams.Password
-			P.ConnParams.ConnClass = cc.ConnParams.ConnClass
-		}
-	}
-	logger := c.getLogger(ctx)
-	if !paramsFromCtx {
-		if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
-			if P, paramsFromCtx = ctxValue.(commonAndConnParams); paramsFromCtx {
-				// ContextWithUserPassw does not fill ConnParam.ConnectString
-				if P.ConnectString == "" {
-					P.ConnectString = params.ConnectString
-				}
-				if logger != nil {
-					logger.Debug("paramsFromContext", "params", P)
-				}
-			}
-		}
-	}
-	if logger != nil {
-		logger.Debug("ResetSession re-acquire session", "pool", pool.key)
-	}
-	c.mu.Lock()
-	// Close and then reacquire a fresh dpiConn
-	if c.dpiConn != nil {
-		// Just release
-		_ = c.closeNotLocking()
-	}
-	dpiConn, isNew, cleanup, err := c.drv.acquireConn(pool, P)
-	c.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("%v: %w", err, driver.ErrBadConn)
-	}
-	c.dpiConn = dpiConn
-	if cleanup != nil {
-		runtime.SetFinalizer(&c, func(*conn) { cleanup() })
-	}
-
-	return c.init(ctx, isNew, P.OnInit)
+	return nil
 }
 
 // Validator may be implemented by Conn to allow drivers to
