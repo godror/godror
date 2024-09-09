@@ -877,7 +877,8 @@ func (c *conn) setTraceTag(tt TraceTag) error {
 		case "info":
 			res = C.dpiConn_setClientInfo(c.dpiConn, s, length)
 		case "identifier":
-			res = C.dpiConn_setClientIdentifier(c.dpiConn, s, length)
+			// This resets/reroutes global contexts, so DO NOT USE IT!
+			// res = C.dpiConn_setClientIdentifier(c.dpiConn, s, length)
 		case "op":
 			res = C.dpiConn_setDbOp(c.dpiConn, s, length)
 		}
@@ -922,7 +923,7 @@ func ContextWithTraceTag(ctx context.Context, tt TraceTag) context.Context {
 // TraceTag holds tracing information for the session. It can be set on the session
 // with ContextWithTraceTag.
 type TraceTag struct {
-	// ClientIdentifier - specifies an end user based on the logon ID, such as HR.HR
+	// ClientIdentifier - DEPRECATED, DO NOT USE IT (has no effect for now, but has cleared global context)
 	ClientIdentifier string
 	// ClientInfo - client-specific info
 	ClientInfo string
