@@ -597,8 +597,8 @@ func (c *conn) initTZ() error {
 		panic(err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.drv.mu.Lock()
+	defer c.drv.mu.Unlock()
 	c.params.Timezone, c.tzOffSecs, c.tzValid = tz.Location, tz.offSecs, tz.Location != nil
 	if logger != nil {
 		logger.Debug("initTZ", "tz", c.params.Timezone, "offSecs", c.tzOffSecs)
