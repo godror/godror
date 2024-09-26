@@ -1465,7 +1465,7 @@ END;`},
 			nil,
 		}
 		if d := cmp.Diff(m, want); d != "" {
-			t.Errorf(d)
+			t.Error(d)
 		}
 	})
 
@@ -1619,7 +1619,7 @@ END;`},
 			},
 		}
 		if d := cmp.Diff(m, want); d != "" {
-			t.Errorf(d)
+			t.Error(d)
 		}
 	})
 

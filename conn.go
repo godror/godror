@@ -712,7 +712,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 			return tz, off, nil
 		}
 		if logger != nil {
-			logger.Error("LoadLocation", dbTZ, "error", err)
+			logger.Error("LoadLocation",  "tz",dbTZ, "error", err)
 		}
 	}
 	// If not, use the numbers.
