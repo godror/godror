@@ -85,8 +85,7 @@ The `sql.Open()` data source name `connectString` parameter or
    Note that `connect_timeout` requires at least 19c client.
 
    The technical article 
-   [Oracle Database 19c Easy Connect Plus](https://cjones-oracle.medium.com/oracle-database-21c-easy-connect-plus-edcae5da7025) 
-   and the [Oracle-Net-19c-Easy-Connect-Plus.pdf](https://download.oracle.com/ocomdocs/global/Oracle-Net-19c-Easy-Connect-Plus.pdf)
+   [Oracle-Net-Easy-Connect-Plus.pdf](https://download.oracle.com/ocomdocs/global/Oracle-Net-Easy-Connect-Plus.pdf)
    contains more information.
 
 - An Oracle Net Connect Descriptor String
