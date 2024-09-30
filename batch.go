@@ -1,4 +1,4 @@
-// Copyright 2017, 2022 The Godror Authors
+// Copyright 2017, 2024 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -34,9 +34,6 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 			b.Limit = DefaultBatchLimit
 		}
 		b.rValues = make([]reflect.Value, len(values))
-		for i := range values {
-			b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(values[i])), 0, b.Limit)
-		}
 	}
 	func() {
 		var i int
@@ -47,7 +44,18 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 			}
 		}()
 		for i, v = range values {
+			if !b.rValues[i].IsValid() {
+				if v == nil { // a nil value has no type
+					continue
+				}
+				b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(v)), b.size, b.Limit)
+			}
+			if v == nil { // assume it has the same type as the other elements
+				b.rValues[i] = reflect.Append(b.rValues[i], reflect.Zero(b.rValues[i].Type().Elem()))
+				continue
+			}
 			rv := reflect.ValueOf(v)
+
 			// type mismatch
 			if rv.Type().Kind() != reflect.String &&
 				b.rValues[i].Type().Elem().Kind() == reflect.String {
@@ -86,13 +94,19 @@ func (b *Batch) Flush(ctx context.Context) error {
 		b.values = make([]interface{}, len(b.rValues))
 	}
 	for i, v := range b.rValues {
-		b.values[i] = v.Interface()
+		if !v.IsValid() {
+			b.values[i] = make([]string, b.size) // empty string == NULL
+		} else {
+			b.values[i] = v.Interface()
+		}
 	}
 	if _, err := b.Stmt.ExecContext(ctx, b.values...); err != nil {
 		return err
 	}
 	for i, v := range b.rValues {
-		b.rValues[i] = v.Slice(0, 0)
+		if v.IsValid() {
+			b.rValues[i] = v.Slice(0, 0)
+		}
 	}
 	b.size = 0
 	return nil
