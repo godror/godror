@@ -33,6 +33,27 @@ type Data struct {
 	NativeTypeNum C.dpiNativeTypeNum
 }
 
+const (
+	NativeTypeInt64      = C.DPI_NATIVE_TYPE_INT64
+	NativeTypeUint64     = C.DPI_NATIVE_TYPE_UINT64
+	NativeTypeFloat      = C.DPI_NATIVE_TYPE_FLOAT
+	NativeTypeDouble     = C.DPI_NATIVE_TYPE_DOUBLE
+	NativeTypeBytes      = C.DPI_NATIVE_TYPE_BYTES
+	NativeTypeTimestamp  = C.DPI_NATIVE_TYPE_TIMESTAMP
+	NativeTypeIntervalDS = C.DPI_NATIVE_TYPE_INTERVAL_DS
+	NativeTypeIntervalYM = C.DPI_NATIVE_TYPE_INTERVAL_YM
+	NativeTypeLOB        = C.DPI_NATIVE_TYPE_LOB
+	NativeTypeObject     = C.DPI_NATIVE_TYPE_OBJECT
+	NativeTypeStmt       = C.DPI_NATIVE_TYPE_STMT
+	NativeTypeBoolean    = C.DPI_NATIVE_TYPE_BOOLEAN
+	NativeTypeRowid      = C.DPI_NATIVE_TYPE_ROWID
+	NativeTypeJSON       = C.DPI_NATIVE_TYPE_JSON
+	NativeTypeJSONOBject = C.DPI_NATIVE_TYPE_JSON_OBJECT
+	NativeTypeJSONArray  = C.DPI_NATIVE_TYPE_JSON_ARRAY
+	// NativeTypeNULL       = C.DPI_NATIVE_TYPE_NULL
+	// NativeTypeVector     = C.DPI_NATIVE_TYPE_VECTOR
+)
+
 var ErrNotSupported = errors.New("not supported")
 
 // NewData creates a new Data structure for the given type, populated with the given type.
