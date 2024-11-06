@@ -419,7 +419,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		//fmt.Printf("URL=%s cs=%q host=%q port=%q path=%q\n", u, P.ConnectString, u.Host, u.Port(), u.Path)
 		q = u.Query()
-	} else if strings.Contains(dataSourceName, "\n") || // multi-line, or
+	} else if strings.IndexByte(dataSourceName, '\n') >= 0 || // multi-line, or
 		strings.Contains(dataSourceName, "connectString=") { // contains connectString
 		// This should be a proper logfmt-encoded parameter string, with connectString
 		paramsString, dataSourceName = dataSourceName, ""
@@ -476,6 +476,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 				}
 			}
 		}
+		// fmt.Printf("Parse q=%#v\n", q)
 		if err := d.Err(); err != nil {
 			return P, fmt.Errorf("parsing parameters %q: %w", paramsString, err)
 		}
@@ -518,6 +519,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			P.StandaloneConnection = !P.Heterogeneous
 		}
 	}
+	// fmt.Println("parse", P.StringWithPassword())
 
 	if tz := q.Get("timezone"); tz != "" {
 		if strings.EqualFold(tz, "local") {
@@ -622,10 +624,10 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
 
-	//fmt.Printf("cs1=%q\n", P.ConnectString)
+	// fmt.Printf("cs1=%q\n", P)
 	P.comb()
 
-	//fmt.Printf("cs2=%q\n", P.ConnectString)
+	// fmt.Printf("cs2=%q\n", P)
 
 	return P, nil
 }

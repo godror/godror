@@ -95,7 +95,7 @@ func setUp() func() {
 	eDSN := os.Getenv("GODROR_TEST_DSN")
 	{
 		uid, _ := user.Current()
-		fmt.Println("eDSN:", eDSN, "OS user:", uid)
+		fmt.Printf("eDSN=%s\nOSuser=%v\n", eDSN, uid)
 	}
 	var configDir string
 	if eDSN == "" {
@@ -173,6 +173,7 @@ func setUp() func() {
 	if err != nil {
 		panic(fmt.Errorf("parse %q: %w", eDSN, err))
 	}
+	// fmt.Println("parsed:", P)
 	P.CommonParams.Logger = logger
 	P.CommonParams.EnableEvents = true
 	P.CommonParams.ConfigDir = configDir
@@ -180,12 +181,14 @@ func setUp() func() {
 		P.ConnParams.ConnClass = "TestClassName"
 	}
 	P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
-	P.PoolParams = godror.PoolParams{
-		MinSessions: 2, MaxSessions: maxSessions, SessionIncrement: 2,
-		WaitTimeout:    5 * time.Second,
-		MaxLifeTime:    5 * time.Minute,
-		SessionTimeout: 1 * time.Minute,
+	P.PoolParams.MinSessions = 2
+	if P.PoolParams.MaxSessions <= 1 || P.PoolParams.MaxSessions > maxSessions {
+		P.PoolParams.MaxSessions = maxSessions
 	}
+	P.PoolParams.SessionIncrement = 1
+	P.PoolParams.WaitTimeout = 5 * time.Second
+	P.PoolParams.MaxLifeTime = 5 * time.Minute
+	P.PoolParams.SessionTimeout = 1 * time.Minute
 	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.StringWithPassword())
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
