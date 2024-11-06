@@ -112,6 +112,7 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
         const dpiCommonCreateParams *commonParams,
         dpiPoolCreateParams *createParams, dpiError *error)
 {
+    int32_t pingInterval;
     uint32_t poolMode;
     uint8_t getMode;
     void *authInfo;
@@ -244,6 +245,16 @@ static int dpiPool__create(dpiPool *pool, const char *userName,
             DPI_OCI_ATTR_SPOOL_STMTCACHESIZE, "set stmt cache size",
             error) < 0)
         return DPI_FAILURE;
+
+    // disable ping interval in Oracle Database 23ai since it does not handle
+    // ping timeout yet
+    if (pool->env->versionInfo->versionNum >= 23) {
+        pingInterval = -1;
+        if (dpiOci__attrSet(pool->handle, DPI_OCI_HTYPE_SPOOL,
+                (void*) &pingInterval, 0, DPI_OCI_ATTR_PING_INTERVAL,
+                "disable ping interval", error) < 0)
+            return DPI_FAILURE;
+    }
 
     // set remaining attributes directly
     pool->homogeneous = createParams->homogeneous;

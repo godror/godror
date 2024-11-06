@@ -80,6 +80,13 @@ static void *dpiOci__reallocMem(void *unused, void *ptr, size_t newSize);
         return dpiError__setFromOCI(error, status, conn, action); \
     return DPI_SUCCESS;
 
+// macro to get the default mode to use when binding
+#define DPI_OCI_DEFAULT_BIND_MODE(stmt) \
+    (stmt->env->versionInfo->versionNum < 23 \
+        || (stmt->env->versionInfo->versionNum == 23 \
+        && stmt->env->versionInfo->releaseNum < 6)) ? DPI_OCI_DEFAULT : \
+    DPI_OCI_BIND_DEDICATED_REF_CURSOR
+
 
 // typedefs for all OCI functions used by ODPI-C
 typedef int (*dpiOciFnType__aqDeq)(void *svchp, void *errhp,
@@ -857,7 +864,7 @@ int dpiOci__attrSet(void *handle, uint32_t handleType, void *ptr,
 int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
         int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error)
 {
-    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
+    uint32_t mode = DPI_OCI_DEFAULT;
     int status;
 
     if (dynamicBind)
@@ -886,7 +893,7 @@ int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
 int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
         int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error)
 {
-    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
+    uint32_t mode = DPI_OCI_DEFAULT_BIND_MODE(stmt);
     int status;
 
     if (dynamicBind)
@@ -915,7 +922,7 @@ int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
 int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
         int dynamicBind, dpiVar *var, dpiError *error)
 {
-    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
+    uint32_t mode = DPI_OCI_DEFAULT;
     int status;
 
     if (dynamicBind)
@@ -943,7 +950,7 @@ int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
 int dpiOci__bindByPos2(dpiStmt *stmt, void **bindHandle, uint32_t pos,
         int dynamicBind, dpiVar *var, dpiError *error)
 {
-    uint32_t mode = DPI_OCI_BIND_DEDICATED_REF_CURSOR;
+    uint32_t mode = DPI_OCI_DEFAULT_BIND_MODE(stmt);
     int status;
 
     if (dynamicBind)

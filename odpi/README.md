@@ -50,6 +50,11 @@ Third-party Drivers:
 * [oranif](https://github.com/KonnexionsGmbH/oranif) Driver for Erlang.
 * [nimodpi](https://github.com/mikra01/nimodpi) Driver for Nim.
 
+## Security
+
+Please consult the [security guide](./SECURITY.md) for our responsible security
+vulnerability disclosure process.
+
 ## License
 
 Copyright (c) 2016, 2024, Oracle and/or its affiliates.

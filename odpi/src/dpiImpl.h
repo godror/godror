@@ -326,6 +326,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT           495
 #define DPI_OCI_ATTR_SHARDING_KEY                   496
 #define DPI_OCI_ATTR_SUPER_SHARDING_KEY             497
+#define DPI_OCI_ATTR_MAX_IDENTIFIER_LEN             500
 #define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
@@ -357,6 +358,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_IAM_PRIVKEY                    637
 #define DPI_OCI_ATTR_TOKEN_CBK                      638
 #define DPI_OCI_ATTR_TOKEN_CBKCTX                   639
+#define DPI_OCI_ATTR_PING_INTERVAL                  655
 #define DPI_OCI_ATTR_TOKEN_ISBEARER                 657
 #define DPI_OCI_ATTR_DOMAIN_SCHEMA                  659
 #define DPI_OCI_ATTR_DOMAIN_NAME                    660
@@ -365,6 +367,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_NUM_ANNOTATIONS                687
 #define DPI_OCI_ATTR_ANNOTATION_KEY                 688
 #define DPI_OCI_ATTR_ANNOTATION_VALUE               689
+#define DPI_OCI_ATTR_SERVER_TYPE                    694
 #define DPI_OCI_ATTR_VECTOR_DIMENSION               695
 #define DPI_OCI_ATTR_VECTOR_DATA_FORMAT             696
 #define DPI_OCI_ATTR_VECTOR_PROPERTY                697
@@ -1323,6 +1326,7 @@ struct dpiConn {
     void *rawTDO;                       // cached RAW TDO
     void *jsonTDO;                      // cached JSON TDO
     dpiVersionInfo versionInfo;         // Oracle database version info
+    dpiConnInfo *info;                  // cached info about connection
     uint32_t commitMode;                // commit mode (for two-phase commits)
     uint16_t charsetId;                 // database character set ID
     dpiHandleList *openStmts;           // list of statements created

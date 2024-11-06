@@ -69,7 +69,7 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   5
-#define DPI_MINOR_VERSION   3
+#define DPI_MINOR_VERSION   4
 #define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
@@ -336,6 +336,13 @@ typedef uint32_t dpiStartupMode;
 #define DPI_MODE_STARTUP_FORCE                      1
 #define DPI_MODE_STARTUP_RESTRICT                   2
 
+// server types
+typedef uint8_t dpiServerType;
+#define DPI_SERVER_TYPE_UNKNOWN                     0
+#define DPI_SERVER_TYPE_DEDICATED                   1
+#define DPI_SERVER_TYPE_SHARED                      2
+#define DPI_SERVER_TYPE_POOLED                      4
+
 // statement types
 typedef uint16_t dpiStatementType;
 #define DPI_STMT_TYPE_UNKNOWN                       0
@@ -447,6 +454,7 @@ typedef struct dpiAnnotation dpiAnnotation;
 typedef struct dpiAppContext dpiAppContext;
 typedef struct dpiCommonCreateParams dpiCommonCreateParams;
 typedef struct dpiConnCreateParams dpiConnCreateParams;
+typedef struct dpiConnInfo dpiConnInfo;
 typedef struct dpiContextCreateParams dpiContextCreateParams;
 typedef struct dpiData dpiData;
 typedef union dpiDataBuffer dpiDataBuffer;
@@ -632,6 +640,21 @@ struct dpiConnCreateParams {
     dpiShardingKeyColumn *superShardingKeyColumns;
     uint8_t numSuperShardingKeyColumns;
     int outNewSession;
+};
+
+// structure used for transferring connection information from ODPI-C
+struct dpiConnInfo {
+    const char *dbDomain;
+    uint32_t dbDomainLength;
+    const char *dbName;
+    uint32_t dbNameLength;
+    const char *instanceName;
+    uint32_t instanceNameLength;
+    const char *serviceName;
+    uint32_t serviceNameLength;
+    uint32_t maxIdentifierLength;
+    uint32_t maxOpenCursors;
+    uint8_t serverType;
 };
 
 // structure used for creating a context
@@ -1046,6 +1069,9 @@ DPI_EXPORT int dpiConn_getExternalName(dpiConn *conn, const char **value,
 
 // get the OCI service context handle associated with the connection
 DPI_EXPORT int dpiConn_getHandle(dpiConn *conn, void **handle);
+
+// return information about the connection
+DPI_EXPORT int dpiConn_getInfo(dpiConn *conn, dpiConnInfo *info);
 
 // get instance name associated with the connection
 DPI_EXPORT int dpiConn_getInstanceName(dpiConn *conn, const char **value,

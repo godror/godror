@@ -5,11 +5,15 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.45.0]
 ### Added
 - Add cloexec subpackage for setting the connections to FD_CLOEXEC.
+- Export DPI_NATIVE_TYPE_* constants for Data.NativeType comparisons.
 
 ### Changed
 - Require Go 1.20 (drop support for Go 1.19)
+- ODPI-C v5.4.0
 
 ## [v0.44.0]
 ### Added
