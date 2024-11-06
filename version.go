@@ -28,4 +28,4 @@ func init() {
 	}
 }
 
-var Version = "v0.45.0"
+var Version = "v0.45.1"
