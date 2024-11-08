@@ -20,3 +20,5 @@ require (
 	golang.org/x/term v0.10.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
+
+retract v0.45.0
