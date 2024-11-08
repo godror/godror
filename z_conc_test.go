@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"os"
+	"os/exec"
 	"strconv"
 	"testing"
 	"time"
@@ -21,6 +22,23 @@ import (
 )
 
 func TestConcurrency(t *testing.T) {
+	if os.Getenv("DO_TEST_CONCURRENCY") == "1" {
+		testConcurrency(t)
+		return
+	}
+	ex, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run separately, in a separate process to continue with other tests on panic
+	cmd := exec.Command(ex, "-test.run=TestConcurrency")
+	cmd.Env = append(os.Environ(), "DO_TEST_CONCURRENCY=1")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err = cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+}
+func testConcurrency(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Concurrency"), 30*time.Second)
 	defer cancel()
 
@@ -28,8 +46,7 @@ func TestConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	P.PoolParams.MaxSessions = maxSessions
-	P.PoolParams.MinSessions = maxSessions / 2
+	P.PoolParams.MinSessions = P.PoolParams.MaxSessions / 2
 	P.PoolParams.WaitTimeout = 5 * time.Second
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()

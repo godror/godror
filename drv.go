@@ -500,9 +500,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
 	}
-	// initialize ODPI-C structure for common creation parameters; this is only
-	// used when a standalone connection is being created; when a connection is
-	// being acquired from the pool this structure is not needed
+	// initialize ODPI-C structure for common creation parameters;
+	// this is ONLY used when a standalone connection is being created;
+	// when a connection is being acquired from the pool this structure is NOT needed
 	var commonCreateParamsPtr *C.dpiCommonCreateParams
 	var accessToken *C.dpiAccessToken
 
@@ -515,8 +515,10 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			accessToken.privateKey = nil
 			defer freeAccessToken(accessToken)
 		}
-		if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize,
-			P.Charset, P.Token, P.PrivateKey, accessToken); err != nil {
+		if err := d.initCommonCreateParams(&commonCreateParams,
+			P.EnableEvents, P.StmtCacheSize,
+			P.Charset, P.Token, P.PrivateKey, accessToken,
+		); err != nil {
 			return nil, false, nil, err
 		}
 		commonCreateParamsPtr = &commonCreateParams
@@ -654,6 +656,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// create ODPI-C connection
 	var dc *C.dpiConn
 	if err := d.checkExec(func() C.int {
+		// fmt.Printf("dpiConn_create(dpiContext=%#v, username=%q[%d], password=%q[%d], connectString=%q[%d], commonCreateParams=%#v, connCreateParams=%#v, dpiConn=%#v) pool=%#v\n", d.dpiContext, username, C.uint32_t(len(username)), password, C.uint32_t(len(password)), P.ConnectString, C.uint32_t(len(P.ConnectString)), commonCreateParamsPtr, connCreateParams, dc, pool)
 		return C.dpiConn_create(
 			d.dpiContext,
 			cUsername, C.uint32_t(len(username)),

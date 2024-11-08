@@ -44,7 +44,7 @@ const (
 	// DefaultMaxLifeTime is the maximum time in seconds till a pooled session may exist
 	DefaultMaxLifeTime = 1 * time.Hour
 	// DefaultStandaloneConnection holds the default for standaloneConnection.
-	DefaultStandaloneConnection = false
+	DefaultStandaloneConnection = true
 	// DefaultNoBreakOnContextCancel holds the default for noBreakOnContext
 	DefaultNoBreakOnContextCancel = false
 )
@@ -343,7 +343,9 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	q.Add("sysdba", B(P.IsSysDBA))
 	q.Add("sysoper", B(P.IsSysOper))
 	q.Add("sysasm", B(P.IsSysASM))
-	q.Add("standaloneConnection", B(P.StandaloneConnection))
+	if P.StandaloneConnection {
+		q.Add("standaloneConnection", B(P.StandaloneConnection))
+	}
 	q.Add("enableEvents", B(P.EnableEvents))
 	q.Add("heterogeneousPool", B(P.Heterogeneous))
 	q.Add("externalAuth", B(P.ExternalAuth))
