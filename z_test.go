@@ -5196,3 +5196,29 @@ func TestPartialBatch(t *testing.T) {
 		checkRowCount(t, len(wantAffected))
 	})
 }
+
+func TestStandaloneVsPool(t *testing.T) {
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Ps, Pp := P, P
+	if Ps.StandaloneConnection {
+		Pp.StandaloneConnection = false
+	} else {
+		Ps.StandaloneConnection = true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, P := range []godror.ConnectionParams{Ps, Pp} {
+		db := sql.OpenDB(godror.NewConnector(P))
+		t.Logf("Standalone=%t %s", P.StandaloneConnection, P)
+		const qry = "SELECT SYS_CONTEXT('USERENV', 'INSTANCE_NAME')||'/'||SYS_CONTEXT('USERENV','SERVICE_NAME')||'/'||SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL"
+		var s string
+		if err := db.QueryRowContext(ctx, qry).Scan(&s); err != nil {
+			t.Errorf("%s %s: %+v", P, qry, err)
+		}
+		t.Logf("Standalone=%t: %s", P.StandaloneConnection, s)
+		db.Close()
+	}
+}
