@@ -2685,7 +2685,7 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	var a [1 << 20]byte
 	n, _ := io.ReadAtLeast(L.Reader, a[:], cap(a)>>1)
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("setLob", "n", n)
+		logger.Debug("ReadAtLeast", "wanted", cap(a)>>1, "n", n, "isClob", L.IsClob)
 	}
 	if n < cap(a)>>1 {
 		if err := c.checkExec(func() C.int {
@@ -2721,21 +2721,24 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		logger.Debug("setLOB", "written", written, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
 	}
 	if err != nil {
-		return fmt.Errorf("written %d into IsClob=%t: %w", written, L.IsClob, err)
+		return fmt.Errorf("written %d into isClob=%t: %w", written, L.IsClob, err)
 	}
-	{
+	// for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, the size returned will be inaccurate and care must be taken to account for the difference.
+	if !L.IsClob {
 		var lobSize C.uint64_t
-		err := c.checkExec(func() C.int { return C.dpiLob_getSize(lob, &lobSize) })
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("setLOB", "type", typ, "size", lobSize, "error", err)
-		}
-		if int64(lobSize) != int64(written) {
-			if !L.IsClob {
-				return fmt.Errorf("lobSize=%d, wanted %d", lobSize, written)
-			}
-			// for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, the size returned will be inaccurate and care must be taken to account for the difference.
+		if err := c.checkExec(func() C.int { return C.dpiLob_getSize(lob, &lobSize) }); err != nil {
 			if logger != nil {
-				logger.Warn("write LOB", "wanted", lobSize, "written", written)
+				logger.Error("setLOB", "type", typ, "error", err)
+			}
+		} else {
+			if logger.Enabled(ctx, slog.LevelDebug) {
+				logger.Debug("setLOB", "type", typ, "size", lobSize, "error", err)
+			}
+			if int64(lobSize) != int64(written) {
+				if logger != nil {
+					logger.Warn("write LOB", "isClob", L.IsClob, "wanted", lobSize, "written", written)
+				}
+				return fmt.Errorf("lobSize=%d, wanted %d", lobSize, written)
 			}
 		}
 	}
