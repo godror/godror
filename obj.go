@@ -105,7 +105,9 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
-		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v: %w", data.NativeTypeNum, data.ObjectType, err)
+		var info C.dpiObjectAttrInfo
+		C.dpiObjectAttr_getInfo(attr.dpiObjectAttr, &info)
+		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v typeInfo=%+v: %w", data.NativeTypeNum, data.ObjectType, info.typeInfo, err)
 	}
 	return nil
 }
