@@ -136,12 +136,8 @@ func (O *Object) ResetAttributes() error {
 		data.reset()
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
-		if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-			a := make([]byte, attr.Precision)
-			C.dpiData_setBytes(&data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(attr.Precision))
-		}
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
-			return O.drv.getError()
+			return fmt.Errorf("ResetAttributes(%q, ott=%+v, %+v): %w", attr.Name, attr.OracleTypeNum, data, O.drv.getError())
 		}
 	}
 
@@ -1000,8 +996,9 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	if t == nil {
 		return nil, errNilObjectType
 	}
-	logger := getLogger(context.TODO())
-	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	ctx := context.TODO()
+	logger := getLogger(ctx)
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NewObject", "name", t.Name)
 	}
 	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
@@ -1010,7 +1007,7 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	t.mu.RUnlock()
 	if err != nil {
 		C.free(unsafe.Pointer(obj))
-		return nil, err
+		return nil, fmt.Errorf("NewObject(%q [%+v]: %w", t.Name, t, err)
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
 
@@ -1206,9 +1203,6 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 
 func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*ObjectType) error {
 	t.dpiObjectType = typ.objectType
-
-	t.OracleTypeNum = typ.oracleTypeNum
-	t.NativeTypeNum = typ.defaultNativeTypeNum
 	t.DBSize = int(typ.dbSizeInBytes)
 	t.ClientSizeInBytes = int(typ.clientSizeInBytes)
 	t.CharSize = int(typ.sizeInChars)
@@ -1216,6 +1210,13 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*O
 	t.Scale = int8(typ.scale)
 	t.FsPrecision = uint8(typ.fsPrecision)
 	t.DomainAnnotation.init(typ)
+	t.OracleTypeNum = typ.oracleTypeNum
+	t.NativeTypeNum = typ.defaultNativeTypeNum
+	if t.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER &&
+		(t.Scale != 0 && t.Precision >= 15) ||
+		(t.Scale == 0 && t.Precision >= 19) {
+		t.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+	}
 	return t.init(cache)
 }
 
@@ -1245,7 +1246,7 @@ func (A ObjectAttribute) Close() error {
 		return nil
 	}
 	if logger := getLogger(context.Background()); logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
-		logger.Debug("ObjectAttribute.CloReplaceQuestionPlacholders()se", "name", A.Name)
+		logger.Debug("ObjectAttribute.Close", "name", A.Name)
 	}
 	if err := A.ObjectType.drv.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
 		return err
