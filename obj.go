@@ -920,23 +920,21 @@ func (t *ObjectType) String() string {
 		return ""
 	}
 	if t.Schema == "" {
-		return t.Name
+		if t.PackageName == "" {
+			return t.Name
+		}
+		return t.PackageName + "." + t.Name
 	}
-	return t.Schema + "." + t.Name
+	if t.PackageName == "" {
+		return t.Schema + "." + t.Name
+	}
+	return t.Schema + "." + t.PackageName + "." + t.Name
 }
 
 func (t *ObjectType) IsObject() bool { return t != nil && t.NativeTypeNum == C.DPI_NATIVE_TYPE_OBJECT }
 
 // FullName returns the object's name with the schame prepended.
-func (t *ObjectType) FullName() string {
-	if t == nil {
-		return ""
-	}
-	if t.Schema == "" {
-		return t.Name
-	}
-	return t.Schema + "." + t.Name
-}
+func (t *ObjectType) FullName() string { return t.String() }
 
 // GetObjectType returns the ObjectType of a name.
 //
