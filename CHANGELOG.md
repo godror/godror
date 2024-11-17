@@ -5,7 +5,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Chanegd
+### Added
+- SetAttribute that sidesteps ORA-21602
+
+### Changed
 - Make CLOB written sizem mismatch only a warning.
 
 ## [v0.45.0]

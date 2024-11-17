@@ -657,5 +657,15 @@ func (d *Data) GetJSONArray() JSONArray {
 	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
+// Prepare buffer for NUMBER OracleTypeNum.
+func (d *Data) prepare(oracleTypeNum C.uint) {
+	// If the native type is DPI_NATIVE_TYPE_BYTES and the Oracle type of the attribute is DPI_ORACLE_TYPE_NUMBER, a buffer must be supplied in the value.asBytes.ptr attribute and the maximum length of that buffer must be supplied in the value.asBytes.length attribute before calling this function. For all other conversions, the buffer is supplied by the library and remains valid as long as a reference to the object is held.
+	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES &&
+		oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
+		var a [39]byte
+		C.dpiData_setBytes(&d.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(len(a)))
+	}
+}
+
 // For tests
 var _, _ = ((*Data)(nil)).dpiDataGetBytes, ((*Data)(nil)).dpiDataGetBytesUnsafe

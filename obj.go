@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -65,10 +66,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
-	if attr.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-		var a [39]byte
-		C.dpiData_setBytes(&data.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(len(a)))
-	}
+	data.prepare(attr.OracleTypeNum)
 
 	//fmt.Printf("getAttributeValue(%p, %p, %d, %+v)\n", O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, data.dpiData)
 	if err := O.drv.checkExec(func() C.int {
@@ -108,6 +106,12 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		var info C.dpiObjectAttrInfo
 		C.dpiObjectAttr_getInfo(attr.dpiObjectAttr, &info)
 		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v typeInfo=%+v: %w", data.NativeTypeNum, data.ObjectType, info.typeInfo, err)
+	}
+	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+		logger.Debug("setAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
+			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
+			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
+			"p", fmt.Sprintf("%p", data))
 	}
 	return nil
 }
@@ -784,6 +788,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 		data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 		data.implicitObj = true
 	}
+	data.prepare(O.CollectionOf.OracleTypeNum)
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
 	}
@@ -1213,8 +1218,12 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*O
 	t.OracleTypeNum = typ.oracleTypeNum
 	t.NativeTypeNum = typ.defaultNativeTypeNum
 	if t.OracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER &&
-		(t.Scale != 0 && t.Precision >= 15) ||
-		(t.Scale == 0 && t.Precision >= 19) {
+		(t.NativeTypeNum == C.DPI_NATIVE_TYPE_FLOAT &&
+			(t.Scale != 0 || t.Precision >= 8)) ||
+		(t.NativeTypeNum == C.DPI_NATIVE_TYPE_DOUBLE &&
+			(t.Scale != 0 || t.Precision >= 15)) ||
+		(t.NativeTypeNum == C.DPI_NATIVE_TYPE_INT64 &&
+			(t.Scale != 0 || t.Precision >= 19)) {
 		t.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 	}
 	return t.init(cache)
@@ -1269,3 +1278,31 @@ type dataPool struct{ sync.Pool }
 
 func (dp *dataPool) Get() *Data  { return dp.Pool.Get().(*Data) }
 func (dp *dataPool) Put(d *Data) { d.reset(); dp.Pool.Put(d) }
+
+// SetAttribute sets an object's attribute, evading ORA-21602
+//
+// https://github.com/oracle/odpi/issues/186
+func SetAttribute(ctx context.Context, ex Execer, obj *Object, name string, data *Data) error {
+	err := obj.SetAttribute(name, data)
+	if err == nil {
+		return nil
+	}
+	var ec interface{ Code() int }
+	if !errors.As(err, &ec) || ec.Code() != 21602 {
+		return err
+	}
+	qry := fmt.Sprintf(`DECLARE
+  v_obj %s := :1;
+BEGIN
+  v_obj.%s := :2;
+  :3 := v_obj;
+END;`,
+		obj.ObjectType.PackageName+"."+obj.ObjectType.Name,
+		name,
+	)
+	_, xErr := ex.ExecContext(ctx, qry, obj, data.GetObject(), sql.Out{Dest: obj})
+	if xErr == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w: %w", qry, xErr, err)
+}
