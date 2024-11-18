@@ -68,6 +68,7 @@ type stmtOptions struct {
 	numberAsString     bool
 	numberAsFloat64    bool
 	partialBatch       bool
+	warningAsError     bool
 }
 
 type boolString struct {
@@ -294,6 +295,9 @@ func NumberAsFloat64() Option { return func(o *stmtOptions) { o.numberAsFloat64 
 // In such case the returned error is a BatchErrors containing the failed offsets.
 func PartialBatch() Option { return func(o *stmtOptions) { o.partialBatch = true } }
 
+// Return ORA-24344 warning as an error
+func WarningAsError() Option { return func(o *stmtOptions) { o.warningAsError = true } }
+
 const minChunkSize = 1 << 16
 
 var _ driver.Stmt = (*statement)(nil)
@@ -498,7 +502,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				}
 			}()
 		}
-		if err = func() error { defer close(done); return st.checkExec(f) }(); err == nil {
+		if err = func() error {
+			defer close(done)
+			if st.warningAsError {
+				return st.checkExecWithWarning(f)
+			} else {
+				return st.checkExec(f)
+			}
+		}(); err == nil {
 			break
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -711,7 +722,14 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 				}
 			}()
 		}
-		if err = func() error { defer close(done); return st.checkExec(f) }(); err == nil {
+		if err = func() error {
+			defer close(done)
+			if st.warningAsError {
+				return st.checkExecWithWarning(f)
+			} else {
+				return st.checkExec(f)
+			}
+		}(); err == nil {
 			break
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {

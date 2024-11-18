@@ -89,6 +89,12 @@ func (c *conn) checkExecNoLOT(f func() C.int) error {
 	}
 	return c.drv.checkExecNoLOT(f)
 }
+func (c *conn) checkExecWithWarning(f func() C.int) error {
+	if c == nil || c.drv == nil {
+		return driver.ErrBadConn
+	}
+	return c.drv.checkExecWithWarning(f)
+}
 
 // used before an ODPI call to force it to return within the context deadline
 func (c *conn) handleDeadline(ctx context.Context) (cleanup func(), err error) {

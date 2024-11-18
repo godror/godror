@@ -5222,3 +5222,50 @@ func TestStandaloneVsPool(t *testing.T) {
 		db.Close()
 	}
 }
+
+func TestWarningAsError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const query = `
+		DECLARE
+			ora_24344 EXCEPTION;
+			PRAGMA EXCEPTION_INIT(ora_24344, -24344);
+		BEGIN
+			RAISE ora_24344;
+		END;`
+	args := []any{godror.WarningAsError()}
+	for _, tC := range []struct {
+		Qry     string
+		Code    int
+		Warning bool
+	}{
+		// Some syntax error
+		{Qry: "SELECT 1 FROM not-exist", Code: 903},
+		// No error - warning should not return the previous error
+		{Qry: "SELECT 1 FROM DUAL", Warning: true},
+		// Not a syntax error, but a compile error - just a warning
+		{Qry: query},
+		// Proper error
+		{Qry: `BEGIN raise_application_error(-20001, 'test'); END;`, Code: 20001},
+		// Warning as error
+		{Qry: query, Code: 24344, Warning: true},
+	} {
+		args = args[:0]
+		if tC.Warning {
+			args = args[:1]
+		}
+		var ec interface{ Code() int }
+		_, err := testDb.ExecContext(ctx, tC.Qry, args...)
+		if tC.Code == 0 && err != nil {
+			t.Errorf("got %+v, wanted no err", err)
+		} else if tC.Code != 0 {
+			if err == nil {
+				t.Errorf("wanted error for %q", tC.Qry)
+			} else if !errors.As(err, &ec) {
+				t.Errorf("wanted OraErr, got %#v", err)
+			} else if got := ec.Code(); got != tC.Code {
+				t.Errorf("wanted ORA-%d, got %d", tC.Code, got)
+			}
+		}
+	}
+}
