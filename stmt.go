@@ -2731,7 +2731,7 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 				logger.Error("setLOB", "type", typ, "error", err)
 			}
 		} else {
-			if logger.Enabled(ctx, slog.LevelDebug) {
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("setLOB", "type", typ, "size", lobSize, "error", err)
 			}
 			if int64(lobSize) != int64(written) {
