@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
+- WarningAsError option to return ORA-24344 as an error instead of skipping it
 - SetAttribute that sidesteps ORA-21602
 
 ### Changed

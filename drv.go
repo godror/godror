@@ -279,6 +279,14 @@ func (d *drv) checkExecNoLOT(f func() C.int) error {
 	return d.getError()
 }
 
+func (d *drv) checkExecWithWarning(f func() C.int) error {
+	runtime.LockOSThread()
+	_ = f()
+	err := d.getError()
+	runtime.UnlockOSThread()
+	return err
+}
+
 func (d *drv) init(configDir, libDir string) error {
 	d.mu.RLock()
 	ok := d.pools != nil && d.timezones != nil && d.dpiContext != nil
