@@ -1286,21 +1286,33 @@ func SetAttribute(ctx context.Context, ex Execer, obj *Object, name string, data
 		return nil
 	}
 	var ec interface{ Code() int }
-	if !errors.As(err, &ec) || ec.Code() != 21602 {
-		return err
-	}
-	qry := fmt.Sprintf(`DECLARE
+	var qry string
+	var val any
+	if errors.As(err, &ec) && ec.Code() == 21602 {
+		val = data.GetObject()
+		qry = `DECLARE
   v_obj %s := :1;
 BEGIN
   v_obj.%s := :2;
   :3 := v_obj;
-END;`,
-		obj.ObjectType.PackageName+"."+obj.ObjectType.Name,
-		name,
-	)
-	_, xErr := ex.ExecContext(ctx, qry, obj, data.GetObject(), sql.Out{Dest: obj})
+END;`
+	} else if false && // cannot set ROWID: https://github.com/oracle/odpi/issues/187
+		data.NativeTypeNum == 3004 && strings.Contains(err.Error(), "DPI-1014:") {
+		val = string(data.GetBytes())
+		qry = `DECLARE
+  v_obj %s := :1;
+  --v_rowid CONSTANT VARCHAR2(128) := :2;
+BEGIN
+  v_obj.%s := :2; --v_rowid;
+  :3 := v_obj;
+END;`
+	} else {
+		return err
+	}
+	qry = fmt.Sprintf(qry, obj.ObjectType.FullName(), name)
+	_, xErr := ex.ExecContext(ctx, qry, obj, val, sql.Out{Dest: obj})
 	if xErr == nil {
 		return nil
 	}
-	return fmt.Errorf("%s: %w: %w", qry, xErr, err)
+	return fmt.Errorf("%s [%#v]: %w: %w", qry, val, xErr, err)
 }
