@@ -69,6 +69,7 @@ type stmtOptions struct {
 	numberAsFloat64    bool
 	partialBatch       bool
 	warningAsError     bool
+	noRetry            bool
 }
 
 type boolString struct {
@@ -298,6 +299,9 @@ func PartialBatch() Option { return func(o *stmtOptions) { o.partialBatch = true
 // Return ORA-24344 warning as an error
 func WarningAsError() Option { return func(o *stmtOptions) { o.warningAsError = true } }
 
+// Do not re-execute statement if ORA-04061, ORA-04065 or ORA-04068 occurs
+func NoRetry() Option { return func(o *stmtOptions) { o.noRetry = true } }
+
 const minChunkSize = 1 << 16
 
 var _ driver.Stmt = (*statement)(nil)
@@ -515,7 +519,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		if !isInvalidErr(err) {
+		if st.noRetry || !isInvalidErr(err) {
 			break
 		}
 	}
@@ -735,7 +739,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		if !isInvalidErr(err) {
+		if st.noRetry || !isInvalidErr(err) {
 			break
 		}
 	}
