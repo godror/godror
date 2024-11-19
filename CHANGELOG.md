@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
+- NoRetry option to disable re-execution of a statement on ORA-04061, ORA-04065 or ORA-04068
 - WarningAsError option to return ORA-24344 as an error instead of skipping it
 - SetAttribute that sidesteps ORA-21602
 
