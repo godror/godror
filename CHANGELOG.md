@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.45.2]
 ### Added
 - NoRetry option to disable re-execution of a statement on ORA-04061, ORA-04065 or ORA-04068
 - WarningAsError option to return ORA-24344 as an error instead of skipping it
