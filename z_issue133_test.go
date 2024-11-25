@@ -188,7 +188,7 @@ func BenchmarkMergeMemory133(t *testing.B) {
 	if err != nil {
 		t.Fatalf("%q: %+v", testConStr, err)
 	}
-	P.StandaloneConnection = true
+	P.StandaloneConnection = godror.Bool(true)
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 	db.SetMaxIdleConns(0)

@@ -172,7 +172,7 @@ func TestCloseTempLOB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if P.StandaloneConnection {
+	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
 		t.Skip("TestCloseTempLOB needs pooled connection")
 	}
 

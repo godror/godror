@@ -71,7 +71,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !cs.IsStandalone() {
-		cs.Heterogeneous = true
+		cs.Heterogeneous = godror.Bool(true)
 	}
 	username := cs.Username
 	testHeterogeneousConStr := cs.StringWithPassword()
@@ -163,7 +163,7 @@ func TestHeterogeneousConnCreationWithProxy(t *testing.T) {
 	}
 	username := cs.Username
 	if !cs.IsStandalone() {
-		cs.Heterogeneous = true
+		cs.Heterogeneous = godror.Bool(true)
 	}
 	cs.Username += "[" + sessionUser + "]"
 	testHeterogeneousConStr := cs.StringWithPassword()
@@ -212,7 +212,7 @@ func TestContextWithUserPassw(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !cs.IsStandalone() {
-		cs.Heterogeneous = true
+		cs.Heterogeneous = godror.Bool(true)
 	}
 	username, password := cs.Username, cs.Password
 	cs.Username = ""

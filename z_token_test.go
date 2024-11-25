@@ -80,7 +80,7 @@ func TestTokenAuthCallBack(t *testing.T) {
 		TokenCB:        cb,
 		TokenCBCtx:     tokenCtx,
 	}
-	P.ExternalAuth = true
+	P.ExternalAuth = godror.Bool(true)
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 
@@ -110,8 +110,8 @@ func TestTokenAuthStandAlone(t *testing.T) {
 
 	P.Token = os.Getenv("GODROR_TEST_EXPIRED_TOKEN")
 	P.PrivateKey = os.Getenv("GODROR_TEST_EXPIRED_PVTKEY")
-	P.StandaloneConnection = true
-	P.ExternalAuth = true
+	P.StandaloneConnection = godror.Bool(true)
+	P.ExternalAuth = godror.Bool(true)
 	t.Log("`" + P.StringWithPassword() + "`")
 	db1, err := sql.Open("godror", P.StringWithPassword())
 	if err != nil {

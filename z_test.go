@@ -194,9 +194,7 @@ func setUp() func() {
 		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
-	if testDb = sql.OpenDB(godror.NewConnector(P)); err != nil {
-		panic(fmt.Errorf("connect to %s: %w", testConStr, err))
-	}
+	testDb = sql.OpenDB(godror.NewConnector(P))
 	tearDown = append(tearDown, func() { testDb.Close() })
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
@@ -232,7 +230,7 @@ func setUp() func() {
 		fmt.Println("Server:", serverVersion.String(), "Timezone:", dbTZ.String())
 		return nil
 	}); err != nil {
-		panic(err)
+		panic(fmt.Errorf("get version with %#v: %w", P, err))
 	}
 
 	go func() {
@@ -250,7 +248,7 @@ func setUp() func() {
 	}()
 
 	testDb.SetMaxOpenConns(maxSessions)
-	if P.StandaloneConnection {
+	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
 		testDb.SetMaxIdleConns(maxSessions / 2)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
@@ -319,6 +317,10 @@ type testLogger struct {
 
 func (tl *testLogger) Write(p []byte) (int, error) {
 	s := string(p)
+	if len(tl.Ts) == 0 {
+		fmt.Println(string(p))
+		return len(p), nil
+	}
 	for _, t := range tl.Ts {
 		t.Helper()
 		t.Log(s)
@@ -1444,7 +1446,7 @@ func TestOpenCloseDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs.MinSessions, cs.MaxSessions = 0, 4
-	cs.StandaloneConnection = true
+	cs.StandaloneConnection = godror.Bool(true)
 	const countQry = "SELECT COUNT(0) FROM user_objects"
 	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
 	defer cancel()
@@ -3270,7 +3272,7 @@ func TestNewPassword(t *testing.T) {
 	}
 
 	P.Username, P.Password = user, godror.NewPassword(oldPassword)
-	P.StandaloneConnection = true
+	P.StandaloneConnection = godror.Bool(true)
 	P.NewPassword = godror.NewPassword(newPassword)
 	{
 		db, err := sql.Open("godror", P.StringWithPassword())
@@ -3878,7 +3880,7 @@ func TestOpenCloseLOB(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(poolSize)
-	if P.StandaloneConnection {
+	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
 		db.SetMaxIdleConns(poolSize)
 	} else {
 		db.SetMaxIdleConns(0)
@@ -4359,9 +4361,9 @@ func TestExternalAuthIntegration(t *testing.T) {
 	// set up connectstring with sessionuser in pool creation
 	cs.Username = "[" + sessionUser + "]"
 	cs.Password.Reset()
-	cs.ExternalAuth = true
+	cs.ExternalAuth = godror.Bool(true)
 	if !cs.IsStandalone() {
-		cs.Heterogeneous = true
+		cs.Heterogeneous = godror.Bool(true)
 	}
 	testExternalAuthProxyConStr := cs.StringWithPassword()
 	t.Log("testExternalAuthProxyConStr", testExternalAuthProxyConStr)
@@ -4414,7 +4416,7 @@ func TestExternalAuthIntegration(t *testing.T) {
 		"sessionUser":                {In: godror.ContextWithUserPassw(ctx, "["+sessionUser+"]", "", ""), Want: sessionUser},
 		"sessionUserwithOutbrackets": {In: godror.ContextWithUserPassw(ctx, sessionUser, "", ""), Want: sessionUser},
 	} {
-		if cs.StandaloneConnection && tName != "noContext" {
+		if cs.StandaloneConnection.Valid && cs.StandaloneConnection.Bool && tName != "noContext" {
 			// for standalone changing connection params not allowed
 			continue
 		}
@@ -4498,7 +4500,7 @@ func TestForError8192(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params.StandaloneConnection = true
+	params.StandaloneConnection = godror.Bool(true)
 	params.Timezone = time.UTC
 	t.Log("UTC params:", params)
 	dbUTC, err := sql.Open("godror", params.StringWithPassword())
@@ -5203,10 +5205,10 @@ func TestStandaloneVsPool(t *testing.T) {
 		t.Fatal(err)
 	}
 	Ps, Pp := P, P
-	if Ps.StandaloneConnection {
-		Pp.StandaloneConnection = false
+	if Ps.StandaloneConnection.Valid && Ps.StandaloneConnection.Bool {
+		Pp.StandaloneConnection = godror.Bool(false)
 	} else {
-		Ps.StandaloneConnection = true
+		Ps.StandaloneConnection = godror.Bool(true)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -165,6 +165,9 @@ func ParseDSN(dataSourceName string) (P ConnectionParams, err error) {
 	return dsn.Parse(dataSourceName)
 }
 
+// Bool is a helper for sql.NullBool
+func Bool(b bool) sql.NullBool { return dsn.Bool(b) }
+
 func NewPassword(s string) Password { return dsn.NewPassword(s) }
 
 func freeAccessToken(accessToken *C.dpiAccessToken) {
@@ -647,7 +650,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// setup credentials
 	username, password := P.Username, P.Password.Secret()
-	if pool != nil && !pool.params.Heterogeneous && !pool.params.ExternalAuth {
+	if pool != nil &&
+		!(pool.params.Heterogeneous.Valid && pool.params.Heterogeneous.Bool) &&
+		!(pool.params.ExternalAuth.Valid && pool.params.ExternalAuth.Bool) {
 		// Only for homogeneous pool force user, password as empty.
 		username, password = "", ""
 	}
@@ -742,7 +747,8 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 
 	var usernameKey string
 	var passwordHash [sha256.Size]byte
-	if !P.Heterogeneous && !P.ExternalAuth {
+	if !(P.Heterogeneous.Valid && P.Heterogeneous.Bool) &&
+		!(P.ExternalAuth.Valid && P.ExternalAuth.Bool) {
 		// skip username being part of key in heterogeneous pools
 		usernameKey = P.Username
 		passwordHash = sha256.Sum256([]byte(P.Password.Secret())) // See issue #245
@@ -751,7 +757,7 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
 		usernameKey, passwordHash[:4], P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
+		P.Heterogeneous.Bool, P.EnableEvents, P.ExternalAuth.Bool,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
 	logger := P.Logger
@@ -859,11 +865,14 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	// assign external authentication flag
-	poolCreateParams.externalAuth = C.int(b2i(P.ExternalAuth))
+	poolCreateParams.externalAuth = C.int(b2i(
+		P.ExternalAuth.Valid && P.ExternalAuth.Bool ||
+			!P.ExternalAuth.Valid && P.Username == ""))
 
 	// assign homogeneous pool flag; default is true so need to clear the flag
 	// if specifically reqeuested or if external authentication is desirable
-	if poolCreateParams.externalAuth == 1 || P.Heterogeneous {
+	if poolCreateParams.externalAuth == 1 ||
+		(P.Heterogeneous.Valid && P.Heterogeneous.Bool) {
 		if P.Token == "" {
 			// Reset homogeneous only for non-token Authentication
 			poolCreateParams.homogeneous = 0

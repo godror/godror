@@ -41,7 +41,7 @@ func TestConnCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	P.StandaloneConnection = true
+	P.StandaloneConnection = godror.Bool(true)
 	db, err := sql.Open("godror", P.StringWithPassword())
 	if err != nil {
 		t.Fatal(err)

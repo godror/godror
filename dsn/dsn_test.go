@@ -37,7 +37,7 @@ func TestParse(t *testing.T) {
 		},
 	}
 	wantDefault := ConnectionParams{
-		StandaloneConnection: DefaultStandaloneConnection,
+		// StandaloneConnection: DefaultStandaloneConnection,
 		CommonParams: CommonParams{
 			CommonSimpleParams: CommonSimpleParams{
 				Username:      "user",
@@ -59,7 +59,7 @@ func TestParse(t *testing.T) {
 		},
 	}
 	wantDefault.ConnClass = DefaultConnectionClass
-	if wantDefault.StandaloneConnection {
+	if wantDefault.StandaloneConnection.Valid && wantDefault.StandaloneConnection.Bool {
 		wantDefault.ConnClass = ""
 	}
 
@@ -67,8 +67,8 @@ func TestParse(t *testing.T) {
 	wantXO.ConnectString = "localhost/sid"
 
 	wantHeterogeneous := wantDefault
-	wantHeterogeneous.Heterogeneous = true
-	wantHeterogeneous.StandaloneConnection = false
+	wantHeterogeneous.Heterogeneous = Bool(true)
+	wantHeterogeneous.StandaloneConnection = Bool(false)
 	wantHeterogeneous.ConnClass = DefaultConnectionClass
 	//wantHeterogeneous.PoolParams.Username, wantHeterogeneous.PoolParams.Password = "", ""
 	wantHeterogeneous.ConnectString = "localhost/sid"
@@ -139,6 +139,7 @@ func TestParse(t *testing.T) {
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
 			Want: ConnectionParams{
+				StandaloneConnection: Bool(false),
 				CommonParams: CommonParams{
 					CommonSimpleParams: CommonSimpleParams{
 						Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
@@ -166,7 +167,7 @@ func TestParse(t *testing.T) {
 		"ipv6": {
 			In: "oracle://[::1]:12345/dbname",
 			Want: ConnectionParams{
-				StandaloneConnection: DefaultStandaloneConnection,
+				// StandaloneConnection: DefaultStandaloneConnection,
 				CommonParams: CommonParams{
 					CommonSimpleParams: CommonSimpleParams{
 						ConnectString: "[::1]:12345/dbname",
@@ -178,7 +179,7 @@ func TestParse(t *testing.T) {
 				PoolParams: PoolParams{
 					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
 					WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
-					ExternalAuth: true,
+					ExternalAuth: Bool(true),
 				},
 			},
 		},
@@ -200,6 +201,7 @@ func TestParse(t *testing.T) {
 
 		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
+				StandaloneConnection: Bool(false),
 				CommonParams: CommonParams{
 					CommonSimpleParams: CommonSimpleParams{
 						Username: "user", Password: NewPassword("pass"), ConnectString: "sid",
@@ -283,6 +285,21 @@ func TestSplitQuoted(t *testing.T) {
 	}
 }
 
+func TestStandalone(t *testing.T) {
+	a, err := Parse(`user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.StandaloneConnection = Bool(false)
+	b, err := Parse(a.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.StandaloneConnection != b.StandaloneConnection {
+		t.Errorf("standalone is set to %t and parsed as %t", a.StandaloneConnection, b.StandaloneConnection)
+	}
+}
+
 func ExampleAppendLogfmt() {
 	var buf strings.Builder
 	AppendLogfmt(&buf, "user", "scott")
@@ -306,9 +323,9 @@ func ExampleParse() {
 	// Output:
 	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
-	// configDir= connectionClass= enableEvents=0 externalAuth=0 heterogeneousPool=0
-	// initOnNewConnection=0 libDir= newPassword= noTimezoneCheck=0 pingInterval=0s
+	// configDir= connectionClass= enableEvents=0 initOnNewConnection=0 libDir= newPassword=
+	// noBreakOnContextCancel=0 noTimezoneCheck=0 perSessionTimezone=0 pingInterval=0s
 	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
-	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 standaloneConnection=0
-	// sysasm=0 sysdba=0 sysoper=0 timezone=
+	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 sysasm=0 sysdba=0 sysoper=0
+	// timezone=
 }
