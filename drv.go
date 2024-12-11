@@ -473,7 +473,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		if cleanup != nil {
 			cleanup()
 		}
-		return nil, false, err
+		return nil, false, fmt.Errorf("init: %w", err)
 	}
 
 	if !guardWithFinalizers.Load() {
@@ -730,7 +730,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 	cancel()
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("init: %w", err)
 	}
 	return conn, nil
 }
