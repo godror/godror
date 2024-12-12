@@ -24,17 +24,17 @@ func init() {
 				m = m.Replace
 			}
 			if m.Version != "" {
-				Version = m.Version +
-					"+ODPI-" + strconv.Itoa(DpiMajorVersion) +
-					"." + strconv.Itoa(DpiMinorVersion) +
-					"." + strconv.Itoa(DpiPatchLevel)
+				Version = m.Version + "+ODPI-" + odpiVersion
 			}
 			break
 		}
 	}
 }
 
-var Version = "v0.46.0" +
-	"+ODPI-" + strconv.Itoa(DpiMajorVersion) +
-	"." + strconv.Itoa(DpiMinorVersion) +
-	"." + strconv.Itoa(DpiPatchLevel)
+var (
+	odpiVersion = strconv.Itoa(DpiMajorVersion) +
+		"." + strconv.Itoa(DpiMinorVersion) +
+		"." + strconv.Itoa(DpiPatchLevel)
+
+	Version = "v0.46.1" + "+ODPI-" + odpiVersion
+)
