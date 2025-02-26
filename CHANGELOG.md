@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.47.0]
+### Changed
+- ConnectionParams IsSysDBA, IsSysOper, IsSysASM -> AdminRole
+
+## [0.46.2]
+### Changed
+- Use ODPI-5.5.0
+
 ## [0.46.0]
 ### Changed
 - dsn.StandaloneConnection, dsn.Heterogeneous and dsn.ExternalAuth became sql.NullBool to be able to differentiate set and not set.

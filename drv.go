@@ -8,12 +8,11 @@
 // The connection string for the sql.Open("godror", dataSourceName) call can be
 // the simple
 //
-//	user="login" password="password" connectString="host:port/service_name" sysdba=true
+//	user="login" password="password" connectString="host:port/service_name" adminRole=SYSDBA
 //
 // with additional params (here with the defaults):
 //
-//	sysdba=0
-//	sysoper=0
+//	adminRole=
 //	poolMinSessions=1
 //	poolMaxSessions=1000
 //	poolMaxSessionsPerShard=
@@ -146,6 +145,14 @@ const (
 	DefaultMaxLifeTime = dsn.DefaultMaxLifeTime
 	//DefaultStandaloneConnection holds the default for standaloneConnection.
 	DefaultStandaloneConnection = dsn.DefaultStandaloneConnection
+
+	SysDBA    = dsn.SysDBA
+	SysOPER   = dsn.SysOPER
+	SysBACKUP = dsn.SysBACKUP
+	SysDG     = dsn.SysDG
+	SysKM     = dsn.SysKM
+	SysRAC    = dsn.SysRAC
+	SysASM    = dsn.SysASM
 )
 
 // dsn is separated out for fuzzing, but keep it as "internal"
@@ -584,14 +591,21 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// assign authorization mode
 	connCreateParams.authMode = C.dpiAuthMode(C.DPI_MODE_AUTH_DEFAULT)
-	if P.IsSysDBA {
+	switch P.AdminRole {
+	case dsn.SysDBA:
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSDBA
-	}
-	if P.IsSysOper {
+	case dsn.SysOPER:
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSOPER
-	}
-	if P.IsSysASM {
+	case dsn.SysBACKUP:
+		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSBKP
+	case dsn.SysDG:
+		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSDGD
+	case dsn.SysKM:
+		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSKMT
+	case dsn.SysASM:
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSASM
+	case dsn.SysRAC:
+		connCreateParams.authMode |= C.DPI_MODE_AUTH_SYSRAC
 	}
 	if P.IsPrelim {
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_PRELIM

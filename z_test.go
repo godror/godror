@@ -191,7 +191,7 @@ func setUp() func() {
 	P.PoolParams.SessionTimeout = 1 * time.Minute
 	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.StringWithPassword())
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
-		P.IsSysDBA, P.Username = true, P.Username[:len(P.Username)-10]
+		P.AdminRole, P.Username = godror.SysDBA, P.Username[:len(P.Username)-10]
 	}
 	testConStr = P.StringWithPassword()
 	testDb = sql.OpenDB(godror.NewConnector(P))
@@ -2554,8 +2554,8 @@ func TestStartupShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", testSystemConStr, err))
 	}
-	if !(p.IsSysDBA || p.IsSysOper) {
-		p.IsSysDBA = true
+	if !(p.AdminRole == godror.SysDBA || p.AdminRole == godror.SysOPER) {
+		p.AdminRole = godror.SysDBA
 	}
 	if !p.IsPrelim {
 		p.IsPrelim = true

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -306,9 +306,6 @@ int dpiError__wrap(dpiError *error, dpiErrorNum errorNum, ...)
 
     // clear original error and set new error
     error->buffer->code = 0;
-    error->buffer->isRecoverable = 0;
-    error->buffer->isWarning = 0;
-    error->buffer->offset = 0;
     error->buffer->errorNum = errorNum;
     va_start(varArgs, errorNum);
     error->buffer->messageLength =

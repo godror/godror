@@ -153,10 +153,11 @@ func (P CommonSimpleParams) String() string {
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiConnCreateParams.html#dpiconncreateparams
 type ConnParams struct {
-	NewPassword                             Password
-	ConnClass                               string
-	ShardingKey, SuperShardingKey           []interface{}
-	IsSysDBA, IsSysOper, IsSysASM, IsPrelim bool
+	NewPassword                   Password
+	ConnClass                     string
+	ShardingKey, SuperShardingKey []interface{}
+	AdminRole                     AdminRole
+	IsPrelim                      bool
 }
 
 // String returns the string representation of the ConnParams.
@@ -169,14 +170,8 @@ func (P ConnParams) String() string {
 	if !P.NewPassword.IsZero() {
 		q.Add("newPassword", P.NewPassword.String())
 	}
-	if P.IsSysDBA {
-		q.Add("sysdba", "1")
-	}
-	if P.IsSysOper {
-		q.Add("sysoper", "1")
-	}
-	if P.IsSysASM {
-		q.Add("sysasm", "1")
+	if P.AdminRole != "" {
+		q.Add("adminRole", P.AdminRole.String())
 	}
 	for _, v := range P.ShardingKey {
 		q.Add("shardingKey", fmt.Sprintf("%v", v))
@@ -257,7 +252,7 @@ func (P ConnectionParams) IsStandalone() bool {
 	return P.StandaloneConnection.Valid && P.StandaloneConnection.Bool ||
 		(!P.StandaloneConnection.Valid && DefaultStandaloneConnection) ||
 		P.ConnClass == NoConnectionPoolingConnectionClass ||
-		P.IsSysDBA || P.IsSysOper || P.IsSysASM || P.IsPrelim
+		P.AdminRole != NoRole
 }
 
 func (P *ConnectionParams) comb() {
@@ -362,14 +357,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
 	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
-	if P.IsSysDBA {
-		q.Add("sysdba", "1")
-	}
-	if P.IsSysOper {
-		q.Add("sysoper", "1")
-	}
-	if P.IsSysASM {
-		q.Add("sysasm", "1")
+	if P.AdminRole != "" {
+		q.Add("adminRole", P.AdminRole.String())
 	}
 	if P.StandaloneConnection.Valid {
 		q.Add("standaloneConnection", b2s(P.StandaloneConnection.Bool))
@@ -487,12 +476,12 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		uSid := strings.ToUpper(dataSourceName)
 		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
 		if strings.Contains(uSid, " AS ") {
-			if P.IsSysDBA = strings.HasSuffix(uSid, " AS SYSDBA"); P.IsSysDBA {
-				dataSourceName = dataSourceName[:len(dataSourceName)-10]
-			} else if P.IsSysOper = strings.HasSuffix(uSid, " AS SYSOPER"); P.IsSysOper {
-				dataSourceName = dataSourceName[:len(dataSourceName)-11]
-			} else if P.IsSysASM = strings.HasSuffix(uSid, " AS SYSASM"); P.IsSysASM {
-				dataSourceName = dataSourceName[:len(dataSourceName)-10]
+			for _, role := range adminRoles {
+				if s := role.String(); strings.HasSuffix(uSid, " AS "+s) {
+					P.AdminRole = role
+					dataSourceName = dataSourceName[:len(dataSourceName)-len(s)]
+					break
+				}
 			}
 		}
 		P.ConnectString = dataSourceName
@@ -542,13 +531,14 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	if vv, ok := q["connectionClass"]; ok {
 		P.ConnClass = vv[0]
 	}
-	for _, task := range []struct {
+	var sysDBA, sysOper, sysASM bool
+	boolTasks := []struct {
 		Dest *bool
 		Key  string
 	}{
-		{&P.IsSysDBA, "sysdba"},
-		{&P.IsSysOper, "sysoper"},
-		{&P.IsSysASM, "sysasm"},
+		{&sysDBA, "sysdba"},
+		{&sysOper, "sysoper"},
+		{&sysASM, "sysasm"},
 		{&P.IsPrelim, "prelim"},
 
 		{&P.EnableEvents, "enableEvents"},
@@ -557,7 +547,12 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.PerSessionTimezone, "perSessionTimezone"},
 		{&P.InitOnNewConn, "initOnNewConnection"},
 		{&P.NoBreakOnContextCancel, "noBreakOnContextCancel"},
-	} {
+	}
+	if ar := q.Get("adminRole"); len(ar) > 3 && strings.EqualFold(ar[:3], "SYS") {
+		P.AdminRole = AdminRole(strings.ToUpper(ar))
+		boolTasks = boolTasks[3:] // skip parsing
+	}
+	for _, task := range boolTasks {
 		s := q.Get(task.Key)
 		if s == "" {
 			continue
@@ -565,6 +560,15 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		var err error
 		if *task.Dest, err = strconv.ParseBool(s); err != nil {
 			return P, fmt.Errorf("%s=%q: %w", task.Key, s, err)
+		}
+	}
+	if P.AdminRole == "" {
+		if sysDBA {
+			P.AdminRole = SysDBA
+		} else if sysOper {
+			P.AdminRole = SysOPER
+		} else if sysASM {
+			P.AdminRole = SysASM
 		}
 	}
 
@@ -1034,3 +1038,22 @@ func b2s(b bool) string {
 
 // Bool is an sql.NullBool helper
 func Bool(b bool) sql.NullBool { return sql.NullBool{Valid: true, Bool: b} }
+
+type AdminRole string
+
+func (r AdminRole) String() string { return string(r) }
+
+const (
+	NoRole    = AdminRole("")
+	SysDBA    = AdminRole("SYSDBA")
+	SysOPER   = AdminRole("SYSOPER")
+	SysBACKUP = AdminRole("SYSBACKUP")
+	SysDG     = AdminRole("SYSDG")
+	SysKM     = AdminRole("SYSKM")
+	SysRAC    = AdminRole("SYSRAC")
+	SysASM    = AdminRole("SYSASM")
+)
+
+var adminRoles = []AdminRole{
+	SysDBA, SysOPER, SysBACKUP, SysDG, SysKM, SysRAC, SysASM,
+}

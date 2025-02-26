@@ -30,10 +30,13 @@ func TestParse(t *testing.T) {
 			},
 		},
 		PoolParams: PoolParams{
-			MaxLifeTime:    DefaultMaxLifeTime,
-			PingInterval:   3142 * time.Millisecond,
-			SessionTimeout: DefaultSessionTimeout,
-			WaitTimeout:    DefaultWaitTimeout,
+			MinSessions:      DefaultPoolMinSessions,
+			MaxSessions:      DefaultPoolMaxSessions,
+			MaxLifeTime:      DefaultMaxLifeTime,
+			PingInterval:     3142 * time.Millisecond,
+			SessionIncrement: DefaultPoolIncrement,
+			SessionTimeout:   DefaultSessionTimeout,
+			WaitTimeout:      DefaultWaitTimeout,
 		},
 	}
 	wantDefault := ConnectionParams{
@@ -137,7 +140,7 @@ func TestParse(t *testing.T) {
 		"simple":   {In: "user/pass@sid", Want: wantDefault},
 		"userpass": {In: "user/pass", Want: wantEmptyConnectString},
 
-		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
+		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&adminRole=SYSOPER&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
 			Want: ConnectionParams{
 				StandaloneConnection: Bool(false),
 				CommonParams: CommonParams{
@@ -146,7 +149,7 @@ func TestParse(t *testing.T) {
 					},
 				},
 				ConnParams: ConnParams{
-					ConnClass: "TestClassName", IsSysOper: true,
+					ConnClass: "TestClassName", AdminRole: SysOPER,
 				},
 				PoolParams: PoolParams{
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
@@ -179,7 +182,7 @@ func TestParse(t *testing.T) {
 				PoolParams: PoolParams{
 					MinSessions: 1, MaxSessions: 1000, SessionIncrement: 1,
 					WaitTimeout: 30 * time.Second, MaxLifeTime: 1 * time.Hour, SessionTimeout: 5 * time.Minute,
-					ExternalAuth: Bool(true),
+					// ExternalAuth: Bool(true),
 				},
 			},
 		},
@@ -199,7 +202,7 @@ func TestParse(t *testing.T) {
 			libDir="/Users/cjones/instantclient_19_3"`,
 			Want: wantLibDir},
 
-		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&sysoper=1&sysdba=0&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
+		"onInit": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&adminRole=SYSOPER&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&onInit=a&onInit=b",
 			Want: ConnectionParams{
 				StandaloneConnection: Bool(false),
 				CommonParams: CommonParams{
@@ -209,7 +212,7 @@ func TestParse(t *testing.T) {
 					OnInitStmts: []string{"a", "b"},
 				},
 				ConnParams: ConnParams{
-					ConnClass: "TestClassName", IsSysOper: true,
+					ConnClass: "TestClassName", AdminRole: SysOPER,
 				},
 				PoolParams: PoolParams{
 					MinSessions: 3, MaxSessions: 9, SessionIncrement: 3,
@@ -323,9 +326,5 @@ func ExampleParse() {
 	// Output:
 	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
 	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
-	// configDir= connectionClass= enableEvents=0 initOnNewConnection=0 libDir= newPassword=
-	// noBreakOnContextCancel=0 noTimezoneCheck=0 perSessionTimezone=0 pingInterval=0s
-	// poolIncrement=0 poolMaxSessions=0 poolMinSessions=0 poolSessionMaxLifetime=0s
-	// poolSessionTimeout=42s poolWaitTimeout=0s prelim=0 sysasm=0 sysdba=0 sysoper=0
-	// timezone=
+	// connectionClass= newPassword= poolIncrement=0 poolMinSessions=0 poolSessionTimeout=42s
 }

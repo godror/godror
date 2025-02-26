@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -69,8 +69,8 @@ extern "C" {
 
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   5
-#define DPI_MINOR_VERSION   4
-#define DPI_PATCH_LEVEL     1
+#define DPI_MINOR_VERSION   5
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -405,6 +405,7 @@ typedef uint32_t dpiTpcEndFlags;
 // vector flags
 typedef uint8_t dpiVectorFlags;
 #define DPI_VECTOR_FLAGS_FLEXIBLE_DIM               0x01
+#define DPI_VECTOR_FLAGS_SPARSE                     0x02
 
 // vector formats
 typedef uint8_t dpiVectorFormat;
@@ -939,6 +940,8 @@ struct dpiVectorInfo {
     uint32_t numDimensions;
     uint8_t dimensionSize;
     dpiVectorDimensionBuffer dimensions;
+    uint32_t numSparseValues;
+    uint32_t *sparseIndices;
 };
 
 // structure used for defining two-phase commit transaction ids (XIDs)
@@ -1304,6 +1307,9 @@ DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 // return the unsigned integer portion of the data
 DPI_EXPORT uint64_t dpiData_getUint64(dpiData *data);
+
+// return the VECTOR portion of the data
+DPI_EXPORT dpiVector *dpiData_getVector(dpiData *data);
 
 // set the boolean portion of the data
 DPI_EXPORT void dpiData_setBool(dpiData *data, int value);
