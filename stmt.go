@@ -443,6 +443,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
 
+	if st.callTimeout != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, st.callTimeout)
+		defer cancel()
+	}
 	// HandleDeadline for all ODPI calls called below
 	cleanup, err := st.handleDeadline(ctx)
 	if err != nil {
