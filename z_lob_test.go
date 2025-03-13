@@ -497,6 +497,20 @@ func TestNCLOB(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	const nlsQry = "SELECT parameter, value FROM v$nls_parameters  WHERE parameter LIKE '%CHAR%' ORDER BY 1"
+	rows, err := testDb.QueryContext(ctx, nlsQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", nlsQry, err)
+	}
+	for rows.Next() {
+		var k, v string
+		if err = rows.Scan(&k, &v); err != nil {
+			t.Errorf("scan %s: %+v", nlsQry, err)
+		}
+		t.Logf("%s: %s", k, v)
+	}
+	rows.Close()
+
 	testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
 	defer testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
 	for _, qry := range []string{
@@ -509,7 +523,7 @@ func TestNCLOB(t *testing.T) {
 		}
 	}
 	const qry = "SELECT id, col1 FROM test_nclob"
-	rows, err := testDb.QueryContext(ctx, qry, godror.LobAsReader())
+	rows, err = testDb.QueryContext(ctx, qry, godror.LobAsReader())
 	if err != nil {
 		t.Fatalf("%s: %+v", qry, err)
 	}
