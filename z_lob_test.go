@@ -492,3 +492,50 @@ type event struct {
 	Text       string
 	ID         int64
 }
+
+func TestNCLOB(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
+	defer testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
+	for _, qry := range []string{
+		"CREATE TABLE test_nclob(id NUMBER, col1 NCLOB)",
+		"INSERT INTO test_nclob VALUES (1, 'a🎵')",
+	} {
+		_, err := testDb.ExecContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	const qry = "SELECT id, col1 FROM test_nclob"
+	rows, err := testDb.QueryContext(ctx, qry, godror.LobAsReader())
+	if err != nil {
+		t.Fatalf("%s: %+v", qry, err)
+	}
+	defer rows.Close()
+	colTypes, err := rows.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, colType := range colTypes {
+		t.Logf("%#v\n", colType)
+	}
+	for rows.Next() {
+		var id godror.Number
+		var nclobI any
+		if err := rows.Scan(&id, &nclobI); err != nil {
+			t.Fatalf("scan %s: %+v", qry, err)
+		}
+		nclob := nclobI.(*godror.Lob)
+		t.Log(id, nclob)
+		b, err := io.ReadAll(nclob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Log(string(b))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
