@@ -511,45 +511,95 @@ func TestNCLOB(t *testing.T) {
 	}
 	rows.Close()
 
-	testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	conn.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
 	defer testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
-	for _, qry := range []string{
-		"CREATE TABLE test_nclob(id NUMBER, col1 NCLOB)",
-		"INSERT INTO test_nclob VALUES (1, 'a🎵')",
-	} {
-		_, err := testDb.ExecContext(ctx, qry)
+
+	const tblQry = "CREATE TABLE test_nclob(id NUMBER, col1 NCLOB)"
+	if _, err := conn.ExecContext(ctx, tblQry); err != nil {
+		t.Fatalf("%s: %+v", tblQry, err)
+	}
+
+	insQry := `DECLARE
+	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", "a🎵") + `'), 'AL32UTF8');
+	  v_lob NCLOB;
+	BEGIN
+	  INSERT INTO test_nclob (id, col1) VALUES (1, EMPTY_CLOB) RETURNING col1 INTO v_lob;
+	  FOR i IN 1..16384 LOOP
+	    --a + that musical note is 2 UTF16 "characters"
+	    DBMS_LOB.writeappend(v_lob, 3, v_nstr);
+	  END LOOP;
+	END;`
+	if _, err = conn.ExecContext(ctx, insQry); err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+
+	const qry = "SELECT id, col1 FROM test_nclob"
+
+	t.Run("LobAsReader", func(t *testing.T) {
+		rows, err = testDb.QueryContext(ctx, qry, godror.LobAsReader())
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		}
-	}
-	const qry = "SELECT id, col1 FROM test_nclob"
-	rows, err = testDb.QueryContext(ctx, qry, godror.LobAsReader())
-	if err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	defer rows.Close()
-	colTypes, err := rows.ColumnTypes()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, colType := range colTypes {
-		t.Logf("%#v\n", colType)
-	}
-	for rows.Next() {
-		var id godror.Number
-		var nclobI any
-		if err := rows.Scan(&id, &nclobI); err != nil {
-			t.Fatalf("scan %s: %+v", qry, err)
-		}
-		nclob := nclobI.(*godror.Lob)
-		t.Log(id, nclob)
-		b, err := io.ReadAll(nclob)
+		defer rows.Close()
+		colTypes, err := rows.ColumnTypes()
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log(string(b))
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
+		for _, colType := range colTypes {
+			t.Logf("%#v\n", colType)
+		}
+		for rows.Next() {
+			var id godror.Number
+			var nclobI any
+			if err := rows.Scan(&id, &nclobI); err != nil {
+				t.Fatalf("scan %s: %+v", qry, err)
+			}
+			nclob := nclobI.(*godror.Lob)
+			size, _ := nclob.Size()
+			t.Log(id, nclob, size)
+			b, err := io.ReadAll(nclob)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Log(string(b))
+			t.Logf("%x", b[:5])
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("string", func(t *testing.T) {
+		rows, err = testDb.QueryContext(ctx, qry)
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		defer rows.Close()
+		colTypes, err := rows.ColumnTypes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, colType := range colTypes {
+			t.Logf("%#v\n", colType)
+		}
+		for rows.Next() {
+			var id godror.Number
+			var nclob string
+			if err := rows.Scan(&id, &nclob); err != nil {
+				t.Fatalf("scan %s: %+v", qry, err)
+			}
+			t.Log(id, nclob)
+			t.Logf("%x", nclob[:5])
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 }
