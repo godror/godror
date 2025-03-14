@@ -576,6 +576,7 @@ func TestNCLOB(t *testing.T) {
 	})
 
 	t.Run("string", func(t *testing.T) {
+		defer tl.enableLogging(t)()
 		rows, err = testDb.QueryContext(ctx, qry)
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)

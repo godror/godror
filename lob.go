@@ -306,14 +306,29 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		if logger != nil {
 			logger.Error("readBytes", "error", err)
 		}
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
 		var codeErr interface{ Code() int }
-		if dlr.finished = errors.As(err, &codeErr) && codeErr.Code() == 1403; dlr.finished {
-			dlr.offset += n
-			return int(n), io.EOF
+		errors.As(err, &codeErr)
+		// NOT OK YET: maybe we have to count in UTF16?
+		if dlr.IsClob && codeErr != nil && codeErr.Code() == 22831 {
+			for i := C.uint64_t(1); i < 8; i++ {
+				if err = dlr.drv.checkExecNoLOT(func() C.int {
+					return C.dpiLob_readBytes(dlr.dpiLob,
+						dlr.offset+1-(i/2), amount+((i+1)/2),
+						(*C.char)(unsafe.Pointer(&p[0])), &n)
+				}); err == nil {
+					break
+				}
+			}
 		}
-		return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
+		if err != nil {
+			C.dpiLob_close(dlr.dpiLob)
+			dlr.dpiLob = nil
+			if dlr.finished = codeErr != nil && codeErr.Code() == 1403; dlr.finished {
+				dlr.offset += n
+				return int(n), io.EOF
+			}
+			return int(n), fmt.Errorf("dpiLob_readbytes(lob=%p offset=%d n=%d): %w", dlr.dpiLob, dlr.offset, len(p), err)
+		}
 	}
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("read", "n", n)
