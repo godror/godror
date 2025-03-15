@@ -1,8 +1,6 @@
 module github.com/godror/godror
 
-go 1.21
-
-toolchain go1.21.3
+go 1.23
 
 require (
 	github.com/UNO-SOFT/zlog v0.8.1

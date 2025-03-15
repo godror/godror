@@ -1,4 +1,4 @@
-// Copyright 2019, 2022 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -14,12 +14,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/UNO-SOFT/zlog/v2"
 	godror "github.com/godror/godror"
 	"github.com/godror/godror/dsn"
 	"github.com/google/go-cmp/cmp"
@@ -525,12 +527,15 @@ func TestNCLOB(t *testing.T) {
 		t.Fatalf("%s: %+v", tblQry, err)
 	}
 
+	one := "a🎵"
+	const count = 16384
+	want := strings.Repeat(one, count)
 	insQry := `DECLARE
-	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", "a🎵") + `'), 'AL32UTF8');
+	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
 	  v_lob NCLOB;
 	BEGIN
 	  INSERT INTO test_nclob (id, col1) VALUES (1, EMPTY_CLOB) RETURNING col1 INTO v_lob;
-	  FOR i IN 1..16384 LOOP
+	  FOR i IN 1..` + fmt.Sprintf("%d", count) + ` LOOP
 	    --a + that musical note is 2 UTF16 "characters"
 	    DBMS_LOB.writeappend(v_lob, 3, v_nstr);
 	  END LOOP;
@@ -555,6 +560,8 @@ func TestNCLOB(t *testing.T) {
 			t.Logf("%#v\n", colType)
 		}
 		for rows.Next() {
+			godror.SetLogger(zlog.NewT(t).SLog())
+			defer godror.SetLogger(slog.Default())
 			var id godror.Number
 			var nclobI any
 			if err := rows.Scan(&id, &nclobI); err != nil {
@@ -567,7 +574,9 @@ func TestNCLOB(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log(string(b))
+			if diff := cmp.Diff(string(b), want); diff != "" {
+				t.Error(diff)
+			}
 			t.Logf("%x", b[:5])
 		}
 		if err := rows.Err(); err != nil {
@@ -576,7 +585,8 @@ func TestNCLOB(t *testing.T) {
 	})
 
 	t.Run("string", func(t *testing.T) {
-		defer tl.enableLogging(t)()
+		godror.SetLogger(zlog.NewT(t).SLog())
+		defer godror.SetLogger(slog.Default())
 		rows, err = testDb.QueryContext(ctx, qry)
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
@@ -595,7 +605,9 @@ func TestNCLOB(t *testing.T) {
 			if err := rows.Scan(&id, &nclob); err != nil {
 				t.Fatalf("scan %s: %+v", qry, err)
 			}
-			t.Log(id, nclob)
+			if diff := cmp.Diff(nclob, want); diff != "" {
+				t.Error(diff)
+			}
 			t.Logf("%x", nclob[:5])
 		}
 		if err := rows.Err(); err != nil {

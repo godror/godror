@@ -24,7 +24,7 @@ func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context
 	return context.WithValue(ctx, logCtxKey{}, logger)
 }
 func getLogger(ctx context.Context) *slog.Logger {
-	if ctx != nil {
+	if ctx != nil && ctx != context.TODO() {
 		if lgr, ok := ctx.Value(logCtxKey{}).(*slog.Logger); ok {
 			return lgr
 		}

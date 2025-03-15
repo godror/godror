@@ -84,6 +84,7 @@ func setUp() func() {
 		logger = slog.New(slog.NewTextHandler(tl, nil))
 	}
 	slog.SetDefault(logger)
+	godror.SetLogger(logger)
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
 		var err error
 		if time.Local, err = time.LoadLocation(tzName); err != nil {
