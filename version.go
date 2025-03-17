@@ -1,4 +1,4 @@
-// Copyright 2020, 2022 The Godror Authors
+// Copyright 2020, 2025 The Godror Authors
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
@@ -32,7 +32,7 @@ func init() {
 }
 
 var (
-	godrorVersion = "v0.47.1"
+	godrorVersion = "v0.47.2"
 
 	odpiVersion = strconv.Itoa(DpiMajorVersion) +
 		"." + strconv.Itoa(DpiMinorVersion) +
