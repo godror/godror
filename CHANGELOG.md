@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.47.1]
+### Fixed
+- Read NCLOB: must count in UTF-16, and don't split surrogates (ORA-22831)
+- Use CallTimeout as context.WithTimeout
+
 ## [0.47.0]
 ### Changed
 - ConnectionParams IsSysDBA, IsSysOper, IsSysASM -> AdminRole
