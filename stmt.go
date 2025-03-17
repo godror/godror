@@ -1088,7 +1088,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 	vlr, isValuer := value.(driver.Valuer)
 
 	switch value.(type) {
-	case *driver.Rows, *Object, *timestamppb.Timestamp:
+	case *driver.Rows, *Object, *timestamppb.Timestamp, *Vector, []*Vector:
 	default:
 		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
 			if nilPtr = rv.IsNil(); nilPtr {
@@ -1371,6 +1371,12 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		info.set = st.conn.dataSetJSONValue
 		if info.isOut {
 			*get = st.conn.dataGetJSONValue
+		}
+	case Vector, []Vector, *Vector, []*Vector:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VECTOR, C.DPI_NATIVE_TYPE_VECTOR
+		info.set = st.conn.dataSetVectorValue
+		if info.isOut {
+			*get = st.conn.dataGetVectorValue
 		}
 
 	default:
@@ -3578,6 +3584,76 @@ func (c *conn) dataGetJSONString(ctx context.Context, v interface{}, data []C.dp
 	return nil
 }
 
+func (c *conn) dataGetVectorValue(ctx context.Context, v interface{},
+	data []C.dpiData) error {
+	var (
+		vectorInfo C.dpiVectorInfo
+		err        error
+	)
+	switch out := v.(type) {
+	case *Vector:
+		if err = c.checkExec(func() C.int {
+			return C.dpiVector_getValue(C.dpiData_getVector(&(data[0])),
+				&vectorInfo)
+		}); err != nil {
+			return fmt.Errorf("dataSetVectorValue %w", err)
+		}
+		*out, err = GetVectorValue(&vectorInfo)
+	default:
+		return fmt.Errorf("dataGetVectorValue not implemented for type %T", out)
+	}
+	return err
+}
+
+func (c *conn) setSingleVector(v *Vector, d *C.dpiData) error {
+	if v == nil || v.Values == nil {
+		return nil
+	}
+	d.isNull = 0
+	return SetVectorValue(c, v, d)
+}
+
+func (c *conn) setVectorSlice(vs []Vector, data []C.dpiData) error {
+	for i := range vs {
+		if err := c.setSingleVector(&vs[i], &data[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *conn) setPointerVectorSlice(vs []*Vector, data []C.dpiData) error {
+	for i, v := range vs {
+		if err := c.setSingleVector(v, &data[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dpiData,
+	vv interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if vv == nil {
+		return dataSetNull(ctx, dv, data, nil)
+	}
+
+	switch x := vv.(type) {
+	case Vector:
+		return c.setSingleVector(&x, &data[0])
+	case *Vector:
+		return c.setSingleVector(x, &data[0])
+	case []Vector:
+		return c.setVectorSlice(x, data)
+	case []*Vector:
+		return c.setPointerVectorSlice(x, data)
+	default:
+		return fmt.Errorf("dataSetVectorValue not implemented for type %T", x)
+	}
+}
+
 var (
 	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
@@ -3685,17 +3761,20 @@ func (st *statement) openRows(ctx context.Context, colCount int) (*rows, error) 
 			}
 		}
 		col := Column{
-			Name:           C.GoStringN(info.name, C.int(info.nameLength)),
-			OracleType:     effTypeNum,
-			OrigOracleType: ti.oracleTypeNum,
-			NativeType:     ti.defaultNativeTypeNum,
-			Size:           ti.clientSizeInBytes,
-			Precision:      ti.precision,
-			Scale:          ti.scale,
-			Nullable:       info.nullOk == 1,
-			ObjectType:     ti.objectType,
-			SizeInChars:    ti.sizeInChars,
-			DBSize:         ti.dbSizeInBytes,
+			Name:             C.GoStringN(info.name, C.int(info.nameLength)),
+			OracleType:       effTypeNum,
+			OrigOracleType:   ti.oracleTypeNum,
+			NativeType:       ti.defaultNativeTypeNum,
+			Size:             ti.clientSizeInBytes,
+			Precision:        ti.precision,
+			Scale:            ti.scale,
+			Nullable:         info.nullOk == 1,
+			ObjectType:       ti.objectType,
+			SizeInChars:      ti.sizeInChars,
+			DBSize:           ti.dbSizeInBytes,
+			VectorDimensions: ti.vectorDimensions,
+			VectorFormat:     ti.vectorFormat,
+			VectorFlags:      ti.vectorFlags,
 		}
 		col.DomainAnnotation.init(ti)
 		r.columns[i] = col
@@ -3739,6 +3818,9 @@ type Column struct {
 	Scale                      C.int8_t
 	Nullable                   bool
 	DomainAnnotation
+	VectorDimensions C.uint32_t
+	VectorFormat     C.uint8_t
+	VectorFlags      C.uint8_t
 }
 
 type DomainAnnotation struct {
