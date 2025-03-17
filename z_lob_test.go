@@ -495,7 +495,7 @@ type event struct {
 	ID         int64
 }
 
-func TestNCLOB(t *testing.T) {
+func TestCLOBSurrogate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -522,7 +522,7 @@ func TestNCLOB(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
 	defer testDb.ExecContext(ctx, "DROP TABLE test_nclob PURGE")
 
-	const tblQry = "CREATE TABLE test_nclob(id NUMBER, col1 NCLOB)"
+	const tblQry = "CREATE TABLE test_nclob(id NUMBER, col1 NCLOB, col2 CLOB)"
 	if _, err := conn.ExecContext(ctx, tblQry); err != nil {
 		t.Fatalf("%s: %+v", tblQry, err)
 	}
@@ -532,19 +532,21 @@ func TestNCLOB(t *testing.T) {
 	want := strings.Repeat(one, count)
 	insQry := `DECLARE
 	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
-	  v_lob NCLOB;
+	  v_str  VARCHAR2(10)  := UTL_i18n.raw_to_char( HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
+	  v_col1 NCLOB; v_col2 CLOB;
 	BEGIN
-	  INSERT INTO test_nclob (id, col1) VALUES (1, EMPTY_CLOB) RETURNING col1 INTO v_lob;
+	  INSERT INTO test_nclob (id, col1, col2) VALUES (1, EMPTY_CLOB, EMPTY_CLOB) RETURNING col1, col2 INTO v_col1, v_col2;
 	  FOR i IN 1..` + fmt.Sprintf("%d", count) + ` LOOP
 	    --a + that musical note is 2 UTF16 "characters"
-	    DBMS_LOB.writeappend(v_lob, 3, v_nstr);
+	    DBMS_LOB.writeappend(v_col1, 3, v_nstr);
+	    DBMS_LOB.writeappend(v_col2, 2, v_str);
 	  END LOOP;
 	END;`
 	if _, err = conn.ExecContext(ctx, insQry); err != nil {
 		t.Fatalf("%s: %+v", insQry, err)
 	}
 
-	const qry = "SELECT id, col1 FROM test_nclob"
+	const qry = "SELECT id, col1, col2 FROM test_nclob"
 
 	t.Run("LobAsReader", func(t *testing.T) {
 		rows, err = testDb.QueryContext(ctx, qry, godror.LobAsReader())
@@ -559,25 +561,33 @@ func TestNCLOB(t *testing.T) {
 		for _, colType := range colTypes {
 			t.Logf("%#v\n", colType)
 		}
+		godror.SetLogger(zlog.NewT(t).SLog())
+		defer godror.SetLogger(slog.Default())
 		for rows.Next() {
-			godror.SetLogger(zlog.NewT(t).SLog())
-			defer godror.SetLogger(slog.Default())
 			var id godror.Number
-			var nclobI any
-			if err := rows.Scan(&id, &nclobI); err != nil {
+			var nclobI, clobI any
+			if err := rows.Scan(&id, &nclobI, &clobI); err != nil {
 				t.Fatalf("scan %s: %+v", qry, err)
 			}
 			nclob := nclobI.(*godror.Lob)
-			size, _ := nclob.Size()
-			t.Log(id, nclob, size)
 			b, err := io.ReadAll(nclob)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatal("read nclob:", err)
 			}
 			if diff := cmp.Diff(string(b), want); diff != "" {
-				t.Error(diff)
+				t.Error("nclob:", diff)
 			}
-			t.Logf("%x", b[:5])
+			t.Logf("nclob=%x ... %x", b[:5], b[len(b)-5:])
+
+			clob := clobI.(*godror.Lob)
+			b, err = io.ReadAll(clob)
+			if err != nil {
+				t.Fatal("read clob:", err)
+			}
+			if diff := cmp.Diff(string(b), want); diff != "" {
+				t.Error("clob:", diff)
+			}
+			t.Logf("clob=%x ... %x", b[:5], b[len(b)-5:])
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
@@ -585,8 +595,6 @@ func TestNCLOB(t *testing.T) {
 	})
 
 	t.Run("string", func(t *testing.T) {
-		godror.SetLogger(zlog.NewT(t).SLog())
-		defer godror.SetLogger(slog.Default())
 		rows, err = testDb.QueryContext(ctx, qry)
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
@@ -599,16 +607,23 @@ func TestNCLOB(t *testing.T) {
 		for _, colType := range colTypes {
 			t.Logf("%#v\n", colType)
 		}
+		godror.SetLogger(zlog.NewT(t).SLog())
+		defer godror.SetLogger(slog.Default())
 		for rows.Next() {
 			var id godror.Number
-			var nclob string
-			if err := rows.Scan(&id, &nclob); err != nil {
+			var nclob, clob string
+			if err := rows.Scan(&id, &nclob, &clob); err != nil {
 				t.Fatalf("scan %s: %+v", qry, err)
 			}
 			if diff := cmp.Diff(nclob, want); diff != "" {
-				t.Error(diff)
+				t.Error("nclob:", diff)
 			}
-			t.Logf("%x", nclob[:5])
+			t.Logf("nclob=%x ... %x", nclob[:5], nclob[len(nclob)-5:])
+
+			if diff := cmp.Diff(clob, want); diff != "" {
+				t.Error("clob:", diff)
+			}
+			t.Logf("clob=%x ... %x", clob[:5], clob[len(clob)-5:])
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
