@@ -1,6 +1,8 @@
 module github.com/godror/godror
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.1
 
 require (
 	github.com/UNO-SOFT/zlog v0.8.1
@@ -9,7 +11,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/oklog/ulid/v2 v2.0.2
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/sync v0.7.0
+	golang.org/x/sync v0.12.0
 	golang.org/x/sys v0.22.0
 )
 

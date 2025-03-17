@@ -340,11 +340,11 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		// trim last erroneous encodings
 		for {
 			r, size := utf8.DecodeLastRune(p[:n])
-			if logger != nil {
-				logger.Info("LastRune", "r", r, "size", size, "n", n)
-			}
 			if size == 0 || r != utf8.RuneError {
 				break
+			}
+			if logger != nil {
+				logger.Warn("LastRune", "r", r, "size", size, "n", n)
 			}
 			n--
 		}

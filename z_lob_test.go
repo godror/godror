@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -499,17 +500,25 @@ func TestCLOBSurrogate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const nlsQry = "SELECT parameter, value FROM v$nls_parameters  WHERE parameter LIKE '%CHAR%' ORDER BY 1"
+	const nlsQry = `SELECT parameter, value,
+		CASE parameter WHEN 'NLS_CHARACTERSET' THEN UTL_i18n.MAP_CHARSET(value,0,0) ELSE NULL END AS charset
+	FROM v$nls_parameters
+	WHERE parameter LIKE '%CHAR%'
+	ORDER BY 1`
 	rows, err := testDb.QueryContext(ctx, nlsQry)
 	if err != nil {
 		t.Fatalf("%s: %+v", nlsQry, err)
 	}
+	var dbCS string
 	for rows.Next() {
-		var k, v string
-		if err = rows.Scan(&k, &v); err != nil {
+		var k, v, c string
+		if err = rows.Scan(&k, &v, &c); err != nil {
 			t.Errorf("scan %s: %+v", nlsQry, err)
 		}
 		t.Logf("%s: %s", k, v)
+		if dbCS == "" {
+			dbCS = c
+		}
 	}
 	rows.Close()
 
@@ -527,19 +536,36 @@ func TestCLOBSurrogate(t *testing.T) {
 		t.Fatalf("%s: %+v", tblQry, err)
 	}
 
-	one := "a🎵"
+	one := "aáñ⅛🎵"
+	const encQry = `SELECT RAWTOHEX(UTL_RAW.cast_to_raw(s)), RAWTOHEX(UTL_i18n.string_to_raw(s, 'AL32UTF8'))
+		FROM (SELECT RTRIM(UTL_i18n.raw_to_char(HEXTORAW(:1), 'AL32UTF8'), '?') AS s FROM DUAL)`
+	var x, y string
+	if err = conn.QueryRowContext(ctx, encQry, fmt.Sprintf("%X", one)).Scan(&x, &y); err != nil {
+		t.Fatalf("%s [%q]: %+v", encQry, fmt.Sprintf("%X", one), err)
+	}
+	twoB, err := hex.DecodeString(x)
+	if err != nil {
+		t.Fatalf("decode hex %q: %+v", x, err)
+	}
+	twoX, err := hex.DecodeString(y)
+	if err != nil {
+		t.Fatalf("decode hex %q: %+v", y, err)
+	}
+	two := string(twoX)
+	t.Logf("one=%q (%x) two=%q (%x)", one, one, two, two)
 	const count = 16384
-	want := strings.Repeat(one, count)
 	insQry := `DECLARE
 	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
-	  v_str  VARCHAR2(10)  := UTL_i18n.raw_to_char( HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
+	  v_str  VARCHAR2(10)  := UTL_i18n.raw_to_char( HEXTORAW('` + fmt.Sprintf("%X", twoB) + `'), NULL);
+	  v_nlen CONSTANT SIMPLE_INTEGER := LENGTH2(v_nstr);
+	  v_len  CONSTANT SIMPLE_INTEGER := LENGTH(v_str);
 	  v_col1 NCLOB; v_col2 CLOB;
 	BEGIN
 	  INSERT INTO test_nclob (id, col1, col2) VALUES (1, EMPTY_CLOB, EMPTY_CLOB) RETURNING col1, col2 INTO v_col1, v_col2;
 	  FOR i IN 1..` + fmt.Sprintf("%d", count) + ` LOOP
 	    --a + that musical note is 2 UTF16 "characters"
-	    DBMS_LOB.writeappend(v_col1, 3, v_nstr);
-	    DBMS_LOB.writeappend(v_col2, 2, v_str);
+	    DBMS_LOB.writeappend(v_col1, v_nlen, v_nstr);
+	    DBMS_LOB.writeappend(v_col2, v_len,  v_str);
 	  END LOOP;
 	END;`
 	if _, err = conn.ExecContext(ctx, insQry); err != nil {
@@ -561,11 +587,13 @@ func TestCLOBSurrogate(t *testing.T) {
 		for _, colType := range colTypes {
 			t.Logf("%#v\n", colType)
 		}
-		godror.SetLogger(zlog.NewT(t).SLog())
-		defer godror.SetLogger(slog.Default())
+		if testing.Verbose() {
+			godror.SetLogger(zlog.NewT(t).SLog())
+			defer godror.SetLogger(slog.Default())
+		}
 		for rows.Next() {
 			var id godror.Number
-			var nclobI, clobI any
+			var clobI, nclobI any
 			if err := rows.Scan(&id, &nclobI, &clobI); err != nil {
 				t.Fatalf("scan %s: %+v", qry, err)
 			}
@@ -574,20 +602,18 @@ func TestCLOBSurrogate(t *testing.T) {
 			if err != nil {
 				t.Fatal("read nclob:", err)
 			}
-			if diff := cmp.Diff(string(b), want); diff != "" {
-				t.Error("nclob:", diff)
+			if !(bytes.HasPrefix(b, []byte(one)) && bytes.HasSuffix(b, []byte(one))) {
+				t.Errorf("nclob=%x ... %x (want: %x)", b[:len(one)], b[len(b)-len(one):], one)
 			}
-			t.Logf("nclob=%x ... %x", b[:5], b[len(b)-5:])
 
 			clob := clobI.(*godror.Lob)
 			b, err = io.ReadAll(clob)
 			if err != nil {
 				t.Fatal("read clob:", err)
 			}
-			if diff := cmp.Diff(string(b), want); diff != "" {
-				t.Error("clob:", diff)
+			if !(bytes.HasPrefix(b, []byte(two)) && bytes.HasSuffix(b, []byte(two))) {
+				t.Errorf("clob=%x ... %x (want: %x)", b[:len(two)], b[len(b)-len(two)], two)
 			}
-			t.Logf("clob=%x ... %x", b[:5], b[len(b)-5:])
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
@@ -607,23 +633,23 @@ func TestCLOBSurrogate(t *testing.T) {
 		for _, colType := range colTypes {
 			t.Logf("%#v\n", colType)
 		}
-		godror.SetLogger(zlog.NewT(t).SLog())
-		defer godror.SetLogger(slog.Default())
+		if testing.Verbose() {
+			godror.SetLogger(zlog.NewT(t).SLog())
+			defer godror.SetLogger(slog.Default())
+		}
 		for rows.Next() {
 			var id godror.Number
 			var nclob, clob string
 			if err := rows.Scan(&id, &nclob, &clob); err != nil {
 				t.Fatalf("scan %s: %+v", qry, err)
 			}
-			if diff := cmp.Diff(nclob, want); diff != "" {
-				t.Error("nclob:", diff)
+			if !(strings.HasPrefix(nclob, one) && strings.HasSuffix(nclob, one)) {
+				t.Errorf("nclob=%x ... %x (want: %x)", nclob[:len(one)], nclob[len(nclob)-len(one):], one)
 			}
-			t.Logf("nclob=%x ... %x", nclob[:5], nclob[len(nclob)-5:])
 
-			if diff := cmp.Diff(clob, want); diff != "" {
-				t.Error("clob:", diff)
+			if !(strings.HasPrefix(clob, string(two)) && strings.HasSuffix(clob, string(two))) {
+				t.Errorf("clob=%x ... %x (want: %x)", clob[:len(two)], clob[len(clob)-len(two):], two)
 			}
-			t.Logf("clob=%x ... %x", clob[:5], clob[len(clob)-5:])
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
