@@ -57,24 +57,12 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 	case []int8:
 		numDims, format, dimensionSize = len(values), C.DPI_VECTOR_FORMAT_INT8, 1
 		if numDims > 0 {
-			ptr := (*C.int8_t)(C.malloc(C.size_t(numDims)))
-			defer C.free(unsafe.Pointer(ptr))
-			cArray := unsafe.Slice((*int8)(unsafe.Pointer(ptr)), numDims)
-			for i, v := range values {
-				cArray[i] = int8(v)
-			}
-			valuesPtr = unsafe.Pointer(ptr)
+			valuesPtr = unsafe.Pointer(&values[0])
 		}
 	case []uint8:
 		numDims, format, dimensionSize = len(values), C.DPI_VECTOR_FORMAT_BINARY, 1
 		if numDims > 0 {
-			ptr := (*C.uint8_t)(C.malloc(C.size_t(numDims)))
-			defer C.free(unsafe.Pointer(ptr))
-			cArray := unsafe.Slice((*uint8)(unsafe.Pointer(ptr)), numDims)
-			for i, v := range values {
-				cArray[i] = uint8(v)
-			}
-			valuesPtr = unsafe.Pointer(ptr)
+			valuesPtr = unsafe.Pointer(&values[0])
 		}
 	default:
 		return fmt.Errorf("SetVectorValue Unsupported type: %T in Vector Values", v.Values)
@@ -92,6 +80,8 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 			for i, val := range v.Indices {
 				cArray[i] = C.uint32_t(val)
 			}
+			// below causes hang for uint32 alone ..
+			//sparseIndices = (*C.uint32_t)(unsafe.Pointer(&(v.Indices[0])))
 		}
 		vectorInfo.numDimensions = C.uint32_t(v.Dimensions)
 	} else {
