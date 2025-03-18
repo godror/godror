@@ -254,7 +254,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 	}
 
 	// Validate inserted rows
-	rows, err := conn.QueryContext(ctx, "SELECT id, image_vector, graph_vector FROM "+tbl)
+	rows, err := conn.QueryContext(ctx, "SELECT id, image_vector, graph_vector FROM "+tbl + " ORDER BY id")
 	if err != nil {
 		t.Fatalf("Select query failed: %v", err)
 	}
