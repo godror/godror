@@ -555,10 +555,10 @@ func TestCLOBSurrogate(t *testing.T) {
 	t.Logf("one=%q (%x) two=%q (%x)", one, one, two, two)
 	const count = 16384
 	insQry := `DECLARE
-	  v_nstr NVARCHAR2(10) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
-	  v_str  VARCHAR2(10)  := UTL_i18n.raw_to_char( HEXTORAW('` + fmt.Sprintf("%X", twoB) + `'), NULL);
+	  v_nstr NVARCHAR2(20) := UTL_i18n.raw_to_nchar(HEXTORAW('` + fmt.Sprintf("%X", one) + `'), 'AL32UTF8');
+	  v_str  VARCHAR2(20)  := UTL_i18n.raw_to_char( HEXTORAW('` + fmt.Sprintf("%X", twoB) + `'), NULL);
 	  v_nlen CONSTANT SIMPLE_INTEGER := LENGTH2(v_nstr);
-	  v_len  CONSTANT SIMPLE_INTEGER := LENGTH(v_str);
+	  v_len  CONSTANT SIMPLE_INTEGER := LENGTH2(v_str);
 	  v_col1 NCLOB; v_col2 CLOB;
 	BEGIN
 	  INSERT INTO test_nclob (id, col1, col2) VALUES (1, EMPTY_CLOB, EMPTY_CLOB) RETURNING col1, col2 INTO v_col1, v_col2;
