@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -54,11 +55,12 @@ func TestVectorOutBinds(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		`CREATE TABLE `+tbl+` (
-			id NUMBER(6), 
-			image_vector Vector, 
-			graph_vector Vector(5, float32, SPARSE), 
-			int_vector Vector(3, int8), 
-			float_vector Vector(4, float64), 
+			id NUMBER(6),
+			image_vector Vector,
+			graph_vector Vector(5, float32, SPARSE),
+			int_vector Vector(3, int8),
+			float_vector Vector(4, float64),
+			binary_vector Vector(16, binary),
 			sparse_int_vector Vector(4, int8, SPARSE)
 		)`,
 	)
@@ -72,8 +74,11 @@ func TestVectorOutBinds(t *testing.T) {
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	stmt, err := conn.PrepareContext(ctx,
-		`INSERT INTO `+tbl+` (id, image_vector, graph_vector, int_vector, float_vector, sparse_int_vector) 
-		 VALUES (:1, :2, :3, :4, :5, :6) RETURNING image_vector, graph_vector, int_vector, float_vector, sparse_int_vector INTO :7, :8, :9, :10, :11`,
+		`INSERT INTO `+tbl+` (id, image_vector, graph_vector, int_vector, float_vector,
+		binary_vector, sparse_int_vector)
+		 VALUES (:1, :2, :3, :4, :5, :6, :7) RETURNING image_vector, graph_vector,
+		 int_vector, float_vector, binary_vector,
+      sparse_int_vector INTO :8, :9, :10, :11, :12, :13`,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -85,15 +90,18 @@ func TestVectorOutBinds(t *testing.T) {
 	vectors := []godror.Vector{
 		{Values: []float32{1.1, 2.2, 3.3}}, // image_vector
 		{Values: []float32{0.5, 1.2, -0.9}, Indices: []uint32{0, 2, 3}, Dimensions: 5, IsSparse: true}, // graph_vector
-		{Values: []int8{1, -5, 3}},                  // int_vector
-		{Values: []float64{10.5, 20.3, -5.5, 3.14}}, // float_vector
+		{Values: []int8{1, -5, 3}},
+		{Values: []float64{10.5, 20.3, -5.5, 3.14}},
+		{Values: []uint8{255, 100}}, // binary vector
 		{Values: []int8{-1, 4, -7}, Indices: []uint32{1, 2, 3}, Dimensions: 4, IsSparse: true}, // sparse_int_vector
 	}
 	outVectors := make([]godror.Vector, len(vectors))
 
-	_, err = stmt.ExecContext(ctx, 1, vectors[0], vectors[1], vectors[2], vectors[3], vectors[4],
+	_, err = stmt.ExecContext(ctx, 1, vectors[0], vectors[1], vectors[2],
+		vectors[3], vectors[4], vectors[5],
 		sql.Out{Dest: &outVectors[0]}, sql.Out{Dest: &outVectors[1]},
-		sql.Out{Dest: &outVectors[2]}, sql.Out{Dest: &outVectors[3]}, sql.Out{Dest: &outVectors[4]})
+		sql.Out{Dest: &outVectors[2]}, sql.Out{Dest: &outVectors[3]},
+		sql.Out{Dest: &outVectors[4]}, sql.Out{Dest: &outVectors[5]})
 	if err != nil {
 		t.Fatalf("ExecContext failed: %v", err)
 	}
@@ -108,6 +116,27 @@ func TestVectorOutBinds(t *testing.T) {
 	}
 }
 
+// Generates n indices within maxRange
+func generateIndexArray(n int, maxRange int) []uint32 {
+	rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+
+	// Generate a permutation of numbers from 0 to maxRange-1
+	permutation := rand.Perm(maxRange)
+
+	// Create a uint32 slice
+	indexArray := make([]uint32, n)
+	for i := 0; i < n; i++ {
+		indexArray[i] = uint32(permutation[i])
+	}
+
+	// Sort the array in ascending order as expected by DB
+	sort.Slice(indexArray, func(i, j int) bool {
+		return indexArray[i] < indexArray[j]
+	})
+
+	return indexArray
+}
+
 // Helper function to generate random batch data
 func generateRandomBatch(size int) ([]godror.Number, []godror.Vector, []godror.Vector, []*godror.Vector, []*godror.Vector) {
 	ids := make([]godror.Number, 2*size)
@@ -115,24 +144,27 @@ func generateRandomBatch(size int) ([]godror.Number, []godror.Vector, []godror.V
 	graphs := make([]godror.Vector, size)
 	imagesPtr := make([]*godror.Vector, size)
 	graphsPtr := make([]*godror.Vector, size)
+	denseValuesCnt := 10
+	sparseValuesCnt := 10
+	sparseDimsCnt := 100
 
 	for i := 0; i < size; i++ {
 		ids[i] = godror.Number(strconv.Itoa(i))
-		images[i] = godror.Vector{Values: randomFloat32Slice(3)}
+		images[i] = godror.Vector{Values: randomFloat32Slice(denseValuesCnt)}
 		graphs[i] = godror.Vector{
-			Values:     randomFloat32Slice(3),
-			Indices:    []uint32{0, 1, 2},
-			Dimensions: 5,
+			Values:     randomFloat32Slice(sparseValuesCnt),
+			Indices:    generateIndexArray(sparseValuesCnt, sparseDimsCnt),
+			Dimensions: uint32(sparseDimsCnt),
 			IsSparse:   true,
 		}
 	}
 	for i := 0; i < size; i++ {
 		ids[size+i] = godror.Number(strconv.Itoa(size + i))
-		imagesPtr[i] = &godror.Vector{Values: randomFloat32Slice(3)}
+		imagesPtr[i] = &godror.Vector{Values: randomFloat32Slice(denseValuesCnt + 100)}
 		graphsPtr[i] = &godror.Vector{
-			Values:     randomFloat32Slice(3),
-			Indices:    []uint32{0, 1, 2},
-			Dimensions: 5,
+			Values:     randomFloat32Slice(sparseValuesCnt + 100),
+			Indices:    generateIndexArray(sparseValuesCnt+100, sparseDimsCnt+100),
+			Dimensions: uint32(sparseDimsCnt + 100),
 		}
 	}
 	return ids, images, graphs, imagesPtr, graphsPtr
@@ -173,7 +205,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 	tbl := "test_vector_batch" + tblSuffix
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
-		"CREATE TABLE "+tbl+" (id NUMBER(6), image_vector Vector, graph_vector Vector(5, float32, SPARSE) )", //nolint:gas
+		"CREATE TABLE "+tbl+" (id NUMBER(6), image_vector Vector, graph_vector Vector(*, float32, SPARSE) )", //nolint:gas
 	)
 	if err != nil {
 		if errIs(err, 902, "invalid datatype") {
@@ -257,7 +289,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 			t.Fatalf("More rows returned than expected! Expected: %d, Got: %d", len(expectedIDs), index+1)
 		}
 
-		// Verify vector values
+		// Verify vector values (Rows returned may be in same sequence as inserted)
 		t.Logf("Verifying row ID: %s", id)
 		compareDenseVector(t, expectedIDs[index], image, expectedImages[index])
 		compareSparseVector(t, expectedIDs[index], graph, expectedGraphs[index])
