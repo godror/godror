@@ -184,7 +184,7 @@ func TestCloseTempLOB(t *testing.T) {
 
 	var wg, start sync.WaitGroup
 	start.Add(1)
-	const maxConn = 2*maxSessions + 1
+	maxConn := 2*maxSessions + 1
 	wg.Add(maxConn)
 	for j := 0; j < maxConn; j++ {
 		t.Logf("Run %d\n", j)

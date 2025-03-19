@@ -93,9 +93,6 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
 	}
 	if data.NativeTypeNum == 0 {
-		if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelWarn) {
-			logger.Warn("WARN setAttributeValue", "attr.NativeTypeNum", attr.NativeTypeNum, "data.NativeTypeNum", data.NativeTypeNum)
-		}
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		data.dpiData.isNull = 1
