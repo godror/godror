@@ -24,8 +24,6 @@ type execer interface {
 	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 }
 
-const msgCount = 3 * maxSessions
-
 func TestQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
@@ -389,6 +387,7 @@ func testQueue(
 	}
 	t.Logf("deqOpts: %#v", deqOpts)
 
+	msgCount := 3 * maxSessions
 	want := make([]string, 0, msgCount)
 	seen := make(map[string]int, msgCount)
 

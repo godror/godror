@@ -1,0 +1,8 @@
+[Unit]
+Name=Oracle DB
+Description=Oracle database
+
+[Service]
+TimeoutStartSec=300
+ExecStartPre=-/bin/env TMPDIR=/var/cache/containers podman pull docker.io/gvenzl/oracle-free:23
+ExecStart=/usr/bin/podman run -ti --rm --name=oracle -p 1521:1521 -e ORACLE_PASSWORD=system -e APP_USER=demo -e APP_USER_PASSWORD=demo  --image-volume=tmpfs docker.io/gvenzl/oracle-free:23

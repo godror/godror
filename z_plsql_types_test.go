@@ -1257,7 +1257,7 @@ func TestObjectTypeClose(t *testing.T) {
 		return nil
 	}
 
-	const maxConn = maxSessions * 2
+	maxConn := maxSessions * 2
 	for j := 0; j < 5; j++ {
 		t.Logf("Run %d group\n", j)
 		var start sync.WaitGroup
@@ -1322,7 +1322,7 @@ func TestSubObjectTypeClose(t *testing.T) {
 		return nil
 	}
 
-	const maxConn = maxSessions * 2
+	maxConn := maxSessions * 2
 	for j := 0; j < 5; j++ {
 		t.Logf("Run %d group\n", j)
 		var start sync.WaitGroup

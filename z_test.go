@@ -1,4 +1,4 @@
-// Copyright 2020 Tamás Gulácsi
+// Copyright 2020, 2025 Tamás Gulácsi
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -19,7 +19,6 @@ import (
 	"math/rand"
 	"os"
 	"os/user"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"runtime/debug"
@@ -48,13 +47,20 @@ var (
 	clientVersion, serverVersion godror.VersionInfo
 	testConStr                   string
 	testSystemConStr             string
+
+	tblSuffix   string
+	maxSessions = 16
+
+	Verbose bool
 )
 
-var tblSuffix string
-var Verbose bool
+const (
+	useDefaultFetchValue = -99
 
-const maxSessions = 16
-const useDefaultFetchValue = -99
+	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
+	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
+	DefaultMaxSessions = 4
+)
 
 // TestMain is called instead of the separate Test functions,
 // to allow setup and teardown.
@@ -94,80 +100,15 @@ func setUp() func() {
 
 	var tearDown []func()
 	eDSN := os.Getenv("GODROR_TEST_DSN")
+	eSysDSN := os.Getenv("GODROR_TEST_SYSTEM_DSN")
 	{
 		uid, _ := user.Current()
 		fmt.Printf("eDSN=%s\nOSuser=%v\n", eDSN, uid)
 	}
-	var configDir string
+
 	if eDSN == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		wd = filepath.Join(wd, "contrib", "free.db")
-		tempDir, err := os.MkdirTemp("", "godror_drv_test-")
-		if err != nil {
-			panic(err)
-		}
-		tearDown = append(tearDown, func() { os.RemoveAll(tempDir) })
-		for _, nm := range []string{"tnsnames.ora", "cwallet.sso", "ewallet.p12"} {
-			var sfh *os.File
-			if sfh, err = os.Open(filepath.Join(wd, nm)); err != nil {
-				panic(err)
-			}
-			dfh, err := os.Create(filepath.Join(tempDir, nm))
-			if err != nil {
-				sfh.Close()
-				panic(err)
-			}
-			_, err = io.Copy(dfh, sfh)
-			sfh.Close()
-			dfh.Close()
-			if err != nil {
-				panic(err)
-			}
-		}
-		b, err := os.ReadFile(filepath.Join(wd, "sqlnet.ora"))
-		if err != nil {
-			panic(err)
-		}
-		if err = os.WriteFile(
-			filepath.Join(tempDir, "sqlnet.ora"),
-			bytes.Replace(b,
-				[]byte(`DIRECTORY="?/network/admin"`),
-				[]byte(`DIRECTORY="`+wd+`"`), 1),
-			0644,
-		); err != nil {
-			panic(err)
-		}
-
-		fn := filepath.Join(wd, "env.sh")
-		fmt.Println("Using default database for tests: ", fn)
-		fmt.Printf("export TNS_ADMIN=%q\n", wd)
-		os.Setenv("TNS_ADMIN", tempDir)
-		configDir = tempDir
-
-		if b, err = os.ReadFile(fn); err != nil {
-			fmt.Println(err)
-		} else {
-			const prefix = "export GODROR_TEST_"
-			for _, line := range bytes.Split(b, []byte{'\n'}) {
-				if !bytes.HasPrefix(line, []byte(prefix)) {
-					continue
-				}
-				line = line[len(prefix):]
-				i := bytes.IndexByte(line, '=')
-				if i < 0 {
-					continue
-				}
-				k, v := string(line[:i]), string(line[i+1:])
-				os.Setenv("GODROR_TEST_"+k, v)
-				switch k {
-				case "DSN":
-					eDSN = v
-				}
-			}
-		}
+		eDSN, eSysDSN = DefaultDSN, DefaultSystemDSN
+		maxSessions = DefaultMaxSessions
 	}
 
 	P, err := dsn.Parse(eDSN)
@@ -177,7 +118,6 @@ func setUp() func() {
 	// fmt.Println("parsed:", P)
 	P.CommonParams.Logger = logger
 	P.CommonParams.EnableEvents = true
-	P.CommonParams.ConfigDir = configDir
 	if P.ConnParams.ConnClass == "" {
 		P.ConnParams.ConnClass = "TestClassName"
 	}
@@ -200,19 +140,34 @@ func setUp() func() {
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
 
-	if eSysDSN := os.Getenv("GODROR_TEST_SYSTEM_DSN"); eSysDSN != "" {
+	if eSysDSN != "" {
 		PSystem := P
 		if ps, err := dsn.Parse(eSysDSN); err != nil {
 			panic(fmt.Errorf("sysdsn: %q: %w", eSysDSN, err))
 		} else {
 			PSystem = ps
 			PSystem.CommonParams.EnableEvents = true
-			PSystem.CommonParams.ConfigDir = configDir
 			PSystem.ConnParams.ConnClass = P.ConnParams.ConnClass
 			PSystem.ConnParams.ShardingKey = P.ConnParams.ShardingKey
 			PSystem.PoolParams = P.PoolParams
 		}
 		testSystemConStr = PSystem.StringWithPassword()
+		if eSysDSN == DefaultSystemDSN {
+			db := sql.OpenDB(godror.NewConnector(PSystem))
+			if err := func() error {
+				defer db.Close()
+				for _, qry := range []string{
+					"GRANT EXECUTE ON SYS.DBMS_AQADM TO demo",
+				} {
+					if _, err := db.ExecContext(ctx, qry); err != nil {
+						return fmt.Errorf("%s: %w", qry, err)
+					}
+				}
+				return nil
+			}(); err != nil {
+				fmt.Printf("WARN: set up system db: %+v\n", err)
+			}
+		}
 	}
 	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
 		return func() {}
@@ -3091,7 +3046,7 @@ func TestTimeout(t *testing.T) {
 	}
 	defer db.Close()
 	pid := os.Getpid()
-	const maxConc = maxSessions / 2
+	maxConc := maxSessions / 2
 	db.SetMaxOpenConns(maxConc - 1)
 	db.SetMaxIdleConns(1)
 	ctx, cancel := context.WithCancel(testContext("Timeout"))
@@ -3117,7 +3072,7 @@ func TestTimeout(t *testing.T) {
 	goal := Cnt() + 1
 	t.Logf("Before: %d", goal)
 	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_SESSION.SLEEP(10); END LOOP; END;"
-	subCtx, subCancel := context.WithTimeout(ctx, (2*maxConc+1)*time.Second)
+	subCtx, subCancel := context.WithTimeout(ctx, time.Duration(2*maxConc+1)*time.Second)
 	grp, grpCtx := errgroup.WithContext(subCtx)
 	for i := 0; i < maxConc; i++ {
 		grp.Go(func() error {
