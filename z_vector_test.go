@@ -7,9 +7,10 @@ package godror_test
 
 import (
 	"context"
+	crand "crypto/rand"
 	"database/sql"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"sort"
 	"strconv"
@@ -118,10 +119,12 @@ func TestVectorOutBinds(t *testing.T) {
 
 // Generates n indices within maxRange
 func generateIndexArray(n int, maxRange int) []uint32 {
-	rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+	var a [32]byte
+	crand.Read(a[:])
+	rnd := rand.New(rand.Source(rand.NewChaCha8(a)))
 
 	// Generate a permutation of numbers from 0 to maxRange-1
-	permutation := rand.Perm(maxRange)
+	permutation := rnd.Perm(maxRange)
 
 	// Create a uint32 slice
 	indexArray := make([]uint32, n)
@@ -254,7 +257,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 	}
 
 	// Validate inserted rows
-	rows, err := conn.QueryContext(ctx, "SELECT id, image_vector, graph_vector FROM "+tbl + " ORDER BY id")
+	rows, err := conn.QueryContext(ctx, "SELECT id, image_vector, graph_vector FROM "+tbl+" ORDER BY id")
 	if err != nil {
 		t.Fatalf("Select query failed: %v", err)
 	}
