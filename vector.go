@@ -37,6 +37,12 @@ type Vector struct {
 
 // SetVectorValue converts a Go `Vector` into a godror data type.
 func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
+	if vi, err := c.ClientVersion(); err != nil {
+		return err
+	} else if vi.Version < 23 || vi.Version == 23 && vi.Release < 7 {
+		return fmt.Errorf("clientVersion is old (%s, sparse vector needs at least 23.7)", vi.String())
+	}
+
 	var vectorInfo C.dpiVectorInfo
 	var valuesPtr unsafe.Pointer
 	var format C.uint8_t
