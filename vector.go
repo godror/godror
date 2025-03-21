@@ -37,10 +37,15 @@ type Vector struct {
 
 // SetVectorValue converts a Go `Vector` into a godror data type.
 func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
+	var sparseIndices *C.uint32_t = nil
+	numSparseValues := len(v.Indices)
+
 	if vi, err := c.ClientVersion(); err != nil {
 		return err
-	} else if vi.Version < 23 || vi.Version == 23 && vi.Release < 7 {
-		return fmt.Errorf("clientVersion is old (%s, sparse vector needs at least 23.7)", vi.String())
+	} else if vi.Version < 23 || (vi.Version == 23 && vi.Release < 7) {
+		if v.IsSparse || numSparseValues > 0 {
+			return fmt.Errorf("clientVersion is old (%s, sparse vector needs at least 23.7)", vi.String())
+		}
 	}
 
 	var vectorInfo C.dpiVectorInfo
@@ -76,8 +81,6 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 	C.setVectorInfoDimensions(&vectorInfo, valuesPtr) //update values
 
 	// update sparse indices and numDimensions
-	var sparseIndices *C.uint32_t = nil
-	numSparseValues := len((*v).Indices)
 	if v.IsSparse || numSparseValues > 0 {
 		if numSparseValues > 0 {
 			sparseIndices = (*C.uint32_t)(C.malloc(C.size_t(numSparseValues) * C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
