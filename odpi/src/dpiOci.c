@@ -2298,14 +2298,16 @@ int dpiOci__loadLib(dpiContextCreateParams *params,
     if (loadLibParams.envBuffer)
         dpiUtils__freeMemory(loadLibParams.envBuffer);
 
-    // free the library, if any error occurred
+    // free the library, if a library was loaded and any error occurred
     if (status < 0) {
+        if (dpiOciLibHandle != NULL) {
 #ifdef _WIN32
-        FreeLibrary(dpiOciLibHandle);
+            FreeLibrary(dpiOciLibHandle);
 #else
-        dlclose(dpiOciLibHandle);
+            dlclose(dpiOciLibHandle);
 #endif
-        dpiOciLibHandle = NULL;
+            dpiOciLibHandle = NULL;
+        }
         memset(&dpiOciSymbols, 0, sizeof(dpiOciSymbols));
         return DPI_FAILURE;
     }
@@ -4507,6 +4509,9 @@ int dpiOci__vectorFromSparseArray(dpiVector *vector, dpiVectorInfo *info,
 {
     int status;
 
+    if (dpiUtils__checkClientVersion(vector->env->versionInfo, 23, 7,
+            error) < 0)
+        return DPI_FAILURE;
     DPI_OCI_LOAD_SYMBOL("OCIVectorFromSparseArray",
             dpiOciSymbols.fnVectorFromSparseArray)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
@@ -4544,6 +4549,9 @@ int dpiOci__vectorToSparseArray(dpiVector *vector, dpiError *error)
     uint32_t numDimensions = vector->numDimensions;
     int status;
 
+    if (dpiUtils__checkClientVersion(vector->env->versionInfo, 23, 7,
+            error) < 0)
+        return DPI_FAILURE;
     DPI_OCI_LOAD_SYMBOL("OCIVectorToSparseArray",
             dpiOciSymbols.fnVectorToSparseArray)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)

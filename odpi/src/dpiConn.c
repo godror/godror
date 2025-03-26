@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -798,10 +798,14 @@ static int dpiConn__getInfo(dpiConn *conn, dpiError *error)
     }
 
     // determine max open cursors
-    if (dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
-            &conn->info->maxOpenCursors, NULL, DPI_OCI_ATTR_MAX_OPEN_CURSORS,
-            "get max open cursors", error) < 0)
-        return DPI_FAILURE;
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 1,
+            NULL) == DPI_SUCCESS) {
+        if (dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+                &conn->info->maxOpenCursors, NULL,
+                DPI_OCI_ATTR_MAX_OPEN_CURSORS, "get max open cursors",
+                error) < 0)
+            return DPI_FAILURE;
+    }
 
     // determine the server type, if possible; it is determined last in order
     // to ensure that only completely cached information is returned
@@ -2117,6 +2121,9 @@ int dpiConn_getMaxOpenCursors(dpiConn *conn, uint32_t *maxOpenCursors)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, maxOpenCursors)
 
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 1,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
             maxOpenCursors, NULL, DPI_OCI_ATTR_MAX_OPEN_CURSORS,
             "get max open cursors", &error);

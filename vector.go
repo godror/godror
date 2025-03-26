@@ -40,14 +40,6 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 	var sparseIndices *C.uint32_t = nil
 	numSparseValues := len(v.Indices)
 
-	if vi, err := c.ClientVersion(); err != nil {
-		return err
-	} else if vi.Version < 23 || (vi.Version == 23 && vi.Release < 7) {
-		if v.IsSparse || numSparseValues > 0 {
-			return fmt.Errorf("clientVersion is old (%s, sparse vector needs at least 23.7)", vi.String())
-		}
-	}
-
 	var vectorInfo C.dpiVectorInfo
 	var valuesPtr unsafe.Pointer
 	var format C.uint8_t
