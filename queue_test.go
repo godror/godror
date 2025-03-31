@@ -310,7 +310,11 @@ func TestQueue(t *testing.T) {
 				if k != int64(i) {
 					t.Fatalf("F_NUM as float got %d, wanted %d (have %#v (ntt=%d))", k, i, data.Get(), data.NativeTypeNum)
 				}
-				t.Logf("obj=%#v; %q", obj, num)
+				var buf strings.Builder
+				if err := obj.ToJSON(&buf); err != nil {
+					t.Error(err)
+				}
+				t.Logf("obj=%s; %q", buf.String(), num)
 				return godror.Message{Object: obj}, num
 			},
 
@@ -321,12 +325,18 @@ func TestQueue(t *testing.T) {
 					return "", nil
 				}
 				defer m.Object.Close() // NOT before data use!
-				if err := m.Object.GetAttribute(&data, "F_NUM"); err != nil {
+				var buf strings.Builder
+				if err := m.Object.ToJSON(&buf); err != nil {
+					t.Error(err)
+				}
+				t.Logf("obj=%s", buf.String())
+				attr := m.Object.Attributes["F_NUM"]
+				if err := m.Object.GetAttribute(&data, attr.Name); err != nil {
 					return "", err
 				}
 				v := data.GetBytes()
 				s := string(v)
-				t.Logf("cm %d: got F_NUM=%q (%[3]T:%#[3]v ntt=%d)", i, s, v, data.NativeTypeNum)
+				t.Logf("cm %d: got F_NUM=%q (%T ntn=%d otn=%d)", i, s, v, data.NativeTypeNum, attr.ObjectType.OracleTypeNum)
 				return s, nil
 			},
 		)

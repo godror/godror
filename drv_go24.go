@@ -1,75 +1,16 @@
 //go:build cgo && go1.24
 
-// Copyright 2019, 2023 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
 package godror
 
-/*
-#cgo noescape dpiConn_getCurrentSchema
-#cgo noescape dpiConn_getDbDomain
-#cgo noescape dpiConn_getDbName
-#cgo noescape dpiConn_getEdition
-#cgo noescape dpiConn_getIsHealthy
-#cgo noescape dpiConn_getServerVersion
-#cgo noescape dpiContext_getClientVersion
-#cgo noescape dpiContext_getError
-#cgo noescape dpiData_getBool
-#cgo noescape dpiData_setBool
-#cgo noescape dpiData_setBytes
-#cgo noescape dpiData_setDouble
-#cgo noescape dpiData_setFloat
-#cgo noescape dpiData_setIntervalDS
-#cgo noescape dpiData_setIntervalYM
-#cgo noescape dpiData_setInt64
-#cgo noescape dpiData_setUint64
-#cgo noescape dpiDeqOptions_getCondition
-#cgo noescape dpiDeqOptions_getConsumerName
-#cgo noescape dpiDeqOptions_getConsumerName
-#cgo noescape dpiDeqOptions_getMode
-#cgo noescape dpiDeqOptions_getMsgId
-#cgo noescape dpiDeqOptions_getNavigation
-#cgo noescape dpiDeqOptions_getTransformation
-#cgo noescape dpiDeqOptions_getVisibility
-#cgo noescape dpiDeqOptions_getWait
-#cgo noescape dpiEnqOptions_getVisibility
-#cgo noescape dpiEnqOptions_getTransformation
-#cgo noescape dpiLob_getChunkSize
-#cgo noescape dpiLob_getIsResourceOpen
-#cgo noescape dpiLob_getSize
-#cgo noescape dpiMsgProps_getCorrelation
-#cgo noescape dpiMsgProps_getDelay
-#cgo noescape dpiMsgProps_getDeliveryMode
-#cgo noescape dpiMsgProps_getEnqTime
-#cgo noescape dpiMsgProps_getExceptionQ
-#cgo noescape dpiMsgProps_getExpiration
-#cgo noescape dpiMsgProps_getMsgId
-#cgo noescape dpiMsgProps_getNumAttempts
-#cgo noescape dpiMsgProps_getPriority
-#cgo noescape dpiMsgProps_getState
-#cgo noescape dpiMsgProps_setOriginalMsgId
-#cgo noescape dpiObject_getElementExistsByIndex
-#cgo noescape dpiObject_getFirstIndex
-#cgo noescape dpiObject_getLastIndex
-#cgo noescape dpiObject_getNextIndex
-#cgo noescape dpiObject_getSize
-#cgo noescape dpiPool_getBusyCount
-#cgo noescape dpiPool_getOpenCount
-#cgo noescape dpiPool_getMaxLifetimeSession
-#cgo noescape dpiPool_getTimeout
-#cgo noescape dpiPool_getWaitTimeout
-#cgo noescape dpiQueue_getDeqOptions
-#cgo noescape dpiQueue_getEnqOptions
-#cgo noescape dpiStmt_getBatchErrorCount
-#cgo noescape dpiStmt_getBindCount
-#cgo noescape dpiStmt_getNumQueryColumns
-#cgo noescape dpiStmt_getRowCount
-#cgo noescape dpiStmt_getSubscrQueryId
-#cgo noescape dpiVar_getNumElementsInArray
-#cgo noescape dpiVar_getReturnedData
+// See https://github.com/golang/go/issues/56378
+// For pain, see https://github.com/godror/godror/issues/365 .
 
+/*
 #cgo nocallback dpiConn_breakExecution
 #cgo nocallback dpiConn_commit
 #cgo nocallback dpiConn_create
@@ -106,8 +47,8 @@ package godror
 #cgo nocallback dpiContext_initConnCreateParams
 #cgo nocallback dpiContext_initPoolCreateParams
 #cgo nocallback dpiContext_initSubscrCreateParams
-#cgo nocallback dpiData_getBool
-#cgo nocallback dpiData_getBytes
+// #cgo nocallback dpiData_getBool
+// #cgo nocallback dpiData_getBytes
 // #cgo nocallback dpiData_getDouble
 // #cgo nocallback dpiData_getFloat
 // #cgo nocallback dpiData_getInt64

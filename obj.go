@@ -92,7 +92,8 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	if !ok {
 		return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
 	}
-	logger := getLogger(context.TODO())
+	ctx := context.TODO()
+	logger := getLogger(ctx)
 	if logger != nil {
 		logger = logger.With("object", O.Name, "name", name)
 	}
@@ -100,8 +101,8 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		data.dpiData.isNull = 1
-		if logger != nil {
-			logger.Info("SetAttribute data.NativeTypeNum from attr", "ntt", data.NativeTypeNum)
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+			logger.Debug("SetAttribute data.NativeTypeNum from attr", "ntn", data.NativeTypeNum)
 		}
 	}
 	if err := O.drv.checkExec(func() C.int {
@@ -176,7 +177,7 @@ func (O *Object) Get(name string) (interface{}, error) {
 }
 
 func maybeString(v interface{}, ot *ObjectType) interface{} {
-	switch ot.OracleTypeNum {
+	switch otn := ot.OracleTypeNum; otn {
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
 		C.DPI_ORACLE_TYPE_NUMBER,
@@ -184,6 +185,9 @@ func maybeString(v interface{}, ot *ObjectType) interface{} {
 		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR:
 
 		if b, ok := v.([]byte); ok {
+			if otn == C.DPI_ORACLE_TYPE_NUMBER {
+				return Number(b)
+			}
 			return string(b)
 		}
 	}
