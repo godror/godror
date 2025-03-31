@@ -92,10 +92,17 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	if !ok {
 		return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
 	}
+	logger := getLogger(context.TODO())
+	if logger != nil {
+		logger = logger.With("object", O.Name, "name", name)
+	}
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		data.dpiData.isNull = 1
+		if logger != nil {
+			logger.Info("SetAttribute data.NativeTypeNum from attr", "ntt", data.NativeTypeNum)
+		}
 	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData)
@@ -104,7 +111,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		C.dpiObjectAttr_getInfo(attr.dpiObjectAttr, &info)
 		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v typeInfo=%+v: %w", data.NativeTypeNum, data.ObjectType, info.typeInfo, err)
 	}
-	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("setAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
 			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,

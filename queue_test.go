@@ -303,11 +303,15 @@ func TestQueue(t *testing.T) {
 				if err = obj.GetAttribute(&data, "F_NUM"); err != nil {
 					t.Fatal(err)
 				}
-				k := int(data.GetFloat64())
-				if k != i {
-					t.Fatalf("got %d, wanted %d", k, i)
+				num := string(data.GetBytes())
+				k, err := strconv.ParseInt(num, 10, 64)
+				if err != nil {
+					t.Fatal(err)
 				}
-				return godror.Message{Object: obj}, strconv.Itoa(k)
+				if k != int64(i) {
+					t.Fatalf("F_NUM as float got %d, wanted %d (have %#v (ntt=%d))", k, i, data.Get(), data.NativeTypeNum)
+				}
+				return godror.Message{Object: obj}, num
 			},
 
 			func(m godror.Message, i int) (string, error) {
@@ -320,10 +324,22 @@ func TestQueue(t *testing.T) {
 					return "", err
 				}
 				m.Object.Close()
-				s := int(data.GetFloat64())
+				v := data.Get()
+				var s string
+				switch x := v.(type) {
+				case godror.Number:
+					s = string(x)
+				case string:
+					s = x
+				case []byte:
+					t.Logf("v=% x", x)
+					s = string(x)
+				default:
+					s = fmt.Sprintf("%s", x)
+				}
 				//defer m.Object.ObjectType.Close()
-				t.Logf("%d: got: %q", i, s)
-				return strconv.Itoa(s), nil
+				t.Logf("cm %d: got F_NUM=%q (%T/%#v ntt=%d)", i, s, v, v, data.NativeTypeNum)
+				return s, nil
 			},
 		)
 	})
