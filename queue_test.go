@@ -327,7 +327,6 @@ func TestQueue(t *testing.T) {
 			},
 		)
 	})
-
 }
 
 func testQueue(
@@ -337,113 +336,117 @@ func testQueue(
 	newMessage func(*godror.Queue, int) (godror.Message, string),
 	checkMessage func(godror.Message, int) (string, error),
 ) {
-	tx, err := testDb.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-
 	var user string
 	if err := testDb.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = tearDown(ctx, tx, user); err != nil {
+	if err := tearDown(ctx, testDb, user); err != nil {
 		t.Log("tearDown:", err)
 	}
-	if err = setUp(ctx, tx, user); err != nil {
+	if err := setUp(ctx, testDb, user); err != nil {
 		if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
 			t.Skip(err.Error())
 		}
 		t.Fatalf("setUp: %+v", err)
 	}
 	defer func() {
-		if err = tearDown(testContext("queue-teardown"), testDb, user); err != nil {
+		if err := tearDown(testContext("queue-teardown"), testDb, user); err != nil {
 			t.Log("tearDown:", err)
 		}
 	}()
 
-	q, err := godror.NewQueue(ctx, tx, qName, objName, godror.WithEnqOptions(godror.EnqOptions{
-		Visibility:   godror.VisibleOnCommit,
-		DeliveryMode: godror.DeliverPersistent,
-	}))
-	if err != nil {
-		t.Fatalf("%+v", err)
-	}
-	defer q.Close()
-
-	t.Logf("name=%q obj=%q q=%#v", q.Name(), objName, q)
-	if err = q.PurgeExpired(ctx); err != nil {
-		t.Errorf("%q.PurgeExpired: %+v", q.Name(), err)
-	}
-	enqOpts, err := q.EnqOptions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("enqOpts: %#v", enqOpts)
-	deqOpts, err := q.DeqOptions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("deqOpts: %#v", deqOpts)
-
 	msgCount := 3 * maxSessions
 	want := make([]string, 0, msgCount)
 	seen := make(map[string]int, msgCount)
+	msgs := make([]godror.Message, maxSessions)
 
-	// Put some messages into the queue
-	msgs := make([]godror.Message, 2)
-	for i := 0; i < msgCount; {
-		for j := range msgs {
-			var s string
-			msgs[j], s = newMessage(q, i)
-			msgs[j].Expiration = 10 * time.Second
-			want = append(want, s)
-			i++
+	if err := func() error {
+		tx, err := testDb.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if err = q.Enqueue(msgs); err != nil {
-			var ec interface{ Code() int }
-			if errors.As(err, &ec) && ec.Code() == 24444 {
-				t.Skip(err)
+		defer tx.Rollback()
+
+		q, err := godror.NewQueue(ctx, tx, qName, objName,
+			godror.WithEnqOptions(godror.EnqOptions{
+				Visibility:   godror.VisibleOnCommit,
+				DeliveryMode: godror.DeliverPersistent,
+			}),
+		)
+		if err != nil {
+			t.Fatalf("%+v", err)
+		}
+		defer q.Close()
+
+		t.Logf("name=%q obj=%q q=%#v", q.Name(), objName, q)
+		start := time.Now()
+		if err = q.PurgeExpired(ctx); err != nil {
+			return fmt.Errorf("%q.PurgeExpired: %w", q.Name(), err)
+		}
+		t.Logf("purge dur=%s", time.Since(start))
+		enqOpts, err := q.EnqOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("enqOpts: %#v", enqOpts)
+		deqOpts, err := q.DeqOptions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("deqOpts: %#v", deqOpts)
+
+		// Put some messages into the queue
+		start = time.Now()
+		for i := 0; i < msgCount; {
+			// Let's test enqOne
+			if msgCount-i < 3 {
+				msgs = msgs[:1]
 			}
-			t.Fatal("enqueue:", err)
-		}
-		if objName != "" {
-			for _, m := range msgs {
-				if m.Object != nil {
-					m.Object.Close()
+			for j := range msgs {
+				var s string
+				msgs[j], s = newMessage(q, i)
+				msgs[j].Expiration = 30 * time.Second
+				want = append(want, s)
+				i++
+			}
+			if err = q.Enqueue(msgs); err != nil {
+				var ec interface{ Code() int }
+				if errors.As(err, &ec) && ec.Code() == 24444 {
+					t.Skip(err)
+				}
+				t.Fatal("enqueue:", err)
+			}
+			if objName != "" {
+				for _, m := range msgs {
+					if m.Object != nil {
+						m.Object.Close()
+					}
 				}
 			}
 		}
-
-		// Let's test enqOne
-		if i > msgCount/3 {
-			msgs = msgs[:1]
-		}
-	}
-	t.Logf("enqueued %d messages", msgCount)
-	if err := tx.Commit(); err != nil {
+		t.Logf("enqueued %d messages dur=%s", msgCount, time.Since(start))
+		return tx.Commit()
+	}(); err != nil {
 		t.Fatal(err)
 	}
 
+	start := time.Now()
 	msgs = msgs[:cap(msgs)]
 	for i := 0; i < msgCount; {
+		z := 2
 		n := func(i int) int {
 			tx, err := testDb.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer tx.Rollback()
-			// Let's test deqOne
-			if i == msgCount/3 {
-				msgs = msgs[:1]
-			}
 			q, err := godror.NewQueue(ctx, tx, qName, objName,
 				godror.WithDeqOptions(godror.DeqOptions{
 					Mode:       godror.DeqRemove,
 					Visibility: godror.VisibleOnCommit,
 					Navigation: godror.NavNext,
-					Wait:       1 * time.Second,
+					Wait:       10 * time.Second,
 				}))
 			if err != nil {
 				t.Fatal(err)
@@ -451,11 +454,14 @@ func testQueue(
 			defer q.Close()
 
 			// stop queue to test auto-starting it
-			{
+			if i == msgCount-1 {
 				const qry = `BEGIN DBMS_AQADM.stop_queue(queue_name=>:1); END;`
 				if _, err := tx.ExecContext(ctx, qry, q.Name()); err != nil {
 					t.Log(qry, err)
 				}
+
+				// Let's test deqOne
+				msgs = msgs[:1]
 			}
 
 			//t.Logf("name=%q q=%#v", q.Name(), q)
@@ -479,6 +485,11 @@ func testQueue(
 				}
 				seen[s] = i
 			}
+
+			if err := q.PurgeExpired(ctx); err != nil && !errors.Is(err, driver.ErrBadConn) {
+				t.Errorf("%q.PurgeExpired: %+v", q.Name(), err)
+			}
+
 			//i += n
 			if err = tx.Commit(); err != nil {
 				t.Fatal(err)
@@ -487,12 +498,14 @@ func testQueue(
 		}(i)
 		i += n
 		if n == 0 {
-			break
+			z--
+			if z == 0 {
+				break
+			}
+			time.Sleep(time.Second)
 		}
 	}
-	if err = q.PurgeExpired(ctx); err != nil && !errors.Is(err, driver.ErrBadConn) {
-		t.Errorf("%q.PurgeExpired: %+v", q.Name(), err)
-	}
+	t.Logf("retrieved %d messages dur=%s", len(seen), time.Since(start))
 
 	PrintConnStats()
 
