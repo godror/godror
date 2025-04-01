@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.48.1]
+### Fixed
+- Fixed a nasty silent cgo (usage) bug for Go1.24 that borked object NUMBER retrieval - see https://github.com/godror/godror/issues/365
+
 ## [0.48.0]
 ### Added
 - Vector and sparse vector support
