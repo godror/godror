@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -310,11 +311,20 @@ func TestQueue(t *testing.T) {
 				if k != int64(i) {
 					t.Fatalf("F_NUM as float got %d, wanted %d (have %#v (ntt=%d))", k, i, data.Get(), data.NativeTypeNum)
 				}
-				var buf strings.Builder
+				var buf bytes.Buffer
 				if err := obj.ToJSON(&buf); err != nil {
 					t.Error(err)
 				}
 				t.Logf("obj=%s; %q", buf.String(), num)
+				var x struct {
+					Num string `json:"F_NUM"`
+				}
+				if err := json.Unmarshal(buf.Bytes(), &x); err != nil {
+					t.Fatal(err)
+				}
+				if x.Num != strconv.Itoa(i) {
+					t.Errorf("ToJSON says %q (%s), wanted %d", x.Num, buf.String(), i)
+				}
 				return godror.Message{Object: obj}, num
 			},
 
@@ -325,7 +335,7 @@ func TestQueue(t *testing.T) {
 					return "", nil
 				}
 				defer m.Object.Close() // NOT before data use!
-				var buf strings.Builder
+				var buf bytes.Buffer
 				if err := m.Object.ToJSON(&buf); err != nil {
 					t.Error(err)
 				}
@@ -337,6 +347,14 @@ func TestQueue(t *testing.T) {
 				v := data.GetBytes()
 				s := string(v)
 				t.Logf("cm %d: got F_NUM=%q (%T ntn=%d otn=%d)", i, s, v, data.NativeTypeNum, attr.ObjectType.OracleTypeNum)
+				var x struct {
+					Num string `json:"F_NUM"`
+				}
+				if err := json.Unmarshal(buf.Bytes(), &x); err != nil {
+					t.Error(err)
+				} else if x.Num != s {
+					t.Errorf("json=%q (%s), wanted %q", x.Num, buf.String(), s)
+				}
 				return s, nil
 			},
 		)
