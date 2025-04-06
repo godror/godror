@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -59,7 +60,7 @@ const (
 
 	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
 	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
-	DefaultMaxSessions = 4
+	DefaultMaxSessions = 2
 )
 
 // TestMain is called instead of the separate Test functions,
@@ -109,6 +110,15 @@ func setUp() func() {
 	if eDSN == "" {
 		eDSN, eSysDSN = DefaultDSN, DefaultSystemDSN
 		maxSessions = DefaultMaxSessions
+		if i, _ := strconv.ParseInt(os.Getenv("GOMAXPROCS"), 10, 32); 0 < i && i <= int64(maxSessions) {
+			fmt.Printf("GOMAXPROCS=%d\n", i)
+		} else if e, _ := os.Executable(); e == "" {
+			fmt.Println("executable=" + e)
+		} else {
+			fmt.Printf("Reexec with GOMAXPROCS=%d\n", maxSessions)
+			syscall.Exec(e, os.Args[1:], append(os.Environ(), "GOMAXPROCS="+strconv.Itoa(maxSessions)))
+			return nil
+		}
 	}
 
 	P, err := dsn.Parse(eDSN)
