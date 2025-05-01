@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/godror/godror/slog"
@@ -85,12 +86,18 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 
 // SetAttribute sets the named attribute with data.
 func (O *Object) SetAttribute(name string, data *Data) error {
-	if !strings.Contains(name, `"`) {
-		name = strings.ToUpper(name)
-	}
 	attr, ok := O.Attributes[name]
 	if !ok {
-		return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
+		var try string
+		if len(name) > 2 && name[0] == '"' && name[len(name)-1] == '"' {
+			try = name[1 : len(name)-1]
+		} else {
+			try = strings.ToUpper(name)
+		}
+		if attr, ok = O.Attributes[try]; !ok {
+			return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
+		}
+		name = try
 	}
 	ctx := context.TODO()
 	logger := getLogger(ctx)
@@ -103,6 +110,13 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		data.dpiData.isNull = 1
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("SetAttribute data.NativeTypeNum from attr", "ntn", data.NativeTypeNum)
+		}
+	}
+
+	// FromJSON
+	if !data.IsNull() && data.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_DATE {
+		if t, err := time.Parse(time.RFC3339, string(data.GetBytes())); err == nil {
+			data.Set(t)
 		}
 	}
 	if err := O.drv.checkExec(func() C.int {
@@ -535,8 +549,13 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		if !ok {
 			return fmt.Errorf("wanted key (string), got %v (%T)", tok, tok)
 		}
-		k = strings.ToUpper(k)
 		a, ok := O.ObjectType.Attributes[k]
+		if !ok {
+			k2 := strings.ToUpper(k)
+			if a, ok = O.ObjectType.Attributes[k2]; ok {
+				k = k2
+			}
+		}
 		if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 			logger.Debug("attribute", "k", k, "a", a)
 		}
