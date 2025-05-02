@@ -324,7 +324,7 @@ func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
 // ToJSON writes the Object as JSON into the io.Writer.
 func (O *Object) ToJSON(w io.Writer) error {
 	if O == nil || O.ObjectType == nil {
-		_, err := io.WriteString(w, "nil")
+		_, err := io.WriteString(w, "null")
 		return err
 	}
 	if O.ObjectType.CollectionOf != nil {
@@ -727,7 +727,7 @@ func (O ObjectCollection) ToJSON(w io.Writer) error {
 		if v, err := O.Get(curr); err != nil {
 			return fmt.Errorf("Get(%v): %w", curr, err)
 		} else if v == nil {
-			if _, err = bw.WriteString("nil"); err != nil {
+			if _, err = bw.WriteString("null"); err != nil {
 				return err
 			}
 		} else if o, ok := v.(*Object); ok {
