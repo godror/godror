@@ -968,9 +968,6 @@ func (t *ObjectType) FullName() string { return t.String() }
 // The name is uppercased! Because here Oracle seems to be case-sensitive.
 // To leave it as is, enclose it in "-s!
 func (c *conn) GetObjectType(name string) (*ObjectType, error) {
-	if !strings.Contains(name, "\"") {
-		name = strings.ToUpper(name)
-	}
 	if name == "" {
 		return nil, errors.New("empty name")
 	}
@@ -980,7 +977,18 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		return nil, driver.ErrBadConn
 	}
 
-	if t := c.objTypes[name]; t != nil {
+	var nameU string
+	if !strings.Contains(name, "\"") {
+		nameU = strings.ToUpper(name)
+	}
+	t := c.objTypes[name]
+	if t == nil {
+		if nameU != "" {
+			t = c.objTypes[nameU]
+			name = nameU
+		}
+	}
+	if t != nil {
 		if t.drv != nil {
 			//fmt.Println("GetObjectType CACHED", name)
 			return t, nil
@@ -992,21 +1000,33 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	}
 
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
-	cName := C.CString(name)
-	err := c.checkExec(func() C.int {
-		return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
-	})
-	C.free(unsafe.Pointer(cName))
-	if err != nil {
-		C.free(unsafe.Pointer(objType))
-		if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
-			err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
-			_ = c.closeNotLocking()
-			return nil, err
-		}
-		return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
+	gOT := func(name string) error {
+		cName := C.CString(name)
+		err := c.checkExec(func() C.int {
+			return C.dpiConn_getObjectType(c.dpiConn, cName, C.uint32_t(len(name)), &objType)
+		})
+		C.free(unsafe.Pointer(cName))
+		return err
 	}
-	t := &ObjectType{drv: c.drv, dpiObjectType: objType}
+
+	err := gOT(name)
+	if err != nil {
+		if nameU != "" {
+			if err = gOT(nameU); err == nil {
+				name = nameU
+			}
+		}
+		if err != nil {
+			C.free(unsafe.Pointer(objType))
+			if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
+				err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
+				_ = c.closeNotLocking()
+				return nil, err
+			}
+			return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
+		}
+	}
+	t = &ObjectType{drv: c.drv, dpiObjectType: objType}
 	if err = t.init(c.objTypes); err != nil {
 		return t, err
 	}
