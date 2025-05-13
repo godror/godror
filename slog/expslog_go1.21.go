@@ -38,6 +38,7 @@ func NewRecord(t time.Time, lvl slog.Level, s string, p uintptr) slog.Record {
 	return slog.NewRecord(t, lvl, s, p)
 }
 
+func Int(k string, v int) slog.Attr                            { return slog.Int(k, v) }
 func String(k, v string) slog.Attr                             { return slog.String(k, v) }
 func StringValue(value string) slog.Value                      { return slog.StringValue(value) }
 func NewJSONHandler(w io.Writer, opts *HandlerOptions) Handler { return slog.NewJSONHandler(w, opts) }

@@ -683,6 +683,18 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// create ODPI-C connection
 	var dc *C.dpiConn
 	if err := d.checkExec(func() C.int {
+		if logger != nil {
+			logger.Debug("dpiConn_create",
+				slog.String("dpiContext", fmt.Sprintf("%#v", d.dpiContext)),
+				slog.String("username", username), slog.Int("usernameLen", len(username)),
+				slog.String("password", password), slog.Int("passwordLen", len(password)),
+				slog.String("connectString", P.ConnectString), slog.Int("connectStringLen", len(P.ConnectString)),
+				slog.String("commonCreateParams", fmt.Sprintf("%#v", commonCreateParamsPtr)),
+				slog.String("connCreateParams", fmt.Sprintf("%#v", connCreateParams)),
+				slog.String("dpiConn", fmt.Sprintf("%#v", dc)),
+				slog.String("pool", fmt.Sprintf("%#v", pool)),
+			)
+		}
 		// fmt.Printf("dpiConn_create(dpiContext=%#v, username=%q[%d], password=%q[%d], connectString=%q[%d], commonCreateParams=%#v, connCreateParams=%#v, dpiConn=%#v) pool=%#v\n", d.dpiContext, username, C.uint32_t(len(username)), password, C.uint32_t(len(password)), P.ConnectString, C.uint32_t(len(P.ConnectString)), commonCreateParamsPtr, connCreateParams, dc, pool)
 		return C.dpiConn_create(
 			d.dpiContext,
