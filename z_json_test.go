@@ -847,3 +847,59 @@ func errIs(err error, code int, msg string) bool {
 	}
 	return msg != "" && strings.Contains(err.Error(), msg)
 }
+
+func TestJSONIssue371(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
+		30*time.Second)
+	defer cancel()
+	const jsonstring = "{\"person\":{\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":\"12\",\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"Name\":\"Alex\",\"RandomString\":\"APKZYKSv2\",\"age\":\"25\",\"creditScore\":[\"700\",\"250\",\"340\"],\"salary\":\"45.23\"}}"
+	jsonval := godror.JSONString{Value: jsonstring, Flags: 0}
+	tbl := "test_issue371" + tblSuffix
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	if err != nil {
+		if errIs(err, 902, "invalid datatype") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(context.Background(), "DROP TABLE "+tbl)
+
+	if _, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON)", //nolint:gas
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = conn.ExecContext(ctx, "INSERT INTO "+tbl+"(id, jdoc) VALUES(1 , :1)", jsonval); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read JSON document
+	rows, err := conn.QueryContext(ctx, "SELECT id, jdoc FROM "+tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var id interface{}
+	var jsondoc godror.JSON
+
+	for rows.Next() {
+		if err = rows.Scan(&id, &jsondoc); err != nil {
+			t.Fatal(err)
+		}
+		// Print JSON string
+		t.Log("The JSON String is:", jsondoc)
+		// Get Go native map[string]interface{}
+		v, _ := jsondoc.GetValue(godror.JSONOptNumberAsString)
+		// type assert to verify the type returned
+		gotmap, _ := v.(map[string]interface{})
+		t.Log("The JSON Map object is:", gotmap)
+	}
+}

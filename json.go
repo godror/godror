@@ -610,7 +610,7 @@ func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 			Name:  C.GoStringN(names[i], C.int(nameLengths[i])),
 			Value: &fields[i],
 		}
-		C.free(unsafe.Pointer(names[i]))
+		// C.free(unsafe.Pointer(names[i]))
 	}
 	return ff
 }
