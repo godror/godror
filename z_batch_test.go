@@ -456,7 +456,7 @@ func TestBatchFlushWithResult(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	b := godror.Batch{Stmt: stmt, Limit: 3}
+	b := godror.Batch{Stmt: stmt, Limit: 5} // Higher limit to prevent auto-flush
 
 	// Add test data
 	if err = b.Add(ctx, 1, "test1"); err != nil {
@@ -557,7 +557,7 @@ func TestBatchFlushWithResultError(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	b := godror.Batch{Stmt: stmt, Limit: 3}
+	b := godror.Batch{Stmt: stmt, Limit: 5} // Higher limit to prevent auto-flush
 
 	// Add duplicate IDs to trigger constraint violation
 	if err = b.Add(ctx, 1, "first"); err != nil {
