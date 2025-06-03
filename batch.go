@@ -1,4 +1,4 @@
-// Copyright 2017, 2024 The Godror Authors
+// Copyright 2017, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -60,7 +60,6 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 			if rv.Type().Kind() != reflect.String &&
 				b.rValues[i].Type().Elem().Kind() == reflect.String {
 				vv := b.rValues[i]
-				// fmt.Println("rv", vv.Interface())
 				allZero := true
 				for j := 0; j < vv.Len(); j++ {
 					if allZero = vv.Index(j).Len() == 0; !allZero {
@@ -70,7 +69,6 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 				if allZero { // all zero, replace with proper typed slice
 					b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(rv.Type()), vv.Len(), vv.Cap())
 				}
-				// fmt.Println("allZero?", allZero, "vv", b.rValues[i].Interface())
 			}
 			b.rValues[i] = reflect.Append(b.rValues[i], rv)
 		}
@@ -85,11 +83,12 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 // Size returns the buffered (unflushed) number of records.
 func (b *Batch) Size() int { return b.size }
 
-// Flush executes the statement is and the clears the storage.
-func (b *Batch) Flush(ctx context.Context) error {
+// FlushWithResult executes the statement, clears the storage, and returns the result.
+func (b *Batch) FlushWithResult(ctx context.Context) (sql.Result, error) {
 	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
-		return nil
+		return nil, nil
 	}
+
 	if b.values == nil {
 		b.values = make([]interface{}, len(b.rValues))
 	}
@@ -100,14 +99,29 @@ func (b *Batch) Flush(ctx context.Context) error {
 			b.values[i] = v.Interface()
 		}
 	}
-	if _, err := b.Stmt.ExecContext(ctx, b.values...); err != nil {
-		return err
+
+	result, err := b.Stmt.ExecContext(ctx, b.values...)
+	if err != nil {
+		return nil, err
 	}
+
+	_, rowsAffectedErr := result.RowsAffected()
+	if rowsAffectedErr != nil {
+		return nil, rowsAffectedErr
+	}
+
 	for i, v := range b.rValues {
 		if v.IsValid() {
 			b.rValues[i] = v.Slice(0, 0)
 		}
 	}
 	b.size = 0
-	return nil
+
+	return result, nil
+}
+
+// Flush executes the statement and clears the storage.
+func (b *Batch) Flush(ctx context.Context) error {
+	_, err := b.FlushWithResult(ctx)
+	return err
 }
