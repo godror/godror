@@ -87,10 +87,10 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 // Size returns the buffered (unflushed) number of records.
 func (b *Batch) Size() int { return b.size }
 
-// Flush executes the statement is and the clears the storage.
-func (b *Batch) Flush(ctx context.Context) error {
+// FlushWithResult executes the statement, clears the storage, and returns the result.
+func (b *Batch) FlushWithResult(ctx context.Context) (sql.Result, error) {
 	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if b.values == nil {
@@ -106,15 +106,12 @@ func (b *Batch) Flush(ctx context.Context) error {
 
 	result, err := b.Stmt.ExecContext(ctx, b.values...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	rowsAffected, rowsAffectedErr := result.RowsAffected()
+	_, rowsAffectedErr := result.RowsAffected()
 	if rowsAffectedErr != nil {
-		return rowsAffectedErr
-	}
-	if rowsAffected != int64(b.size) {
-		return fmt.Errorf("expected %d rows affected, got %d", b.size, rowsAffected)
+		return nil, rowsAffectedErr
 	}
 
 	for i, v := range b.rValues {
@@ -124,5 +121,11 @@ func (b *Batch) Flush(ctx context.Context) error {
 	}
 	b.size = 0
 
-	return nil
+	return result, nil
+}
+
+// Flush executes the statement and clears the storage.
+func (b *Batch) Flush(ctx context.Context) error {
+	_, err := b.FlushWithResult(ctx)
+	return err
 }

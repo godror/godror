@@ -434,3 +434,147 @@ func TestBatchConcurrentUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestBatchFlushWithResult(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResult"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_flushresult" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), name VARCHAR2(100))`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (id, name) VALUES (:1, :2)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 3}
+
+	// Add test data
+	if err = b.Add(ctx, 1, "test1"); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, 2, "test2"); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, 3, "test3"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test FlushWithResult
+	result, err := b.FlushWithResult(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result == nil {
+		t.Error("expected non-nil result")
+	}
+
+	// Test that we can get rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("unexpected error getting RowsAffected: %v", err)
+	}
+	if rowsAffected != 3 {
+		t.Errorf("expected 3 rows affected, got %d", rowsAffected)
+	}
+
+	// Verify batch is cleared
+	if b.Size() != 0 {
+		t.Errorf("expected batch size 0 after flush, got %d", b.Size())
+	}
+
+	// Verify data was inserted
+	var count int
+	if err = testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 rows in table, got %d", count)
+	}
+}
+
+func TestBatchFlushWithResultEmpty(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResultEmpty"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_empty_flushresult" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), name VARCHAR2(100))`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (id, name) VALUES (:1, :2)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 10}
+
+	// Test FlushWithResult on empty batch
+	result, err := b.FlushWithResult(ctx)
+	if err != nil {
+		t.Errorf("unexpected error on empty flush: %v", err)
+	}
+	if result != nil {
+		t.Error("expected nil result for empty batch")
+	}
+}
+
+func TestBatchFlushWithResultError(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResultError"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_error_flushresult" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9) PRIMARY KEY, name VARCHAR2(100) NOT NULL)`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (id, name) VALUES (:1, :2)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 3}
+
+	// Add duplicate IDs to trigger constraint violation
+	if err = b.Add(ctx, 1, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, 1, "duplicate"); err != nil {
+		t.Fatal(err)
+	}
+
+	// FlushWithResult should return an error due to primary key constraint
+	result, err := b.FlushWithResult(ctx)
+	if err == nil {
+		t.Error("expected error due to duplicate primary key, got nil")
+	}
+	if result != nil {
+		t.Error("expected nil result when error occurs")
+	}
+
+	t.Logf("Got expected error: %v", err)
+}
