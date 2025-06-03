@@ -79,7 +79,11 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 	if b.size < b.Limit {
 		return nil
 	}
-	return b.Flush(ctx)
+	err := b.Flush(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Size returns the buffered (unflushed) number of records.
@@ -90,6 +94,7 @@ func (b *Batch) Flush(ctx context.Context) error {
 	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
 		return nil
 	}
+
 	if b.values == nil {
 		b.values = make([]interface{}, len(b.rValues))
 	}
@@ -100,14 +105,26 @@ func (b *Batch) Flush(ctx context.Context) error {
 			b.values[i] = v.Interface()
 		}
 	}
-	if _, err := b.Stmt.ExecContext(ctx, b.values...); err != nil {
+
+	result, err := b.Stmt.ExecContext(ctx, b.values...)
+	if err != nil {
 		return err
 	}
+
+	rowsAffected, rowsAffectedErr := result.RowsAffected()
+	if rowsAffectedErr != nil {
+		return rowsAffectedErr
+	}
+	if rowsAffected != int64(b.size) {
+		return fmt.Errorf("expected %d rows affected, got %d", b.size, rowsAffected)
+	}
+
 	for i, v := range b.rValues {
 		if v.IsValid() {
 			b.rValues[i] = v.Slice(0, 0)
 		}
 	}
 	b.size = 0
+
 	return nil
 }
