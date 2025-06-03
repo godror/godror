@@ -1,4 +1,4 @@
-// Copyright 2017, 2024 The Godror Authors
+// Copyright 2017, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -60,7 +60,6 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 			if rv.Type().Kind() != reflect.String &&
 				b.rValues[i].Type().Elem().Kind() == reflect.String {
 				vv := b.rValues[i]
-				// fmt.Println("rv", vv.Interface())
 				allZero := true
 				for j := 0; j < vv.Len(); j++ {
 					if allZero = vv.Index(j).Len() == 0; !allZero {
@@ -70,7 +69,6 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 				if allZero { // all zero, replace with proper typed slice
 					b.rValues[i] = reflect.MakeSlice(reflect.SliceOf(rv.Type()), vv.Len(), vv.Cap())
 				}
-				// fmt.Println("allZero?", allZero, "vv", b.rValues[i].Interface())
 			}
 			b.rValues[i] = reflect.Append(b.rValues[i], rv)
 		}
