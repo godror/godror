@@ -77,11 +77,7 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 	if b.size < b.Limit {
 		return nil
 	}
-	err := b.Flush(ctx)
-	if err != nil {
-		return err
-	}
-	return nil
+	return b.Flush(ctx)
 }
 
 // Size returns the buffered (unflushed) number of records.
