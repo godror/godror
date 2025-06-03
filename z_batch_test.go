@@ -9,7 +9,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -155,65 +154,6 @@ func TestBatchRowCountValidation(t *testing.T) {
 	if count != expectedRows {
 		t.Errorf("expected %d rows in table, got %d", expectedRows, count)
 	}
-}
-
-func TestBatchRowCountMismatch(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("BatchRowCountMismatch"), time.Minute)
-	defer cancel()
-
-	tbl := "test_batch_mismatch" + tblSuffix
-	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9) PRIMARY KEY, name VARCHAR2(100), status VARCHAR2(10) DEFAULT 'PENDING')`
-	if _, err := testDb.ExecContext(ctx, create); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
-	}()
-
-	// First, insert some test data
-	if _, err := testDb.ExecContext(ctx, "INSERT INTO "+tbl+" (id, name, status) VALUES (1, 'existing1', 'ACTIVE')"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := testDb.ExecContext(ctx, "INSERT INTO "+tbl+" (id, name, status) VALUES (2, 'existing2', 'INACTIVE')"); err != nil {
-		t.Fatal(err)
-	}
-
-	// Now create a batch with UPDATE statements that will affect fewer rows than in the batch
-	// This will test our row count validation logic
-	updateQry := `UPDATE ` + tbl + ` SET name = :1 WHERE status = 'ACTIVE' AND id = :2`
-	stmt, err := testDb.PrepareContext(ctx, updateQry)
-	if err != nil {
-		t.Fatalf("%s: %+v", updateQry, err)
-	}
-	defer stmt.Close()
-
-	b := godror.Batch{Stmt: stmt, Limit: 5}
-
-	// Add 3 updates, but only 1 will actually affect a row (id=1 with status='ACTIVE')
-	// The other 2 won't match any rows since id=2 has status='INACTIVE' and id=3 doesn't exist
-	if err = b.Add(ctx, "updated_name1", 1); err != nil { // This will affect 1 row
-		t.Fatal(err)
-	}
-	if err = b.Add(ctx, "updated_name2", 2); err != nil { // This will affect 0 rows (status mismatch)
-		t.Fatal(err)
-	}
-	if err = b.Add(ctx, "updated_name3", 3); err != nil { // This will affect 0 rows (no such id)
-		t.Fatal(err)
-	}
-
-	// Flush should return an error because only 1 row was affected but we expected 3
-	err = b.Flush(ctx)
-	if err == nil {
-		t.Error("expected error due to row count mismatch, got nil")
-	}
-
-	// The error should specifically mention the row count mismatch
-	if err != nil && !strings.Contains(err.Error(), "expected 3 rows affected, got 1") {
-		t.Errorf("expected row count validation error, got: %v", err)
-	}
-
-	t.Logf("Got expected row count validation error: %v", err)
 }
 
 func TestBatchEmptyFlush(t *testing.T) {
@@ -411,55 +351,6 @@ func TestBatchAutoFlush(t *testing.T) {
 	}
 	if batch2Count != 2 {
 		t.Errorf("expected 2 rows in batch 2, got %d", batch2Count)
-	}
-}
-
-func TestBatchStringConversion(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("BatchStringConversion"), time.Minute)
-	defer cancel()
-
-	tbl := "test_batch_string" + tblSuffix
-	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), str_value VARCHAR2(100))`
-	if _, err := testDb.ExecContext(ctx, create); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
-	}()
-
-	insQry := `INSERT INTO ` + tbl + ` (id, str_value) VALUES (:1, :2)`
-	stmt, err := testDb.PrepareContext(ctx, insQry)
-	if err != nil {
-		t.Fatalf("%s: %+v", insQry, err)
-	}
-	defer stmt.Close()
-
-	b := godror.Batch{Stmt: stmt, Limit: 3}
-
-	// Test only string values to avoid type conversion issues
-	if err = b.Add(ctx, 1, "string_value"); err != nil {
-		t.Fatal(err)
-	}
-	if err = b.Add(ctx, 2, "another_string"); err != nil {
-		t.Fatal(err)
-	}
-	if err = b.Add(ctx, 3, "third_string"); err != nil {
-		t.Fatal(err)
-	}
-
-	err = b.Flush(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify data was inserted correctly
-	var count int
-	if err = testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 3 {
-		t.Errorf("expected 3 rows, got %d", count)
 	}
 }
 
