@@ -17,10 +17,11 @@ const DefaultBatchLimit = 1024
 // Batch collects the Added rows and executes in batches, after collecting Limit number of rows.
 // The default Limit is DefaultBatchLimit.
 type Batch struct {
-	Stmt        *sql.Stmt
-	values      []interface{}
-	rValues     []reflect.Value
-	size, Limit int
+	Stmt         *sql.Stmt
+	values       []interface{}
+	rValues      []reflect.Value
+	size, Limit  int
+	rowsAffected int64
 }
 
 // Add the values. The first call initializes the storage,
@@ -83,10 +84,13 @@ func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
 // Size returns the buffered (unflushed) number of records.
 func (b *Batch) Size() int { return b.size }
 
-// FlushWithResult executes the statement, clears the storage, and returns the result.
-func (b *Batch) FlushWithResult(ctx context.Context) (sql.Result, error) {
+// RowsAffected returns the accumulated number of rows affected by all Flush operations.
+func (b *Batch) RowsAffected() int64 { return b.rowsAffected }
+
+// Flush executes the statement and clears the storage.
+func (b *Batch) Flush(ctx context.Context) error {
 	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
-		return nil, nil
+		return nil
 	}
 
 	if b.values == nil {
@@ -102,13 +106,15 @@ func (b *Batch) FlushWithResult(ctx context.Context) (sql.Result, error) {
 
 	result, err := b.Stmt.ExecContext(ctx, b.values...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	_, rowsAffectedErr := result.RowsAffected()
+	rowsAffected, rowsAffectedErr := result.RowsAffected()
 	if rowsAffectedErr != nil {
-		return nil, rowsAffectedErr
+		return rowsAffectedErr
 	}
+
+	b.rowsAffected += rowsAffected
 
 	for i, v := range b.rValues {
 		if v.IsValid() {
@@ -117,11 +123,5 @@ func (b *Batch) FlushWithResult(ctx context.Context) (sql.Result, error) {
 	}
 	b.size = 0
 
-	return result, nil
-}
-
-// Flush executes the statement and clears the storage.
-func (b *Batch) Flush(ctx context.Context) error {
-	_, err := b.FlushWithResult(ctx)
-	return err
+	return nil
 }
