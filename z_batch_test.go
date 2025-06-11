@@ -146,6 +146,12 @@ func TestBatchRowCountValidation(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Test RowsAffected matches expected count
+	rowsAffected := b.RowsAffected()
+	if int(rowsAffected) != expectedRows {
+		t.Errorf("expected %d rows affected, got %d", expectedRows, rowsAffected)
+	}
+
 	// Verify data was actually inserted
 	var count int
 	if err = testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
@@ -327,14 +333,20 @@ func TestBatchAutoFlush(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Test total RowsAffected includes both auto-flush and manual flush
+	totalRowsAffected := b.RowsAffected()
+	expectedTotalAffected := int64(b.Limit + 2) // 3 from auto-flush + 2 from manual flush
+	if totalRowsAffected != expectedTotalAffected {
+		t.Errorf("expected %d total rows affected, got %d", expectedTotalAffected, totalRowsAffected)
+	}
+
 	// Verify all rows were inserted
 	var count int
 	if err = testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	expectedTotal := b.Limit + 2
-	if count != expectedTotal {
-		t.Errorf("expected %d total rows, got %d", expectedTotal, count)
+	if count != int(expectedTotalAffected) {
+		t.Errorf("expected %d total rows in table, got %d", expectedTotalAffected, count)
 	}
 
 	// Verify batch distribution
@@ -435,9 +447,9 @@ func TestBatchConcurrentUsage(t *testing.T) {
 	}
 }
 
-func TestBatchFlushWithResult(t *testing.T) {
+func TestBatchFlushWithRowsAffected(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResult"), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithRowsAffected"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_flushresult" + tblSuffix
@@ -469,21 +481,14 @@ func TestBatchFlushWithResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test FlushWithResult
-	result, err := b.FlushWithResult(ctx)
+	// Test Flush
+	err = b.Flush(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if result == nil {
-		t.Error("expected non-nil result")
-	}
-
 	// Test that we can get rows affected
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		t.Fatalf("unexpected error getting RowsAffected: %v", err)
-	}
+	rowsAffected := b.RowsAffected()
 	if rowsAffected != 3 {
 		t.Errorf("expected 3 rows affected, got %d", rowsAffected)
 	}
@@ -501,11 +506,38 @@ func TestBatchFlushWithResult(t *testing.T) {
 	if count != 3 {
 		t.Errorf("expected 3 rows in table, got %d", count)
 	}
+
+	// Test multiple flushes accumulate
+	if err = b.Add(ctx, 4, "test4"); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, 5, "test5"); err != nil {
+		t.Fatal(err)
+	}
+
+	err = b.Flush(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error on second flush: %v", err)
+	}
+
+	// Rows affected should be accumulated
+	totalRowsAffected := b.RowsAffected()
+	if totalRowsAffected != 5 {
+		t.Errorf("expected 5 total rows affected, got %d", totalRowsAffected)
+	}
+
+	// Verify final count
+	if err = testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Errorf("expected 5 total rows in table, got %d", count)
+	}
 }
 
-func TestBatchFlushWithResultEmpty(t *testing.T) {
+func TestBatchFlushEmpty(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResultEmpty"), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushEmpty"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_empty_flushresult" + tblSuffix
@@ -526,19 +558,22 @@ func TestBatchFlushWithResultEmpty(t *testing.T) {
 
 	b := godror.Batch{Stmt: stmt, Limit: 10}
 
-	// Test FlushWithResult on empty batch
-	result, err := b.FlushWithResult(ctx)
+	// Test Flush on empty batch
+	err = b.Flush(ctx)
 	if err != nil {
 		t.Errorf("unexpected error on empty flush: %v", err)
 	}
-	if result != nil {
-		t.Error("expected nil result for empty batch")
+
+	// RowsAffected should be 0 for empty batch
+	rowsAffected := b.RowsAffected()
+	if rowsAffected != 0 {
+		t.Errorf("expected 0 rows affected for empty batch, got %d", rowsAffected)
 	}
 }
 
-func TestBatchFlushWithResultError(t *testing.T) {
+func TestBatchFlushError(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithResultError"), time.Minute)
+	ctx, cancel := context.WithTimeout(testContext("BatchFlushError"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_error_flushresult" + tblSuffix
@@ -567,13 +602,16 @@ func TestBatchFlushWithResultError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// FlushWithResult should return an error due to primary key constraint
-	result, err := b.FlushWithResult(ctx)
+	// Flush should return an error due to primary key constraint
+	err = b.Flush(ctx)
 	if err == nil {
 		t.Error("expected error due to duplicate primary key, got nil")
 	}
-	if result != nil {
-		t.Error("expected nil result when error occurs")
+
+	// RowsAffected should still be 0 when error occurs
+	rowsAffected := b.RowsAffected()
+	if rowsAffected != 0 {
+		t.Errorf("expected 0 rows affected when error occurs, got %d", rowsAffected)
 	}
 
 	t.Logf("Got expected error: %v", err)
