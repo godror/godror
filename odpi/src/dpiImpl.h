@@ -210,6 +210,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_INTERNAL_NAME                  25
 #define DPI_OCI_ATTR_EXTERNAL_NAME                  26
 #define DPI_OCI_ATTR_XID                            27
+#define DPI_OCI_ATTR_TRANS_NAME                     29
 #define DPI_OCI_ATTR_CHARSET_ID                     31
 #define DPI_OCI_ATTR_CHARSET_FORM                   32
 #define DPI_OCI_ATTR_MAXDATA_SIZE                   33
@@ -328,6 +329,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_SUPER_SHARDING_KEY             497
 #define DPI_OCI_ATTR_MAX_IDENTIFIER_LEN             500
 #define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
+#define DPI_OCI_ATTR_SQL_ID                         504
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
 #define DPI_OCI_ATTR_JSON_COL                       534
@@ -461,6 +463,13 @@ extern unsigned long dpiDebugLevel;
 #define DPI_XA_MAXBQUALSIZE                         64
 #define DPI_XA_XIDDATASIZE                          128
 
+// define Sessionless Transaction constants
+#define DPI_OCI_TRANS_SESSIONLESS                   0x10
+
+// Sessionless suspend flags
+#define DPI_OCI_SUSPEND_DEFAULT                     0
+#define DPI_OCI_SUSPEND_POST_CALL                   0x2
+
 // define null indicator values
 #define DPI_OCI_IND_NULL                            -1
 #define DPI_OCI_IND_NOTNULL                         0
@@ -554,6 +563,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_TRANS_TWOPHASE                      0x01000000
 #define DPI_OCI_SECURE_NOTIFICATION                 0x20000000
 #define DPI_OCI_BIND_DEDICATED_REF_CURSOR           0x00000400
+#define DPI_OCI_PREP2_GET_SQL_ID                    0x2000
 
 //-----------------------------------------------------------------------------
 // Macros
@@ -1386,6 +1396,8 @@ struct dpiStmt {
     int isReturning;                    // statement has RETURNING clause?
     int deleteFromCache;                // drop from statement cache on close?
     int closing;                        // statement is being closed?
+    char sqlId[13];                     // SQL_ID (from v$SQL)
+    uint32_t sqlIdLength;               // length of the sqlId
 };
 
 // represents memory areas used for transferring data to and from the database
@@ -1750,6 +1762,8 @@ void dpiConn__free(dpiConn *conn, dpiError *error);
 int dpiConn__getJsonTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getServerVersion(dpiConn *conn, int wantReleaseString,
+        dpiError *error);
+int dpiConn__suspendSessionlessTransaction(dpiConn *conn, uint32_t flag,
         dpiError *error);
 
 
@@ -2313,6 +2327,8 @@ int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
 void dpiUtils__clearMemory(void *ptr, size_t length);
 int dpiUtils__ensureBuffer(size_t desiredSize, const char *action,
         void **ptr, size_t *currentSize, dpiError *error);
+int dpiUtils__getTransactionHandle(dpiConn *conn, void **transactionHandle,
+        dpiError *error);
 void dpiUtils__freeMemory(void *ptr);
 int dpiUtils__getAttrStringWithDup(const char *action, const void *ociHandle,
         uint32_t ociHandleType, uint32_t ociAttribute, const char **value,

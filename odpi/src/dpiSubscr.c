@@ -264,11 +264,16 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
         return DPI_FAILURE;
     subscr->registered = 1;
 
-    // acquire the registration id
-    if (dpiOci__attrGet(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION,
-            &params->outRegId, NULL, DPI_OCI_ATTR_SUBSCR_CQ_REGID,
-            "get registration id", error) < 0)
-        return DPI_FAILURE;
+    // acquire the registration id, if applicable; for AQ, the value is always
+    // set to zero
+    if (params->subscrNamespace == DPI_SUBSCR_NAMESPACE_AQ) {
+        params->outRegId = 0;
+    } else {
+        if (dpiOci__attrGet(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION,
+                &params->outRegId, NULL, DPI_OCI_ATTR_SUBSCR_CQ_REGID,
+                "get registration id", error) < 0)
+            return DPI_FAILURE;
+    }
 
     return DPI_SUCCESS;
 }

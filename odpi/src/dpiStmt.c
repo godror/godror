@@ -572,10 +572,11 @@ static int dpiStmt__define(dpiStmt *stmt, uint32_t pos, dpiVar *var,
 static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
         uint32_t mode, int reExecute, dpiError *error)
 {
+    uint32_t i, j, temp, sqlIdLength;
     uint16_t tempOffset;
-    uint32_t i, j, temp;
     dpiData *data;
     dpiVar *var;
+    char *sqlId;
 
     // for all bound variables, transfer data from dpiData structure to Oracle
     // buffer structures
@@ -642,6 +643,18 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
                 stmt->deleteFromCache = 1;
         }
         return DPI_FAILURE;
+    }
+
+    // fetch SQL_ID, if applicable
+    if (dpiUtils__checkClientVersion(stmt->env->versionInfo, 12, 2,
+            NULL) == DPI_SUCCESS) {
+        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &sqlId,
+                &sqlIdLength, DPI_OCI_ATTR_SQL_ID, "get SQL_ID", error) < 0)
+            return DPI_FAILURE;
+        if (sqlIdLength > sizeof(stmt->sqlId))
+            sqlIdLength = sizeof(stmt->sqlId);
+        memcpy(stmt->sqlId, sqlId, sqlIdLength);
+        stmt->sqlIdLength = sqlIdLength;
     }
 
     // for queries, disable prefetch for subsequent fetches in order to avoid
@@ -1274,6 +1287,14 @@ int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode, uint32_t *numQueryColumns)
     if (dpiStmt__check(stmt, __func__, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     numIters = (stmt->statementType == DPI_STMT_TYPE_SELECT) ? 0 : 1;
+
+    // Post-call suspend for sessionless transaction
+    if (mode & DPI_MODE_EXEC_SUSPEND_ON_SUCCESS) {
+        if (dpiConn__suspendSessionlessTransaction(stmt->conn,
+                DPI_OCI_SUSPEND_POST_CALL, &error) < 0)
+            return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    }
+
     if (dpiStmt__execute(stmt, numIters, mode, 1, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     if (numQueryColumns)
@@ -1313,6 +1334,13 @@ int dpiStmt_executeMany(dpiStmt *stmt, dpiExecMode mode, uint32_t numIters)
             stmt->statementType != DPI_STMT_TYPE_MERGE) {
         dpiError__set(&error, "check mode", DPI_ERR_EXEC_MODE_ONLY_FOR_DML);
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    }
+
+    // Post-call suspend for sessionless transaction
+    if (mode & DPI_MODE_EXEC_SUSPEND_ON_SUCCESS) {
+        if (dpiConn__suspendSessionlessTransaction(stmt->conn,
+                DPI_OCI_SUSPEND_POST_CALL, &error) < 0)
+            return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     }
 
     // ensure that all bind variables have a big enough maxArraySize to
@@ -1601,6 +1629,13 @@ int dpiStmt_getInfo(dpiStmt *stmt, dpiStmtInfo *info)
             stmt->statementType == DPI_STMT_TYPE_MERGE);
     info->statementType = stmt->statementType;
     info->isReturning = stmt->isReturning;
+    if (stmt->env->context->dpiMinorVersion > 5) {
+        info->sqlId = stmt->sqlId;
+        info->sqlIdLength = stmt->sqlIdLength;
+    } else {
+        info->sqlId = NULL;
+        info->sqlIdLength = 0;
+    }
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
 

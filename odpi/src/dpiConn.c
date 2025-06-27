@@ -1478,6 +1478,7 @@ static int dpiConn__setShardingKeyValue(dpiConn *conn, void *shardingKey,
 //-----------------------------------------------------------------------------
 static int dpiConn__setXid(dpiConn *conn, dpiXid *xid, dpiError *error)
 {
+    void *transactionHandle;
     dpiOciXID ociXid;
 
     // validate XID
@@ -1496,32 +1497,79 @@ static int dpiConn__setXid(dpiConn *conn, dpiXid *xid, dpiError *error)
                 DPI_ERR_BRANCH_ID_TOO_LARGE, xid->branchQualifierLength,
                 DPI_XA_MAXBQUALSIZE);
 
-    // if a transaction handle does not exist, create one
-    if (!conn->transactionHandle) {
-        if (dpiOci__handleAlloc(conn->env->handle, &conn->transactionHandle,
-                DPI_OCI_HTYPE_TRANS, "create transaction handle", error) < 0)
+    // associate the XID with the transaction, unless a transaction not started
+    // by us is in progress (which is determined by the returned transaction
+    // handle being NULL)
+    if (dpiUtils__getTransactionHandle(conn, &transactionHandle, error) < 0)
+        return DPI_FAILURE;
+    if (transactionHandle) {
+        ociXid.formatID = xid->formatId;
+        ociXid.gtrid_length = xid->globalTransactionIdLength;
+        ociXid.bqual_length = xid->branchQualifierLength;
+        if (xid->globalTransactionIdLength > 0)
+            memcpy(ociXid.data, xid->globalTransactionId,
+                    xid->globalTransactionIdLength);
+        if (xid->branchQualifierLength > 0)
+            memcpy(&ociXid.data[xid->globalTransactionIdLength],
+                    xid->branchQualifier, xid->branchQualifierLength);
+        if (dpiOci__attrSet(transactionHandle, DPI_OCI_HTYPE_TRANS,
+                &ociXid, sizeof(dpiOciXID), DPI_OCI_ATTR_XID, "set XID",
+                error) < 0)
             return DPI_FAILURE;
     }
 
-    // associate the transaction with the connection
-    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-            conn->transactionHandle, 0, DPI_OCI_ATTR_TRANS,
-            "associate transaction", error) < 0)
+    return DPI_SUCCESS;
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn__startSessionlessTransaction() [INTERNAL]
+//   Internal function to begin/resume a sessionless transaction.
+//-----------------------------------------------------------------------------
+static int dpiConn__startSessionlessTransaction(dpiConn *conn,
+        dpiSessionlessTransactionId *transactionId, uint32_t timeout,
+        uint32_t flag, int deferRoundTrip, dpiError *error)
+{
+    void *transactionHandle;
+    dpiOciXID *ociXid;
+
+    // perform checks
+    if (dpiConn__check(conn, __func__, error) < 0)
+        return DPI_FAILURE;
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 0, error) < 0)
         return DPI_FAILURE;
 
-    // associate the XID with the transaction
-    ociXid.formatID = xid->formatId;
-    ociXid.gtrid_length = xid->globalTransactionIdLength;
-    ociXid.bqual_length = xid->branchQualifierLength;
-    if (xid->globalTransactionIdLength > 0)
-        memcpy(ociXid.data, xid->globalTransactionId,
-                xid->globalTransactionIdLength);
-    if (xid->branchQualifierLength > 0)
-        memcpy(&ociXid.data[xid->globalTransactionIdLength],
-                xid->branchQualifier, xid->branchQualifierLength);
-    if (dpiOci__attrSet(conn->transactionHandle, DPI_OCI_HTYPE_TRANS,
-            &ociXid, sizeof(dpiOciXID), DPI_OCI_ATTR_XID, "set XID",
+    // set the transaction id on the transaction, unless a transaction not
+    // started by us is in progress (which is determined by the returned
+    // transaction handle being NULL)
+    if (dpiUtils__getTransactionHandle(conn, &transactionHandle, error) < 0)
+        return DPI_FAILURE;
+    if (transactionHandle) {
+        if (dpiOci__attrSet(transactionHandle, DPI_OCI_HTYPE_TRANS,
+                transactionId->value, transactionId->length,
+                DPI_OCI_ATTR_TRANS_NAME, "set transaction id", error) < 0)
+            return DPI_FAILURE;
+    }
+
+    // start the transaction
+    if (dpiOci__transStart(conn, timeout, DPI_OCI_TRANS_SESSIONLESS | flag,
             error) < 0)
+        return DPI_FAILURE;
+
+    // populate the value of transactionId if one was not supplied; OCI will
+    // have generated a random value which will be returned for use by
+    // subsequent calls
+    if (transactionId->length == 0) {
+        if (dpiOci__attrGet(transactionHandle, DPI_OCI_HTYPE_TRANS,
+                &ociXid, NULL, DPI_OCI_ATTR_XID, "get transactionId",
+                error) < 0)
+            return DPI_FAILURE;
+        memcpy(transactionId->value, ociXid->data, ociXid->gtrid_length);
+        transactionId->length = (uint32_t) ociXid->gtrid_length;
+    }
+
+    // perform round trip, unless the round trip has been deferred
+    if (!deferRoundTrip && dpiOci__ping(conn, error) < 0)
         return DPI_FAILURE;
 
     return DPI_SUCCESS;
@@ -1564,12 +1612,52 @@ static int dpiConn__startupDatabase(dpiConn *conn, const char *pfile,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn__suspendSessionlessTransactionCall() [INTERNAL]
+//   Suspend a sessionless transaction based on flag (default/postcall).
+//-----------------------------------------------------------------------------
+int dpiConn__suspendSessionlessTransaction(dpiConn *conn, uint32_t flag,
+        dpiError *error)
+{
+    void *transactionHandle;
+
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 0, error) < 0)
+        return DPI_FAILURE;
+
+    // associate a transaction handle with the connection if one is not already
+    // associated; this ensures that OCI throws the proper error (such as
+    // ORA-26202) instead of a vague error like "invalid handle"
+    if (dpiUtils__getTransactionHandle(conn, &transactionHandle, error))
+        return DPI_FAILURE;
+
+    return dpiOci__transDetach(conn, DPI_OCI_TRANS_SESSIONLESS | flag, error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_addRef() [PUBLIC]
 //   Add a reference to the connection.
 //-----------------------------------------------------------------------------
 int dpiConn_addRef(dpiConn *conn)
 {
     return dpiGen__addRef(conn, DPI_HTYPE_CONN, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_beginSessionlessTransaction() [PUBLIC]
+//   Begin a sessionless transaction.
+//-----------------------------------------------------------------------------
+int dpiConn_beginSessionlessTransaction(dpiConn *conn,
+        dpiSessionlessTransactionId *transactionId, uint32_t timeout,
+        int deferRoundTrip)
+{
+    dpiError error;
+    int status;
+
+    DPI_CHECK_PTR_NOT_NULL(conn, transactionId);
+    status = dpiConn__startSessionlessTransaction(conn, transactionId, timeout,
+            DPI_TPC_BEGIN_NEW, deferRoundTrip, &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -1801,30 +1889,6 @@ int dpiConn_create(const dpiContext *context, const char *userName,
     *conn = tempConn;
     dpiHandlePool__release(tempConn->env->errorHandles, &error.handle);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiConn_getSodaDb() [PUBLIC]
-//   Create a new SODA collection with the given name and metadata.
-//-----------------------------------------------------------------------------
-int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db)
-{
-    dpiError error;
-
-    if (dpiConn__check(conn, __func__, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 3,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiUtils__checkDatabaseVersion(conn, 18, 0, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiGen__allocate(DPI_HTYPE_SODA_DB, conn->env, (void**) db,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    dpiGen__setRefCount(conn, &error, 1);
-    (*db)->conn = conn;
-    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
 
@@ -2278,6 +2342,30 @@ int dpiConn_getServiceName(dpiConn *conn, const char **value,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_getSodaDb() [PUBLIC]
+//   Create a new SODA collection with the given name and metadata.
+//-----------------------------------------------------------------------------
+int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db)
+{
+    dpiError error;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 3,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkDatabaseVersion(conn, 18, 0, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiGen__allocate(DPI_HTYPE_SODA_DB, conn->env, (void**) db,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    dpiGen__setRefCount(conn, &error, 1);
+    (*db)->conn = conn;
+    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_getStmtCacheSize() [PUBLIC]
 //   Return the current size of the statement cache.
 //-----------------------------------------------------------------------------
@@ -2291,6 +2379,30 @@ int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize)
     DPI_CHECK_PTR_NOT_NULL(conn, cacheSize)
     status = dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX, cacheSize,
             NULL, DPI_OCI_ATTR_STMTCACHESIZE, "get stmt cache size", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_getTransactionInProgress() [PUBLIC]
+//   Returns whether or not a transaction is in progress. This can be used to
+// determine if a COMMIT is required or not.
+//----------------------------------------------------------------------------_
+int dpiConn_getTransactionInProgress(dpiConn *conn, int *value)
+{
+    dpiError error;
+    uint32_t temp;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value);
+
+    status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+            &temp, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
+            "get Transaction in progress", &error);
+    *value = (temp == 0) ? 0: 1;
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
@@ -2383,42 +2495,6 @@ int dpiConn_newJsonQueue(dpiConn *conn, const char *name, uint32_t nameLength,
 
 
 //-----------------------------------------------------------------------------
-// dpiConn_newTempLob() [PUBLIC]
-//   Create a new temporary LOB and return it.
-//-----------------------------------------------------------------------------
-int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob)
-{
-    const dpiOracleType *type;
-    dpiLob *tempLob;
-    dpiError error;
-
-    if (dpiConn__check(conn, __func__, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(conn, lob)
-    switch (lobType) {
-        case DPI_ORACLE_TYPE_CLOB:
-        case DPI_ORACLE_TYPE_BLOB:
-        case DPI_ORACLE_TYPE_NCLOB:
-            type = dpiOracleType__getFromNum(lobType, &error);
-            break;
-        default:
-            dpiError__set(&error, "check lob type",
-                    DPI_ERR_INVALID_ORACLE_TYPE, lobType);
-            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    }
-    if (dpiLob__allocate(conn, type, &tempLob, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiOci__lobCreateTemporary(tempLob, &error) < 0) {
-        dpiLob__free(tempLob, &error);
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    }
-
-    *lob = tempLob;
-    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiConn_newMsgProps() [PUBLIC]
 //   Create a new message properties object and return it.
 //-----------------------------------------------------------------------------
@@ -2452,6 +2528,42 @@ int dpiConn_newQueue(dpiConn *conn, const char *name, uint32_t nameLength,
     status = dpiQueue__allocate(conn, name, nameLength, payloadType, queue,
             0, &error);
     return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_newTempLob() [PUBLIC]
+//   Create a new temporary LOB and return it.
+//-----------------------------------------------------------------------------
+int dpiConn_newTempLob(dpiConn *conn, dpiOracleTypeNum lobType, dpiLob **lob)
+{
+    const dpiOracleType *type;
+    dpiLob *tempLob;
+    dpiError error;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, lob)
+    switch (lobType) {
+        case DPI_ORACLE_TYPE_CLOB:
+        case DPI_ORACLE_TYPE_BLOB:
+        case DPI_ORACLE_TYPE_NCLOB:
+            type = dpiOracleType__getFromNum(lobType, &error);
+            break;
+        default:
+            dpiError__set(&error, "check lob type",
+                    DPI_ERR_INVALID_ORACLE_TYPE, lobType);
+            return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+    if (dpiLob__allocate(conn, type, &tempLob, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiOci__lobCreateTemporary(tempLob, &error) < 0) {
+        dpiLob__free(tempLob, &error);
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    }
+
+    *lob = tempLob;
+    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
 }
 
 
@@ -2751,25 +2863,19 @@ int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize)
 
 
 //-----------------------------------------------------------------------------
-// dpiConn_getTransactionInProgress() [PUBLIC]
-//   Returns whether or not a transaction is in progress. This can be used to
-// determine if a COMMIT is required or not.
-//----------------------------------------------------------------------------_
-int dpiConn_getTransactionInProgress(dpiConn *conn, int *value)
+// dpiConn_resumeSessionlessTransaction() [PUBLIC]
+//   Resume a sessionless transaction
+//-----------------------------------------------------------------------------
+int dpiConn_resumeSessionlessTransaction(dpiConn *conn,
+        dpiSessionlessTransactionId *transactionId, uint32_t timeout,
+        int deferRoundTrip)
 {
     dpiError error;
-    uint32_t temp;
     int status;
 
-    // validate parameters
-    if (dpiConn__check(conn, __func__, &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(conn, value);
-
-    status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
-            &temp, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
-            "get Transaction in progress", &error);
-    *value = (temp == 0) ? 0: 1;
+    DPI_CHECK_PTR_NOT_NULL(conn, transactionId);
+    status = dpiConn__startSessionlessTransaction(conn, transactionId, timeout,
+            DPI_TPC_BEGIN_RESUME, deferRoundTrip, &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
@@ -2855,6 +2961,23 @@ int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
 
     *subscr = tempSubscr;
     return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_suspendSessionlessTransaction() [PUBLIC]
+//   Suspend a sessionless transaction
+//-----------------------------------------------------------------------------
+int dpiConn_suspendSessionlessTransaction(dpiConn *conn)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    status = dpiConn__suspendSessionlessTransaction(conn,
+            DPI_OCI_SUSPEND_DEFAULT, &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 

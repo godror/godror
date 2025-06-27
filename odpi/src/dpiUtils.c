@@ -583,3 +583,58 @@ int dpiUtils__setAccessTokenAttributes(void *handle,
 
     return DPI_SUCCESS;
 }
+
+
+//-----------------------------------------------------------------------------
+// dpiUtils__getTransactionHandle() [INTERNAL]
+//   Returns a transaction handle that may be manipulated, if possible. A new
+// transaction handle is allocated if needed but only if there is no
+// transaction handle already associated with the service context. Note that
+// the connection retains a transaction handle for its lifetime, once
+// allocated, but a separate transaction handle may be associated by OCI due to
+// certain server operations. If OCI has already associated a transaction
+// handle to the service context, NULL is returned and no attempt is made to
+// manipulate that transaction.
+//-----------------------------------------------------------------------------
+int dpiUtils__getTransactionHandle(dpiConn *conn, void **transactionHandle,
+        dpiError *error)
+{
+    void *currentTransactionHandle;
+
+    // check if a transaction handle is already associated with the connection
+    if (dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            &currentTransactionHandle, NULL, DPI_OCI_ATTR_TRANS,
+            "get associated transaction handle", error) < 0)
+        return DPI_FAILURE;
+
+    // if no transaction handle is set on the service context, then it is
+    // safe to proceed with setting our own
+    if (!currentTransactionHandle) {
+
+        // allocate a new transaction handle, if needed
+        if (!conn->transactionHandle) {
+            if (dpiOci__handleAlloc(conn->env->handle,
+                    &conn->transactionHandle, DPI_OCI_HTYPE_TRANS,
+                    "allocate a transaction handle", error) < 0)
+                return DPI_FAILURE;
+        }
+
+        // associate the transaction with the connection
+        if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                conn->transactionHandle, 0, DPI_OCI_ATTR_TRANS,
+                "associate transaction", error) < 0)
+            return DPI_FAILURE;
+
+    }
+
+    // if no transaction handle was set or it matches our own transaction
+    // handle, then it can be returned; otherwise, NULL is returned
+    if (!currentTransactionHandle ||
+            currentTransactionHandle == conn->transactionHandle) {
+        *transactionHandle = conn->transactionHandle;
+    } else {
+        *transactionHandle = NULL;
+    }
+
+    return DPI_SUCCESS;
+}
