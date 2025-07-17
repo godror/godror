@@ -70,7 +70,7 @@ extern "C" {
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   5
 #define DPI_MINOR_VERSION   6
-#define DPI_PATCH_LEVEL     0
+#define DPI_PATCH_LEVEL     1
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x

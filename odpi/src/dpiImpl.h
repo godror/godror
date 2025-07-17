@@ -1758,6 +1758,7 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
         uint32_t connectStringLength, dpiPool *pool,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error);
+int dpiConn__clearTransaction(dpiConn *conn, dpiError *error);
 void dpiConn__free(dpiConn *conn, dpiError *error);
 int dpiConn__getJsonTDO(dpiConn *conn, dpiError *error);
 int dpiConn__getRawTDO(dpiConn *conn, dpiError *error);
