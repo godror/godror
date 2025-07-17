@@ -150,6 +150,32 @@ func setUp() func() {
 	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
 	defer cancel()
 
+	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
+		return func() {}
+	}
+	shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
+	err = testDb.PingContext(shortCtx)
+	shortCancel()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("#", P.String())
+	fmt.Println("Version:", godror.Version)
+	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
+		if clientVersion, err = cx.ClientVersion(); err != nil {
+			return err
+		}
+		fmt.Println("Client:", clientVersion.String(), "Timezone:", time.Local.String())
+		if serverVersion, err = cx.ServerVersion(); err != nil {
+			return err
+		}
+		dbTZ := cx.Timezone()
+		fmt.Println("Server:", serverVersion.String(), "Timezone:", dbTZ.String())
+		return nil
+	}); err != nil {
+		panic(fmt.Errorf("get version with %#v: %w", P, err))
+	}
+
 	if eSysDSN != "" {
 		PSystem := P
 		if ps, err := dsn.Parse(eSysDSN); err != nil {
@@ -178,25 +204,6 @@ func setUp() func() {
 				fmt.Printf("WARN: set up system db: %+v\n", err)
 			}
 		}
-	}
-	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
-		return func() {}
-	}
-	fmt.Println("#", P.String())
-	fmt.Println("Version:", godror.Version)
-	if err = godror.Raw(ctx, testDb, func(cx godror.Conn) error {
-		if clientVersion, err = cx.ClientVersion(); err != nil {
-			return err
-		}
-		fmt.Println("Client:", clientVersion.String(), "Timezone:", time.Local.String())
-		if serverVersion, err = cx.ServerVersion(); err != nil {
-			return err
-		}
-		dbTZ := cx.Timezone()
-		fmt.Println("Server:", serverVersion.String(), "Timezone:", dbTZ.String())
-		return nil
-	}); err != nil {
-		panic(fmt.Errorf("get version with %#v: %w", P, err))
 	}
 
 	go func() {
