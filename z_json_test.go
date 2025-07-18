@@ -11,13 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // Batch Insert the JSON Formatted string without extended types.
@@ -32,7 +33,6 @@ import (
 // The float values are received as strings because DB native type NUMBER
 // is converted to godror.Number.
 func TestReadWriteJSONString(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJSONString"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -76,13 +76,12 @@ func TestReadWriteJSONString(t *testing.T) {
 	indocs := make([]godror.JSONString, num)
 	wantdocs := make([]godror.JSONString, num)
 	var sb strings.Builder
-	var rs string // random string
 	for i := range ids {
 		// build input JSONString
 		sb.WriteString(injs)
 		sb.WriteString(",\"RandomString\":")
 		sb.WriteString("\"")
-		rs = getRandomString()
+		rs := getRandomString()
 		sb.WriteString(rs)
 		sb.WriteString("\"")
 		sb.WriteString("}}")
@@ -111,12 +110,13 @@ func TestReadWriteJSONString(t *testing.T) {
 			continue
 		}
 		var rows *sql.Rows
-		rows, err = conn.QueryContext(ctx,
-			"SELECT id, jdoc FROM "+tbl+" ") //nolint:gas
-		if err != nil {
+		if rows, err = conn.QueryContext(ctx,
+			"SELECT id, jdoc FROM "+tbl, //nolint:gas
+		); err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
+		defer rows.Close()
 		var id int
 		var jsondoc godror.JSON
 		for rows.Next() {
@@ -130,12 +130,12 @@ func TestReadWriteJSONString(t *testing.T) {
 			if got == "" {
 				t.Errorf("%d. %v", id, err)
 			} else {
-				eq, err := isEqualJSONString(got, wantdocs[id].Value)
+				d, err := diffJSONString(got, wantdocs[id].Value)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
-				if !eq {
-					t.Errorf("%d. got %q for JDOC, wanted %q", id, got, wantdocs[id].Value)
+				if d != "" {
+					t.Errorf("%d. got %q for JDOC, wanted %q:\n%s", id, got, wantdocs[id].Value, d)
 				}
 			}
 		}
@@ -144,24 +144,24 @@ func TestReadWriteJSONString(t *testing.T) {
 }
 
 // Check if two JSON strings are equal ignoring the order
-func isEqualJSONString(js1, js2 string) (bool, error) {
+func diffJSONString(js1, js2 string) (string, error) {
 	var js1type interface{}
 	var js2type interface{}
 
 	var err error
 	err = json.Unmarshal([]byte(js1), &js1type)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	err = json.Unmarshal([]byte(js2), &js2type)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return reflect.DeepEqual(js1type, js2type), nil
+	return cmp.Diff(js1type, js2type), nil
 
 }
 
-var birthdate, _ = time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
+var birthdate = time.Date(1990, 2, 25, 11, 6, 39, 0, time.Local)
 
 // It simulates batch insert of JSON Column and single row insert.
 // Go map[string]interface{} type is inserted for JSON Column and
@@ -180,7 +180,6 @@ var birthdate, _ = time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1990")
 // Application can always convert to required types
 // using conversions after fetching from DB.
 func TestReadWriteJSONMap(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonMap"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -287,9 +286,8 @@ func TestReadWriteJSONMap(t *testing.T) {
 				if gotmap, ok = v.(map[string]interface{}); !ok {
 					t.Errorf("%d. %T is not JSONObject ", id, v)
 				}
-				eq := reflect.DeepEqual(jmap, gotmap)
-				if !eq {
-					t.Errorf("Got %+v, wanted %+v", gotmap, jmap)
+				if d := cmp.Diff(jmap, gotmap); d != "" {
+					t.Fatalf("got %+v, wanted %+v:\n%s", gotmap, jmap, d)
 				}
 			}
 
@@ -301,7 +299,6 @@ func TestReadWriteJSONMap(t *testing.T) {
 // It inserts Go Array []interface{} and reads the JSON Document from DB.
 // converts JSON Document into []interface{} and compares with source
 func TestReadWriteJSONArray(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonArray"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -406,9 +403,8 @@ func TestReadWriteJSONArray(t *testing.T) {
 				if gotarr, ok = v.([]interface{}); !ok {
 					t.Errorf("%d. %T is not JSONArray ", id, v)
 				}
-				eq := reflect.DeepEqual(tC.JDOC, gotarr)
-				if !eq {
-					t.Errorf("Got %+v, wanted %+v", gotarr, tC.JDOC)
+				if d := cmp.Diff(tC.JDOC, gotarr); d != "" {
+					t.Errorf("Got %+v, wanted %+v:\n%s", gotarr, tC.JDOC, d)
 				}
 			}
 		}
@@ -421,7 +417,6 @@ func TestReadWriteJSONArray(t *testing.T) {
 // It then fetches field, birthdates of each person and is
 // validated with what is inserted.
 func TestReadJSONScalar(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadJsonScalar"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -554,7 +549,6 @@ func TestReadJSONScalar(t *testing.T) {
 // We again read the BirthDate, LastName from DB and verify its matching with
 // what is written.
 func TestUpdateJSONScalar(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("UpdateJSONObject"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -586,7 +580,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	newBirthDate, _ := time.Parse(time.UnixDate, "Wed Feb 25 11:06:39 PST 1989")
+	newBirthDate := birthdate.AddDate(-1, 0, 0)
 	jsarray := []interface{}{
 		map[string]interface{}{
 			"person": map[string]interface{}{
@@ -662,46 +656,51 @@ func TestUpdateJSONScalar(t *testing.T) {
 				t.Errorf("%d. %v", id, err)
 			}
 
-			// Verify updated BirthDate and LastName by reading DB
-			// tbd replace this with queryRowContext
-			qry = "SELECT c.jdoc.person.BirthDate, c.jdoc.person.LastName  FROM " + tbl + " c where id =:1"
-			row1, err := conn.QueryContext(ctx, qry, tN*2)
-			if err != nil {
-				t.Errorf("%d. %v", id, err)
-			}
-			var birthDateJSON godror.JSON
-			var lastNameJSON godror.JSON
-			var gotDOB time.Time
-			var gotLastName string
-			for row1.Next() {
-				if err = row1.Scan(&birthDateJSON, &lastNameJSON); err != nil {
-					t.Errorf("%d. %v", id, err)
-				}
-				// Verify BirthDate
-				birthDateScalar, err := birthDateJSON.GetValue(godror.JSONOptDefault)
+			if err = func() error {
+				// Verify updated BirthDate and LastName by reading DB
+				// tbd replace this with queryRowContext
+				qry := "SELECT c.jdoc.person.BirthDate, c.jdoc.person.LastName  FROM " + tbl + " c where id =:1"
+				row1, err := conn.QueryContext(ctx, qry, tN*2)
 				if err != nil {
-					t.Errorf("%d. %v", id, err)
+					return fmt.Errorf("%d. %v", id, err)
 				}
-				if gotDOB, ok = birthDateScalar.(time.Time); !ok {
-					t.Errorf("%d. %T is not TimeStamp ", id, birthDateScalar)
-				}
-				if gotDOB != newBirthDate {
-					t.Errorf("Got %+v, wanted %+v", gotDOB, newBirthDate)
-				}
+				defer row1.Close()
+				var birthDateJSON godror.JSON
+				var lastNameJSON godror.JSON
+				var gotDOB time.Time
+				var gotLastName string
+				for row1.Next() {
+					if err = row1.Scan(&birthDateJSON, &lastNameJSON); err != nil {
+						return fmt.Errorf("%d. %v", id, err)
+					}
+					// Verify BirthDate
+					birthDateScalar, err := birthDateJSON.GetValue(godror.JSONOptDefault)
+					if err != nil {
+						return fmt.Errorf("%d. %v", id, err)
+					}
+					if gotDOB, ok = birthDateScalar.(time.Time); !ok {
+						return fmt.Errorf("%d. %T is not TimeStamp ", id, birthDateScalar)
+					}
+					if gotDOB != newBirthDate {
+						return fmt.Errorf("Got %+v, wanted %+v", gotDOB, newBirthDate)
+					}
 
-				// Verify LastName
-				lastNameScalar, err := lastNameJSON.GetValue(godror.JSONOptDefault)
-				if err != nil {
-					t.Errorf("%d. %v", id, err)
+					// Verify LastName
+					lastNameScalar, err := lastNameJSON.GetValue(godror.JSONOptDefault)
+					if err != nil {
+						return fmt.Errorf("%d. %v", id, err)
+					}
+					if gotLastName, ok = lastNameScalar.(string); !ok {
+						return fmt.Errorf("%d. %T is not String ", id, lastNameScalar)
+					}
+					if gotLastName != wantLastName {
+						return fmt.Errorf("Got %+v, wanted %+v", gotLastName, wantLastName)
+					}
 				}
-				if gotLastName, ok = lastNameScalar.(string); !ok {
-					t.Errorf("%d. %T is not String ", id, lastNameScalar)
-				}
-				if gotLastName != wantLastName {
-					t.Errorf("Got %+v, wanted %+v", gotLastName, wantLastName)
-				}
+				return row1.Close()
+			}(); err != nil {
+				t.Error(err)
 			}
-			row1.Close()
 		}
 	}
 }
@@ -711,7 +710,6 @@ func TestUpdateJSONScalar(t *testing.T) {
 // For each unique go-type in the map, their corresponding JSON types,
 // as stored in the DB, are fetched and compared with their expected values.
 func TestJSONStorageTypes(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
 		30*time.Second)
 	defer cancel()
@@ -849,7 +847,6 @@ func errIs(err error, code int, msg string) bool {
 }
 
 func TestJSONIssue371(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
 		30*time.Second)
 	defer cancel()

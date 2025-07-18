@@ -8,7 +8,7 @@ require (
 	github.com/UNO-SOFT/zlog v0.8.1
 	github.com/go-logfmt/logfmt v0.6.0
 	github.com/godror/knownpb v0.3.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/oklog/ulid/v2 v2.0.2
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
 	golang.org/x/sync v0.14.0
