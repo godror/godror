@@ -72,7 +72,7 @@ func (r *rows) Close() error {
 		return nil
 	}
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
-	r.columns, r.vars, r.data, r.statement, r.nextRs = nil, nil, nil, nil, nil
+	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
 	r.fromData = false
 	for _, v := range vars[:cap(vars)] {
@@ -377,6 +377,9 @@ func (r *rows) Next(dest []driver.Value) error {
 	nullDate := r.statement.NullDate()
 	nass := r.statement.NumberAsString()
 	naf := !nass && r.statement.NumberAsFloat64()
+	jsonAsString := r.statement.JSONAsString()
+	jsonStringOption := r.statement.JSONStringOption()
+	// fmt.Printf("%p.%[2]p stmtOptions=%+[2]v\n", r.statement, &r.statement.stmtOptions)
 
 	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
 	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
@@ -665,7 +668,17 @@ func (r *rows) Next(dest []driver.Value) error {
 			switch col.NativeType {
 			case C.DPI_NATIVE_TYPE_JSON:
 				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
-				dest[i] = JSON{dpiJson: dj}
+				j := JSON{dpiJson: dj, stringOption: jsonStringOption}
+				if jsonAsString {
+					var err error
+					if dest[i], err = j.StringWithOption(
+						jsonStringOption,
+					); err != nil {
+						return err
+					}
+				} else {
+					dest[i] = j
+				}
 			default:
 			}
 
@@ -807,7 +820,10 @@ func (r *rows) NextResultSet() error {
 		}
 		return fmt.Errorf("getImplicitResult: %w", io.EOF)
 	}
-	st := &statement{conn: r.conn, dpiStmt: r.nextRs}
+	st := &statement{
+		conn: r.conn, dpiStmt: r.nextRs,
+		stmtOptions: r.statement.stmtOptions,
+	}
 
 	var n C.uint32_t
 	logger := getLogger(context.TODO())

@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- JSON.StringWithOption allows to convert godror.JSON to string with options (such as JSONoptNumberAsString)
+- JSONAsString and JSONStringOption query/exec options to handle JSON object -> string conversion
 
 ## [0.48.1]
 ### Fixed

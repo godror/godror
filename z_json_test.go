@@ -8,6 +8,7 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,13 +106,16 @@ func TestReadWriteJSONString(t *testing.T) {
 	}{
 		{JDOC: indocs, ID: ids},
 	} {
-		if _, err = stmt.ExecContext(ctx, tC.ID, tC.JDOC); err != nil {
+		if _, err = stmt.ExecContext(ctx,
+			tC.ID, tC.JDOC,
+		); err != nil {
 			t.Errorf("%d/1. (%v): %v", tN, tC.JDOC, err)
 			continue
 		}
 		var rows *sql.Rows
 		if rows, err = conn.QueryContext(ctx,
 			"SELECT id, jdoc FROM "+tbl, //nolint:gas
+			godror.JSONStringOption(godror.JSONOptNumberAsString),
 		); err != nil {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
@@ -125,7 +129,7 @@ func TestReadWriteJSONString(t *testing.T) {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			t.Logf("%d. JSON Document read %q: ", id, jsondoc)
+			t.Logf("%d. JSON Document %#[2]v read %[2]q: ", id, jsondoc)
 			got := jsondoc.String()
 			if got == "" {
 				t.Errorf("%d. %v", id, err)
@@ -136,6 +140,7 @@ func TestReadWriteJSONString(t *testing.T) {
 				}
 				if d != "" {
 					t.Errorf("%d. got %q for JDOC, wanted %q:\n%s", id, got, wantdocs[id].Value, d)
+					break
 				}
 			}
 		}
@@ -898,5 +903,136 @@ func TestJSONIssue371(t *testing.T) {
 		// type assert to verify the type returned
 		gotmap, _ := v.(map[string]interface{})
 		t.Log("The JSON Map object is:", gotmap)
+	}
+}
+
+// jsonDataType mimics what GORM.JSON does
+type jsonDataType json.RawMessage
+
+func (j jsonDataType) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return nil, nil
+	}
+	return string(j), nil
+}
+
+func (j *jsonDataType) Scan(value interface{}) error {
+	if value == nil {
+		*j = jsonDataType("null")
+		return nil
+	}
+	var bytes []byte
+	if s, ok := value.(fmt.Stringer); ok {
+		bytes = []byte(s.String())
+	} else {
+		switch v := value.(type) {
+		case []byte:
+			if len(v) > 0 {
+				bytes = make([]byte, len(v))
+				copy(bytes, v)
+			}
+		case string:
+			bytes = []byte(v)
+		default:
+			return fmt.Errorf("Failed to unmarshal JSONB value: %+v", value)
+		}
+	}
+
+	result := json.RawMessage(bytes)
+	*j = jsonDataType(result)
+	return nil
+}
+
+// TestReadWriteJSONRawMessage - Inserts json.RawMessage datatype and reads the JSON Document from DB.
+// Example Setup:
+// CREATE USER IF NOT EXISTS demo IDENTIFIED BY demo;
+// ALTER USER demo quota unlimited ON system;
+// GRANT ALL PRIVILEGES TO demo;
+// CREATE TABLESPACE demo_ts DATAFILE 'demo.dat' SIZE 10M AUTOEXTEND ON NEXT 10M MAXSIZE 500M online;
+// ALTER USER demo DEFAULT TABLESPACE demo_ts;
+// ALTER USER demo quota unlimited on demo_ts;
+
+// Example cleanup:
+// DROP USER demo;
+// ALTER DATABASE DATAFILE 'demo.dat' OFFLINE DROP;
+// DROP TABLESPACE demo_ts INCLUDING CONTENTS and DATAFILES;
+func TestReadWriteJSONRawMessage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonRawMessage"), 30*time.Second)
+	defer cancel()
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_personcollection_jsonraw" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON, CONSTRAINT ID_PK PRIMARY KEY (id))", //nolint:gas
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf(" JSON Document table  %q: ", tbl)
+
+	defer testDb.Exec(
+		"DROP TABLE " + tbl, //nolint:gas
+	)
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, jdoc) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	defer stmt.Close()
+
+	testData := `{"string":"Hello World"}`
+	rawMessage := jsonDataType(testData)
+
+	if _, err = stmt.ExecContext(ctx, 1, rawMessage); err != nil {
+		t.Errorf("%d/1. (%v): %v", 1, rawMessage, err)
+		return
+	}
+
+	rows, err := conn.QueryContext(ctx,
+		"SELECT * FROM "+tbl+" c ",
+		godror.JSONAsString(),
+	) //nolint:gas
+	if err != nil {
+		t.Errorf("%d/3. %v", 1, err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Errorf("Failed to get columns: %v", err)
+	}
+	values := make([]interface{}, len(cols))
+	valuePtrs := make([]interface{}, len(cols))
+	for i := range cols {
+		valuePtrs[i] = &values[i]
+	}
+	for rows.Next() {
+		if err := rows.Scan(valuePtrs...); err != nil {
+			t.Errorf("Scan failed: %v", err)
+		}
+		for i, col := range cols {
+			// fmt.Printf("%s: %v\t", col, values[i])
+			switch i {
+			case 0: // ID
+				if values[0] != int64(1) {
+					t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted: %[3]v with type: %[3]T", col, values[0], int64(1))
+				}
+			case 1: // jdoc
+				if values[1] != testData {
+					t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted %[3]v with type: %[3]T", col, values[1], testData)
+				}
+			default:
+				t.Errorf("Unsupported column index:%d", i)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Errorf("Row iteration error: %v", err)
 	}
 }

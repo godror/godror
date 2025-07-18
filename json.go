@@ -232,6 +232,11 @@ import (
 	"unsafe"
 )
 
+var (
+	ErrInvalidJSON = errors.New("invalid JSON Document")
+	ErrInvalidType = errors.New("invalid JSON Scalar Type")
+)
+
 // JSONOption provides an option to retrieve scalar values
 // from JSON tree.
 //
@@ -240,18 +245,29 @@ import (
 // DPI_JSON_OPT_DEAFULT - returns value stored as NUMBER in DB as float64.
 type JSONOption uint8
 
-var ErrInvalidJSON = errors.New("invalid JSON Document")
-var ErrInvalidType = errors.New("invalid JSON Scalar Type")
-
 const (
-	JSONOptDefault        = JSONOption(C.DPI_JSON_OPT_DEFAULT)
-	JSONOptNumberAsString = JSONOption(C.DPI_JSON_OPT_NUMBER_AS_STRING)
+	JSONOptDefault        = JSONOption(C.DPI_JSON_OPT_DEFAULT)          // 0x00
+	JSONOptNumberAsString = JSONOption(C.DPI_JSON_OPT_NUMBER_AS_STRING) // 0x01
 )
 
 // JSON holds the JSON data to/from Oracle.
 // It is like a root node in JSON tree.
 type JSON struct {
-	dpiJson *C.dpiJson
+	dpiJson      *C.dpiJson
+	stringOption JSONOption
+}
+
+func (j JSON) StringWithOption(opts JSONOption) (string, error) {
+	jScalar, err := j.GetJSONScalar(opts)
+	if err != nil {
+		return "", err
+	} else if jScalarVal, err := jScalar.GetValue(); err != nil {
+		return "", err
+	} else if data, err := json.Marshal(jScalarVal); err != nil {
+		return "", err
+	} else {
+		return string(data), nil
+	}
 }
 
 // Get retrieves the data stored in JSON based on option, opts.
@@ -335,15 +351,9 @@ func (j JSON) String() string {
 	// with direct call to get JSON string from JSON.
 	// Returning empty string for error case, fix?
 
-	jScalar, err := j.GetJSONScalar(JSONOptNumberAsString)
-	if err != nil {
-		// later
-	} else if jScalarVal, err2 := jScalar.GetValue(); err2 != nil {
-		err = err2
-	} else if data, err2 := json.Marshal(jScalarVal); err2 != nil {
-		err = err2
-	} else {
-		return string(data)
+	s, err := j.StringWithOption(j.stringOption)
+	if err == nil {
+		return s
 	}
 	if logger := getLogger(context.TODO()); logger != nil {
 		logger.Error("JSON.String", "error", err)

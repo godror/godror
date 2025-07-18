@@ -61,6 +61,7 @@ type stmtOptions struct {
 	arraySize          int
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
+	jsonStringOption   JSONOption
 	plSQLArrays        bool
 	lobAsReader        bool
 	nullDateAsZeroTime bool
@@ -70,6 +71,7 @@ type stmtOptions struct {
 	partialBatch       bool
 	warningAsError     bool
 	noRetry            bool
+	jsonAsString       bool
 }
 
 type boolString struct {
@@ -142,6 +144,11 @@ func (o stmtOptions) DeleteFromCache() bool { return o.deleteFromCache }
 func (o stmtOptions) NumberAsString() bool  { return o.numberAsString }
 func (o stmtOptions) NumberAsFloat64() bool { return o.numberAsFloat64 }
 func (o stmtOptions) PartialBatch() bool    { return o.partialBatch }
+
+// JSONAsString is an option to return JSON columns as string, not godror.JSON.
+func (o stmtOptions) JSONAsString() bool { return o.jsonAsString }
+
+func (o stmtOptions) JSONStringOption() JSONOption { return o.jsonStringOption }
 
 // Option holds statement options.
 //
@@ -302,6 +309,14 @@ func WarningAsError() Option { return func(o *stmtOptions) { o.warningAsError = 
 // Do not re-execute statement if ORA-04061, ORA-04065 or ORA-04068 occurs
 func NoRetry() Option { return func(o *stmtOptions) { o.noRetry = true } }
 
+// JSONStringOption allows setting JSONoptNumberAsString for JSON.String()
+func JSONStringOption(opts JSONOption) Option {
+	return func(o *stmtOptions) { o.jsonStringOption = opts }
+}
+
+// JSONAsString is an option to return JSON columns as string, not godror.JSON.
+func JSONAsString() Option { return func(o *stmtOptions) { o.jsonAsString = true } }
+
 const minChunkSize = 1 << 16
 
 var _ driver.Stmt = (*statement)(nil)
@@ -427,6 +442,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("ExecContext", "stmt", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
+
+	// fmt.Printf("%p.ExecContext args=%d stmtOptions=%p\n", st, len(args), &st.stmtOptions)
 
 	st.Lock()
 	defer st.Unlock()
@@ -661,6 +678,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return nil, err
 	}
 	st.ctx = ctx
+
+	// fmt.Printf("%p.queryContextNotLocked stmtOptions=%p\n", st, &st.stmtOptions)
 
 	logger := st.conn.getLogger(ctx)
 	switch st.query {
@@ -2623,7 +2642,8 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 		*row = nil
 		return nil
 	}
-	st2 := &statement{conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
+	st2 := &statement{
+		conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
 		stmtOptions: st.stmtOptions, // inherit parent statement's options
 	}
 
@@ -3685,9 +3705,11 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	if nv == nil {
 		return nil
 	}
+	// fmt.Printf("CheckNamedValue(%p.%p)\n", st, &st.stmtOptions)
 	if apply, ok := nv.Value.(Option); ok {
 		if apply != nil {
 			apply(&st.stmtOptions)
+			// fmt.Printf("CheckNamedValue(%#v): %#v\n", nv, st.stmtOptions)
 		}
 		return driver.ErrRemoveArgument
 	}
@@ -3730,6 +3752,7 @@ func (st *statement) openRows(ctx context.Context, colCount int) (*rows, error) 
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
 	}
+	// fmt.Printf("openRows %p.%[2]p.stOptions=%#[2]v\n", r.statement, &r.statement.stmtOptions)
 
 	var info C.dpiQueryInfo
 	var ti C.dpiDataTypeInfo
