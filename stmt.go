@@ -926,7 +926,16 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 			// deref in rArgs, but NOT value!
 			rArgs[i] = rv.Elem()
 		}
-		if _, isByteSlice := value.([]byte); !isByteSlice {
+		// https://github.com/godror/godror/issues/378
+		var isByteSlice bool
+		{
+			t := rv.Type()
+			for t.Kind() == reflect.Ptr {
+				t = t.Elem()
+			}
+			isByteSlice = t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8
+		}
+		if !isByteSlice {
 			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice
 			if !st.PlSQLArrays() && st.isSlice[i] {
 				n := rArgs[i].Len()
