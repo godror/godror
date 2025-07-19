@@ -171,3 +171,10 @@ So
   * `scott@tcps://salesserver1:1521/sales.us.example.com?ssl_server_cert_dn="cn=sales,cn=Oracle Context Server,dc=us,dc=example,dc=com"&sdu=8128&connect_timeout=60`
 
 works, too.
+
+
+## OS Authentication
+You can connect like `/ as SYSDBA` with
+
+  * `sql.Open("godror", "oracle://?sysdba=1")`
+  * `sql.OpenDB(godror.NewConnector(godror.ConnectionParams{ConnParams{AdminRole: godror.SysDBA}))`
