@@ -5,11 +5,50 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.48.1]
+### Fixed
+- Fixed a nasty silent cgo (usage) bug for Go1.24 that borked object NUMBER retrieval - see https://github.com/godror/godror/issues/365
+
+## [0.48.0]
+### Added
+- Vector and sparse vector support
+
+## [0.47.1]
+### Fixed
+- Read NCLOB: must count in UTF-16, and don't split surrogates (ORA-22831)
+- Use CallTimeout as context.WithTimeout
+
+## [0.47.0]
+### Changed
+- ConnectionParams IsSysDBA, IsSysOper, IsSysASM -> AdminRole
+
+## [0.46.2]
+### Changed
+- Use ODPI-5.5.0
+
+## [0.46.0]
+### Changed
+- dsn.StandaloneConnection, dsn.Heterogeneous and dsn.ExternalAuth became sql.NullBool to be able to differentiate set and not set.
+- Use ODPI-v5.4.1, fixing SIGSEGV on standalone connection with external auth.
+
+## [v0.45.2]
+### Added
+- NoRetry option to disable re-execution of a statement on ORA-04061, ORA-04065 or ORA-04068
+- WarningAsError option to return ORA-24344 as an error instead of skipping it
+- SetAttribute that sidesteps ORA-21602
+
+### Changed
+- Make CLOB written sizem mismatch only a warning.
+
+## [v0.45.0]
 ### Added
 - Add cloexec subpackage for setting the connections to FD_CLOEXEC.
+- Export DPI_NATIVE_TYPE_* constants for Data.NativeType comparisons.
 
 ### Changed
 - Require Go 1.20 (drop support for Go 1.19)
+- ODPI-C v5.4.0
 
 ## [v0.44.0]
 ### Added
