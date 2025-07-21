@@ -1,4 +1,4 @@
-// Copyright 2019, 2023 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -42,13 +42,16 @@ var DefaultDeqOptions = DeqOptions{
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
-	PayloadObjectType *ObjectType
-	conn              *conn
-	dpiQueue          *C.dpiQueue
-	name              string
-	props             []*C.dpiMsgProps
-	mu                sync.Mutex
-	connIsOwned       bool
+	PayloadObjectType              *ObjectType
+	conn                           *conn
+	dpiQueue                       *C.dpiQueue
+	name                           string
+	defDeqOpts                     DeqOptions
+	defEnqOpts                     EnqOptions
+	props                          []*C.dpiMsgProps
+	mu                             sync.Mutex
+	connIsOwned                    bool
+	deqOptsTainted, enqOptsTainted bool
 }
 
 type queueOption interface{ qOption() }
@@ -139,6 +142,8 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		Q.Close()
 		return nil, err
 	}
+	Q.defEnqOpts = enqOpts
+	Q.defDeqOpts = deqOpts
 	return &Q, nil
 }
 
@@ -207,11 +212,32 @@ func (Q *Queue) DeqOptions() (DeqOptions, error) {
 // Dequeues messages into the given slice.
 // Returns the number of messages filled in the given slice.
 func (Q *Queue) Dequeue(messages []Message) (int, error) {
+	return Q.DequeueWithOptions(messages, nil)
+}
+
+// DequeueWithOptions messages into the given slice using the given (the Queue-default if nil) options.
+// Returns the number of messages filled in the given slice.
+func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	Q.mu.Lock()
 	defer Q.mu.Unlock()
+	if opts != nil {
+		Q.deqOptsTainted = true
+	}
+	if Q.deqOptsTainted {
+		D := Q.defDeqOpts
+		if opts == nil {
+			Q.deqOptsTainted = false
+		} else {
+			D = *opts
+		}
+		if err := Q.SetDeqOptions(D); err != nil {
+			return 0, err
+		}
+	}
+
 	var props []*C.dpiMsgProps
 	if cap(Q.props) >= len(messages) {
 		props = Q.props[:len(messages)]
@@ -299,11 +325,38 @@ func (Q *Queue) start() error {
 // Ensure that this function is not run in parallel, use standalone connections or connections from different pools, or make multiple calls to Queue.enqOne() instead.
 // The function Queue.Dequeue() call is not affected.
 func (Q *Queue) Enqueue(messages []Message) error {
+	return Q.EnqueueWithOptions(messages, nil)
+}
+
+// EnqueueWithOptions all the messages given, using the given options (the Queue-default if nil).
+//
+// WARNING: calling this function in parallel on different connections acquired from the same pool may fail due to Oracle bug 29928074.
+// Ensure that this function is not run in parallel, use standalone connections or connections from different pools, or make multiple calls to Queue.enqOne() instead.
+// The function Queue.Dequeue() call is not affected.
+func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	Q.mu.Lock()
 	defer Q.mu.Unlock()
+	if opts != nil {
+		Q.enqOptsTainted = true
+	}
+	if opts != nil {
+		Q.deqOptsTainted = true
+	}
+	if Q.deqOptsTainted {
+		E := Q.defEnqOpts
+		if opts == nil {
+			Q.enqOptsTainted = false
+		} else {
+			E = *opts
+		}
+		if err := Q.SetEnqOptions(E); err != nil {
+			return err
+		}
+	}
+
 	var props []*C.dpiMsgProps
 	if cap(Q.props) >= len(messages) {
 		props = Q.props[:len(messages)]

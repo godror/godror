@@ -5,9 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- The default JSON.String() has changed to JSONoptDefault, so number will be numbers, not strings.
+
 ### Added
 - JSON.StringWithOption allows to convert godror.JSON to string with options (such as JSONoptNumberAsString)
 - JSONAsString and JSONStringOption query/exec options to handle JSON object -> string conversion
+- Queue.{Enqueue,Dequeue}WithOptions to be able to specifiy the dequeue options for one call only.
 
 ## [0.48.1]
 ### Fixed
