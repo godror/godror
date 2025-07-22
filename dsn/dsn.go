@@ -812,26 +812,14 @@ func (p *paramsArray) WriteTo(w io.Writer) (int64, error) {
 	cw := &countingWriter{W: w}
 	enc := logfmt.NewEncoder(cw)
 	var firstErr error
-	var prev, act int64
 	for _, k := range append(firstKeys, keys...) {
 		for _, v := range p.Values[k] {
-			if act > 72 {
-				act = 0
-				if err := enc.EndRecord(); err != nil {
-					if firstErr == nil {
-						firstErr = err
-					}
-					break
-				}
-				prev = cw.N
-			}
 			if err := enc.EncodeKeyval(k, v); err != nil {
 				if firstErr == nil {
 					firstErr = err
 				}
 				break
 			}
-			act = cw.N - prev
 		}
 	}
 	return cw.N, firstErr
