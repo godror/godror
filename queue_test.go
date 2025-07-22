@@ -135,12 +135,7 @@ func TestQueue(t *testing.T) {
 			opts.Wait = 1 * time.Second
 			t.Logf("opts: %#v", opts)
 
-			if err = q.SetDeqOptions(opts); err != nil {
-				return err
-			}
-			t.Logf("opts: %#v", opts)
-
-			n, err := q.Dequeue(msgs[:1])
+			n, err := q.DequeueWithOptions(msgs[:1], &opts)
 			if err != nil || n == 0 {
 				return fmt.Errorf("dequeue by msgid: %d/%+v", n, err)
 			}

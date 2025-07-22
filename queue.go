@@ -71,18 +71,21 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	if err != nil {
 		return nil, err
 	}
-	// Check whether this is a pool or a single connection.
-	cx2, err := DriverConn(ctx, execer)
-	if err != nil {
-		cx.Close()
-		return nil, err
+	var execerIsPool bool
+	{
+		// Check whether this is a pool or a single connection.
+		cx2, err := DriverConn(ctx, execer)
+		if err != nil {
+			cx.Close()
+			return nil, err
+		}
+		//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
+		if cx.(*conn).dpiConn != cx2.(*conn).dpiConn {
+			execerIsPool = true
+			cx2.Close()
+		}
 	}
-	//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
-	owned := cx.(*conn).dpiConn != cx2.(*conn).dpiConn
-	if owned {
-		cx2.Close()
-	}
-	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: owned}
+	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: execerIsPool}
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
@@ -152,20 +155,21 @@ func (Q *Queue) Close() error {
 	if Q == nil {
 		return nil
 	}
-	c, q := Q.conn, Q.dpiQueue
-	Q.conn, Q.dpiQueue = nil, nil
+	c, q, ot := Q.conn, Q.dpiQueue, Q.PayloadObjectType
+	Q.conn, Q.dpiQueue, Q.PayloadObjectType = nil, nil, nil
 	if q == nil {
 		return nil
 	}
 	if err := c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
 		return fmt.Errorf("release: %w", err)
 	}
-	if Q.PayloadObjectType != nil && Q.PayloadObjectType.dpiObjectType != nil {
-		Q.PayloadObjectType.Close()
-		Q.PayloadObjectType = nil
-	}
-	if c != nil && Q.connIsOwned {
-		c.Close()
+	if Q.connIsOwned {
+		if ot != nil && ot.dpiObjectType != nil {
+			ot.Close()
+		}
+		if c != nil {
+			c.Close()
+		}
 	}
 	return nil
 }
@@ -342,10 +346,7 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 	if opts != nil {
 		Q.enqOptsTainted = true
 	}
-	if opts != nil {
-		Q.deqOptsTainted = true
-	}
-	if Q.deqOptsTainted {
+	if Q.enqOptsTainted {
 		E := Q.defEnqOpts
 		if opts == nil {
 			Q.enqOptsTainted = false

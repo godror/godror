@@ -131,16 +131,27 @@ func setUp() func() {
 	if P.ConnParams.ConnClass == "" {
 		P.ConnParams.ConnClass = "TestClassName"
 	}
-	P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
-	P.PoolParams.MinSessions = 2
+	if len(P.ConnParams.ShardingKey) == 0 {
+		P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
+	}
 	if P.PoolParams.MaxSessions <= 1 || P.PoolParams.MaxSessions > maxSessions {
 		P.PoolParams.MaxSessions = maxSessions
 	}
-	P.PoolParams.SessionIncrement = 1
-	P.PoolParams.WaitTimeout = 5 * time.Second
-	P.PoolParams.MaxLifeTime = 5 * time.Minute
-	P.PoolParams.SessionTimeout = 1 * time.Minute
-	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.StringWithPassword())
+	if P.PoolParams.MinSessions == 0 {
+		P.PoolParams.MinSessions = P.PoolParams.MaxSessions
+	}
+	if P.PoolParams.SessionIncrement == 0 {
+		P.PoolParams.SessionIncrement = 1
+	}
+	if P.PoolParams.WaitTimeout == 0 {
+		P.PoolParams.WaitTimeout = 5 * time.Second
+	}
+	if P.PoolParams.MaxLifeTime == 0 {
+		P.PoolParams.MaxLifeTime = 5 * time.Minute
+	}
+	if P.PoolParams.SessionTimeout == 0 {
+		P.PoolParams.SessionTimeout = 1 * time.Minute
+	}
 	if strings.HasSuffix(strings.ToUpper(P.Username), " AS SYSDBA") {
 		P.AdminRole, P.Username = godror.SysDBA, P.Username[:len(P.Username)-10]
 	}
@@ -153,6 +164,44 @@ func setUp() func() {
 	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
 		return func() {}
 	}
+
+	statTicks = make(chan time.Time)
+	statTicker = time.NewTicker(60 * time.Second)
+	go func() {
+		time.Sleep(time.Second)
+		statTicks <- time.Now()
+		for t := range statTicker.C {
+			statTicks <- t
+		}
+	}()
+
+	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.String())
+	testDb.SetMaxOpenConns(P.PoolParams.MaxSessions)
+	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
+		testDb.SetMaxIdleConns(P.PoolParams.MaxSessions / 2)
+		testDb.SetConnMaxLifetime(10 * time.Minute)
+		go func() {
+			for range statTicks {
+				fmt.Fprintf(os.Stderr, "testDb: %+v\n", testDb.Stats())
+			}
+		}()
+	} else {
+		// Disable Go db connection pooling
+		testDb.SetMaxIdleConns(0)
+		testDb.SetConnMaxLifetime(0)
+		go func() {
+			for range statTicks {
+				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
+				godror.Raw(ctx, testDb, func(c godror.Conn) error {
+					poolStats, err := c.GetPoolStats()
+					fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
+					return err
+				})
+				cancel()
+			}
+		}()
+	}
+
 	shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
 	err = testDb.PingContext(shortCtx)
 	shortCancel()
@@ -211,40 +260,6 @@ func setUp() func() {
 			runtime.GC()
 		}
 	}()
-
-	statTicks = make(chan time.Time)
-	statTicker = time.NewTicker(60 * time.Second)
-	go func() {
-		for t := range statTicker.C {
-			statTicks <- t
-		}
-	}()
-
-	testDb.SetMaxOpenConns(maxSessions)
-	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
-		testDb.SetMaxIdleConns(maxSessions / 2)
-		testDb.SetConnMaxLifetime(10 * time.Minute)
-		go func() {
-			for range statTicks {
-				fmt.Fprintf(os.Stderr, "testDb: %+v\n", testDb.Stats())
-			}
-		}()
-	} else {
-		// Disable Go db connection pooling
-		testDb.SetMaxIdleConns(0)
-		testDb.SetConnMaxLifetime(0)
-		go func() {
-			for range statTicks {
-				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
-				godror.Raw(ctx, testDb, func(c godror.Conn) error {
-					poolStats, err := c.GetPoolStats()
-					fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
-					return err
-				})
-				cancel()
-			}
-		}()
-	}
 
 	return func() {
 		for i := len(tearDown) - 1; i >= 0; i-- {
@@ -1418,7 +1433,7 @@ func TestOpenCloseDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.MinSessions, cs.MaxSessions = 0, 4
+	cs.MinSessions, cs.MaxSessions = 4, 4
 	cs.StandaloneConnection = godror.Bool(true)
 	const countQry = "SELECT COUNT(0) FROM user_objects"
 	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
@@ -1454,7 +1469,7 @@ func TestOpenCloseConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.MinSessions, cs.MaxSessions = 0, 4
+	cs.MinSessions, cs.MaxSessions = 4, 4
 	t.Log(cs.String())
 	db := sql.OpenDB(godror.NewConnector(cs))
 	defer db.Close()
@@ -1488,7 +1503,7 @@ func TestOpenCloseTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.MinSessions, cs.MaxSessions = 1, 6
+	cs.MinSessions, cs.MaxSessions = 6, 6
 	t.Log(cs.String())
 	db, err := sql.Open("godror", cs.StringWithPassword())
 	if err != nil {
@@ -3758,7 +3773,7 @@ func TestResetSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	P.MinSessions, P.SessionIncrement, P.MaxSessions = 0, 1, poolSize
+	P.MinSessions, P.SessionIncrement, P.MaxSessions = poolSize, 1, poolSize
 	db, err := sql.Open("godror", P.StringWithPassword())
 	if err != nil {
 		t.Fatalf("%s: %+v", P, err)
@@ -3845,7 +3860,7 @@ func TestOpenCloseLOB(t *testing.T) {
 		t.Fatal(err)
 	}
 	P.WaitTimeout = 5 * time.Second
-	P.MinSessions, P.SessionIncrement, P.MaxSessions = 0, 1, poolSize
+	P.MinSessions, P.SessionIncrement, P.MaxSessions = poolSize, 1, poolSize
 	t.Log(P.String())
 	db, err := sql.Open("godror", P.StringWithPassword())
 	if err != nil {
