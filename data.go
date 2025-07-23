@@ -256,7 +256,7 @@ func (d *Data) GetObject() *Object {
 		}
 	}
 	obj := &Object{dpiObject: o, ObjectType: d.ObjectType}
-	if err := obj.init(nil); err != nil {
+	if err := obj.init(""); err != nil {
 		panic(err)
 	}
 	return obj

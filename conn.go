@@ -64,11 +64,11 @@ type conn struct {
 	Server              VersionInfo
 	params              dsn.ConnectionParams
 	mu                  sync.RWMutex
-	objTypes            map[string]*ObjectType
-	tzOffSecs           int
-	inTransaction       bool
-	released            bool
-	tzValid             bool
+	// objTypes            map[string]*ObjectType
+	tzOffSecs     int
+	inTransaction bool
+	released      bool
+	tzValid       bool
 }
 
 func (c *conn) getError() error {
@@ -244,10 +244,10 @@ func (c *conn) closeNotLocking() error {
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
-	for _, v := range c.objTypes {
-		_ = v.Close()
-	}
-	clear(c.objTypes)
+	// for _, v := range c.objTypes {
+	// 	_ = v.Close()
+	// }
+	// clear(c.objTypes)
 
 	// dpiConn_release decrements dpiConn's reference counting,
 	// and closes it when it reaches zero.
@@ -1153,6 +1153,10 @@ func (c *conn) String() string {
 		"&tzOffSecs=" + strconv.FormatInt(int64(c.tzOffSecs), 10) +
 		"&dbName=" + url.QueryEscape(c.DBName) + "&serviceName=" + url.QueryEscape(c.ServiceName) +
 		"&edition=" + url.QueryEscape(c.Edition) + "&domainName=" + url.QueryEscape(c.DomainName)
+}
+
+func (c *conn) otCachePrefix() string {
+	return c.params.ConnectString + "\t" + c.DBName + "\t" + c.ServiceName + "\t"
 }
 
 func (c *conn) getLogger(ctx context.Context) *slog.Logger {

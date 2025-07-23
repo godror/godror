@@ -206,6 +206,7 @@ type drv struct {
 	dpiContext    *C.dpiContext
 	pools         map[string]*connPool
 	timezones     map[string]locationWithOffSecs
+	objTypes      *sync.Map
 	clientVersion VersionInfo
 	mu            sync.RWMutex
 }
@@ -217,10 +218,18 @@ func (d *drv) Close() error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	dpiCtx, pools := d.dpiContext, d.pools
-	d.dpiContext, d.pools, d.timezones = nil, nil, nil
+	dpiCtx, pools, objTypes := d.dpiContext, d.pools, d.objTypes
+	d.dpiContext, d.pools, d.timezones, d.objTypes = nil, nil, nil, nil
 	done := make(chan error, 1)
 	go func() {
+		objTypes.Range(func(key, value any) bool {
+			if ot, _ := value.(*ObjectType); ot != nil {
+				ot.Close()
+			}
+			return true
+		})
+		objTypes.Clear()
+
 		for _, pool := range pools {
 			pool.Purge()
 		}
@@ -299,7 +308,7 @@ func (d *drv) checkExecWithWarning(f func() C.int) error {
 
 func (d *drv) init(configDir, libDir string) error {
 	d.mu.RLock()
-	ok := d.pools != nil && d.timezones != nil && d.dpiContext != nil
+	ok := d.pools != nil && d.timezones != nil && d.dpiContext != nil && d.objTypes != nil
 	d.mu.RUnlock()
 	if ok {
 		return nil
@@ -311,6 +320,9 @@ func (d *drv) init(configDir, libDir string) error {
 	}
 	if d.timezones == nil {
 		d.timezones = make(map[string]locationWithOffSecs)
+	}
+	if d.objTypes == nil {
+		d.objTypes = &sync.Map{}
 	}
 	if d.dpiContext != nil {
 		return nil
@@ -440,9 +452,9 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	// create connection and initialize it, if needed
 	c := conn{
 		drv: d, dpiConn: dc,
-		params:   dsn.ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
-		poolKey:  poolKey,
-		objTypes: make(map[string]*ObjectType),
+		params:  dsn.ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
+		poolKey: poolKey,
+		// objTypes: make(map[string]*ObjectType),
 	}
 	logger := P.Logger
 	var cs *C.char

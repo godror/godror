@@ -981,10 +981,13 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if !strings.Contains(name, "\"") {
 		nameU = strings.ToUpper(name)
 	}
-	t := c.objTypes[name]
-	if t == nil {
+	otCachePrefix := c.otCachePrefix()
+	tI, _ := c.drv.objTypes.Load(otCachePrefix + name)
+	var t *ObjectType
+	if t, _ = tI.(*ObjectType); t == nil {
 		if nameU != "" {
-			t = c.objTypes[nameU]
+			tI, _ = c.drv.objTypes.Load(otCachePrefix + nameU)
+			t, _ = tI.(*ObjectType)
 			name = nameU
 		}
 	}
@@ -995,8 +998,10 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		}
 		//fmt.Printf("GetObjectType(%q) %p is CLOSED on %p\n", name, t, c)
 		// t is closed
-		delete(c.objTypes, name)
-		delete(c.objTypes, t.FullName())
+		// delete(otCache, name)
+		// delete(otCache, t.FullName())
+		c.drv.objTypes.Delete(otCachePrefix + name)
+		c.drv.objTypes.Delete(otCachePrefix + t.FullName())
 	}
 
 	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
@@ -1027,11 +1032,11 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		}
 	}
 	t = &ObjectType{drv: c.drv, dpiObjectType: objType}
-	if err = t.init(c.objTypes); err != nil {
+	if err = t.init(otCachePrefix); err != nil {
 		return t, err
 	}
 	if name != t.FullName() {
-		c.objTypes[name] = t
+		c.drv.objTypes.Store(name, t)
 	}
 	//fmt.Printf("GetObjectType(%q/%q) NEW: %p\n", name, t.FullName(), t)
 	return t, nil
@@ -1140,7 +1145,7 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		dpiObject:  object,
 	}
 	c.mu.RLock()
-	err := o.ObjectType.init(c.objTypes)
+	err := o.ObjectType.init(c.otCachePrefix())
 	c.mu.RUnlock()
 	if err != nil {
 		_ = o.Close()
@@ -1149,7 +1154,7 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 	return o, nil
 }
 
-func (t *ObjectType) init(cache map[string]*ObjectType) error {
+func (t *ObjectType) init(otCachePrefix string) error {
 	if t.drv == nil {
 		panic("conn is nil")
 	}
@@ -1177,7 +1182,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 
 	if info.isCollection == 1 {
 		t.CollectionOf = &ObjectType{drv: t.drv}
-		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo, cache); err != nil {
+		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo, otCachePrefix); err != nil {
 			return err
 		}
 		if t.CollectionOf.Name == "" {
@@ -1202,8 +1207,8 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 			}
 		}
 		t.Attributes = map[string]ObjectAttribute{}
-		if cache != nil {
-			cache[t.FullName()] = t
+		if otCachePrefix != "" {
+			t.drv.objTypes.Store(otCachePrefix+t.FullName(), t)
 		}
 		return nil
 	}
@@ -1226,7 +1231,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		}
 
 		typ := attrInfo.typeInfo
-		sub, err := objectTypeFromDataTypeInfo(t.drv, typ, cache)
+		sub, err := objectTypeFromDataTypeInfo(t.drv, typ, otCachePrefix)
 		if err != nil {
 			return err
 		}
@@ -1242,8 +1247,8 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
-	if cache != nil {
-		cache[t.FullName()] = t
+	if otCachePrefix != "" {
+		t.drv.objTypes.Store(otCachePrefix+t.FullName(), t)
 	}
 	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
 		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
@@ -1251,7 +1256,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	return nil
 }
 
-func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*ObjectType) error {
+func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, otCachePrefix string) error {
 	t.dpiObjectType = typ.objectType
 	t.DBSize = int(typ.dbSizeInBytes)
 	t.ClientSizeInBytes = int(typ.clientSizeInBytes)
@@ -1271,10 +1276,10 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*O
 			(t.Scale != 0 || t.Precision >= 19)) {
 		t.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
 	}
-	return t.init(cache)
+	return t.init(otCachePrefix)
 }
 
-func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]*ObjectType) (*ObjectType, error) {
+func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, otCachePrefix string) (*ObjectType, error) {
 	if d == nil {
 		panic("drv is nil")
 	}
@@ -1282,7 +1287,7 @@ func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]
 		panic("typ is nil")
 	}
 	t := &ObjectType{drv: d}
-	err := t.fromDataTypeInfo(typ, cache)
+	err := t.fromDataTypeInfo(typ, otCachePrefix)
 	return t, err
 }
 
