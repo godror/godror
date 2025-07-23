@@ -85,6 +85,7 @@ import (
 	"github.com/godror/godror/slog"
 	"io"
 	"math"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -660,6 +661,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// if a pool was provided, assign the pool
 	if pool != nil {
 		connCreateParams.pool = pool.dpiPool
+		if connCreateParams.numShardingKeyColumns != 0 {
+			fmt.Fprintln(os.Stderr, "WARNING! sharding for pooled connection may result in hangs!")
+		}
 	}
 
 	// setup credentials

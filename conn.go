@@ -244,10 +244,10 @@ func (c *conn) closeNotLocking() error {
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
-	for k, v := range c.objTypes {
+	for _, v := range c.objTypes {
 		_ = v.Close()
-		delete(c.objTypes, k)
 	}
+	clear(c.objTypes)
 
 	// dpiConn_release decrements dpiConn's reference counting,
 	// and closes it when it reaches zero.

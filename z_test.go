@@ -131,10 +131,11 @@ func setUp() func() {
 	if P.ConnParams.ConnClass == "" {
 		P.ConnParams.ConnClass = "TestClassName"
 	}
-	if len(P.ConnParams.ShardingKey) == 0 {
+	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool && // Sharding does not work with pooled connection
+		len(P.ConnParams.ShardingKey) == 0 {
 		P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
 	}
-	if P.PoolParams.MaxSessions <= 1 || P.PoolParams.MaxSessions > maxSessions {
+	if P.PoolParams.MaxSessions < 1 || P.PoolParams.MaxSessions > maxSessions {
 		P.PoolParams.MaxSessions = maxSessions
 	}
 	if P.PoolParams.MinSessions == 0 {
