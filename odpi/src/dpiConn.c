@@ -1539,9 +1539,7 @@ static int dpiConn__startSessionlessTransaction(dpiConn *conn,
     dpiOciXID *ociXid;
 
     // perform checks
-    if (dpiConn__check(conn, __func__, error) < 0)
-        return DPI_FAILURE;
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 0, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, error) < 0)
         return DPI_FAILURE;
 
     // set the transaction id on the transaction, unless a transaction not
@@ -1625,7 +1623,7 @@ int dpiConn__suspendSessionlessTransaction(dpiConn *conn, uint32_t flag,
 {
     void *transactionHandle;
 
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 0, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, error) < 0)
         return DPI_FAILURE;
 
     // associate a transaction handle with the connection if one is not already
@@ -1659,6 +1657,8 @@ int dpiConn_beginSessionlessTransaction(dpiConn *conn,
     dpiError error;
     int status;
 
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, transactionId);
     status = dpiConn__startSessionlessTransaction(conn, transactionId, timeout,
             DPI_TPC_BEGIN_NEW, deferRoundTrip, &error);
@@ -2878,6 +2878,8 @@ int dpiConn_resumeSessionlessTransaction(dpiConn *conn,
     dpiError error;
     int status;
 
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, transactionId);
     status = dpiConn__startSessionlessTransaction(conn, transactionId, timeout,
             DPI_TPC_BEGIN_RESUME, deferRoundTrip, &error);

@@ -2184,6 +2184,13 @@ int dpiOci__loadLib(dpiContextCreateParams *params,
     const char *temp;
     int status, i;
 
+    // initialize loading parameters; these are used to provide space for
+    // loading errors and the names that are being searched; memory is
+    // allocated dynamically in order to avoid potential issues with long paths
+    // on some platforms
+    memset(&loadLibParams, 0, sizeof(loadLibParams));
+    loadLibParams.configDir = configDir;
+
     // log the directory parameter values and any environment variables that
     // have an impact on loading the library
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_LOAD_LIB) {
@@ -2221,13 +2228,6 @@ int dpiOci__loadLib(dpiContextCreateParams *params,
                     "set TNS_ADMIN environment variable");
         }
     }
-
-    // initialize loading parameters; these are used to provide space for
-    // loading errors and the names that are being searched; memory is
-    // allocated dynamically in order to avoid potential issues with long paths
-    // on some platforms
-    memset(&loadLibParams, 0, sizeof(loadLibParams));
-    loadLibParams.configDir = configDir;
 
     // if a lib directory was specified in the create params, look for the OCI
     // library in that location only
@@ -3303,6 +3303,12 @@ int dpiOci__sessionGet(void *envHandle, void **handle, void *authInfo,
     status = (*dpiOciSymbols.fnSessionGet)(envHandle, error->handle, handle,
             authInfo, connectString, connectStringLength, tag, tagLength,
             outTag, outTagLength, found, mode);
+
+    // OCI might return a stale handle even though the call to OCISessionGet()
+    // failed; clear it to avoid unexpected errors being thrown, masking any
+    // true errors
+    if (status < 0)
+        *handle = NULL;
     DPI_OCI_CHECK_AND_RETURN(error, status, NULL, "get session");
 }
 
