@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.49.1]
 ### Changed
 - The default JSON.String() has changed to JSONoptDefault, so number will be numbers, not strings.
+- ODPI v5.6.2
 
 ### Added
 - JSON.StringWithOption allows to convert godror.JSON to string with options (such as JSONoptNumberAsString)
