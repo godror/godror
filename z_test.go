@@ -5260,3 +5260,44 @@ func TestWarningAsError(t *testing.T) {
 		}
 	}
 }
+
+type nilPointerValuer string
+
+func (n nilPointerValuer) Value() (driver.Value, error) {
+	return nil, nil
+}
+
+func TestNilPointeValuer(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("NilPointerValuer"), 10*time.Second)
+	defer cancel()
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_nilPointerValuer" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), string varchar2(16), CONSTRAINT ID_PK PRIMARY KEY (id))", //nolint:gas
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	defer testDb.Exec("DROP TABLE " + tbl)
+	t.Logf(" NilPointerValuer table  %q: ", tbl)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, string) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	var valuer *nilPointerValuer
+	if _, err = stmt.ExecContext(ctx, 1, valuer); err != nil {
+		t.Errorf("%d/1. (%v): %v", 1, valuer, err)
+	}
+
+}

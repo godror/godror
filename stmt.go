@@ -1478,9 +1478,11 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}
 		oval := value
-		var err error
-		if value, err = vlr.Value(); err != nil {
-			return value, fmt.Errorf("arg.Value(): %w", err)
+		if !nilPtr {
+			var err error
+			if value, err = vlr.Value(); err != nil {
+				return value, fmt.Errorf("arg.Value(): %w", err)
+			}
 		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("valuer", "old", fmt.Sprintf("[%T]%#v.Value()", oval, oval), "new", fmt.Sprintf("[%T]%#v", value, value))
