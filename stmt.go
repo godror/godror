@@ -947,7 +947,7 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		}
 		// https://github.com/godror/godror/issues/378
 		var isByteSlice bool
-		{
+		if !rv.IsZero() {
 			t := rv.Type()
 			for t.Kind() == reflect.Ptr {
 				t = t.Elem()
