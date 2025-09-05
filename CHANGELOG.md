@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.49.2]
+### Fixed
+- https://github.com/godror/godror/issues/380
+
 ## [0.49.1]
 ### Changed
 - The default JSON.String() has changed to JSONoptDefault, so number will be numbers, not strings.
