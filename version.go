@@ -32,7 +32,7 @@ func init() {
 }
 
 var (
-	godrorVersion = "v0.49.2"
+	godrorVersion = "v0.49.3"
 
 	odpiVersion = strconv.Itoa(DpiMajorVersion) +
 		"." + strconv.Itoa(DpiMinorVersion) +
