@@ -42,16 +42,14 @@ const wrapResultset = "--WRAP_RESULTSET--"
 // with 32-bit platforms. The size of a `C.dpiData` is 32 Byte on a 64-bit system, `C.dpiSubscrMessageTable` is 40 bytes.
 const maxArraySize = (1<<30)/C.sizeof_dpiSubscrMessageTable - 1
 
-var _ driver.Conn = (*conn)(nil)
-var _ driver.ConnBeginTx = (*conn)(nil)
-var _ driver.ConnPrepareContext = (*conn)(nil)
-var _ driver.Pinger = (*conn)(nil)
-var _ driver.Validator = (*conn)(nil)
-
-//
-//var _ driver.ExecerContext = (*conn)(nil)
-//var _ driver.QueryerContext = (*conn)(nil)
-//var _ driver.NamedValueChecker = (*conn)(nil)
+var (
+	_ driver.Conn               = (*conn)(nil)
+	_ driver.ConnBeginTx        = (*conn)(nil)
+	_ driver.ConnPrepareContext = (*conn)(nil)
+	_ driver.Pinger             = (*conn)(nil)
+	_ driver.Validator          = (*conn)(nil)
+	_ driver.NamedValueChecker  = (*conn)(nil)
+)
 
 type conn struct {
 	drv                 *drv
@@ -210,7 +208,7 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 // CheckNamedValue is called before passing arguments to the driver
 // and is called in place of any ColumnConverter. CheckNamedValue must do type
 // validation and conversion as appropriate for the driver.
-func (c *conn) CheckNamedValueX(nv *driver.NamedValue) error {
+func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 	return driver.ErrSkip
 }
 

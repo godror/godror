@@ -203,7 +203,7 @@ func setUp() func() {
 		}()
 	}
 
-	shortCtx, shortCancel := context.WithTimeout(ctx, time.Second)
+	shortCtx, shortCancel := context.WithTimeout(ctx, 5*time.Second)
 	err = testDb.PingContext(shortCtx)
 	shortCancel()
 	if err != nil {

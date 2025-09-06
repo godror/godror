@@ -15,7 +15,9 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 	"unsafe"
@@ -42,10 +44,14 @@ var DefaultDeqOptions = DeqOptions{
 
 // Queue represents an Oracle Advanced Queue.
 type Queue struct {
-	PayloadObjectType              *ObjectType
-	conn                           *conn
-	dpiQueue                       *C.dpiQueue
-	name                           string
+	PayloadObjectType *ObjectType
+	conn              *conn
+	dpiQueue          *C.dpiQueue
+	name, tableName   string
+	sizeStmt          interface {
+		io.Closer
+		driver.StmtQueryContext
+	}
 	defDeqOpts                     DeqOptions
 	defEnqOpts                     EnqOptions
 	props                          []*C.dpiMsgProps
@@ -86,6 +92,37 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		}
 	}
 	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: execerIsPool}
+
+	if err := func() error {
+		const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
+	  FROM user_queues
+	  WHERE name = :1`
+		stmt, err := cx.PrepareContext(ctx, qry)
+		if err != nil {
+			return fmt.Errorf("prepare %s: %w", qry, err)
+		}
+		defer stmt.Close()
+		rows, err := stmt.(driver.StmtQueryContext).QueryContext(ctx,
+			[]driver.NamedValue{{Ordinal: 1, Value: name}})
+		if err != nil {
+			return fmt.Errorf("%s [%q]: %w", qry, name, err)
+		}
+		defer rows.Close()
+		dest := []driver.Value{nil}
+		if err := rows.Next(dest); err != nil {
+			return fmt.Errorf("next: %w", err)
+		}
+		Q.tableName, _ = dest[0].(string)
+		if err = rows.Next(dest); err != io.EOF {
+			return fmt.Errorf("next: wanted EOF, got %+v", err)
+		}
+		return nil
+	}(); err != nil {
+		return nil, err
+	}
+	if Q.tableName == "" {
+		return nil, fmt.Errorf("cannot get queue table name of %s", Q.name)
+	}
 
 	var payloadType *C.dpiObjectType
 	if payloadObjectTypeName != "" {
@@ -155,8 +192,11 @@ func (Q *Queue) Close() error {
 	if Q == nil {
 		return nil
 	}
-	c, q, ot := Q.conn, Q.dpiQueue, Q.PayloadObjectType
-	Q.conn, Q.dpiQueue, Q.PayloadObjectType = nil, nil, nil
+	c, q, ot, st := Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt
+	Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt = nil, nil, nil, nil
+	if st != nil {
+		st.Close()
+	}
 	if q == nil {
 		return nil
 	}
@@ -225,6 +265,60 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	if num := len(messages); num > 1 {
+		logger := getLogger(context.TODO())
+		if err := func() error {
+			// See https://github.com/godror/godror/issues/382
+			qry := `SELECT ''||COUNT(0) FROM ` + Q.tableName + ` WHERE state IN (0, 1)` // READY, WAITING
+			if Q.sizeStmt == nil {
+				if stmt, err := Q.conn.PrepareContext(context.Background(), qry); err != nil {
+					return fmt.Errorf("prepare %s: %w", qry, err)
+				} else {
+					Q.sizeStmt = struct {
+						driver.StmtQueryContext
+						io.Closer
+					}{stmt.(driver.StmtQueryContext), stmt}
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			rows, err := Q.sizeStmt.QueryContext(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("%s: %w", qry, err)
+			}
+			defer rows.Close()
+			dest := []driver.Value{nil}
+			if err = rows.Next(dest); err != nil {
+				return fmt.Errorf("next: %w", err)
+			}
+			s, _ := dest[0].(string)
+			// fmt.Println("Dequeue:", s)
+			if logger != nil {
+				logger.Debug("Dequeue", "name", Q.name, "size", s, "dest", dest[0])
+			}
+			if s == "" {
+				return fmt.Errorf("queue table size: %#v", dest[0])
+			} else if i, err := strconv.Atoi(s); err != nil {
+				return fmt.Errorf("parse %q as int: %w", s, err)
+			} else {
+				num = int(i)
+			}
+			if err = rows.Next(dest); err != io.EOF {
+				return fmt.Errorf("next wanted EOF, got %+v", err)
+			}
+			return nil
+		}(); err != nil {
+			if logger != nil {
+				logger.Error("check queue size", "error", err)
+			}
+		} else if 0 < num && num < len(messages) {
+			if logger != nil {
+				logger.Info("Dequeue limit number of messages", "old", len(messages), "new", num)
+			}
+			messages = messages[:num]
+		}
+	}
+
 	Q.mu.Lock()
 	defer Q.mu.Unlock()
 	if opts != nil {
@@ -252,6 +346,7 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 
 	var num C.uint
 	deqOne := len(props) == 1
+
 	dequeue := func() C.int {
 		num = C.uint(len(props))
 		if deqOne {

@@ -87,7 +87,7 @@ func (r *rows) Close() error {
 		}
 		C.dpiStmt_release(nextRs)
 	}
-	if st == nil {
+	if st == nil || st.dpiStmt == nil {
 		return nil
 	}
 

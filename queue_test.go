@@ -29,6 +29,10 @@ func TestQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 
+	if err := testDb.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+
 	t.Run("deqbymsgid", func(t *testing.T) {
 		const qName = "TEST_MSGID_Q"
 		const qTblName = qName + "_TBL"
@@ -74,7 +78,7 @@ func TestQueue(t *testing.T) {
 		defer tx.Rollback()
 
 		var user string
-		if err := testDb.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT USER FROM DUAL").Scan(&user); err != nil {
 			t.Fatal(err)
 		}
 
