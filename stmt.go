@@ -930,6 +930,12 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		}
 		st.dests[i] = value
 		rv := reflect.ValueOf(value)
+		if !rv.IsValid() {
+			value = ""
+			st.dests[i] = value
+			rv = reflect.ValueOf(value)
+
+		}
 		if info.isOut {
 			if false && rv.IsNil() {
 				fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
@@ -941,13 +947,13 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		}
 		st.isSlice[i] = false
 		rArgs[i] = rv
-		if rv.Kind() == reflect.Ptr {
+		if rv.IsValid() && rv.Kind() == reflect.Ptr {
 			// deref in rArgs, but NOT value!
 			rArgs[i] = rv.Elem()
 		}
 		// https://github.com/godror/godror/issues/378
 		var isByteSlice bool
-		if !rv.IsZero() {
+		if rv.IsValid() && !rv.IsZero() {
 			t := rv.Type()
 			for t.Kind() == reflect.Ptr {
 				t = t.Elem()

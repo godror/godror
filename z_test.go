@@ -5300,4 +5300,8 @@ func TestNilPointeValuer(t *testing.T) {
 		t.Errorf("%d/1. (%v): %v", 1, valuer, err)
 	}
 
+	if _, err = stmt.ExecContext(ctx, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+
 }
