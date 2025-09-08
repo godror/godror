@@ -965,10 +965,10 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	tbl := "test_personcollection_jsonraw" + tblSuffix
-	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	tbl := "test_json_jsonraw" + tblSuffix
+	_, err = conn.ExecContext(ctx, "DROP TABLE "+tbl+" CASCADE CONSTRAINTS")
 	_, err = conn.ExecContext(ctx,
-		"CREATE TABLE "+tbl+" (id NUMBER(6), jdoc JSON, CONSTRAINT ID_PK PRIMARY KEY (id))", //nolint:gas
+		"CREATE TABLE "+tbl+" (name VARCHAR(60), jdoc JSON, CONSTRAINT ID_PK PRIMARY KEY (name))", //nolint:gas
 	)
 	if err != nil {
 		t.Error(err)
@@ -976,63 +976,84 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 	t.Logf(" JSON Document table  %q: ", tbl)
 
 	defer testDb.Exec(
-		"DROP TABLE " + tbl, //nolint:gas
+		"DROP TABLE " + tbl + " CASCADE CONSTRAINTS", //nolint:gas
 	)
 	stmt, err := conn.PrepareContext(ctx,
-		"INSERT INTO "+tbl+" (id, jdoc) VALUES (:1, :2)", //nolint:gas
+		"INSERT INTO "+tbl+" (name, jdoc) VALUES (:1, :2)", //nolint:gas
 	)
 	if err != nil {
 		t.Error(err)
 	}
 	defer stmt.Close()
 
-	testData := `{"string":"Hello World"}`
-	rawMessage := jsonDataType(testData)
+	tests := []struct {
+		name string
+		json string
+	}{
+		{name: "simple object", json: `{"string":"Hello World"}`},
+		{name: "empty array", json: `{"test":[]}`},
+		{name: "null value", json: `{"test":null}`},
+		{name: "empty object", json: `{}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rawMessage := jsonDataType(test.json)
 
-	if _, err = stmt.ExecContext(ctx, 1, rawMessage); err != nil {
-		t.Errorf("%d/1. (%v): %v", 1, rawMessage, err)
-		return
-	}
-
-	rows, err := conn.QueryContext(ctx,
-		"SELECT * FROM "+tbl+" c ",
-		godror.JSONAsString(),
-	) //nolint:gas
-	if err != nil {
-		t.Errorf("%d/3. %v", 1, err)
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		t.Errorf("Failed to get columns: %v", err)
-	}
-	values := make([]interface{}, len(cols))
-	valuePtrs := make([]interface{}, len(cols))
-	for i := range cols {
-		valuePtrs[i] = &values[i]
-	}
-	for rows.Next() {
-		if err := rows.Scan(valuePtrs...); err != nil {
-			t.Errorf("Scan failed: %v", err)
-		}
-		for i, col := range cols {
-			// fmt.Printf("%s: %v\t", col, values[i])
-			switch i {
-			case 0: // ID
-				if values[0] != int64(1) {
-					t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted: %[3]v with type: %[3]T", col, values[0], int64(1))
-				}
-			case 1: // jdoc
-				if values[1] != testData {
-					t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted %[3]v with type: %[3]T", col, values[1], testData)
-				}
-			default:
-				t.Errorf("Unsupported column index:%d", i)
+			if _, err = stmt.ExecContext(ctx, test.name, rawMessage); err != nil {
+				t.Errorf("%v/1. (%v): %v", test.name, rawMessage, err)
+				return
 			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Errorf("Row iteration error: %v", err)
+
+			rows, err := conn.QueryContext(ctx,
+				"SELECT * FROM "+tbl+" c where name = :1",
+				test.name,
+				godror.JSONAsString(),
+			) //nolint:gas
+			if err != nil {
+				t.Errorf("%d/3. %v", 1, err)
+			}
+			defer rows.Close()
+
+			cols, err := rows.Columns()
+			if err != nil {
+				t.Errorf("Failed to get columns: %v", err)
+			}
+			values := make([]interface{}, len(cols))
+			valuePtrs := make([]interface{}, len(cols))
+			for i := range cols {
+				valuePtrs[i] = &values[i]
+			}
+			for rows.Next() {
+				if err := rows.Scan(valuePtrs...); err != nil {
+					t.Errorf("Scan failed: %v", err)
+				}
+				for i, col := range cols {
+					// fmt.Printf("%s: %v\t", col, values[i])
+					switch i {
+					case 0: // ID
+						if values[0] != test.name {
+							t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted: %[3]v with type: %[3]T", col, values[0], int64(1))
+						}
+					case 1: // jdoc
+						if strVal, ok := values[1].(string); ok {
+							d, err := diffJSONString(strVal, test.json)
+							if err != nil {
+								t.Errorf("Column %s: diff err: %v", col, err)
+							}
+							if d != "" {
+								t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted %[3]v with type: %[3]T", col, values[1], test.json)
+							}
+						} else {
+							t.Errorf("values[1] is not a string")
+						}
+					default:
+						t.Errorf("Unsupported column index:%d", i)
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				t.Errorf("Row iteration error: %v", err)
+			}
+		})
 	}
 }
