@@ -389,7 +389,7 @@ func (d *Data) Get() interface{} {
 	// 	 logger.Debug("Get", "data", fmt.Sprintf("%#v", d), "p", fmt.Sprintf("%p", d))
 	// }
 	switch d.NativeTypeNum {
-	case 0:
+	case C.DPI_NATIVE_TYPE_NULL, 0:
 		return nil
 	case C.DPI_NATIVE_TYPE_BOOLEAN:
 		return d.GetBool()

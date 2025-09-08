@@ -489,6 +489,7 @@ func (j JSONArray) Get(nodes []Data) []Data {
 
 // GetValue converts native DB type, array into []interface{}.
 func (j JSONArray) GetValue() (nodes []interface{}, err error) {
+	nodes = []interface{}{} // initialize to avoid nil slice
 	elts := jsonArraySlice(j.dpiJsonArray)
 	for i := range elts {
 		var d Data
