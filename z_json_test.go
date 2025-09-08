@@ -966,7 +966,7 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 	}
 	defer conn.Close()
 	tbl := "test_json_jsonraw" + tblSuffix
-	_, err = conn.ExecContext(ctx, "DROP TABLE "+tbl+" CASCADE CONSTRAINTS")
+	conn.ExecContext(ctx, "DROP TABLE "+tbl+" CASCADE CONSTRAINTS")
 	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (name VARCHAR(60), jdoc JSON, CONSTRAINT ID_PK PRIMARY KEY (name))", //nolint:gas
 	)
