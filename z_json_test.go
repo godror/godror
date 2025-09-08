@@ -994,6 +994,7 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 		{name: "empty array", json: `{"test":[]}`},
 		{name: "null value", json: `{"test":null}`},
 		{name: "empty object", json: `{}`},
+		{name: "empty top-level array", json: `[]`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
