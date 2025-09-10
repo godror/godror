@@ -33,6 +33,7 @@ import (
 	"github.com/go-logfmt/logfmt"
 	"github.com/godror/godror/slog"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	godror "github.com/godror/godror"
@@ -5304,4 +5305,94 @@ func TestNilPointeValuer(t *testing.T) {
 		t.Fatal(err)
 	}
 
+}
+
+func TestUUID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("UUID"), 10*time.Second)
+	defer cancel()
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_UUID" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), uuid varchar2(36), CONSTRAINT ID_PK PRIMARY KEY (id))", //nolint:gas
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	defer testDb.Exec("DROP TABLE " + tbl)
+	t.Logf(" UUID table  %q: ", tbl)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, uuid) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	expected := uuid.New()
+	if _, err = stmt.ExecContext(ctx, 1, expected); err != nil {
+		t.Errorf("%d/1. (%v): %v", 1, expected, err)
+	}
+
+	qry := "SELECT uuid FROM " + tbl + " WHERE id = 1"
+	var actual uuid.UUID
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&actual); err != nil {
+		t.Errorf("Failed to retrieve uuid: %v", err)
+	}
+
+	if actual != expected {
+		t.Errorf("expected %v, got %v", expected, actual)
+	}
+}
+
+func TestNilUUID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testContext("NilUUID"), 10*time.Second)
+	defer cancel()
+
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tbl := "test_nilUUID" + tblSuffix
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err = conn.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), uuid varchar2(36), CONSTRAINT ID_PK PRIMARY KEY (id))", //nolint:gas
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	defer testDb.Exec("DROP TABLE " + tbl)
+	t.Logf(" NilUUID table  %q: ", tbl)
+
+	stmt, err := conn.PrepareContext(ctx,
+		"INSERT INTO "+tbl+" (id, uuid) VALUES (:1, :2)", //nolint:gas
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	var expected *uuid.UUID
+	if _, err = stmt.ExecContext(ctx, 1, expected); err != nil {
+		t.Errorf("%d/1. (%v): %v", 1, expected, err)
+	}
+
+	qry := "SELECT uuid FROM " + tbl + " WHERE id = 1"
+	var actual string
+	if err := testDb.QueryRowContext(ctx, qry).Scan(&actual); err != nil {
+		t.Errorf("Failed to retrieve uuid: %v", err)
+	}
+
+	// If the UUID was correctly stored as NULL instead of the zero value,
+	// actual should be an empty string rather than "00000000-0000-0000-0000-000000000000"
+	if actual != "" {
+		t.Errorf("expected empty string but got %v", actual)
+	}
 }

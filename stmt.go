@@ -45,6 +45,7 @@ import (
 
 	"github.com/godror/godror/slog"
 	"github.com/godror/knownpb/timestamppb"
+	"github.com/google/uuid"
 )
 
 const printStack = false
@@ -1332,6 +1333,20 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 						info.bufSize = n
 					}
 				}
+			}
+		}
+
+	case uuid.UUID:
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES
+		if !nilPtr {
+			info.set = dataSetBytes
+			if info.isOut {
+				info.bufSize = 32767
+				*get = dataGetBytes
+			} else {
+				s := v.String()
+				info.bufSize = 4 * len(s)
+				value = s
 			}
 		}
 
