@@ -482,6 +482,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return err
 	}
 
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	// bind variables
 	if err = st.bindVars(ctx, args, logger); err != nil {
 		return nil, closeIfBadConn(err)
@@ -555,7 +557,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			var errInfos []C.dpiErrorInfo
 			var errCnt C.uint32_t
 			var rc C.int
-			runtime.LockOSThread()
 			if C.dpiStmt_getBatchErrorCount(st.dpiStmt, &errCnt) != C.DPI_FAILURE && errCnt != 0 {
 				errInfos = make([]C.dpiErrorInfo, int(errCnt))
 				rc = C.dpiStmt_getBatchErrors(st.dpiStmt, errCnt, &errInfos[0])
@@ -563,7 +564,6 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("batchErrors", "errCnt", errCnt)
 			}
-			runtime.UnlockOSThread()
 			if rc == C.DPI_FAILURE || len(errInfos) == 0 {
 				return nil
 			}
@@ -714,6 +714,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	// HandleDeadline for all ODPI calls called below
 
 	//fmt.Printf("QueryContext(%+v)\n", args)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	// bind variables
 	if err = st.bindVars(ctx, args, logger); err != nil {
 		return nil, closeIfBadConn(err)
@@ -868,6 +870,7 @@ type argInfo struct {
 }
 
 // bindVars binds the given args into new variables.
+// Assumes LockOSThread
 func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, logger *slog.Logger) error {
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("enter bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
@@ -998,8 +1001,6 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("bindVars", "doManyCount", doManyCount, "arrLen", st.arrLen, "doExecMany", doExecMany, "minArrLen", "maxArrLen")
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	for i := range args {
 		info := &(infos[i])
 		value := st.dests[i]
