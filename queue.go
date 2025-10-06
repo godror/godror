@@ -96,14 +96,20 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	if err := func() error {
 		const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
 	  FROM user_queues
-	  WHERE name = :1`
+	  WHERE name = :name
+	UNION SELECT owner||'.'||queue_table
+	  FROM all_queues
+	  WHERE owner = REGEXP_REPLACE(:name, '\..*$') AND
+	        name  = REGEXP_REPLACE(:name, '^.*\.')`
 		stmt, err := cx.PrepareContext(ctx, qry)
 		if err != nil {
 			return fmt.Errorf("prepare %s: %w", qry, err)
 		}
 		defer stmt.Close()
 		rows, err := stmt.(driver.StmtQueryContext).QueryContext(ctx,
-			[]driver.NamedValue{{Ordinal: 1, Value: name}})
+			[]driver.NamedValue{
+				{Ordinal: 1, Name: "name", Value: name},
+			})
 		if err != nil {
 			return fmt.Errorf("%s [%q]: %w", qry, name, err)
 		}
@@ -119,6 +125,9 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		return nil
 	}(); err != nil {
 		return nil, err
+	}
+	if logger := getLogger(context.TODO()); logger != nil {
+		logger.Debug("NewQueue", "name", name, "tableName", Q.tableName)
 	}
 	if Q.tableName == "" {
 		return nil, fmt.Errorf("cannot get queue table name of %s", Q.name)
@@ -216,11 +225,17 @@ func (Q *Queue) Close() error {
 
 // Purge the expired messages from the queue.
 func (Q *Queue) PurgeExpired(ctx context.Context) error {
-	return Q.execQ(ctx, `BEGIN 
+	return Q.execQ(ctx, `DECLARE
+  c_name CONSTANT VARCHAR2(128) := :1;
+BEGIN 
   FOR row IN (
     SELECT sys_context('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
 	  FROM user_queues
-	  WHERE name = :1
+	  WHERE name = c_name
+	UNION SELECT owner||'.'||queue_table
+	  FROM all_queues
+	  WHERE owner = REGEXP_REPLACE(c_name, '\..*$') AND
+	        name  = REGEXP_REPLACE(c_name, '^.*\.')
   ) LOOP
     dbms_aqadm.purge_queue_table(row.queue_table, 'qtview.msg_state = ''EXPIRED''', NULL);
   END LOOP;
