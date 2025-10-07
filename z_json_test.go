@@ -995,6 +995,8 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 		{name: "null value", json: `{"test":null}`},
 		{name: "empty object", json: `{}`},
 		{name: "empty top-level array", json: `[]`},
+		{name: "number 125.32", json: `{"foo":125.32}`},
+		{name: "number 2.3", json: `{"foo":2.3}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1025,6 +1027,13 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 				valuePtrs[i] = &values[i]
 			}
 			for rows.Next() {
+				var nameCol string
+				var jdocVal jsonDataType
+
+				// Exercise both Scan variants
+				if err := rows.Scan(&nameCol, &jdocVal); err != nil {
+					t.Errorf("Scan failed: %v", err)
+				}
 				if err := rows.Scan(valuePtrs...); err != nil {
 					t.Errorf("Scan failed: %v", err)
 				}
@@ -1034,6 +1043,9 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 					case 0: // ID
 						if values[0] != test.name {
 							t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted: %[3]v with type: %[3]T", col, values[0], int64(1))
+						}
+						if nameCol != test.name {
+							t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted: %[3]v with type: %[3]T", col, nameCol, int64(1))
 						}
 					case 1: // jdoc
 						if strVal, ok := values[1].(string); ok {
@@ -1046,6 +1058,10 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 							}
 						} else {
 							t.Errorf("values[1] is not a string")
+						}
+
+						if _, err := diffJSONString(string(jdocVal), test.json); err != nil {
+							t.Errorf("Column %s: got %[2]v with type: %[2]T, wanted %[3]v with type: %[3]T", col, jdocVal, test.json)
 						}
 					default:
 						t.Errorf("Unsupported column index:%d", i)

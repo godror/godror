@@ -672,7 +672,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				if jsonAsString {
 					var err error
 					if dest[i], err = j.StringWithOption(
-						jsonStringOption,
+						JSONOptNumberAsString, // Type of conversion for numbers but will respect stringOption for final result.
 					); err != nil {
 						return err
 					}
@@ -687,13 +687,13 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value)))}
+			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
 		case C.DPI_NATIVE_TYPE_JSON_ARRAY:
 			if isNull {
 				dest[i] = nil
 				continue
 			}
-			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value)))}
+			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
 		case C.DPI_ORACLE_TYPE_VECTOR, C.DPI_NATIVE_TYPE_VECTOR:
 			if isNull {
 				dest[i] = Vector{}
