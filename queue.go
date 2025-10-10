@@ -68,6 +68,15 @@ func WithDeqOptions(o DeqOptions) queueOption { return o }
 // WithEnqOptions returns a queueOption usable in NewQueue, applying the given EnqOptions.
 func WithEnqOptions(o EnqOptions) queueOption { return o }
 
+// WithQueueTable returns a queueOption usable in NewQueue, setting the queue table explicitly.
+func WithQueueTable(name string) queueOption { return queueTableName{name} }
+
+type queueTableName struct {
+	Name string
+}
+
+func (queueTableName) qOption() {}
+
 // NewQueue creates a new Queue.
 //
 // WARNING: the connection given to it must not be closed before the Queue is closed!
@@ -92,45 +101,59 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		}
 	}
 	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: execerIsPool}
+	enqOpts := DefaultEnqOptions
+	deqOpts := DefaultDeqOptions
+	for _, o := range options {
+		switch x := o.(type) {
+		case DeqOptions:
+			deqOpts = x
+		case EnqOptions:
+			enqOpts = x
+		case queueTableName:
+			Q.tableName = x.Name
+		}
+	}
 
-	if err := func() error {
-		const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
+	logger := getLogger(context.TODO())
+	if Q.tableName == "" {
+		if err := func() error {
+			const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
 	  FROM user_queues
 	  WHERE name = :name
 	UNION SELECT owner||'.'||queue_table
 	  FROM all_queues
 	  WHERE owner = REGEXP_REPLACE(:name, '\..*$') AND
 	        name  = REGEXP_REPLACE(:name, '^.*\.')`
-		stmt, err := cx.PrepareContext(ctx, qry)
-		if err != nil {
-			return fmt.Errorf("prepare %s: %w", qry, err)
+			stmt, err := cx.PrepareContext(ctx, qry)
+			if err != nil {
+				return fmt.Errorf("prepare %s: %w", qry, err)
+			}
+			defer stmt.Close()
+			rows, err := stmt.(driver.StmtQueryContext).QueryContext(ctx,
+				[]driver.NamedValue{
+					{Ordinal: 1, Name: "name", Value: name},
+				})
+			if err != nil {
+				return fmt.Errorf("%s [%q]: %w", qry, name, err)
+			}
+			defer rows.Close()
+			dest := []driver.Value{nil}
+			if err := rows.Next(dest); err != nil {
+				return fmt.Errorf("next: %w", err)
+			}
+			Q.tableName, _ = dest[0].(string)
+			if err = rows.Next(dest); err != io.EOF {
+				return fmt.Errorf("next: wanted EOF, got %+v", err)
+			}
+			return nil
+		}(); err != nil {
+			if logger != nil {
+				logger.Error("Get queue table name", "name", name, "error", err)
+			}
 		}
-		defer stmt.Close()
-		rows, err := stmt.(driver.StmtQueryContext).QueryContext(ctx,
-			[]driver.NamedValue{
-				{Ordinal: 1, Name: "name", Value: name},
-			})
-		if err != nil {
-			return fmt.Errorf("%s [%q]: %w", qry, name, err)
-		}
-		defer rows.Close()
-		dest := []driver.Value{nil}
-		if err := rows.Next(dest); err != nil {
-			return fmt.Errorf("next: %w", err)
-		}
-		Q.tableName, _ = dest[0].(string)
-		if err = rows.Next(dest); err != io.EOF {
-			return fmt.Errorf("next: wanted EOF, got %+v", err)
-		}
-		return nil
-	}(); err != nil {
-		return nil, err
 	}
-	if logger := getLogger(context.TODO()); logger != nil {
+	if logger != nil {
 		logger.Debug("NewQueue", "name", name, "tableName", Q.tableName)
-	}
-	if Q.tableName == "" {
-		return nil, fmt.Errorf("cannot get queue table name of %s", Q.name)
 	}
 
 	var payloadType *C.dpiObjectType
@@ -171,16 +194,6 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		}
 	}
 
-	enqOpts := DefaultEnqOptions
-	deqOpts := DefaultDeqOptions
-	for _, o := range options {
-		switch x := o.(type) {
-		case DeqOptions:
-			deqOpts = x
-		case EnqOptions:
-			enqOpts = x
-		}
-	}
 	if err = Q.SetEnqOptions(enqOpts); err != nil {
 		cx.Close()
 		Q.Close()
@@ -225,22 +238,24 @@ func (Q *Queue) Close() error {
 
 // Purge the expired messages from the queue.
 func (Q *Queue) PurgeExpired(ctx context.Context) error {
-	return Q.execQ(ctx, `DECLARE
-  c_name CONSTANT VARCHAR2(128) := :1;
-BEGIN 
-  FOR row IN (
-    SELECT sys_context('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
-	  FROM user_queues
-	  WHERE name = c_name
-	UNION SELECT owner||'.'||queue_table
-	  FROM all_queues
-	  WHERE owner = REGEXP_REPLACE(c_name, '\..*$') AND
-	        name  = REGEXP_REPLACE(c_name, '^.*\.')
-  ) LOOP
-    dbms_aqadm.purge_queue_table(row.queue_table, 'qtview.msg_state = ''EXPIRED''', NULL);
-  END LOOP;
-END;`,
-	)
+	if Q.tableName == "" {
+		return nil
+	}
+	const qry = `BEGIN DBMS_AQADM.purge_queue_table(:1, 'qtview.msg_state = ''EXPIRED''', NULL); END;`
+
+	stmt, err := Q.conn.PrepareContext(ctx, qry)
+	if err != nil {
+		return fmt.Errorf("%s: %w", qry, err)
+	}
+	defer stmt.Close()
+	if _, err = stmt.(driver.StmtExecContext).
+		ExecContext(ctx, []driver.NamedValue{
+			{Ordinal: 1, Value: Q.tableName},
+		},
+		); err != nil {
+		return fmt.Errorf("%s [%q]: %w", qry, Q.name, err)
+	}
+	return nil
 }
 
 // Name of the queue.
@@ -280,7 +295,7 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	if num := len(messages); num > 1 {
+	if num := len(messages); Q.tableName != "" && num > 1 {
 		logger := getLogger(context.TODO())
 		if err := func() error {
 			// See https://github.com/godror/godror/issues/382
