@@ -2924,22 +2924,30 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataSetObjectStructObj", "collection", coll)
 		}
-		for i, n := 0, rv.Len(); i < n; i++ {
-			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-				logger.Debug("dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
-			}
-			if !ot.CollectionOf.IsObject() {
+		if !ot.CollectionOf.IsObject() {
+			for i, n := 0, rv.Len(); i < n; i++ {
+				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+					logger.Debug("dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
+				}
 				if err := coll.Append(rv.Index(i).Interface()); err != nil {
+					coll.Close()
 					return nil, fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
 				}
-			} else {
+			}
+		} else {
+			for i, n := 0, rv.Len(); i < n; i++ {
+				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+					logger.Debug("dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
+				}
 				sub, err := c.dataSetObjectStructObj(ctx, ot.CollectionOf, rv.Index(i))
 				if err != nil {
+					coll.Close()
 					return nil, fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
 				}
 				err = coll.Append(sub)
-				sub.Close() // ?
+				sub.Close()
 				if err != nil {
+					coll.Close()
 					return nil, err
 				}
 			}
@@ -2969,6 +2977,8 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 		if err != nil || obj == nil {
 			return nil, err
 		}
+		ad := scratch.Get()
+		defer scratch.Put(ad)
 		for i, n := 0, rvt.NumField(); i < n; i++ {
 			f := rvt.Field(i)
 			if !f.IsExported() || fieldIsObjectTypeName(f) {
@@ -2988,7 +2998,6 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 					f.Name,
 					obj.Name, nm, ErrNoSuchKey, obj.AttributeNames())
 			}
-			var ad Data
 			if !attr.IsObject() {
 				if err := ad.Set(rf.Interface()); err != nil {
 					return nil, fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
@@ -3011,7 +3020,7 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 				ad.SetObject(sub)
 				defer sub.Close()
 			}
-			if err := obj.SetAttribute(nm, &ad); err != nil {
+			if err := obj.SetAttribute(nm, ad); err != nil {
 				if logger != nil {
 					logger.Error("SetAttribute", "obj", ot.Name, "nm", nm,
 						"index", f.Index, "kind", f.Type.Kind(),
@@ -3026,6 +3035,7 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 			}
 		}
 		return obj, nil
+
 	default:
 		return nil, fmt.Errorf("%T: not a struct or a slice: %w", rv.Interface(), errUnknownType)
 	}
@@ -3051,6 +3061,7 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 	if err != nil {
 		return err
 	}
+	defer obj.Close()
 
 	if obj.dpiObject == nil {
 		data.isNull = 1
@@ -3084,6 +3095,7 @@ func (c *conn) dataGetObject(ctx context.Context, v interface{}, data []C.dpiDat
 			obj2 := *obj
 			*out = ObjectCollection{Object: &obj2}
 		}
+
 	case *Object:
 		d := Data{
 			ObjectType: out.ObjectType,
@@ -3098,6 +3110,7 @@ func (c *conn) dataGetObject(ctx context.Context, v interface{}, data []C.dpiDat
 		} else {
 			*out = *obj
 		}
+
 	case ObjectScanner:
 		d := Data{
 			ObjectType: out.ObjectRef().ObjectType,
@@ -3145,6 +3158,8 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 		first := true
 		re := reflect.New(rvt.Elem()).Elem()
 		ret := re.Type()
+		d := scratch.Get()
+		defer scratch.Put(d)
 		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -3162,8 +3177,7 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 					rv = reflect.MakeSlice(rvt, 0, length)
 				}
 			}
-			var d Data
-			if err := coll.GetItem(&d, i); err != nil {
+			if err := coll.GetItem(d, i); err != nil {
 				return err
 			}
 			x := d.Get()
@@ -3197,6 +3211,8 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 		return nil
 	}
 
+	ad := scratch.Get()
+	defer scratch.Put(ad)
 Loop:
 	for i, n := 0, rvt.NumField(); i < n; i++ {
 		f := rvt.Field(i)
@@ -3229,8 +3245,7 @@ Loop:
 		if nm == "" {
 			nm = strings.ToUpper(f.Name)
 		}
-		var ad Data
-		if err := obj.GetAttribute(&ad, nm); err != nil {
+		if err := obj.GetAttribute(ad, nm); err != nil {
 			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
 		}
 		if ad.IsNull() {

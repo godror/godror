@@ -153,18 +153,27 @@ func (O *Object) ResetAttributes() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	return O.resetAttributes(false)
+}
+
+// resetAttributes prepare all attributes for use the object as IN parameter
+func (O *Object) resetAttributes(skipErrors bool) error {
 	data := scratch.Get()
 	defer scratch.Put(data)
+	var errs []error
 	for _, attr := range O.Attributes {
 		data.reset()
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
-			return fmt.Errorf("ResetAttributes(%q, ott=%+v, %+v): %w", attr.Name, attr.OracleTypeNum, data, O.drv.getError())
+			if skipErrors {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("ResetAttributes(%q, ott=%+v, %+v): %w", attr.Name, attr.OracleTypeNum, data, O.drv.getError()))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // Get scans the named attribute into dest, and returns it.
@@ -262,7 +271,7 @@ func (O *Object) Close() error {
 		}
 	}
 	// Reset all attributes
-	O.ResetAttributes()
+	O.resetAttributes(true)
 
 	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
