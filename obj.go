@@ -97,20 +97,20 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		if attr, ok = O.Attributes[try]; !ok {
 			return fmt.Errorf("set %s[%s]: %w (have: %q)", O, name, ErrNoSuchKey, O.AttributeNames())
 		}
-		name = try
+		// name = try
 	}
-	ctx := context.TODO()
-	logger := getLogger(ctx)
-	if logger != nil {
-		logger = logger.With("object", O.Name, "name", name)
-	}
+	// ctx := context.TODO()
+	// logger := getLogger(ctx)
+	// if logger != nil {
+	// 	logger = logger.With("object", O.Name, "name", name)
+	// }
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		data.dpiData.isNull = 1
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("SetAttribute data.NativeTypeNum from attr", "ntn", data.NativeTypeNum)
-		}
+		// if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+		// 	logger.Debug("SetAttribute data.NativeTypeNum from attr", "ntn", data.NativeTypeNum)
+		// }
 	}
 
 	// FromJSON
@@ -126,12 +126,12 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		C.dpiObjectAttr_getInfo(attr.dpiObjectAttr, &info)
 		return fmt.Errorf("dpiObject_setAttributeValue NativeTypeNum=%d ObjectType=%v typeInfo=%+v: %w", data.NativeTypeNum, data.ObjectType, info.typeInfo, err)
 	}
-	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
-		logger.Debug("setAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
-			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
-			"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
-			"p", fmt.Sprintf("%p", data))
-	}
+	// if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+	// 	logger.Debug("setAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
+	// 		attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
+	// 		"nativeType", data.NativeTypeNum, "oracleType", attr.OracleTypeNum,
+	// 		"p", fmt.Sprintf("%p", data))
+	// }
 	return nil
 }
 
