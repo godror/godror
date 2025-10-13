@@ -5,8 +5,19 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Changed
+
+## [v0.49.4]
+### Added
 - New WithQueueTable option for NewQueue.
+### Changed
+- ODPI-C v5.6.3
+- JSON: use strings for numbers (Oracle somewhere uses %f instead of %g).
+
+## [v0.49.3]
+### Fixed
+- JSON: handle empty / null array
+### Added
+- Queue: limit Dequeue to the number of ready messages (to avoid Oracle memory leak)
 
 ## [0.49.2]
 ### Fixed

@@ -101,7 +101,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_CONTEXT_SERVER_VERSION                  "DPI_SERVER_VERSION"
 
 // define size of buffer used for numbers transferred to/from Oracle as text
-#define DPI_NUMBER_AS_TEXT_CHARS                    172
+#define DPI_NUMBER_AS_TEXT_CHARS                    173
 
 // define maximum number of digits possible in an Oracle number
 #define DPI_NUMBER_MAX_DIGITS                       40

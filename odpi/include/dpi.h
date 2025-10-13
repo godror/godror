@@ -70,7 +70,7 @@ extern "C" {
 // define ODPI-C version information
 #define DPI_MAJOR_VERSION   5
 #define DPI_MINOR_VERSION   6
-#define DPI_PATCH_LEVEL     2
+#define DPI_PATCH_LEVEL     3
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -198,7 +198,7 @@ typedef uint32_t dpiEventType;
 // statement execution modes
 typedef uint32_t dpiExecMode;
 #define DPI_MODE_EXEC_DEFAULT                       0x00000000
-#define DPI_MODE_EXEC_SUSPEND_ON_SUCCESS            0x00000004                      
+#define DPI_MODE_EXEC_SUSPEND_ON_SUCCESS            0x00000004
 #define DPI_MODE_EXEC_DESCRIBE_ONLY                 0x00000010
 #define DPI_MODE_EXEC_COMMIT_ON_SUCCESS             0x00000020
 #define DPI_MODE_EXEC_BATCH_ERRORS                  0x00000080

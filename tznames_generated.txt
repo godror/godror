@@ -97,6 +97,7 @@ america/ciudad_juarezAmerica/Ciudad_Juarez
 america/coral_harbourAmerica/Coral_Harbour
 america/cordobaAmerica/Cordoba
 america/costa_ricaAmerica/Costa_Rica
+america/coyhaiqueAmerica/Coyhaique
 america/crestonAmerica/Creston
 america/cuiabaAmerica/Cuiaba
 america/curacaoAmerica/Curacao
@@ -542,5 +543,4 @@ pacific/guadalcanalPacific/Guadalcanal
 pacific/guamPacific/Guam
 pacific/honoluluPacific/Honolulu
 pacific/johnstonPacific/Johnston
-pacific/kantonPacific/Kanton
-pacific/kiritimatiPacific/Kirit
+pacific/kantonPacific/Kan

@@ -224,6 +224,10 @@ int dpiDataBuffer__fromOracleNumberAsText(dpiDataBuffer *data, dpiEnv *env,
                 *targetUtf16++ = '0';
         }
 
+        // add NULL terminator for ease of use by C conversion functions like
+        // strtoll(), strtod(), etc.
+        *targetUtf16++ = 0;
+
     // the following should be the same logic as the section above for UTF-16,
     // simply with single byte encodings instead
     } else {
@@ -255,6 +259,10 @@ int dpiDataBuffer__fromOracleNumberAsText(dpiDataBuffer *data, dpiEnv *env,
             for (i = numDigits; i < decimalPointIndex; i++)
                 *target++ = '0';
         }
+
+        // add NULL terminator for ease of use by C conversion functions like
+        // strtoll(), strtod(), etc.
+        *target++ = 0;
 
     }
 

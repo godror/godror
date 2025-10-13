@@ -50,6 +50,7 @@ Third-party Drivers:
 * [Oracle.jl](https://github.com/felipenoris/Oracle.jl) Driver for Julia.
 * [oranif](https://github.com/KonnexionsGmbH/oranif) Driver for Erlang.
 * [nimodpi](https://github.com/mikra01/nimodpi) Driver for Nim.
+* [Tcl](https://github.com/bagnongithub/oratcl) Driver for Tcl.
 
 ## Security
 

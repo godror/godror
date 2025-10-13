@@ -103,11 +103,12 @@ int dpiError__set(dpiError *error, const char *action, dpiErrorNum errorNum,
         error->buffer->action = action;
         error->buffer->errorNum = errorNum;
         va_start(varArgs, errorNum);
-        error->buffer->messageLength =
-                (uint32_t) vsnprintf(error->buffer->message,
+        (void) vsnprintf(error->buffer->message,
                 sizeof(error->buffer->message),
                 dpiErrorMessages[errorNum - DPI_ERR_NO_ERR], varArgs);
         va_end(varArgs);
+        error->buffer->messageLength =
+                (uint32_t) strlen(error->buffer->message);
         if (dpiDebugLevel & DPI_DEBUG_LEVEL_ERRORS)
             dpiDebug__print("internal error %.*s (%s / %s)\n",
                     error->buffer->messageLength, error->buffer->message,
@@ -308,20 +309,21 @@ int dpiError__wrap(dpiError *error, dpiErrorNum errorNum, ...)
     error->buffer->code = 0;
     error->buffer->errorNum = errorNum;
     va_start(varArgs, errorNum);
-    error->buffer->messageLength =
-            (uint32_t) vsnprintf(error->buffer->message,
-            sizeof(error->buffer->message),
+    (void) vsnprintf(error->buffer->message, sizeof(error->buffer->message),
             dpiErrorMessages[errorNum - DPI_ERR_NO_ERR], varArgs);
     va_end(varArgs);
+    error->buffer->messageLength = (uint32_t) strlen(error->buffer->message);
 
     // concatenate original message to new one (separated by line feed)
     if (origMessage) {
         ptr = error->buffer->message + error->buffer->messageLength;
         ptrLength = sizeof(error->buffer->message) -
                 error->buffer->messageLength;
-        error->buffer->messageLength += (uint32_t) snprintf(ptr, ptrLength,
-                "\n%*s", origMessageLength, origMessage);
+        (void) snprintf(ptr, ptrLength, "\n%.*s", origMessageLength,
+                origMessage);
         free(origMessage);
+        error->buffer->messageLength =
+                (uint32_t) strlen(error->buffer->message);
     }
 
     // log message, if applicable
