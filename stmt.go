@@ -3154,6 +3154,9 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 			logger.Debug("dataGetObjectStructObj", "length", length, "cap", rv.Cap())
 		}
 		orig := rv
+		if n, _ := coll.Len(); n > rv.Cap() {
+			rv.Grow(n)
+		}
 		rv.SetLen(0)
 		first := true
 		re := reflect.New(rvt.Elem()).Elem()

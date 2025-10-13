@@ -154,9 +154,9 @@ func TestPlSqlNestedObj(t *testing.T) {
 		return s
 	}(step, step/2) // 100 objects, each with 50 pairs
 
-	godror.GuardWithFinalizers(true)
-	godror.LogLingeringResourceStack(true)
-	defer godror.LogLingeringResourceStack(false)
+	// godror.GuardWithFinalizers(true)
+	// godror.LogLingeringResourceStack(true)
+	// defer godror.LogLingeringResourceStack(false)
 
 	callObjectType := func(ctx context.Context, db *sql.DB) error {
 		cx, err := db.Conn(ctx)
@@ -171,10 +171,12 @@ func TestPlSqlNestedObj(t *testing.T) {
 		}
 		defer tx.Commit()
 
+		s := pslice
+
 		const qry = `begin test_pkg_sample.test_pobj_in(:1); end;`
 		_, err = tx.ExecContext(ctx,
 			qry,
-			sql.Out{Dest: &pslice, In: true},
+			sql.Out{Dest: &s, In: true},
 		)
 		// t.Log(pslice)
 		return err

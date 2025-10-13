@@ -683,12 +683,13 @@ func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
 // AsSlice retrieves the collection into a slice.
 func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 	var dr reflect.Value
-	needsInit := dest == nil
-	if !needsInit {
+	if dest != nil {
 		dr = reflect.ValueOf(dest)
+		dr.SetLen(0)
 	}
 	d := scratch.Get()
 	defer scratch.Put(d)
+	first := true
 	for i, err := O.First(); err == nil; i, err = O.Next(i) {
 		if O.CollectionOf.IsObject() {
 			d.ObjectType = O.CollectionOf
@@ -701,13 +702,17 @@ func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
 			v = maybeString(v, O.CollectionOf)
 		}
 		vr := reflect.ValueOf(v)
-		if needsInit {
-			needsInit = false
+		if first {
+			first = false
 			length, lengthErr := O.Len()
 			if lengthErr != nil {
 				return dr.Interface(), lengthErr
 			}
-			dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
+			if dest == nil {
+				dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
+			} else if dr.Cap()-dr.Len() < length {
+				dr.Grow(dr.Len() + length)
+			}
 		}
 		dr = reflect.Append(dr, vr)
 	}
