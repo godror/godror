@@ -10,6 +10,7 @@ package godror
 #include "dpiImpl.h"
 */
 import "C"
+
 import (
 	"context"
 	"database/sql/driver"
@@ -94,7 +95,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 			cx.Close()
 			return nil, err
 		}
-		//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
+		// fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
 		if cx.(*conn).dpiConn != cx2.(*conn).dpiConn {
 			execerIsPool = true
 			cx2.Close()
@@ -341,7 +342,10 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 			if logger != nil {
 				logger.Error("check queue size", "error", err)
 			}
-		} else if 0 < num && num < len(messages) {
+		} else if 0 <= num && num < len(messages) {
+			if num == 0 {
+				num = 1 // call deqOne if there are no messages to prevent memory leak
+			}
 			if logger != nil {
 				logger.Info("Dequeue limit number of messages", "old", len(messages), "new", num)
 			}
@@ -393,8 +397,8 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 				err = nil
 			case 24010: // 0RA-24010: Queue does not exist
 				Q.Close()
-				//case 25263: // ORA-25263: no message in queue with message ID
-				//return 0, nil
+				// case 25263: // ORA-25263: no message in queue with message ID
+				// return 0, nil
 			case 25226: // ORA-25226: dequeue failed, queue <owner>.<queue_name> is not enabled for dequeue
 				if startErr := Q.start(); startErr != nil {
 					return 0, fmt.Errorf("%w: %w", startErr, err)
@@ -442,6 +446,7 @@ func (Q *Queue) execQ(ctx context.Context, qry string) error {
 	}
 	return nil
 }
+
 func (Q *Queue) start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -577,6 +582,7 @@ func (M Message) Deadline() time.Time {
 	}
 	return M.Enqueued.Add(M.Delay + M.Expiration)
 }
+
 func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -855,7 +861,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	D.MsgID = nil
 	if OK(C.dpiDeqOptions_getMsgId(opts, &value, &length), "getMsgId") {
 		if length != 0 {
-			//D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]
+			// D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]
 			D.MsgID = ([]byte)(unsafe.Slice((*byte)(unsafe.Pointer(value)), length))
 		}
 	}
