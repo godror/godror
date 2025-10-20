@@ -482,11 +482,23 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return err
 	}
 
+	done := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		// bind variables
+		done <- st.bindVars(ctx, args, logger)
+		close(done)
+	}()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	// bind variables
-	if err = st.bindVars(ctx, args, logger); err != nil {
-		return nil, closeIfBadConn(err)
+	select {
+	case <-ctx.Done():
+		return nil, closeIfBadConn(errors.Join(ctx.Err(), driver.ErrBadConn))
+	case err = <-done:
+		if err != nil {
+			return nil, closeIfBadConn(err)
+		}
 	}
 
 	mode := st.ExecMode()
