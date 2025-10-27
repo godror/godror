@@ -3088,6 +3088,7 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 	}
 	return obj.Close()
 }
+
 func (c *conn) dataGetObject(ctx context.Context, v interface{}, data []C.dpiData) error {
 	logger := getLogger(ctx)
 	switch out := v.(type) {
@@ -3159,6 +3160,8 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataGetObjectStructObj", "kind", rvt.Kind(), "collectionOf", obj.CollectionOf)
 	}
+	ad := scratch.Get()
+	defer scratch.Put(ad)
 	if obj.CollectionOf != nil && rvt.Kind() == reflect.Slice {
 		coll := obj.Collection()
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -3173,8 +3176,6 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 		first := true
 		re := reflect.New(rvt.Elem()).Elem()
 		ret := re.Type()
-		d := scratch.Get()
-		defer scratch.Put(d)
 		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -3192,10 +3193,10 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 					rv = reflect.MakeSlice(rvt, 0, length)
 				}
 			}
-			if err := coll.GetItem(d, i); err != nil {
+			if err := coll.GetItem(ad, i); err != nil {
 				return err
 			}
-			x := d.Get()
+			x := ad.Get()
 			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("coll.GetItem", "i", i, "x", x, "x.type", fmt.Sprintf("%T", x))
 			}
@@ -3226,8 +3227,6 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 		return nil
 	}
 
-	ad := scratch.Get()
-	defer scratch.Put(ad)
 Loop:
 	for i, n := 0, rvt.NumField(); i < n; i++ {
 		f := rvt.Field(i)
@@ -3382,22 +3381,32 @@ func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v interf
 	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
 		return fmt.Errorf("dataGetObjectStruct: not a struct or slice: %T: %w", v, errUnknownType)
 	}
-	d := Data{
-		ObjectType: ot,
-		dpiData:    data[0],
+	for _, dt := range data {
+		d := Data{
+			ObjectType: ot,
+			dpiData:    dt,
+		}
+		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+			logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
+		}
+		obj := d.GetObject()
+		switch v.(type) {
+		case time.Time, *time.Time:
+			if obj != nil {
+				obj.Close()
+			}
+			rv.Set(reflect.ValueOf(d.GetTime()))
+			return nil
+		}
+		err := c.dataGetObjectStructObj(ctx, rv, obj)
+		if obj != nil {
+			obj.Close()
+		}
+		if err != nil {
+			return err
+		}
 	}
-	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
-	}
-	obj := d.GetObject()
-	switch v.(type) {
-	case time.Time, *time.Time:
-		rv.Set(reflect.ValueOf(d.GetTime()))
-		return nil
-	}
-	err := c.dataGetObjectStructObj(ctx, rv, obj)
-	obj.Close()
-	return err
+	return nil
 }
 
 // ObjectTypeName is for allowing reflection-based Object - struct mapping.
