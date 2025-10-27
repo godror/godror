@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ func TestPlSqlNestedObj(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 1*time.Minute)
 	defer cancel()
 
+	const step = 100
+	stepS := strconv.Itoa(step)
 	//godror.SetLogger(zlog.NewT(t).SLog())
 
 	createTypes := func(ctx context.Context, db *sql.DB) error {
@@ -46,9 +49,27 @@ func TestPlSqlNestedObj(t *testing.T) {
 	PROCEDURE test_pobj_in (
 		recs IN OUT pobj_t
 	) IS
-	BEGIN
+	BEGIN --6
+		IF recs IS NULL THEN
+			recs := pobj_t();
+		END IF;
+		IF recs.COUNT = 0 THEN
+			recs.extend(` + stepS + `);
+			FOR i IN 1..` + stepS + ` LOOP
+			  recs(i) := pobj(1, NULL);
+			END LOOP;
+		END IF;
 		FOR i IN 1 .. recs.COUNT LOOP
 			recs(i).id := recs(i).id + 1;
+			IF recs(i).pairs IS NULL THEN
+				recs(i).pairs := pair_list();
+			END IF;
+			IF recs(i).pairs.COUNT = 0 THEN
+				recs(i).pairs.extend(` + stepS + `/2);
+				FOR j IN 1..` + stepS + `/2 LOOP
+					recs(i).pairs(j) := pair(3, 9);
+				END LOOP;
+			END IF;
 			FOR j IN 1 .. recs(i).pairs.COUNT LOOP
 				recs(i).pairs(j).value := recs(i).pairs(j).value + 10;
 			END LOOP;
@@ -62,6 +83,16 @@ func TestPlSqlNestedObj(t *testing.T) {
 				return err
 			}
 		}
+
+		cErrs, gcErr := godror.GetCompileErrors(ctx, db, false)
+		if gcErr != nil {
+			t.Logf("get compile errors: %+v", gcErr)
+		} else if len(cErrs) != 0 {
+			for _, ce := range cErrs {
+				t.Log(ce)
+			}
+		}
+
 		return nil
 	}
 
@@ -101,26 +132,26 @@ func TestPlSqlNestedObj(t *testing.T) {
 
 	var m runtime.MemStats
 	pid := int32(os.Getpid())
+	startMem := make(map[string]uint64)
 
-	var startMem uint64
-
-	const step = 100
 	const MiB = 1 << 20
 
 	loopCnt := 0
-	printStats := func() {
+	printStats := func(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m)
-		t.Logf("Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n",
+		t.Logf("%s: Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n", t.Name(),
 			float64(m.Alloc)/MiB, float64(m.HeapInuse)/MiB, float64(m.Sys)/MiB, m.NumGC)
 
 		rss, err := readMem(int32(pid))
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%d; process memory (rss): %.3f MiB\n", loopCnt, float64(rss)/MiB)
-		if rss > startMem*2 {
-			t.Errorf("started with RSS %d, got %d (%.3f%%)", startMem/MiB, rss/MiB, float64(rss*100)/float64(startMem))
+		t.Logf("%s: %d; process memory (rss): %.3f MiB\n", t.Name(), loopCnt, float64(rss)/MiB)
+		if rss > startMem[t.Name()]*2 {
+			t.Errorf("%s: started with RSS %d, got %d (%.3f%%)",
+				t.Name(),
+				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
 		}
 	}
 
@@ -154,11 +185,18 @@ func TestPlSqlNestedObj(t *testing.T) {
 		return s
 	}(step, step/2) // 100 objects, each with 50 pairs
 
+	type direction uint8
+	const (
+		// justIn = direction(1)
+		justOut = direction(2)
+		inOut   = direction(3)
+	)
+
 	// godror.GuardWithFinalizers(true)
 	// godror.LogLingeringResourceStack(true)
 	// defer godror.LogLingeringResourceStack(false)
 
-	callObjectType := func(ctx context.Context, db *sql.DB) error {
+	callObjectType := func(ctx context.Context, db *sql.DB, dir direction) error {
 		cx, err := db.Conn(ctx)
 		if err != nil {
 			return err
@@ -173,33 +211,60 @@ func TestPlSqlNestedObj(t *testing.T) {
 
 		s := pslice
 
+		var param any
+		switch dir {
+		// case justIn: param=s
+		case justOut:
+			param = sql.Out{Dest: &s}
+		case inOut:
+			param = sql.Out{Dest: &s, In: true}
+		}
 		const qry = `begin test_pkg_sample.test_pobj_in(:1); end;`
-		_, err = tx.ExecContext(ctx,
-			qry,
-			sql.Out{Dest: &s, In: true},
-		)
+		_, err = tx.ExecContext(ctx, qry, param)
 		// t.Log(pslice)
 		return err
 	}
 
+	dirs := []direction{justOut, inOut}
+
 	dl, _ := ctx.Deadline()
 	dl = dl.Add(-3 * time.Second)
-	for ; time.Now().Before(dl); loopCnt++ {
-		if err := callObjectType(ctx, testDb); err != nil {
-			t.Fatal(err)
+	dur := time.Until(dl) / time.Duration(len(dirs))
+	run := func(t *testing.T, dir direction) {
+		var name string
+		switch dir {
+		// case justIn: name ="justIn"
+		case justOut:
+			name = "justOut"
+		case inOut:
+			name = "inOut"
 		}
+		t.Run(name, func(t *testing.T) {
+			dl := time.Now().Add(dur)
+			loopCnt = 0
+			t.Logf("dl: %v dur:%v", dl, dur)
+			for ; time.Now().Before(dl); loopCnt++ {
+				if err := callObjectType(ctx, testDb, dir); err != nil {
+					t.Fatal(err)
+				}
 
-		if startMem == 0 {
-			runtime.GC()
-			var err error
-			if startMem, err = readMem(pid); err != nil {
-				t.Fatal(err)
+				if startMem[t.Name()] == 0 {
+					runtime.GC()
+					var err error
+					if startMem[t.Name()], err = readMem(pid); err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				if loopCnt%step == 0 {
+					printStats(t)
+				}
 			}
-		}
-
-		if loopCnt%step == 0 {
-			printStats()
-		}
+			printStats(t)
+		})
 	}
-	printStats()
+
+	for _, dir := range dirs {
+		run(t, dir)
+	}
 }
