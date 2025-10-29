@@ -955,14 +955,14 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 			if false && rv.IsNil() {
 				fmt.Printf("%d. v=%T %#v kind=%s\n", i, value, value, reflect.ValueOf(value).Kind())
 			}
-			if rv.Kind() == reflect.Ptr {
+			if rv.Kind() == reflect.Pointer {
 				rv = rv.Elem()
 				value = rv.Interface()
 			}
 		}
 		st.isSlice[i] = false
 		rArgs[i] = rv
-		if rv.IsValid() && rv.Kind() == reflect.Ptr {
+		if rv.IsValid() && rv.Kind() == reflect.Pointer {
 			// deref in rArgs, but NOT value!
 			rArgs[i] = rv.Elem()
 		}
@@ -970,7 +970,7 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		var isByteSlice bool
 		if rv.IsValid() && !rv.IsZero() {
 			t := rv.Type()
-			for t.Kind() == reflect.Ptr {
+			for t.Kind() == reflect.Pointer {
 				t = t.Elem()
 			}
 			isByteSlice = t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8
@@ -1137,7 +1137,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 	switch value.(type) {
 	case *driver.Rows, *Object, *timestamppb.Timestamp, *Vector, []*Vector:
 	default:
-		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Ptr {
+		if rv := reflect.ValueOf(value); rv.Kind() == reflect.Pointer {
 			if nilPtr = rv.IsNil(); nilPtr {
 				info.set = dataSetNull
 				value = reflect.Zero(rv.Type().Elem()).Interface()
@@ -2905,7 +2905,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 // dataSetObjectStructObj creates an ot typed object from rv.
 func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv reflect.Value) (*Object, error) {
 	logger := getLogger(ctx)
-	if rv.Type().Kind() == reflect.Ptr {
+	if rv.Type().Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if rv.IsZero() {
@@ -2956,7 +2956,7 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 					coll.Close()
 					return nil, fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
 				}
-				err = coll.Append(sub)
+				err = coll.AppendObject(sub)
 				sub.Close()
 				if err != nil {
 					coll.Close()
@@ -3060,7 +3060,7 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 	}
 	logger := getLogger(ctx)
 	rv := reflect.ValueOf(vv)
-	if rv.Type().Kind() == reflect.Ptr {
+	if rv.Type().Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -3345,12 +3345,12 @@ Loop:
 				}
 			default:
 				// TODO: slice/Collection of sth
-				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Ptr && vv.Elem().Kind() == reflect.Struct) {
+				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Pointer && vv.Elem().Kind() == reflect.Struct) {
 					if err := c.dataGetObjectStruct(ctx, obj.ObjectType.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
 						return err
 					}
 				} else if kind == reflect.Slice &&
-					(vv.Elem().Kind() == reflect.Struct || (vv.Elem().Kind() == reflect.Ptr && vv.Elem().Elem().Kind() == reflect.Struct)) {
+					(vv.Elem().Kind() == reflect.Struct || (vv.Elem().Kind() == reflect.Pointer && vv.Elem().Elem().Kind() == reflect.Struct)) {
 					ot, err := c.getStructObjectType(ctx, v, fieldTag)
 					if err != nil {
 						return err
@@ -3375,7 +3375,7 @@ func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v interf
 	logger := getLogger(ctx)
 	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() == reflect.Ptr {
+	if rv.Type().Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
@@ -3422,8 +3422,8 @@ func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]strin
 	vv := strings.Split(tag, ",")
 	tag, vv = vv[0], vv[1:]
 	for _, s := range vv {
-		if strings.HasPrefix(s, "type=") {
-			typ = strings.TrimPrefix(s, "type=")
+		var ok bool
+		if typ, ok = strings.CutPrefix(s, "type="); ok {
 			continue
 		}
 		if i := strings.IndexByte(s, '='); i >= 0 {
@@ -3442,7 +3442,7 @@ const StructTag = "godror"
 func (c *conn) getStructObjectType(ctx context.Context, v interface{}, fieldTag string) (*ObjectType, error) {
 	logger := getLogger(ctx)
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() == reflect.Ptr {
+	if rv.Type().Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	rvt := rv.Type()

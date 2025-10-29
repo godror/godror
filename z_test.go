@@ -114,7 +114,7 @@ func setUp() func() {
 			fmt.Printf("GOMAXPROCS=%d\n", i)
 		} else if e, _ := os.Executable(); e == "" {
 			fmt.Println("executable=" + e)
-		} else {
+		} else if false {
 			fmt.Printf("Reexec with GOMAXPROCS=%d\n", maxSessions)
 			syscall.Exec(e, os.Args[1:], append(os.Environ(), "GOMAXPROCS="+strconv.Itoa(maxSessions)))
 			return nil
@@ -1410,7 +1410,7 @@ func TestReadWriteBfile(t *testing.T) {
 
 func printSlice(orig interface{}) interface{} {
 	ro := reflect.ValueOf(orig)
-	if ro.Kind() == reflect.Ptr {
+	if ro.Kind() == reflect.Pointer {
 		ro = ro.Elem()
 	}
 	ret := make([]string, 0, ro.Len())

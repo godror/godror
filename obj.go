@@ -33,7 +33,7 @@ import (
 
 const (
 	warnMissingObjectClose   = true
-	closeObjectWithFinalizer = false
+	closeObjectWithFinalizer = true
 )
 
 var _ = fmt.Printf
@@ -236,24 +236,22 @@ func (O *Object) Close() error {
 	if O == nil {
 		return nil
 	}
-	obj := O.dpiObject
-	O.dpiObject = nil
-	if obj == nil {
+	if O.dpiObject == nil {
 		return nil
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
-		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", obj))
+		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", O.dpiObject))
 	}
 
 	// Close sub-objects first
+	data := scratch.Get()
+	defer scratch.Put(data)
 	for _, a := range O.Attributes {
 		if !a.IsObject() {
 			continue
 		}
 		if err := func() error {
-			data := scratch.Get()
-			defer scratch.Put(data)
 			if err := O.GetAttribute(data, a.Name); err != nil {
 				return fmt.Errorf("get attribute %q: %w", a.Name, err)
 			}
@@ -261,8 +259,8 @@ func (O *Object) Close() error {
 			if obj == nil {
 				return nil
 			}
-			if logger != nil && logger.Enabled(context.TODO(), slog.LevelInfo) {
-				logger.Info("Object.Close close sub-object", "attribute", a.Name, "object", fmt.Sprintf("%p", obj))
+			if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
+				logger.Debug("Object.Close close sub-object", "attribute", a.Name, "object", fmt.Sprintf("%p", obj))
 			}
 
 			return obj.Close()
@@ -273,7 +271,9 @@ func (O *Object) Close() error {
 	// Reset all attributes
 	O.resetAttributes(true)
 
-	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(obj) }); err != nil {
+	dpiObject := O.dpiObject
+	O.dpiObject = nil
+	if err := O.drv.checkExec(func() C.int { return C.dpiObject_release(dpiObject) }); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
 	}
 
@@ -1319,7 +1319,7 @@ func (A ObjectAttribute) Close() error {
 	if err := A.ObjectType.drv.checkExec(func() C.int { return C.dpiObjectAttr_release(A.dpiObjectAttr) }); err != nil {
 		return err
 	}
-	return A.ObjectType.Close()
+	return nil
 }
 
 // GetObjectType returns the ObjectType for the name.

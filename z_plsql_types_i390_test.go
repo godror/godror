@@ -22,7 +22,7 @@ func TestPlSqlNestedObj(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 1*time.Minute)
 	defer cancel()
 
-	const step = 100
+	const step = 200
 	stepS := strconv.Itoa(step)
 	//godror.SetLogger(zlog.NewT(t).SLog())
 
