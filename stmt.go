@@ -2889,15 +2889,19 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 			objs = append(objs, *ut.ObjectRef())
 		}
 	}
+
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
 			data[i].isNull = 1
 			continue
 		}
 		data[i].isNull = 0
-		if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject) }); err != nil {
+		if err := c.checkExec(func() C.int {
+			return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
+		}); err != nil {
 			return fmt.Errorf("setFromObject: %w", err)
 		}
+		obj.Close()
 	}
 	return nil
 }
@@ -3010,40 +3014,45 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 					f.Name,
 					obj.Name, nm, ErrNoSuchKey, obj.AttributeNames())
 			}
-			if !attr.IsObject() {
-				if err := ad.Set(rf.Interface()); err != nil {
-					return nil, fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
-				}
-			} else {
-				ot := attr.ObjectType
-				if ot == nil && typ != "" {
-					var err error
-					if ot, err = c.GetObjectType(typ); err != nil {
-						return nil, err
+			if err := func() error {
+				if !attr.IsObject() {
+					if err := ad.Set(rf.Interface()); err != nil {
+						return fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
 					}
+				} else {
+					ot := attr.ObjectType
+					if ot == nil && typ != "" {
+						var err error
+						if ot, err = c.GetObjectType(typ); err != nil {
+							return err
+						}
+					}
+					if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+						logger.Debug("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+					}
+					sub, err := c.dataSetObjectStructObj(ctx, ot, rf)
+					if err != nil {
+						return err
+					}
+					ad.SetObject(sub)
+					defer sub.Close()
 				}
-				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-					logger.Debug("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
+				if err := obj.SetAttribute(nm, ad); err != nil {
+					if logger != nil {
+						logger.Error("SetAttribute", "obj", ot.Name, "nm", nm,
+							"index", f.Index, "kind", f.Type.Kind(),
+							"value", rv.Interface(),
+							"isObject", attr.IsObject(),
+							"data", ad.Get(),
+							"dataNative", ad.NativeTypeNum, "dataObject", ad.ObjectType,
+							"attrNative", attr.NativeTypeNum, "dataObject", attr.ObjectType,
+						)
+					}
+					return fmt.Errorf("SetAttribute(%q): %w", nm, err)
 				}
-				sub, err := c.dataSetObjectStructObj(ctx, ot, rf)
-				if err != nil {
-					return nil, err
-				}
-				ad.SetObject(sub)
-				defer sub.Close()
-			}
-			if err := obj.SetAttribute(nm, ad); err != nil {
-				if logger != nil {
-					logger.Error("SetAttribute", "obj", ot.Name, "nm", nm,
-						"index", f.Index, "kind", f.Type.Kind(),
-						"value", rv.Interface(),
-						"isObject", attr.IsObject(),
-						"data", ad.Get(),
-						"dataNative", ad.NativeTypeNum, "dataObject", ad.ObjectType,
-						"attrNative", attr.NativeTypeNum, "dataObject", attr.ObjectType,
-					)
-				}
-				return nil, fmt.Errorf("SetAttribute(%q): %w", nm, err)
+				return nil
+			}(); err != nil {
+				return nil, err
 			}
 		}
 		return obj, nil
@@ -3080,7 +3089,9 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 		return nil
 	}
 	data.isNull = 0
-	if err := c.checkExec(func() C.int { return C.dpiVar_setFromObject(dv, C.uint32_t(0), obj.dpiObject) }); err != nil {
+	if err := c.checkExec(func() C.int {
+		return C.dpiVar_setFromObject(dv, C.uint32_t(0), obj.dpiObject)
+	}); err != nil {
 		if logger != nil {
 			logger.Error("setFromObject", "i", 0, "dv", dv, "obj", obj, "error", err)
 		}
