@@ -152,6 +152,10 @@ func TestPlSqlNestedObj(t *testing.T) {
 			t.Errorf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
 				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
+		} else {
+			t.Logf("%s: started with RSS %d, got %d (%.3f%%)",
+				t.Name(),
+				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
 		}
 	}
 
