@@ -12,6 +12,19 @@ import (
 	"iter"
 )
 
+func (O ObjectCollection) Items() iter.Seq2[*Data, error] {
+	return func(yield func(*Data, error) bool) {
+		data := scratch.Get()
+		defer scratch.Put(data)
+		for curr, err := O.First(); err == nil; curr, err = O.Next(curr) {
+			err := O.GetItem(data, curr)
+			if !yield(data, err) {
+				break
+			}
+		}
+	}
+}
+
 func (O ObjectCollection) Indexes() iter.Seq2[int, error] {
 	i, err := O.First()
 	return func(yield func(i int, err error) bool) {

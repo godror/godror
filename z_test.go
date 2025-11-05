@@ -73,7 +73,18 @@ func TestMain(m *testing.M) {
 }
 
 func setUp() func() {
-	Verbose, _ = strconv.ParseBool(os.Getenv("VERBOSE"))
+	Verbose := slog.LevelError
+	if s := os.Getenv("VERBOSE"); s != "" {
+		if i, err := strconv.ParseInt(s, 10, 32); err == nil {
+			if i > 1 {
+				Verbose = slog.LevelDebug
+			} else if i > 0 {
+				Verbose = slog.LevelError
+			}
+		} else if b, _ := strconv.ParseBool(s); b {
+			Verbose = slog.LevelInfo
+		}
+	}
 	hsh := sha256.New()
 	bi, ok := debug.ReadBuildInfo()
 	if ok && bi != nil {
@@ -84,12 +95,8 @@ func setUp() func() {
 	}
 	tblSuffix = fmt.Sprintf("_%x", hsh.Sum(nil)[:4])
 
-	if Verbose {
-		tl.enc = logfmt.NewEncoder(os.Stderr)
-		logger = slog.New(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	} else {
-		logger = slog.New(slog.NewTextHandler(tl, nil))
-	}
+	tl.enc = logfmt.NewEncoder(os.Stderr)
+	logger = slog.New(slog.NewTextHandler(tl, &slog.HandlerOptions{Level: Verbose}))
 	slog.SetDefault(logger)
 	godror.SetLogger(logger)
 	if tzName := os.Getenv("GODROR_TIMEZONE"); tzName != "" {
