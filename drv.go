@@ -85,6 +85,7 @@ import (
 	"github.com/godror/godror/slog"
 	"io"
 	"math"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -106,15 +107,6 @@ const (
 	// DefaultArraySize is the length of the maximum PL/SQL array by default (if not changed through ArraySize statement option).
 	DefaultArraySize = 1 << 10
 
-	baseWaitTimeout = 30 * time.Second
-)
-
-// DriverName is set on the connection to be seen in the DB
-//
-// It cannot be longer than 30 bytes !
-var DriverName = "godror : " + Version
-
-const (
 	// DpiMajorVersion is the wanted major version of the underlying ODPI-C library.
 	DpiMajorVersion = C.DPI_MAJOR_VERSION
 	// DpiMinorVersion is the wanted minor version of the underlying ODPI-C library.
@@ -153,6 +145,17 @@ const (
 	SysKM     = dsn.SysKM
 	SysRAC    = dsn.SysRAC
 	SysASM    = dsn.SysASM
+
+	baseWaitTimeout = 30 * time.Second
+)
+
+// DriverName is set on the connection to be seen in the DB
+//
+// It cannot be longer than 30 bytes !
+var (
+	DriverName = "godror : " + Version
+
+	warnDpiObjectRefCount, _ = strconv.ParseBool(os.Getenv("GODROR_WARN_DPI_OBJECT_REFCOUNT"))
 )
 
 // dsn is separated out for fuzzing, but keep it as "internal"

@@ -236,6 +236,7 @@ func (O *Object) Close() error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
+	oldRefCount := O.dpiObject.refCount
 	logger := getLogger(context.TODO())
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", O.dpiObject))
@@ -300,6 +301,10 @@ func (O *Object) Close() error {
 		return C.dpiObject_release(dpiObject)
 	}); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
+	}
+
+	if warnDpiObjectRefCount {
+		fmt.Printf("%s[%p] refCount %d -> %d\n", O.Name, dpiObject, oldRefCount, dpiObject.refCount)
 	}
 
 	return nil
