@@ -260,7 +260,7 @@ func (O *Object) Close() error {
 			if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 				logger.Debug("ObjectCollection.Close close item", "idx", curr, "object", fmt.Sprintf("%p", obj))
 			}
-			if err = obj.Close(); err != nil && logger != nil {
+			if err = obj.Close(); err != nil && logger != nil && false {
 				logger.Error("close sub-object", "idx", curr, "error", err)
 			}
 		}
@@ -286,7 +286,7 @@ func (O *Object) Close() error {
 			}
 
 			return obj.Close()
-		}(); err != nil && logger != nil {
+		}(); err != nil && logger != nil && false {
 			logger.Error("Close sub-object", "name", a.Name, "error", err)
 		}
 	}
@@ -295,10 +295,22 @@ func (O *Object) Close() error {
 
 	dpiObject := O.dpiObject
 	O.dpiObject = nil
+
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_release(dpiObject)
 	}); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
+	}
+	for dpiObject.refCount > 1 {
+		old := dpiObject.refCount
+		if false {
+			if err := O.drv.checkExec(func() C.int {
+				return C.dpiObject_release(dpiObject)
+			}); err != nil {
+				return fmt.Errorf("error on close object: %w", err)
+			}
+		}
+		fmt.Printf("%s[%p] refCount=%d -> %d\n", O.Name, dpiObject, old, dpiObject.refCount)
 	}
 
 	return nil

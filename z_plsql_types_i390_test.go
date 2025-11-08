@@ -21,6 +21,7 @@ import (
 func TestPlSqlNestedObj(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 1*time.Minute)
 	defer cancel()
+	// defer tl.enableLogging(t)()
 
 	const step = 200
 	stepS := strconv.Itoa(step)
