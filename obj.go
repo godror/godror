@@ -301,17 +301,6 @@ func (O *Object) Close() error {
 	}); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
 	}
-	for false && dpiObject.refCount > 1 {
-		old := dpiObject.refCount
-		if false {
-			if err := O.drv.checkExec(func() C.int {
-				return C.dpiObject_release(dpiObject)
-			}); err != nil {
-				return fmt.Errorf("error on close object: %w", err)
-			}
-		}
-		fmt.Printf("%s[%p] refCount=%d -> %d\n", O.Name, dpiObject, old, dpiObject.refCount)
-	}
 
 	return nil
 }
