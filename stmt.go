@@ -2909,13 +2909,13 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 // dataSetObjectStructObj creates an ot typed object from rv.
 func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv reflect.Value) (*Object, error) {
 	logger := getLogger(ctx)
-	if rv.Type().Kind() == reflect.Pointer {
-		rv = rv.Elem()
+	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
 	}
 	if rv.IsZero() {
 		return nil, nil
 	}
-	rvt := rv.Type()
 	wrappedSlice := ot.CollectionOf != nil && rvt.Kind() == reflect.Struct
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataSetObjectStructObj", "ot", ot.FullName(), "rvt", rvt, "kind", rvt.Kind(), "wrappedSlice", wrappedSlice)
@@ -3386,10 +3386,11 @@ func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v interf
 	logger := getLogger(ctx)
 	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() == reflect.Pointer {
-		rv = rv.Elem()
+	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
 	}
-	if kind := rv.Type().Kind(); kind != reflect.Struct && kind != reflect.Slice {
+	if kind := rvt.Kind(); kind != reflect.Struct && kind != reflect.Slice {
 		return fmt.Errorf("dataGetObjectStruct: not a struct or slice: %T: %w", v, errUnknownType)
 	}
 	for _, dt := range data {
@@ -3453,10 +3454,10 @@ const StructTag = "godror"
 func (c *conn) getStructObjectType(ctx context.Context, v interface{}, fieldTag string) (*ObjectType, error) {
 	logger := getLogger(ctx)
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() == reflect.Pointer {
-		rv = rv.Elem()
-	}
 	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
+	}
 	switch rvt.Kind() {
 	case reflect.Slice:
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
