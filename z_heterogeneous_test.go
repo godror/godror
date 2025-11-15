@@ -26,7 +26,7 @@ func TestWrongPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		for _, ok := range []bool{true, false} {
 			P2 := P
 			if !ok {

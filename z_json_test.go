@@ -101,8 +101,8 @@ func TestReadWriteJSONString(t *testing.T) {
 		sb.Reset()
 	}
 	for tN, tC := range []struct {
-		JDOC interface{}
-		ID   interface{}
+		JDOC any
+		ID   any
 	}{
 		{JDOC: indocs, ID: ids},
 	} {
@@ -150,8 +150,8 @@ func TestReadWriteJSONString(t *testing.T) {
 
 // Check if two JSON strings are equal ignoring the order
 func diffJSONString(js1, js2 string) (string, error) {
-	var js1type interface{}
-	var js2type interface{}
+	var js1type any
+	var js2type any
 
 	var err error
 	err = json.Unmarshal([]byte(js1), &js1type)
@@ -217,12 +217,12 @@ func TestReadWriteJSONMap(t *testing.T) {
 	}
 	defer stmt.Close()
 	var travelTime time.Duration = 5*time.Hour + 21*time.Minute + 10*time.Millisecond + 20*time.Nanosecond
-	jmap := map[string]interface{}{
-		"person": map[string]interface{}{
+	jmap := map[string]any{
+		"person": map[string]any{
 			"ID":        godror.Number("12"),
 			"FirstName": "Mary",
 			"LastName":  "John",
-			"creditScore": []interface{}{
+			"creditScore": []any{
 				godror.Number("123456789123456789123456789123456789.12"),
 				godror.Number("250"),
 				godror.Number("340"),
@@ -250,8 +250,8 @@ func TestReadWriteJSONMap(t *testing.T) {
 	lastJSONDoc := godror.JSONValue{Value: jmap}
 
 	for tN, tC := range []struct {
-		ID   interface{}
-		JDOC interface{}
+		ID   any
+		JDOC any
 	}{
 		{JDOC: docs, ID: ids},
 		{JDOC: lastJSONDoc, ID: lastIndex},
@@ -268,7 +268,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
-		var id interface{}
+		var id any
 		var jsondoc godror.JSON
 		var ok bool
 		for rows.Next() {
@@ -283,12 +283,12 @@ func TestReadWriteJSONMap(t *testing.T) {
 			} else {
 				t.Logf("%d. JSON Document read %q: ", id, jsondoc)
 
-				var gotmap map[string]interface{}
+				var gotmap map[string]any
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
-				if gotmap, ok = v.(map[string]interface{}); !ok {
+				if gotmap, ok = v.(map[string]any); !ok {
 					t.Errorf("%d. %T is not JSONObject ", id, v)
 				}
 				if d := cmp.Diff(jmap, gotmap); d != "" {
@@ -335,13 +335,13 @@ func TestReadWriteJSONArray(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	jsarray := []interface{}{
-		map[string]interface{}{
-			"person": map[string]interface{}{
+	jsarray := []any{
+		map[string]any{
+			"person": map[string]any{
 				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
-				"creditScore": []interface{}{
+				"creditScore": []any{
 					godror.Number("700"),
 					godror.Number("250"),
 					godror.Number("340"),
@@ -352,12 +352,12 @@ func TestReadWriteJSONArray(t *testing.T) {
 				"Local":     true,
 			},
 		},
-		map[string]interface{}{
-			"person": map[string]interface{}{
+		map[string]any{
+			"person": map[string]any{
 				"ID":        godror.Number("13"),
 				"FirstName": "Ivan",
 				"LastName":  "John",
-				"creditScore": []interface{}{
+				"creditScore": []any{
 					godror.Number("800"),
 					godror.Number("550"),
 					godror.Number("340"),
@@ -371,7 +371,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 		"nodata",
 	}
 	for tN, tC := range []struct {
-		JDOC []interface{}
+		JDOC []any
 	}{
 		{JDOC: jsarray},
 	} {
@@ -387,7 +387,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 			t.Errorf("%d/3. %v", tN, err)
 			continue
 		}
-		var id interface{}
+		var id any
 		var jsondoc godror.JSON
 		for rows.Next() {
 			if err = rows.Scan(&id, &jsondoc); err != nil {
@@ -399,13 +399,13 @@ func TestReadWriteJSONArray(t *testing.T) {
 				t.Errorf("%d. %v", id, err)
 			} else {
 				t.Logf("%d. JSON Document read %q: ", id, jsondoc)
-				var gotarr []interface{}
+				var gotarr []any
 				var ok bool
 				v, err := jsondoc.GetValue(godror.JSONOptNumberAsString)
 				if err != nil {
 					t.Errorf("%d. %v", id, err)
 				}
-				if gotarr, ok = v.([]interface{}); !ok {
+				if gotarr, ok = v.([]any); !ok {
 					t.Errorf("%d. %T is not JSONArray ", id, v)
 				}
 				if d := cmp.Diff(tC.JDOC, gotarr); d != "" {
@@ -453,13 +453,13 @@ func TestReadJSONScalar(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	jsarray := []interface{}{
-		map[string]interface{}{
-			"person": map[string]interface{}{
+	jsarray := []any{
+		map[string]any{
+			"person": map[string]any{
 				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
-				"creditScore": []interface{}{
+				"creditScore": []any{
 					godror.Number("700"),
 					godror.Number("250"),
 					godror.Number("340"),
@@ -470,12 +470,12 @@ func TestReadJSONScalar(t *testing.T) {
 				"Local":     true,
 			},
 		},
-		map[string]interface{}{
-			"person": map[string]interface{}{
+		map[string]any{
+			"person": map[string]any{
 				"ID":        godror.Number("13"),
 				"FirstName": "Ivan",
 				"LastName":  "John",
-				"creditScore": []interface{}{
+				"creditScore": []any{
 					godror.Number("800"),
 					godror.Number("550"),
 					godror.Number("340"),
@@ -489,7 +489,7 @@ func TestReadJSONScalar(t *testing.T) {
 		"nodata",
 	}
 	for tN, tC := range []struct {
-		JDOC []interface{}
+		JDOC []any
 	}{
 		{JDOC: jsarray},
 	} {
@@ -528,13 +528,13 @@ func TestReadJSONScalar(t *testing.T) {
 			t.Logf("%d. JSON Document for Person %q: ", id, personJSON)
 
 			// Get all Birthdates and verify
-			var dobarr []interface{}
+			var dobarr []any
 			var ok bool
 			v, err := personBirthDateJSON.GetValue(godror.JSONOptNumberAsString)
 			if err != nil {
 				t.Errorf("%d. %v", id, err)
 			}
-			if dobarr, ok = v.([]interface{}); !ok {
+			if dobarr, ok = v.([]any); !ok {
 				t.Errorf("%d. %T is not JSONArray ", id, v)
 			}
 			for _, entry := range dobarr {
@@ -586,13 +586,13 @@ func TestUpdateJSONScalar(t *testing.T) {
 	}
 	defer stmt.Close()
 	newBirthDate := birthdate.AddDate(-1, 0, 0)
-	jsarray := []interface{}{
-		map[string]interface{}{
-			"person": map[string]interface{}{
+	jsarray := []any{
+		map[string]any{
+			"person": map[string]any{
 				"ID":        godror.Number("12"),
 				"FirstName": "Mary",
 				"LastName":  "John",
-				"creditScore": []interface{}{
+				"creditScore": []any{
 					godror.Number("700"),
 					godror.Number("250"),
 					godror.Number("340"),
@@ -607,7 +607,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 	}
 
 	for tN, tC := range []struct {
-		JDOC []interface{}
+		JDOC []any
 	}{
 		{JDOC: jsarray},
 	} {
@@ -625,19 +625,19 @@ func TestUpdateJSONScalar(t *testing.T) {
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var id interface{}
+			var id any
 			var personJSON godror.JSON
 			if err = rows.Scan(&id, &personJSON); err != nil {
 				t.Errorf("%d/3. scan: %v", tN, err)
 				continue
 			}
-			var personMap map[string]interface{}
+			var personMap map[string]any
 			var ok bool
 			v, err := personJSON.GetValue(godror.JSONOptNumberAsString)
 			if err != nil {
 				t.Errorf("%d. %v", tN, err)
 			}
-			if personMap, ok = v.(map[string]interface{}); !ok {
+			if personMap, ok = v.(map[string]any); !ok {
 				t.Errorf("%d. %T is not JSONObject ", id, v)
 			}
 
@@ -722,7 +722,7 @@ func TestJSONStorageTypes(t *testing.T) {
 	tbl := "test_objectcollection_jsonmap" + tblSuffix
 	testData := []struct {
 		Key   string
-		Value interface{}
+		Value any
 	}{
 		{"asNumber", godror.Number("12")},
 		{"asString", "Mary"},
@@ -738,7 +738,7 @@ func TestJSONStorageTypes(t *testing.T) {
 		{"asFloat32", float32(97.2)},
 	}
 	// Map with different Go-types, which would be stored as JSON in the DB
-	obj := make(map[string]interface{}, len(testData))
+	obj := make(map[string]any, len(testData))
 	var buf strings.Builder
 	buf.WriteString("SELECT id, json_value(jdoc,'$.asObject.type()')")
 	for _, elt := range testData {
@@ -747,7 +747,7 @@ func TestJSONStorageTypes(t *testing.T) {
 	}
 	buf.WriteString("\nFROM " + tbl + " c ")
 	qry := buf.String()
-	jsmap := map[string]interface{}{"asObject": obj}
+	jsmap := map[string]any{"asObject": obj}
 	t.Log("qry:", qry)
 
 	conn, err := testDb.Conn(ctx)
@@ -889,7 +889,7 @@ func TestJSONIssue371(t *testing.T) {
 	}
 	defer rows.Close()
 
-	var id interface{}
+	var id any
 	var jsondoc godror.JSON
 
 	for rows.Next() {
@@ -901,7 +901,7 @@ func TestJSONIssue371(t *testing.T) {
 		// Get Go native map[string]interface{}
 		v, _ := jsondoc.GetValue(godror.JSONOptNumberAsString)
 		// type assert to verify the type returned
-		gotmap, _ := v.(map[string]interface{})
+		gotmap, _ := v.(map[string]any)
 		t.Log("The JSON Map object is:", gotmap)
 	}
 }
@@ -916,7 +916,7 @@ func (j jsonDataType) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
-func (j *jsonDataType) Scan(value interface{}) error {
+func (j *jsonDataType) Scan(value any) error {
 	if value == nil {
 		*j = jsonDataType("null")
 		return nil
@@ -1021,8 +1021,8 @@ func TestReadWriteJSONRawMessage(t *testing.T) {
 			if err != nil {
 				t.Errorf("Failed to get columns: %v", err)
 			}
-			values := make([]interface{}, len(cols))
-			valuePtrs := make([]interface{}, len(cols))
+			values := make([]any, len(cols))
+			valuePtrs := make([]any, len(cols))
 			for i := range cols {
 				valuePtrs[i] = &values[i]
 			}

@@ -19,7 +19,7 @@ import (
 func TestMapToSlice(t *testing.T) {
 	for i, tc := range []struct {
 		in, await string
-		params    []interface{}
+		params    []any
 	}{
 		{
 			`SELECT NVL(MAX(F_dazon), :dazon) FROM T_spl_level
@@ -28,13 +28,13 @@ func TestMapToSlice(t *testing.T) {
 			`SELECT NVL(MAX(F_dazon), :1) FROM T_spl_level
 			WHERE (to_char(CURRENT_DATE, 'HH:MM') = '00:42' AND F_spl_azon = :2 OR --:lev_azon OR
 			       F_ssz = 0 AND F_lev_azon = /*:lev_azon*/:3)`,
-			[]interface{}{"dazon", "lev_azon", "lev_azon"},
+			[]any{"dazon", "lev_azon", "lev_azon"},
 		},
 
 		{
 			`INSERT INTO PERSON(NAME) VALUES('hello') RETURNING ID INTO :ID`,
 			`INSERT INTO PERSON(NAME) VALUES('hello') RETURNING ID INTO :1`,
-			[]interface{}{"ID"},
+			[]any{"ID"},
 		},
 
 		{
@@ -66,11 +66,11 @@ BEGIN
 
 END;
 `,
-			[]interface{}{"p002#dijkod", "p002#dijkod"},
+			[]any{"p002#dijkod", "p002#dijkod"},
 		},
 	} {
 
-		got, params := godror.MapToSlice(tc.in, func(s string) interface{} { return s })
+		got, params := godror.MapToSlice(tc.in, func(s string) any { return s })
 		d := cmp.Diff(tc.await, got)
 		if d != "" {
 			t.Errorf("%d. diff:\n%s", i, d)

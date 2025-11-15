@@ -38,7 +38,7 @@ var (
 type intType struct{}
 
 func (intType) String() string { return "Int64" }
-func (intType) ConvertValue(v interface{}) (driver.Value, error) {
+func (intType) ConvertValue(v any) (driver.Value, error) {
 	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("ConvertValue Int64", "value", v)
 	}
@@ -90,7 +90,7 @@ func (intType) ConvertValue(v interface{}) (driver.Value, error) {
 type floatType struct{}
 
 func (floatType) String() string { return "Float64" }
-func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
+func (floatType) ConvertValue(v any) (driver.Value, error) {
 	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("ConvertValue Float64", "value", v)
 	}
@@ -136,7 +136,7 @@ func (floatType) ConvertValue(v interface{}) (driver.Value, error) {
 type numType struct{}
 
 func (numType) String() string { return "Num" }
-func (numType) ConvertValue(v interface{}) (driver.Value, error) {
+func (numType) ConvertValue(v any) (driver.Value, error) {
 	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("ConvertValue Num", "value", v)
 	}
@@ -193,7 +193,7 @@ func (n Number) Value() (driver.Value, error) {
 }
 
 // Scan into the Number from a driver.Value.
-func (n *Number) Scan(v interface{}) error {
+func (n *Number) Scan(v any) error {
 	if v == nil {
 		*n = ""
 		return nil
@@ -296,12 +296,12 @@ type QueryColumn struct {
 
 // Execer is the ExecContext of sql.Conn.
 type Execer interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 // Querier is the QueryContext of sql.Conn.
 type Querier interface {
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
 // DescribeQuery describes the columns in the qry.
@@ -391,18 +391,18 @@ type preparer interface {
 }
 
 // NamedToOrdered converts the query from named params (:paramname) to :%d placeholders + slice of params, copying the params verbatim.
-func NamedToOrdered(qry string, namedParams map[string]interface{}) (string, []interface{}) {
-	return MapToSlice(qry, func(k string) interface{} { return namedParams[k] })
+func NamedToOrdered(qry string, namedParams map[string]any) (string, []any) {
+	return MapToSlice(qry, func(k string) any { return namedParams[k] })
 }
 
 // MapToSlice modifies query for map (:paramname) to :%d placeholders + slice of params.
 //
 // Calls metParam for each parameter met, and returns the slice of their results.
-func MapToSlice(qry string, metParam func(string) interface{}) (string, []interface{}) {
+func MapToSlice(qry string, metParam func(string) any) (string, []any) {
 	if metParam == nil {
-		metParam = func(string) interface{} { return nil }
+		metParam = func(string) any { return nil }
 	}
-	arr := make([]interface{}, 0, 16)
+	arr := make([]any, 0, 16)
 	var buf bytes.Buffer
 	state, p, last := 0, 0, 0
 	var prev rune
@@ -504,7 +504,7 @@ func ReadDbmsOutput(ctx context.Context, w io.Writer, conn preparer) error {
 
 	lines := make([]string, maxNumLines)
 	var numLines int64
-	params := []interface{}{
+	params := []any{
 		PlSQLArrays,
 		sql.Out{Dest: &lines}, sql.Out{Dest: &numLines, In: true},
 	}
@@ -567,7 +567,7 @@ type Conn interface {
 
 	NewSubscription(string, func(Event), ...SubscriptionOption) (*Subscription, error)
 	GetObjectType(name string) (*ObjectType, error)
-	NewData(baseType interface{}, SliceLen, BufSize int) ([]*Data, error)
+	NewData(baseType any, SliceLen, BufSize int) ([]*Data, error)
 	NewTempLob(isClob bool) (*DirectLob, error)
 
 	Timezone() *time.Location
@@ -600,7 +600,7 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	}
 	getConnMu.Lock()
 	defer getConnMu.Unlock()
-	var c interface{}
+	var c any
 	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
 		return nil, fmt.Errorf("getConnection: %w", err)
 	} else if c == nil {
@@ -611,9 +611,9 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 
 // Raw executes f on the given *sql.DB or *sql.Conn.
 func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
-	sf := func(driverConn interface{}) error { return f(driverConn.(Conn)) }
+	sf := func(driverConn any) error { return f(driverConn.(Conn)) }
 	if rawer, ok := ex.(interface {
-		Raw(func(interface{}) error) error
+		Raw(func(any) error) error
 	}); ok {
 		return rawer.Raw(sf)
 	}

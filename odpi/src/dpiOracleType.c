@@ -476,10 +476,10 @@ const dpiOracleType *dpiOracleType__getFromNum(dpiOracleTypeNum typeNum,
 int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
         uint32_t handleType, dpiDataTypeInfo *info, dpiError *error)
 {
+    uint32_t dataTypeAttribute, i, tempFlags;
     const dpiOracleType *oracleType = NULL;
     uint8_t charsetForm, isJson, isOson;
     dpiNativeTypeNum nativeTypeNum;
-    uint32_t dataTypeAttribute, i;
     void *listParam, *itemParam;
     dpiAnnotation *annotation;
     uint16_t ociSize;
@@ -679,10 +679,15 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
             return DPI_FAILURE;
 
         // get vector column flags
-        if (dpiOci__attrGet(handle, handleType, &info->vectorFlags, 0,
+        // NOTE: all of the values for the vector column flags fit within a
+        // single byte, but the Oracle Client libraries still expect a pointer
+        // to a four byte value and failing to do so causes a segfault on some
+        // platforms
+        if (dpiOci__attrGet(handle, handleType, &tempFlags, 0,
                 DPI_OCI_ATTR_VECTOR_PROPERTY, "get vector column flags",
                 error) < 0)
             return DPI_FAILURE;
+        info->vectorFlags = (uint8_t) tempFlags;
 
     }
 

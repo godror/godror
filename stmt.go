@@ -3453,10 +3453,9 @@ const StructTag = "godror"
 
 func (c *conn) getStructObjectType(ctx context.Context, v interface{}, fieldTag string) (*ObjectType, error) {
 	logger := getLogger(ctx)
-	rv := reflect.ValueOf(v)
-	rvt := rv.Type()
+	rvt := reflect.ValueOf(v).Type()
 	if rvt.Kind() == reflect.Pointer {
-		rv, rvt = rv.Elem(), rvt.Elem()
+		rvt = rvt.Elem()
 	}
 	switch rvt.Kind() {
 	case reflect.Slice:

@@ -18,7 +18,7 @@ const DefaultBatchLimit = 1024
 // The default Limit is DefaultBatchLimit.
 type Batch struct {
 	Stmt         *sql.Stmt
-	values       []interface{}
+	values       []any
 	rValues      []reflect.Value
 	size, Limit  int
 	rowsAffected int64
@@ -29,7 +29,7 @@ type Batch struct {
 // with the same types.
 //
 // When the number of added rows reaches Size, Flush is called.
-func (b *Batch) Add(ctx context.Context, values ...interface{}) error {
+func (b *Batch) Add(ctx context.Context, values ...any) error {
 	if b.rValues == nil {
 		if b.Limit <= 0 {
 			b.Limit = DefaultBatchLimit
@@ -94,7 +94,7 @@ func (b *Batch) Flush(ctx context.Context) error {
 	}
 
 	if b.values == nil {
-		b.values = make([]interface{}, len(b.rValues))
+		b.values = make([]any, len(b.rValues))
 	}
 	for i, v := range b.rValues {
 		if !v.IsValid() {

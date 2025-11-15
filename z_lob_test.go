@@ -85,7 +85,7 @@ END;`
 	var offset int64
 	bufSize := int64(32768)
 	buf := make([]byte, bufSize)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		count, err := directLob.ReadAt(buf, offset)
 		if err != nil {
 			t.Fatalf("ReadAt(%d): %+v", offset, err)
@@ -186,7 +186,7 @@ func TestCloseTempLOB(t *testing.T) {
 	start.Add(1)
 	maxConn := 2*maxSessions + 1
 	wg.Add(maxConn)
-	for j := 0; j < maxConn; j++ {
+	for j := range maxConn {
 		t.Logf("Run %d\n", j)
 		go func(n int) {
 			start.Wait()
@@ -422,7 +422,7 @@ func TestStatWithLOBs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if err := ctx.Err(); err != nil {
 			break
 		}

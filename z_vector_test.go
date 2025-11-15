@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -128,14 +128,12 @@ func generateIndexArray(n int, maxRange int) []uint32 {
 
 	// Create a uint32 slice
 	indexArray := make([]uint32, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		indexArray[i] = uint32(permutation[i])
 	}
 
 	// Sort the array in ascending order as expected by DB
-	sort.Slice(indexArray, func(i, j int) bool {
-		return indexArray[i] < indexArray[j]
-	})
+	slices.Sort(indexArray)
 
 	return indexArray
 }
@@ -151,7 +149,7 @@ func generateRandomBatch(size int) ([]godror.Number, []godror.Vector, []godror.V
 	sparseValuesCnt := 10
 	sparseDimsCnt := 100
 
-	for i := 0; i < size; i++ {
+	for i := range size {
 		ids[i] = godror.Number(strconv.Itoa(i))
 		images[i] = godror.Vector{Values: randomFloat32Slice(denseValuesCnt)}
 		graphs[i] = godror.Vector{
@@ -161,7 +159,7 @@ func generateRandomBatch(size int) ([]godror.Number, []godror.Vector, []godror.V
 			IsSparse:   true,
 		}
 	}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		ids[size+i] = godror.Number(strconv.Itoa(size + i))
 		imagesPtr[i] = &godror.Vector{Values: randomFloat32Slice(denseValuesCnt + 100)}
 		graphsPtr[i] = &godror.Vector{
@@ -460,7 +458,7 @@ func TestVectorPointerCases(t *testing.T) {
 	// Validate results
 	var id godror.Number
 	var dense1, sparse1, sparse2 godror.Vector
-	var dense2 interface{}
+	var dense2 any
 
 	for rows.Next() {
 		if err := rows.Scan(&id, &dense1, &sparse1, &dense2, &sparse2); err != nil {

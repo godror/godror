@@ -352,9 +352,6 @@ int dpiStmt__close(dpiStmt *stmt, const char *tag, uint32_t tagLength,
             else status = dpiOci__stmtRelease(stmt, tag, tagLength,
                     propagateErrors, error);
         }
-        if (!stmt->conn->closing && !stmt->parentStmt)
-            dpiHandleList__removeHandle(stmt->conn->openStmts,
-                    stmt->openSlotNum);
         stmt->handle = NULL;
     }
 
@@ -610,8 +607,9 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
     // clear batch errors from any previous execution
     dpiStmt__clearBatchErrors(stmt);
 
-    // adjust mode for scrollable cursors
-    if (stmt->scrollable)
+    // adjust mode for scrollable cursors, but not if performing a describe
+    // only (or a malformed TTC packet from client exception is thrown)
+    if (stmt->scrollable && !(mode & DPI_MODE_EXEC_DESCRIBE_ONLY))
         mode |= DPI_OCI_STMT_SCROLLABLE_READONLY;
 
     // if requested, suspend the sessionless transaction after the call
@@ -755,6 +753,7 @@ void dpiStmt__free(dpiStmt *stmt, dpiError *error)
         stmt->parentStmt = NULL;
     }
     if (stmt->conn) {
+        dpiHandleList__removeHandle(stmt->conn->openStmts, stmt->openSlotNum);
         dpiGen__setRefCount(stmt->conn, error, -1);
         stmt->conn = NULL;
     }
@@ -1924,6 +1923,14 @@ int dpiStmt_scroll(dpiStmt *stmt, dpiFetchMode mode, int32_t offset,
         default:
             dpiError__set(&error, "scroll mode", DPI_ERR_NOT_SUPPORTED);
             return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    }
+
+    // if the desired row is less than 1 we have gone outside the result set
+    if (desiredRow < 1 && mode != DPI_MODE_FETCH_LAST) {
+        stmt->bufferRowCount = 0;
+        dpiError__set(&error, "check result set bounds",
+                DPI_ERR_SCROLL_OUT_OF_RS);
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     }
 
     // determine if a fetch is actually required; "last" is always fetched

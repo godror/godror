@@ -22,7 +22,7 @@ import (
 )
 
 type execer interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 func TestQueue(t *testing.T) {

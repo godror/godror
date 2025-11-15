@@ -36,7 +36,7 @@ func TestBatch(t *testing.T) {
 	}
 	b := godror.Batch{Stmt: stmt, Limit: 2}
 	numRows := b.Limit + 1
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		if err = b.Add(ctx, i, float64(i)+0.1, fmt.Sprintf("a-%d", i), time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ func TestBatchRowCountValidation(t *testing.T) {
 	b := godror.Batch{Stmt: stmt, Limit: 5}
 	expectedRows := 3
 
-	for i := 0; i < expectedRows; i++ {
+	for i := range expectedRows {
 		if err = b.Add(ctx, i+1, fmt.Sprintf("name_%d", i+1)); err != nil {
 			t.Fatal(err)
 		}
@@ -317,7 +317,7 @@ func TestBatchAutoFlush(t *testing.T) {
 	}
 
 	// Add more rows for second batch
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err = b.Add(ctx, i+b.Limit+1, 2); err != nil {
 			t.Fatal(err)
 		}
@@ -388,7 +388,7 @@ func TestBatchConcurrentUsage(t *testing.T) {
 
 	errCh := make(chan error, numThreads)
 
-	for threadID := 0; threadID < numThreads; threadID++ {
+	for threadID := range numThreads {
 		go func(tid int) {
 			stmt, err := testDb.PrepareContext(ctx, insQry)
 			if err != nil {
@@ -399,7 +399,7 @@ func TestBatchConcurrentUsage(t *testing.T) {
 
 			b := godror.Batch{Stmt: stmt, Limit: 2}
 
-			for i := 0; i < rowsPerThread; i++ {
+			for i := range rowsPerThread {
 				id := tid*rowsPerThread + i + 1
 				value := fmt.Sprintf("thread_%d_row_%d", tid, i)
 				if err = b.Add(ctx, id, tid, value); err != nil {
@@ -419,7 +419,7 @@ func TestBatchConcurrentUsage(t *testing.T) {
 	}
 
 	// Wait for all threads
-	for i := 0; i < numThreads; i++ {
+	for range numThreads {
 		if err := <-errCh; err != nil {
 			t.Fatal(err)
 		}
@@ -436,7 +436,7 @@ func TestBatchConcurrentUsage(t *testing.T) {
 	}
 
 	// Verify each thread's data
-	for threadID := 0; threadID < numThreads; threadID++ {
+	for threadID := range numThreads {
 		var threadCount int
 		if err := testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl+" WHERE thread_id = :1", threadID).Scan(&threadCount); err != nil {
 			t.Fatal(err)

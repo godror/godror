@@ -234,7 +234,7 @@ END tst_bench_inout;`,
 	}
 	defer tx.Rollback()
 
-	params := []interface{}{
+	params := []any{
 		godror.PlSQLArrays,
 		sql.Out{Dest: &dates, In: true},
 		sql.Out{Dest: &keys, In: true},
@@ -335,11 +335,11 @@ func createGeoTable(tableName string, rowCount int) error {
 		{"9", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
 		{"10", "8.37064876162908E16", "8.37064898728264E16", "12", "6506", "POINT(30.5518439 104.0685473)", "a71223186cef459b", "", "Samsung SCH-I545", "Mobile", "Android 4.4.2", "", ""},
 	}
-	cols := make([]interface{}, len(testData[0])+1)
+	cols := make([]any, len(testData[0])+1)
 	for i := range cols {
 		cols[i] = make([]string, rowCount)
 	}
-	for i := 0; i < rowCount; i++ {
+	for i := range rowCount {
 		row := testData[i%len(testData)]
 		for j, col := range cols {
 			if j == 0 {
@@ -564,7 +564,6 @@ func BenchmarkSelectWide(b *testing.B) {
 	StopConnStats()
 	tblName := func(suffix string) string { return "tst_wide_n" + strings.Replace(suffix, ",", "_", 1) }
 	for _, typ := range []string{"9", "18", "19", "20,4", "20,4B"} {
-		typ := typ
 		b.Run(typ, func(b *testing.B) {
 			b.StopTimer()
 			tbl := tblName(typ)

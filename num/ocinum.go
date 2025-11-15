@@ -158,7 +158,7 @@ func (num OCINum) Print(buf []byte) []byte {
 	return res
 }
 
-var bytesPool = sync.Pool{New: func() interface{} { z := make([]byte, 0, 42); return &z }}
+var bytesPool = sync.Pool{New: func() any { z := make([]byte, 0, 42); return &z }}
 
 // String returns the string representation of the number.
 func (num OCINum) String() string {
@@ -245,10 +245,7 @@ func (num *OCINum) SetString(s string) error {
 	}
 	exp := (i >> 1) - 1
 
-	n := 1 + (len(s) >> 1) + 1
-	if n > 21 {
-		n = 21
-	}
+	n := min(1+(len(s)>>1)+1, 21)
 	if cap(*num) < n {
 		*num = make([]byte, 1, n)
 	} else {

@@ -54,7 +54,7 @@ func TestConnCut(t *testing.T) {
 	var upstream net.TCPAddr
 	rem2 := make(map[string]net.TCPAddr)
 	var serviceName string
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		for k := range rem2 {
 			delete(rem2, k)
 		}
@@ -150,7 +150,7 @@ func TestConnCut(t *testing.T) {
 	rows2.Close()
 	rows1.Close()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		shortCtx, shortCancel = context.WithTimeout(ctx, 5*time.Second)
 		var s string
 		err = stmt.QueryRowContext(shortCtx, 1).Scan(&s)

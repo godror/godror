@@ -221,7 +221,6 @@ func TestParse(t *testing.T) {
 			},
 		},
 	} {
-		tCase := tCase
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			t.Log(tCase.In)

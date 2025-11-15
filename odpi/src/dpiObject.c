@@ -214,9 +214,6 @@ int dpiObject__closeHelper(dpiObject *obj, int checkError, dpiError *error)
             obj->indicator, checkError, error) < 0)
         return DPI_FAILURE;
     obj->indicator = NULL;
-    if (!obj->type->conn->closing)
-        dpiHandleList__removeHandle(obj->type->conn->objects,
-                obj->openSlotNum);
     return DPI_SUCCESS;
 }
 
@@ -229,6 +226,8 @@ void dpiObject__free(dpiObject *obj, dpiError *error)
 {
     dpiObject__close(obj, 0, error);
     if (obj->type) {
+        dpiHandleList__removeHandle(obj->type->conn->objects,
+                obj->openSlotNum);
         dpiGen__setRefCount(obj->type, error, -1);
         obj->type = NULL;
     }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewDriverSepContext(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		t.Log("i:", i)
 		d := &drv{}
 		if cx, err := d.Open("tiger/scott"); err == nil {
@@ -23,7 +23,7 @@ func TestNewDriverSepContext(t *testing.T) {
 }
 
 func TestNewDriver(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		drv := NewDriver()
 		if cx, err := drv.Open("tiger/scott"); err == nil {
 			cx.Close()
@@ -43,7 +43,6 @@ func TestFromErrorInfo(t *testing.T) {
 		{Msg: "DPI-1080: connection was closed by ORA-3113",
 			WantCode: 3113, WantMsg: "DPI-1080: connection was closed by"},
 	} {
-		tC := tC
 		t.Run(tC.Msg, func(t *testing.T) {
 			errInfo := newErrorInfo(0, tC.Msg)
 			t.Logf("errInfo: %#v", errInfo)
@@ -89,7 +88,7 @@ func TestMarshalJSON(t *testing.T) {
 	t.Log(string(b))
 
 	type myStruct struct {
-		N interface{}
+		N any
 		A int
 	}
 	n = Number("")

@@ -41,9 +41,9 @@ func BenchmarkSelect113(b *testing.B) {
 		emails := make([]string, 1000)
 		var n uint64
 		t := time.Now()
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			start := uint64(i * 2000)
-			for j := uint64(0); j < 1000; j++ {
+			for j := range uint64(1000) {
 				ids[j], emailIDs[j] = start+2*j, start+2*j+1
 				emails[j] = strconv.FormatUint(start+2*j+1, 10) + "@example.com"
 			}
@@ -58,7 +58,7 @@ func BenchmarkSelect113(b *testing.B) {
 	const qry = "SELECT /*+ FIRST_ROWS(1) */ F_cust_id, F_email, F_email_id FROM " + tbl
 	const qry1 = "SELECT F_cust_id, F_email, F_email_id FROM " + tbl + " FETCH FIRST 1 ROW ONLY"
 	b.Log(qry)
-	F := func(b *testing.B, qry string, i int, params ...interface{}) {
+	F := func(b *testing.B, qry string, i int, params ...any) {
 		rows, err := testDb.QueryContext(ctx, qry, params...)
 		if err != nil {
 			b.Fatalf("%s: %+v", qry, err)

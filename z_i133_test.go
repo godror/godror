@@ -275,7 +275,7 @@ func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInse
 	totalRowsMerged := 0
 	for rowsToInsert > 0 {
 		mergeIds, mergeStrings, mergeLobs = mergeIds[:0], mergeStrings[:0], mergeLobs[:0]
-		for i := 0; i < batchSize; i++ {
+		for i := range batchSize {
 			mergeIds = append(mergeIds, sql.NullInt64{Int64: int64(i), Valid: true})
 			row := nextRow
 			if i == 0 {
@@ -287,7 +287,7 @@ func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInse
 				mergeStrings = append(mergeStrings, row)
 			}
 		}
-		var mergeSth interface{} = mergeStrings
+		var mergeSth any = mergeStrings
 		if useLobs {
 			mergeSth = mergeLobs
 		}

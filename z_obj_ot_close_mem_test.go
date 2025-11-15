@@ -111,7 +111,7 @@ func TestObjOpenClose(t *testing.T) {
 		defer obj.Close()
 
 		rec := MyObject{Object: obj, ID: 1}
-		params := []interface{}{
+		params := []any{
 			sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 		}
 		_, err = tx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
@@ -174,7 +174,7 @@ type MyObject struct {
 	ID int64
 }
 
-func (r *MyObject) Scan(src interface{}) error {
+func (r *MyObject) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)

@@ -140,7 +140,7 @@ func setUp() func() {
 	}
 	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool && // Sharding does not work with pooled connection
 		len(P.ConnParams.ShardingKey) == 0 {
-		P.ConnParams.ShardingKey = []interface{}{"gold", []byte("silver"), int(42)}
+		P.ConnParams.ShardingKey = []any{"gold", []byte("silver"), int(42)}
 	}
 	if P.PoolParams.MaxSessions < 1 || P.PoolParams.MaxSessions > maxSessions {
 		P.PoolParams.MaxSessions = maxSessions
@@ -302,7 +302,7 @@ func testContext(name string) context.Context {
 	return ctx
 }
 
-var bufPool = sync.Pool{New: func() interface{} { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
+var bufPool = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
 
 type testLogger struct {
 	enc      *logfmt.Encoder
@@ -336,7 +336,7 @@ func (tl *testLogger) Handle(ctx context.Context, r slog.Record) error {
 func (tl *testLogger) WithAttrs(attrs []slog.Attr) slog.Handler { return tl }
 func (tl *testLogger) WithGroup(name string) slog.Handler       { return tl }
 
-func (tl *testLogger) Log(args ...interface{}) error {
+func (tl *testLogger) Log(args ...any) error {
 	if tl.enc != nil {
 		for i := 1; i < len(args); i += 2 {
 			switch args[i].(type) {
@@ -353,13 +353,13 @@ func (tl *testLogger) Log(args ...interface{}) error {
 	}
 	return tl.GetLog()(args)
 }
-func (tl *testLogger) GetLog() func(keyvals ...interface{}) error {
-	return func(keyvals ...interface{}) error {
+func (tl *testLogger) GetLog() func(keyvals ...any) error {
+	return func(keyvals ...any) error {
 		buf := bufPool.Get().(*bytes.Buffer)
 		defer bufPool.Put(buf)
 		buf.Reset()
 		if len(keyvals)%2 != 0 {
-			keyvals = append(append(make([]interface{}, 0, len(keyvals)+1), "msg"), keyvals...)
+			keyvals = append(append(make([]any, 0, len(keyvals)+1), "msg"), keyvals...)
 		}
 		for i := 0; i < len(keyvals); i += 2 {
 			fmt.Fprintf(buf, "%s=%#v ", keyvals[i], keyvals[i+1])
@@ -577,7 +577,7 @@ END;
 	const timeFmt = "2006-01-02T15:04:05"
 	_ = epoch
 	for name, tC := range map[string]struct {
-		In   interface{}
+		In   any
 		Want string
 	}{
 		// "int_0":{In:[]int32{}, Want:""},
@@ -814,7 +814,7 @@ END;
 	}
 
 	for _, tC := range []struct {
-		In, Want interface{}
+		In, Want any
 		Name     string
 	}{
 		{Name: "vc", In: vc, Want: vcWant},
@@ -824,7 +824,6 @@ END;
 		{Name: "vc-1", In: vc[:1], Want: []string{"string +", "1"}},
 		{Name: "vc-0", In: vc[:0], Want: []string{"0"}},
 	} {
-		tC := tC
 		t.Run("inout_"+tC.Name, func(t *testing.T) {
 			t.Logf("%s=%s", tC.Name, tC.In)
 			nm := strings.SplitN(tC.Name, "-", 2)[0]
@@ -1104,7 +1103,7 @@ func TestExecuteMany(t *testing.T) {
 		dates[i] = now.Add(-time.Duration(i) * time.Hour)
 	}
 	for i, tc := range []struct {
-		Value interface{}
+		Value any
 		Name  string
 	}{
 		{Name: "f_int", Value: ints},
@@ -1256,7 +1255,7 @@ func TestReadWriteLOB(t *testing.T) {
 			continue
 		}
 		for rows.Next() {
-			var id, blob, clob interface{}
+			var id, blob, clob any
 			if err = rows.Scan(&id, &blob, &clob); err != nil {
 				rows.Close()
 				t.Errorf("%d/3. scan: %v", tN, err)
@@ -1312,7 +1311,7 @@ func TestReadWriteLOB(t *testing.T) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var intf interface{}
+		var intf any
 		if err := rows.Scan(&intf); err != nil {
 			t.Error(err)
 			continue
@@ -1385,7 +1384,7 @@ func TestReadWriteBfile(t *testing.T) {
 			continue
 		}
 		for rows.Next() {
-			var id, bfile interface{}
+			var id, bfile any
 			if err = rows.Scan(&id, &bfile); err != nil {
 				rows.Close()
 				t.Errorf("%d/2. scan: %v", tN, err)
@@ -1415,7 +1414,7 @@ func TestReadWriteBfile(t *testing.T) {
 	}
 }
 
-func printSlice(orig interface{}) interface{} {
+func printSlice(orig any) any {
 	ro := reflect.ValueOf(orig)
 	if ro.Kind() == reflect.Pointer {
 		ro = ro.Elem()
@@ -1426,7 +1425,7 @@ func printSlice(orig interface{}) interface{} {
 	}
 	return ret
 }
-func copySlice(orig interface{}) interface{} {
+func copySlice(orig any) any {
 	ro := reflect.ValueOf(orig)
 	rc := reflect.New(reflect.TypeOf(orig)).Elem() // *[]s
 	rc.Set(reflect.MakeSlice(ro.Type(), ro.Len(), ro.Cap()+1))
@@ -1448,7 +1447,7 @@ func TestOpenCloseDB(t *testing.T) {
 	defer cancel()
 	grp, ctx := errgroup.WithContext(ctx)
 	grp.SetLimit(cs.MaxSessions)
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		cs := cs
 		cs.WaitTimeout += time.Duration(i)
 		grp.Go(func() error {
@@ -1486,7 +1485,7 @@ func TestOpenCloseConn(t *testing.T) {
 	defer cancel()
 	limitCh := make(chan struct{}, cs.MaxSessions)
 	grp, ctx := errgroup.WithContext(ctx)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		limitCh <- struct{}{}
 		grp.Go(func() error {
 			defer func() { <-limitCh }()
@@ -1608,7 +1607,7 @@ func TestOpenBadMemory(t *testing.T) {
 	runtime.ReadMemStats(&mem)
 	t.Log("Allocated 0:", mem.Alloc)
 	zero := mem.Alloc
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		badConStr := strings.Replace(testConStr, "@", fmt.Sprintf("BAD%dBAD@", i), 1)
 		db, err := sql.Open("godror", badConStr)
 		if err != nil {
@@ -1664,25 +1663,25 @@ func TestSelectFloat(t *testing.T) {
 		Int     int
 	}
 	var n numbers
-	var i1, i2, i3 interface{}
+	var i1, i2, i3 any
 	for tName, tC := range map[string]struct {
-		Dest [3]interface{}
+		Dest [3]any
 		Want numbers
 	}{
 		"int,float,nstring": {
-			Dest: [3]interface{}{&n.Int, &n.Float, &n.NString},
+			Dest: [3]any{&n.Int, &n.Float, &n.NString},
 			Want: numbers{Int: INT, Float: FLOAT},
 		},
 		"inf,float,Number": {
-			Dest: [3]interface{}{&n.Int, &n.Float, &n.Number},
+			Dest: [3]any{&n.Int, &n.Float, &n.Number},
 			Want: numbers{Int: INT, Float: FLOAT},
 		},
 		"int64,float,nullInt": {
-			Dest: [3]interface{}{&n.Int64, &n.Float, &n.NInt},
+			Dest: [3]any{&n.Int64, &n.Float, &n.NInt},
 			Want: numbers{Int64: INT, Float: FLOAT},
 		},
 		"intf,intf,intf": {
-			Dest: [3]interface{}{&i1, &i2, &i3},
+			Dest: [3]any{&i1, &i2, &i3},
 			Want: numbers{Int64: INT, Float: FLOAT},
 		},
 	} {
@@ -1812,7 +1811,7 @@ func TestRanaOraIssue244(t *testing.T) {
 			}
 			defer stmt.Close()
 
-			for j := 0; j < 3; j++ {
+			for j := range 3 {
 				select {
 				case <-grpCtx.Done():
 					return grpCtx.Err()
@@ -2359,7 +2358,7 @@ func TestSDO(t *testing.T) {
 	defer rows.Close()
 	for rows.Next() {
 		var dmp, isNull string
-		var intf interface{}
+		var intf any
 		if err = rows.Scan(&intf, &dmp, &isNull); err != nil {
 			t.Error(fmt.Errorf("%s: %w", "scan", err))
 		}
@@ -2406,7 +2405,7 @@ func (t *Custom) Value() (driver.Value, error) {
 	return t.Num, nil
 }
 
-func (t *Custom) Scan(v interface{}) error {
+func (t *Custom) Scan(v any) error {
 	var err error
 	switch v := v.(type) {
 	case int64:
@@ -3114,7 +3113,7 @@ func TestTimeout(t *testing.T) {
 	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP DBMS_SESSION.SLEEP(10); END LOOP; END;"
 	subCtx, subCancel := context.WithTimeout(ctx, time.Duration(2*maxConc+1)*time.Second)
 	grp, grpCtx := errgroup.WithContext(subCtx)
-	for i := 0; i < maxConc; i++ {
+	for range maxConc {
 		grp.Go(func() error {
 			if _, err := db.ExecContext(grpCtx, qry); err != nil && !errors.Is(err, context.Canceled) {
 				return fmt.Errorf("%s: %w", qry, err)
@@ -3402,7 +3401,7 @@ func TestOnInitParallel(t *testing.T) {
 
 	const want = "12#3"
 	const qry = "SELECT value, TO_CHAR(123/10) AS num FROM v$nls_parameters WHERE parameter = 'NLS_NUMERIC_CHARACTERS'"
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		var wg sync.WaitGroup
 		for j := 0; j < maxSessions*2; j++ {
 			wg.Add(1)
@@ -3548,7 +3547,7 @@ func TestSelectTypes(t *testing.T) {
 	// total columns
 	totalColumns := len(colsName)
 
-	oracleFieldParse := func(datatype string, field interface{}) interface{} {
+	oracleFieldParse := func(datatype string, field any) any {
 		// DEBUG: print the type of field and datatype returned for the drivers
 		t.Logf("%T\t%s\n", field, datatype)
 
@@ -3584,8 +3583,8 @@ func TestSelectTypes(t *testing.T) {
 
 	// create a slice of interface{}'s to represent each column,
 	// and a second slice to contain pointers to each item in the columns slice
-	columns := make([]interface{}, totalColumns)
-	recordPointers := make([]interface{}, totalColumns)
+	columns := make([]any, totalColumns)
+	recordPointers := make([]any, totalColumns)
 	for i := range columns {
 		if types[i].DatabaseTypeName() == "DATE" {
 			var t godror.NullTime
@@ -3598,7 +3597,7 @@ func TestSelectTypes(t *testing.T) {
 
 	dumpRows := func() {
 		dests := make([]string, 0, len(colsName))
-		params := make([]interface{}, 0, cap(dests))
+		params := make([]any, 0, cap(dests))
 		var dumpQry strings.Builder
 		dumpQry.WriteString("SELECT ")
 		for _, col := range colsName {
@@ -3634,7 +3633,7 @@ func TestSelectTypes(t *testing.T) {
 	}
 
 	// record destination
-	record := make([]interface{}, totalColumns)
+	record := make([]any, totalColumns)
 	var rowCount int
 	for rows.Next() {
 		// Scan the result into the record pointers...
@@ -3757,7 +3756,7 @@ func TestBool(t *testing.T) {
 
 type booler bool
 
-func (b *booler) Scan(src interface{}) error {
+func (b *booler) Scan(src any) error {
 	switch x := src.(type) {
 	case int:
 		*b = x == 1
@@ -3791,7 +3790,7 @@ func TestResetSession(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(testContext("ResetSession"), time.Minute)
 	defer cancel()
-	for i := 0; i < 2*poolSize; i++ {
+	for i := range 2 * poolSize {
 		shortCtx, shortCancel := context.WithTimeout(ctx, 5*time.Second)
 		conn, err := db.Conn(shortCtx)
 		if err != nil {
@@ -3833,7 +3832,7 @@ func TestSelectROWID(t *testing.T) {
 	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if _, err := testDb.ExecContext(ctx, qry, i); err != nil {
 			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
@@ -3970,7 +3969,7 @@ func TestSystem(t *testing.T) {
 	}
 	defer tx.Rollback()
 	for i, tc := range []struct {
-		Value interface{}
+		Value any
 		Name  string
 	}{
 		{Name: "employee_id", Value: nums},
@@ -4443,7 +4442,7 @@ func getRandomString() string {
 		"0123456789")
 	length := 8
 	var b strings.Builder
-	for i := 0; i < length; i++ {
+	for range length {
 		b.WriteRune(chars[rnd.Intn(len(chars))])
 	}
 	// fix starting letter as alphabet
@@ -4475,7 +4474,7 @@ func TestNullIssue143(t *testing.T) {
 	defer stmt.Close()
 
 	var xmlResponse string
-	params := []interface{}{
+	params := []any{
 		sql.Named("xmlResponse", sql.Out{Dest: &xmlResponse}),
 		sql.Named("startDate", time.Now()),
 		sql.Named("endDate", time.Now()),
@@ -4571,7 +4570,7 @@ func TestForError8192(t *testing.T) {
 	defer func() { stmt.Close() }()
 
 	tim := time.Time{}.UTC().Add(-time.Minute) //In(time.FixedZone("LMT", (+50 * 60)))
-	for i := 0; i < 6*30; i++ {
+	for i := range 6 * 30 {
 		tim := tim.Add(time.Duration(-1*(i%2)) * time.Duration(i) * time.Minute)
 
 		param := sql.NullTime{Time: tim, Valid: true}
@@ -4638,7 +4637,7 @@ func TestObjType_Issue198(t *testing.T) {
 	pid := os.Getpid()
 	var start uint64
 	const N = 1_000_000
-	for i := 0; i < N; i++ {
+	for i := range N {
 		obj, err := oT.NewObject()
 		if err != nil {
 			t.Fatal(err)
@@ -4677,14 +4676,14 @@ func TestLoopInLoop_199(t *testing.T) {
 	defer cancel()
 	var first, last, avg time.Duration
 	const cnt = 20
-	for i := 0; i < cnt; i++ {
+	for i := range cnt {
 		start := time.Now()
 		rows, err := testDb.QueryContext(ctx, "SELECT 1 FROM DUAL")
 		if err != nil {
 			t.Fatal(err)
 		}
 		for rows.Next() {
-			for i := 0; i < cnt; i++ {
+			for range cnt {
 				rows2, err := testDb.QueryContext(ctx, "SELECT 1 FROM DUAL")
 				if err != nil {
 					t.Fatal(err)
@@ -4978,7 +4977,7 @@ func TestLevelSerializable(t *testing.T) {
 	defer txRW.Rollback()
 
 	C := func(tx interface {
-		QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+		QueryRowContext(context.Context, string, ...any) *sql.Row
 	}) int {
 		var n int
 		if err := tx.QueryRowContext(ctx, "SELECT COUNT(0) FROM "+tbl).Scan(&n); err != nil {
@@ -5020,7 +5019,7 @@ func TestSelectAlterSessionIssue297(t *testing.T) {
 		qry = "ALTER SESSION SET ISOLATION_LEVEL = READ COMMIT" + "TED"
 	}
 	grp, grpCtx := errgroup.WithContext(ctx)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		grp.Go(func() error {
 			conn, err := db.Conn(grpCtx)
 			if err != nil {
@@ -5078,7 +5077,7 @@ func TestBindNumber(t *testing.T) {
 	type floatLike float64
 
 	for _, tC := range []struct {
-		In   interface{}
+		In   any
 		Want string
 	}{
 		{int(1), "Typ=2 Len=2: 193,2"},

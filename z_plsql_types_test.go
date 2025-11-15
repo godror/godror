@@ -42,7 +42,7 @@ type MyRecord struct {
 
 type coder interface{ Code() int }
 
-func (r *MyRecord) Scan(src interface{}) error {
+func (r *MyRecord) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
@@ -132,11 +132,11 @@ type MyTable struct {
 	godror.ObjectCollection
 	Items []*MyRecord
 	conn  interface {
-		NewData(baseType interface{}, sliceLen, bufSize int) ([]*godror.Data, error)
+		NewData(baseType any, sliceLen, bufSize int) ([]*godror.Data, error)
 	}
 }
 
-func (t *MyTable) Scan(src interface{}) error {
+func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
 	obj, ok := src.(*godror.Object)
 	if !ok {
@@ -510,7 +510,7 @@ func TestPlSqlTypes(t *testing.T) {
 			"zeroValues": {want: MyRecord{Object: obj}},
 		} {
 			rec := MyRecord{Object: obj}
-			params := []interface{}{
+			params := []any{
 				sql.Named("id", tCase.ID),
 				sql.Named("txt", tCase.txt),
 				sql.Named("rec", sql.Out{Dest: &rec}),
@@ -554,7 +554,7 @@ func TestPlSqlTypes(t *testing.T) {
 			defer obj.Close()
 
 			rec := MyRecord{Object: obj, ID: tCase.in.ID, Txt: tCase.in.Txt}
-			params := []interface{}{
+			params := []any{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
@@ -599,7 +599,7 @@ func TestPlSqlTypes(t *testing.T) {
 			defer obj.Close()
 
 			tb := MyTable{ObjectCollection: obj.Collection(), conn: conn}
-			params := []interface{}{
+			params := []any{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
 			}
@@ -671,7 +671,7 @@ func TestPlSqlTypes(t *testing.T) {
 			defer obj.Close()
 
 			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items, conn: conn}
-			params := []interface{}{
+			params := []any{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
@@ -749,7 +749,7 @@ func TestSelectObjectTable(t *testing.T) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var objI interface{}
+		var objI any
 		if err = rows.Scan(&objI); err != nil {
 			t.Fatal(fmt.Errorf("%s: %w", qry, err))
 		}
@@ -1258,7 +1258,7 @@ func TestObjectTypeClose(t *testing.T) {
 	}
 
 	maxConn := maxSessions * 2
-	for j := 0; j < 5; j++ {
+	for j := range 5 {
 		t.Logf("Run %d group\n", j)
 		var start sync.WaitGroup
 		g, ctx := errgroup.WithContext(ctx)
@@ -1323,7 +1323,7 @@ func TestSubObjectTypeClose(t *testing.T) {
 	}
 
 	maxConn := maxSessions * 2
-	for j := 0; j < 5; j++ {
+	for j := range 5 {
 		t.Logf("Run %d group\n", j)
 		var start sync.WaitGroup
 		g, ctx := errgroup.WithContext(ctx)
@@ -1460,7 +1460,7 @@ END;`},
 			t.Fatal(err)
 		}
 		t.Log("mapSlice:", m)
-		want := []map[string]interface{}{
+		want := []map[string]any{
 			{"CONS_YEAR": float64(2021), "CONS_01": float64(10212)},
 			nil,
 		}
@@ -1612,9 +1612,9 @@ END;`},
 			t.Fatal(err)
 		}
 		t.Log("AsMap:", m)
-		want := map[string]interface{}{
+		want := map[string]any{
 			"STRING": "some nice string",
-			"HISTORY": []map[string]interface{}{
+			"HISTORY": []map[string]any{
 				{"STATUS": "happyEND"},
 			},
 		}
@@ -1696,11 +1696,11 @@ func TestObjectFromMap(t *testing.T) {
 	}
 	defer rs.Close()
 
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	m["STRING"] = "String value"
-	arrM := make([]map[string]interface{}, 0, 2)
-	for i := 0; i < 2; i++ {
-		app := make(map[string]interface{})
+	arrM := make([]map[string]any, 0, 2)
+	for i := range 2 {
+		app := make(map[string]any)
 		var stat string
 		if i%2 == 0 {
 			stat = "even"
@@ -1716,7 +1716,7 @@ func TestObjectFromMap(t *testing.T) {
 	}
 
 	const jsonString = `{"HISTORY":[{"STATUS":"even"},{"STATUS":"odd"}],"STRING":"String value"}`
-	var want map[string]interface{}
+	var want map[string]any
 	if err := json.Unmarshal([]byte(jsonString), &want); err != nil {
 		t.Fatal(err)
 	}
@@ -1901,7 +1901,7 @@ func TestInputWithNativeSlice(t *testing.T) {
 	defer cC.Close()
 	fSlice := []float64{1, 3.14}
 	var want float64
-	iSlice := make([]interface{}, len(fSlice))
+	iSlice := make([]any, len(fSlice))
 	for i, f := range fSlice {
 		iSlice[i] = f
 		want += f
@@ -1989,7 +1989,7 @@ END;`,
 		t.Fatal(errs)
 	}
 
-	ExecProcedureVarChar := func(ctx context.Context, params ...interface{}) (result string, err error) {
+	ExecProcedureVarChar := func(ctx context.Context, params ...any) (result string, err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				fmt.Println(r)
@@ -2006,7 +2006,7 @@ END;`,
 		defer cancel()
 
 		var out string
-		requestParams := make([]interface{}, 0, 2+len(params))
+		requestParams := make([]any, 0, 2+len(params))
 		requestParams = append(requestParams, godror.PlSQLArrays)
 		requestParams = append(requestParams, sql.Out{Dest: &out})
 		requestParams = append(requestParams, params...)
@@ -2051,7 +2051,7 @@ func TestXMLType(t *testing.T) {
 	t.Logf("coltype: %v, %v", types[0], types[1])
 	defer rows.Close()
 	for rows.Next() {
-		var i, j interface{}
+		var i, j any
 		if err = rows.Scan(&i, &j); err != nil {
 			t.Fatal(err)
 		}
@@ -2457,7 +2457,7 @@ func TestIssue319(t *testing.T) {
 		return err
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		c := childObject{ID: 1, Name: "test"}
 		p := parentObject{ID: 1, Child: c}
 		var res int
@@ -2575,11 +2575,11 @@ func TestObjLobClose(t *testing.T) {
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		testConnectInClob(ctx, db, float64(i))
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		testConnectOutClob(ctx, db, float64(i))
 	}
 }

@@ -51,8 +51,6 @@ int dpiLob__allocate(dpiConn *conn, const dpiOracleType *type, dpiLob **lob,
     }
     if (dpiHandleList__addHandle(conn->openLobs, tempLob,
             &tempLob->openSlotNum, error) < 0) {
-        dpiOci__descriptorFree(tempLob->locator, DPI_OCI_DTYPE_LOB);
-        tempLob->locator = NULL;
         dpiLob__free(tempLob, error);
         return DPI_FAILURE;
     }
@@ -110,8 +108,6 @@ int dpiLob__close(dpiLob *lob, int propagateErrors, dpiError *error)
                         lob->locator, propagateErrors, error);
         }
         dpiOci__descriptorFree(lob->locator, DPI_OCI_DTYPE_LOB);
-        if (!lob->conn->closing)
-            dpiHandleList__removeHandle(lob->conn->openLobs, lob->openSlotNum);
         lob->locator = NULL;
     }
     if (lob->buffer) {
@@ -142,6 +138,7 @@ void dpiLob__free(dpiLob *lob, dpiError *error)
 {
     dpiLob__close(lob, 0, error);
     if (lob->conn) {
+        dpiHandleList__removeHandle(lob->conn->openLobs, lob->openSlotNum);
         dpiGen__setRefCount(lob->conn, error, -1);
         lob->conn = NULL;
     }

@@ -155,7 +155,7 @@ func (P CommonSimpleParams) String() string {
 type ConnParams struct {
 	NewPassword                   Password
 	ConnClass                     string
-	ShardingKey, SuperShardingKey []interface{}
+	ShardingKey, SuperShardingKey []any
 	AdminRole                     AdminRole
 	IsPrelim                      bool
 }
@@ -985,7 +985,7 @@ func ParseTZ(s string) (int, error) {
 }
 
 // AppendLogfmt appends the key=val logfmt-formatted.
-func AppendLogfmt(w io.Writer, key, value interface{}) error {
+func AppendLogfmt(w io.Writer, key, value any) error {
 	e := logfmt.NewEncoder(w)
 	err := e.EncodeKeyval(key, value)
 	if endErr := e.EndRecord(); endErr != nil && err == nil {
@@ -994,12 +994,12 @@ func AppendLogfmt(w io.Writer, key, value interface{}) error {
 	return err
 }
 
-func strToIntf(ss []string) []interface{} {
+func strToIntf(ss []string) []any {
 	n := len(ss)
 	if n == 0 {
 		return nil
 	}
-	intf := make([]interface{}, n)
+	intf := make([]any, n)
 	for i, s := range ss {
 		intf[i] = s
 	}

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2025, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -35,12 +35,14 @@
 // dpiHandleList__addHandle() [INTERNAL]
 //   Add a handle to the list. The list is expanded in sets of 8 handles as
 // needed. A current position is maintained to reduce the number of scans of
-// the list are required. An empty slot is designated by a NULL pointer.
+// the list are required. An empty slot is designated by a NULL pointer. The
+// slot number returned is incremented by 1 so that a non-zero slot number is
+// indicative that the handle was added to the list.
 //-----------------------------------------------------------------------------
 int dpiHandleList__addHandle(dpiHandleList *list, void *handle,
         uint32_t *slotNum, dpiError *error)
 {
-    uint32_t numSlots, i;
+    uint32_t numSlots, i, actualSlotNum;
     void **tempHandles;
 
     dpiMutex__acquire(list->mutex);
@@ -55,7 +57,7 @@ int dpiHandleList__addHandle(dpiHandleList *list, void *handle,
         dpiUtils__freeMemory(list->handles);
         list->handles = tempHandles;
         list->numSlots = numSlots;
-        *slotNum = list->numUsedSlots++;
+        actualSlotNum = list->numUsedSlots++;
         list->currentPos = list->numUsedSlots;
     } else {
         for (i = 0; i < list->numSlots; i++) {
@@ -66,12 +68,13 @@ int dpiHandleList__addHandle(dpiHandleList *list, void *handle,
                 list->currentPos = 0;
         }
         list->numUsedSlots++;
-        *slotNum = list->currentPos++;
+        actualSlotNum = list->currentPos++;
         if (list->currentPos == list->numSlots)
             list->currentPos = 0;
     }
-    list->handles[*slotNum] = handle;
+    list->handles[actualSlotNum] = handle;
     dpiMutex__release(list->mutex);
+    *slotNum = actualSlotNum + 1;
     return DPI_SUCCESS;
 }
 
@@ -122,8 +125,10 @@ void dpiHandleList__free(dpiHandleList *list)
 //-----------------------------------------------------------------------------
 void dpiHandleList__removeHandle(dpiHandleList *list, uint32_t slotNum)
 {
-    dpiMutex__acquire(list->mutex);
-    list->handles[slotNum] = NULL;
-    list->numUsedSlots--;
-    dpiMutex__release(list->mutex);
+    if (slotNum > 0) {
+        dpiMutex__acquire(list->mutex);
+        list->handles[slotNum - 1] = NULL;
+        list->numUsedSlots--;
+        dpiMutex__release(list->mutex);
+    }
 }

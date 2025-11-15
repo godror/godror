@@ -69,7 +69,7 @@ func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent 
 			olen := len(p)
 			p = append(p, make([]byte, plus+1)...)
 			copy(p[start+1+plus:], p[start:olen])
-			for i := 0; i < plus; i++ {
+			for i := range plus {
 				p[start+1+i] = '0'
 			}
 			p[start] = '0'
