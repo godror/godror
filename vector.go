@@ -31,7 +31,7 @@ import (
 type Vector struct {
 	Dimensions uint32      // Total dimensions of the vector.
 	Indices    []uint32    // Indices of non-zero values (sparse format).
-	Values     interface{} // Non-zero values (sparse format) or all values (dense format).
+	Values     any // Non-zero values (sparse format) or all values (dense format).
 	IsSparse   bool        // Flag to detect if it's a sparse vector
 }
 
@@ -110,7 +110,7 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 
 // GetVectorValue converts a C `dpiVectorInfo` struct into a Go `Vector`
 func GetVectorValue(vectorInfo *C.dpiVectorInfo) (Vector, error) {
-	var values interface{}
+	var values any
 	var indices []uint32
 	var isSparse bool
 

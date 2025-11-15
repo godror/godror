@@ -3581,7 +3581,7 @@ func TestSelectTypes(t *testing.T) {
 		}
 	}
 
-	// create a slice of interface{}'s to represent each column,
+	// create a slice of any's to represent each column,
 	// and a second slice to contain pointers to each item in the columns slice
 	columns := make([]any, totalColumns)
 	recordPointers := make([]any, totalColumns)

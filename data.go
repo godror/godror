@@ -57,7 +57,7 @@ const (
 var ErrNotSupported = errors.New("not supported")
 
 // NewData creates a new Data structure for the given type, populated with the given type.
-func NewData(v interface{}) (*Data, error) {
+func NewData(v any) (*Data, error) {
 	if v == nil {
 		return nil, fmt.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
@@ -384,7 +384,7 @@ type IntervalYM struct {
 }
 
 // Get returns the contents of Data.
-func (d *Data) Get() interface{} {
+func (d *Data) Get() any {
 	// if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 	// 	 logger.Debug("Get", "data", fmt.Sprintf("%#v", d), "p", fmt.Sprintf("%p", d))
 	// }
@@ -425,7 +425,7 @@ func (d *Data) Get() interface{} {
 }
 
 // Set the data.
-func (d *Data) Set(v interface{}) error {
+func (d *Data) Set(v any) error {
 	if v == nil {
 		return fmt.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
@@ -535,7 +535,7 @@ func (d *Data) IsObject() bool {
 }
 
 // NewData returns Data for input parameters on Object/ObjectCollection.
-func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, error) {
+func (c *conn) NewData(baseType any, sliceLen, bufSize int) ([]*Data, error) {
 	if c == nil || c.dpiConn == nil {
 		return nil, errors.New("connection is nil")
 	}
@@ -559,7 +559,7 @@ func (c *conn) NewData(baseType interface{}, sliceLen, bufSize int) ([]*Data, er
 	return data, nil
 }
 
-func newVarInfo(baseType interface{}, sliceLen, bufSize int) (varInfo, error) {
+func newVarInfo(baseType any, sliceLen, bufSize int) (varInfo, error) {
 	var vi varInfo
 
 	switch v := baseType.(type) {

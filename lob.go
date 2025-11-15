@@ -97,7 +97,7 @@ func (lob *Lob) ReadAt(p []byte, off int64) (int, error) {
 //
 // An error should be returned if the value cannot be stored
 // without loss of information.
-func (dlr *dpiLobReader) Scan(src interface{}) error {
+func (dlr *dpiLobReader) Scan(src any) error {
 	b, ok := src.([]byte)
 	if !ok {
 		return fmt.Errorf("cannot convert LOB to %T", src)

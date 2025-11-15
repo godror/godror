@@ -169,9 +169,9 @@ func diffJSONString(js1, js2 string) (string, error) {
 var birthdate = time.Date(1990, 2, 25, 11, 6, 39, 0, time.Local)
 
 // It simulates batch insert of JSON Column and single row insert.
-// Go map[string]interface{} type is inserted for JSON Column and
+// Go map[string]any type is inserted for JSON Column and
 // then read the JSON Document from DB.
-// converts JSON Document into map[string]interface{}
+// converts JSON Document into map[string]any
 // and compares with source.
 //
 // All int8, int16, int32, int64, float32, float64, godror.Number, uint8,
@@ -301,8 +301,8 @@ func TestReadWriteJSONMap(t *testing.T) {
 	}
 }
 
-// It inserts Go Array []interface{} and reads the JSON Document from DB.
-// converts JSON Document into []interface{} and compares with source
+// It inserts Go Array []any and reads the JSON Document from DB.
+// converts JSON Document into []any and compares with source
 func TestReadWriteJSONArray(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonArray"), 30*time.Second)
 	defer cancel()
@@ -898,7 +898,7 @@ func TestJSONIssue371(t *testing.T) {
 		}
 		// Print JSON string
 		t.Log("The JSON String is:", jsondoc)
-		// Get Go native map[string]interface{}
+		// Get Go native map[string]any
 		v, _ := jsondoc.GetValue(godror.JSONOptNumberAsString)
 		// type assert to verify the type returned
 		gotmap, _ := v.(map[string]any)

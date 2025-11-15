@@ -738,7 +738,7 @@ var _ = driver.Rows((*directRow)(nil))
 type directRow struct {
 	conn   *conn
 	query  string
-	result []interface{}
+	result []any
 	args   []string
 }
 
@@ -775,7 +775,7 @@ func (dr *directRow) Next(dest []driver.Value) error {
 	}
 	switch dr.query {
 	case getConnection:
-		*(dest[0].(*interface{})) = dr.result[0]
+		*(dest[0].(*any)) = dr.result[0]
 	}
 	return nil
 }

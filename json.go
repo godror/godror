@@ -323,15 +323,15 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 // GetValue converts the native DB type stored in JSON into an interface value.
 // The scalar values stored in JSON get converted as below.
 //
-//	map[string]interface{}, for JSON object type
-//	[]interface{}, for JSON arrays
+//	map[string]any, for JSON object type
+//	[]any, for JSON arrays
 //	godror.Number or float64 based on options for NUMBER
 //	bool , for boolean
 //	byte[], for RAW
 //	time.Duration, for INTERVAL DAY TO SECOND
 //	time.Time, for TIMESTAMP
 //	string, for VARCHAR2(string)
-func (j JSON) GetValue(opts JSONOption) (interface{}, error) {
+func (j JSON) GetValue(opts JSONOption) (any, error) {
 	j.stringOption = opts
 	jScalar, err := j.GetJSONScalar(opts)
 	if err != nil {
@@ -395,11 +395,11 @@ type JSONString struct {
 // for  time.Duration; DB native type INTERVAL DAY TO SECOND is used.
 // for  []byte; DB native type RAW is used.
 // for  bool; DB native type boolean is used.
-// for  map[string]interface{}; DB type JSON Object is used.
-// for  []interface{}; DB native type JSON Array is used.
+// for  map[string]any; DB type JSON Object is used.
+// for  []any; DB native type JSON Array is used.
 
 type JSONValue struct {
-	Value interface{}
+	Value any
 }
 
 // JSONScalar holds the JSON data to/from Oracle.
@@ -414,15 +414,15 @@ type JSONScalar struct {
 // GetValue converts native DB type stored in JSONScalar to an interface value.
 // The scalar value stored in JSONScalar gets converted as below.
 //
-//	map[string]interface{}, for JSON object type
-//	[]interface{}, for JSON arrays
+//	map[string]any, for JSON object type
+//	[]any, for JSON arrays
 //	godror.Number or float64 based on options for NUMBER
 //	bool , for JSON boolean
 //	byte[], for JSON RAW
 //	time.Duration, for INTERVAL DAY TO SECOND
 //	time.Time, for TIMESTAMP
 //	string, for VARCHAR2(string)
-func (j JSONScalar) GetValue() (val interface{}, err error) {
+func (j JSONScalar) GetValue() (val any, err error) {
 	var d Data
 	jsonNodeToData(&d, j.dpiJsonNode)
 	if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
@@ -448,7 +448,7 @@ func (j JSONScalar) GetValue() (val interface{}, err error) {
 
 // getJSONScalarNumber returns DB NUMBER as godror.Number for option,
 // JSONOptNumberAsString and float64 for option, JSONOptDefault.
-func getJSONScalarNumber(d Data, opts JSONOption) (val interface{}) {
+func getJSONScalarNumber(d Data, opts JSONOption) (val any) {
 	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
 		if opts == JSONOptDefault {
@@ -499,9 +499,9 @@ func (j JSONArray) Get(nodes []Data) []Data {
 	return nodes
 }
 
-// GetValue converts native DB type, array into []interface{}.
-func (j JSONArray) GetValue() (nodes []interface{}, err error) {
-	nodes = []interface{}{} // initialize to avoid nil slice
+// GetValue converts native DB type, array into []any.
+func (j JSONArray) GetValue() (nodes []any, err error) {
+	nodes = []any{} // initialize to avoid nil slice
 	elts := jsonArraySlice(j.dpiJsonArray)
 	for i := range elts {
 		var d Data
@@ -566,9 +566,9 @@ func (j JSONObject) Get() map[string]Data {
 	return m
 }
 
-// GetValue converts native DB type, array into map[string]interface{}.
-func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
-	m = make(map[string]interface{})
+// GetValue converts native DB type, array into map[string]any.
+func (j JSONObject) GetValue() (m map[string]any, err error) {
+	m = make(map[string]any)
 	for _, f := range jsonObjectFields(j.dpiJsonObject) {
 		var d Data
 		jsonNodeToData(&d, f.Value)
@@ -605,7 +605,7 @@ func (j JSONObject) GetValue() (m map[string]interface{}, err error) {
 // GetInto takes pointer to struct and populates the fields.
 // The struct name fields are matched with DB JSON keynames but
 // not the struct json tags.
-func (j JSONObject) GetInto(v interface{}) {
+func (j JSONObject) GetInto(v any) {
 	rv := reflect.ValueOf(v).Elem()
 	for _, f := range jsonObjectFields(j.dpiJsonObject) {
 		var d Data
@@ -643,10 +643,10 @@ func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 // It creates a seperate memory for the new output value, jsonnode.
 // memory from user input, in is not shared with jsonnode.
 // Caller has to explicitly free using godror_dpiJsonfreeMem
-func populateJSONNode(jsonnode *C.dpiJsonNode, in interface{}) error {
+func populateJSONNode(jsonnode *C.dpiJsonNode, in any) error {
 	switch x := in.(type) {
-	case []interface{}:
-		arr, _ := in.([]interface{})
+	case []any:
+		arr, _ := in.([]any)
 		C.godror_dpiJsonArray_initialize((**C.dpiJsonNode)(unsafe.Pointer(&jsonnode)), C.uint32_t(len(arr)))
 
 		var dpijsonarr *C.dpiJsonArray
@@ -659,8 +659,8 @@ func populateJSONNode(jsonnode *C.dpiJsonNode, in interface{}) error {
 				return err
 			}
 		}
-	case map[string]interface{}:
-		m, _ := in.(map[string]interface{})
+	case map[string]any:
+		m, _ := in.(map[string]any)
 		// Initialize dpiJsonObjectNode
 		C.godror_dpiJsonObject_initialize((**C.dpiJsonNode)(unsafe.Pointer(&jsonnode)), C.uint32_t(len(m)))
 
@@ -752,7 +752,7 @@ func freedpiJSONNode(node *C.dpiJsonNode) error {
 }
 
 // allocdpiJSONNode allocates dpiJsonNode from interface value, val
-func allocdpiJSONNode(val interface{}, node **C.dpiJsonNode) error {
+func allocdpiJSONNode(val any, node **C.dpiJsonNode) error {
 	C.godror_allocate_dpiNode((**C.dpiJsonNode)(unsafe.Pointer(node)))
 	err := populateJSONNode(*node, val)
 	if err != nil {

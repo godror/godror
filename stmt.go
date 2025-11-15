@@ -52,7 +52,7 @@ const printStack = false
 // NullTime is an alias for sql.NullTime
 type NullTime = sql.NullTime
 
-var nullTime interface{} = nil
+var nullTime any = nil
 
 type stmtOptions struct {
 	boolString         boolString
@@ -134,7 +134,7 @@ func (o stmtOptions) PlSQLArrays() bool { return o.plSQLArrays }
 
 func (o stmtOptions) ClobAsString() bool { return !o.lobAsReader }
 func (o stmtOptions) LobAsReader() bool  { return o.lobAsReader }
-func (o stmtOptions) NullDate() interface{} {
+func (o stmtOptions) NullDate() any {
 	if o.nullDateAsZeroTime {
 		return time.Time{}
 	}
@@ -165,7 +165,7 @@ type Option func(*stmtOptions)
 //
 //	type Booler bool
 //	var _ sql.Scanner = Booler{}
-//	func (b Booler) Scan(src interface{}) error {
+//	func (b Booler) Scan(src any) error {
 //	  switch src := src.(type) {
 //	    case int: *b = x == 1
 //	    case string: *b = x == "Y" || x == "T"  // or any string your database model treats as truth value
@@ -332,7 +332,7 @@ type statement struct {
 	columns  []Column
 	isSlice  []bool
 	gets     []dataGetter
-	dests    []interface{}
+	dests    []any
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
@@ -341,7 +341,7 @@ type statement struct {
 	dpiStmtInfo C.dpiStmtInfo
 	sync.Mutex
 }
-type dataGetter func(ctx context.Context, v interface{}, data []C.dpiData) error
+type dataGetter func(ctx context.Context, v any, data []C.dpiData) error
 
 // Close closes the statement.
 //
@@ -453,7 +453,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	st.ctx = ctx
 
 	if st.dpiStmt == nil && st.query == getConnection {
-		*(args[0].Value.(sql.Out).Dest.(*interface{})) = st.conn
+		*(args[0].Value.(sql.Out).Dest.(*any)) = st.conn
 		return driver.ResultNoRows, nil
 	}
 
@@ -699,7 +699,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("QueryContext", "args", args)
 		}
-		return &directRow{conn: st.conn, query: st.query, result: []interface{}{st.conn}}, nil
+		return &directRow{conn: st.conn, query: st.query, result: []any{st.conn}}, nil
 
 	case wrapResultset:
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -909,7 +909,7 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		st.gets = st.gets[:len(args)]
 	}
 	if cap(st.dests) < len(args) {
-		st.dests = make([]interface{}, len(args))
+		st.dests = make([]any, len(args))
 	} else {
 		st.dests = st.dests[:len(args)]
 	}
@@ -1124,7 +1124,7 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 	return nil
 }
 
-func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *dataGetter, value interface{}) (interface{}, error) {
+func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *dataGetter, value any) (any, error) {
 	nilPtr := false
 	logger := getLogger(ctx)
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -1484,11 +1484,11 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			} else {
 				info.objType = ot.dpiObjectType
 				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-				info.set = func(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+				info.set = func(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 					return st.dataSetObjectStruct(ctx, ot, dv, &data[0], vv)
 				}
 				if info.isOut {
-					*get = func(ctx context.Context, v interface{}, data []C.dpiData) error {
+					*get = func(ctx context.Context, v any, data []C.dpiData) error {
 						return st.dataGetObjectStruct(ctx, ot, v, data)
 					}
 				}
@@ -1512,15 +1512,15 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 	return value, nil
 }
 
-type dataSetter func(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error
+type dataSetter func(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error
 
-func dataSetNull(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func dataSetNull(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	for i := range data {
 		data[i].isNull = 1
 	}
 	return nil
 }
-func dataGetBool(ctx context.Context, v interface{}, data []C.dpiData) error {
+func dataGetBool(ctx context.Context, v any, data []C.dpiData) error {
 	if b, ok := v.(*bool); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*b = false
@@ -1546,7 +1546,7 @@ func dataGetBool(ctx context.Context, v interface{}, data []C.dpiData) error {
 	}
 	return nil
 }
-func dataSetBool(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func dataSetBool(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
@@ -1575,7 +1575,7 @@ func dataSetBool(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interfa
 
 var _ = sql.Scanner((*NullTime)(nil))
 
-func (c *conn) dataGetTime(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *time.Time:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -1668,7 +1668,7 @@ func (c *conn) dataGetTimeC(ctx context.Context, t *time.Time, data *C.dpiData) 
 
 var date8192begin, date8192end = time.Date(0, time.December, 31, 0, 0, 0, 0, time.UTC), time.Date(1, time.January, 2, 0, 0, 0, 0, time.UTC)
 
-func (c *conn) dataSetTime(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetTime(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
@@ -1727,7 +1727,7 @@ func (c *conn) dataSetTime(ctx context.Context, dv *C.dpiVar, data []C.dpiData, 
 	return nil
 }
 
-func (c *conn) dataGetIntervalDS(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetIntervalDS(ctx context.Context, v any, data []C.dpiData) error {
 	logger := getLogger(ctx)
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataGetIntervalDS", "data", data, "v", v)
@@ -1767,7 +1767,7 @@ func dataGetIntervalDS(ctx context.Context, t *time.Duration, d *C.dpiData) {
 	}
 }
 
-func (c *conn) dataSetIntervalDS(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetIntervalDS(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
@@ -1818,7 +1818,7 @@ func (c *conn) dataSetIntervalDS(ctx context.Context, dv *C.dpiVar, data []C.dpi
 	return nil
 }
 
-func dataGetNumber(ctx context.Context, v interface{}, data []C.dpiData) error {
+func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *int:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -2108,7 +2108,7 @@ func dataGetNumber(ctx context.Context, v interface{}, data []C.dpiData) error {
 	return nil
 }
 
-func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -2281,7 +2281,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv inter
 	return nil
 }
 
-func dataGetBytes(ctx context.Context, v interface{}, data []C.dpiData) error {
+func dataGetBytes(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *[]byte:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -2411,7 +2411,7 @@ func dataGetBytes(ctx context.Context, v interface{}, data []C.dpiData) error {
 			*x = append(*x, sql.NullInt64{Valid: true, Int64: v})
 		}
 
-	case *interface{}:
+	case *any:
 		switch y := (*x).(type) {
 		case []byte:
 			err := dataGetBytes(ctx, &y, data[:1])
@@ -2467,7 +2467,7 @@ func dataGetBytes(ctx context.Context, v interface{}, data []C.dpiData) error {
 	return nil
 }
 
-func dataSetBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func dataSetBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -2567,7 +2567,7 @@ func dataSetBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interf
 	return nil
 }
 
-func (st *statement) dataGetBoolBytes(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (st *statement) dataGetBoolBytes(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *bool:
 		if len(data) == 0 || data[0].isNull == 1 {
@@ -2586,7 +2586,7 @@ func (st *statement) dataGetBoolBytes(ctx context.Context, v interface{}, data [
 			*x = append(*x, st.stmtOptions.boolString.FromString(string(dpiData_getBytes(&data[i]))))
 		}
 
-	case *interface{}:
+	case *any:
 		switch y := (*x).(type) {
 		case bool:
 			err := st.dataGetBoolBytes(ctx, &y, data[:1])
@@ -2606,7 +2606,7 @@ func (st *statement) dataGetBoolBytes(ctx context.Context, v interface{}, data [
 	}
 	return nil
 }
-func (st *statement) dataSetBoolBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (st *statement) dataSetBoolBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -2635,7 +2635,7 @@ func (st *statement) dataSetBoolBytes(ctx context.Context, dv *C.dpiVar, data []
 	return nil
 }
 
-func (st *statement) dataGetStmt(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (st *statement) dataGetStmt(ctx context.Context, v any, data []C.dpiData) error {
 	if row, ok := v.(*driver.Rows); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*row = nil
@@ -2692,7 +2692,7 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 	return nil
 }
 
-func (c *conn) dataGetLOB(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetLOB(ctx context.Context, v any, data []C.dpiData) error {
 	if L, ok := v.(*Lob); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*L = Lob{}
@@ -2725,7 +2725,7 @@ func (c *conn) dataGetLOBC(ctx context.Context, L *Lob, data *C.dpiData) {
 	L.Reader = &dpiLobReader{drv: c.drv, dpiLob: lob, IsClob: L.IsClob}
 }
 
-func (c *conn) dataSetLOB(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetLOB(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -2847,7 +2847,7 @@ type ObjectWriter interface {
 	userType
 }
 
-func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
 		return nil
@@ -3063,7 +3063,7 @@ func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv re
 }
 
 // dataSetObjectStruct reads from vv, writes it to an ot typed object, and puts it into data.
-func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dpiVar, data *C.dpiData, vv interface{}) error {
+func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dpiVar, data *C.dpiData, vv any) error {
 	if ot == nil {
 		panic("dataSetObjectStruct with nil ObjectType")
 	}
@@ -3100,7 +3100,7 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 	return obj.Close()
 }
 
-func (c *conn) dataGetObject(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error {
 	logger := getLogger(ctx)
 	switch out := v.(type) {
 	case *ObjectCollection:
@@ -3382,7 +3382,7 @@ Loop:
 }
 
 // dataGetObjectStruct reads the object from data and writes it to v.
-func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v any, data []C.dpiData) error {
 	logger := getLogger(ctx)
 	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
 	rv := reflect.ValueOf(v)
@@ -3451,7 +3451,7 @@ func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]strin
 // StructTag is the prefix that tags godror-specific struct fields
 const StructTag = "godror"
 
-func (c *conn) getStructObjectType(ctx context.Context, v interface{}, fieldTag string) (*ObjectType, error) {
+func (c *conn) getStructObjectType(ctx context.Context, v any, fieldTag string) (*ObjectType, error) {
 	logger := getLogger(ctx)
 	rvt := reflect.ValueOf(v).Type()
 	if rvt.Kind() == reflect.Pointer {
@@ -3512,7 +3512,7 @@ func fieldIsObjectTypeName(f reflect.StructField) bool {
 	return f.Name == otnName || f.Type == otnType
 }
 
-func (c *conn) dataGetJSON(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetJSON(ctx context.Context, v any, data []C.dpiData) error {
 
 	switch out := v.(type) {
 	case *JSON:
@@ -3523,7 +3523,7 @@ func (c *conn) dataGetJSON(ctx context.Context, v interface{}, data []C.dpiData)
 	return nil
 }
 
-func (c *conn) dataSetJSON(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetJSON(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -3546,7 +3546,7 @@ func (c *conn) dataSetJSON(ctx context.Context, dv *C.dpiVar, data []C.dpiData, 
 	return nil
 }
 
-func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	var err error = nil
 	if len(data) == 0 {
 		return nil
@@ -3608,7 +3608,7 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 	return err
 }
 
-func (c *conn) dataGetJSONValue(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetJSONValue(ctx context.Context, v any, data []C.dpiData) error {
 	switch out := v.(type) {
 	case *JSON:
 		*out = JSON{dpiJson: (*(**C.dpiJson)(unsafe.Pointer(&(data[0].value))))}
@@ -3618,7 +3618,7 @@ func (c *conn) dataGetJSONValue(ctx context.Context, v interface{}, data []C.dpi
 	return nil
 }
 
-func (c *conn) dataSetJSONString(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv interface{}) error {
+func (c *conn) dataSetJSONString(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -3660,7 +3660,7 @@ func (c *conn) dataSetJSONString(ctx context.Context, dv *C.dpiVar, data []C.dpi
 	return nil
 }
 
-func (c *conn) dataGetJSONString(ctx context.Context, v interface{}, data []C.dpiData) error {
+func (c *conn) dataGetJSONString(ctx context.Context, v any, data []C.dpiData) error {
 
 	switch out := v.(type) {
 	case *string:
@@ -3672,7 +3672,7 @@ func (c *conn) dataGetJSONString(ctx context.Context, v interface{}, data []C.dp
 	return nil
 }
 
-func (c *conn) dataGetVectorValue(ctx context.Context, v interface{},
+func (c *conn) dataGetVectorValue(ctx context.Context, v any,
 	data []C.dpiData) error {
 	var (
 		vectorInfo C.dpiVectorInfo
@@ -3720,7 +3720,7 @@ func (c *conn) setPointerVectorSlice(vs []*Vector, data []C.dpiData) error {
 }
 
 func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dpiData,
-	vv interface{}) error {
+	vv any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -3941,7 +3941,7 @@ func dpiSetFromString(dv *C.dpiVar, pos C.uint32_t, x string) {
 }
 
 var stringBuilders = stringBuilderPool{
-	p: &sync.Pool{New: func() interface{} { return &strings.Builder{} }},
+	p: &sync.Pool{New: func() any { return &strings.Builder{} }},
 }
 
 type stringBuilderPool struct {

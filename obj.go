@@ -136,7 +136,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 }
 
 // Set is a convenience function to set the named attribute with the given value.
-func (O *Object) Set(name string, v interface{}) error {
+func (O *Object) Set(name string, v any) error {
 	if data, ok := v.(*Data); ok {
 		return O.SetAttribute(name, data)
 	}
@@ -177,7 +177,7 @@ func (O *Object) resetAttributes(skipErrors bool) error {
 }
 
 // Get scans the named attribute into dest, and returns it.
-func (O *Object) Get(name string) (interface{}, error) {
+func (O *Object) Get(name string) (any, error) {
 	d := scratch.Get()
 	defer scratch.Put(d)
 	if err := O.GetAttribute(d, name); err != nil {
@@ -199,7 +199,7 @@ func (O *Object) Get(name string) (interface{}, error) {
 	return sub, nil
 }
 
-func maybeString(v interface{}, ot *ObjectType) interface{} {
+func maybeString(v any, ot *ObjectType) any {
 	switch otn := ot.OracleTypeNum; otn {
 	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
 		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
@@ -310,16 +310,16 @@ func (O *Object) Close() error {
 	return nil
 }
 
-// AsMap is a convenience function that returns the object's attributes as a map[string]interface{}.
+// AsMap is a convenience function that returns the object's attributes as a map[string]any.
 // It allocates, so use it as a guide how to implement your own converter function.
 //
 // If recursive is true, then the embedded objects are converted, too, recursively.
-func (O *Object) AsMap(recursive bool) (map[string]interface{}, error) {
+func (O *Object) AsMap(recursive bool) (map[string]any, error) {
 	if O == nil || O.dpiObject == nil {
 		return nil, nil
 	}
 	logger := getLogger(context.TODO())
-	m := make(map[string]interface{}, len(O.ObjectType.Attributes))
+	m := make(map[string]any, len(O.ObjectType.Attributes))
 	data := scratch.Get()
 	defer scratch.Put(data)
 	for a, ot := range O.ObjectType.Attributes {
@@ -433,16 +433,16 @@ var ErrNotCollection = errors.New("not collection")
 // ErrNotExist is returned when the collection's requested element does not exist.
 var ErrNotExist = errors.New("not exist")
 
-// AsMapSlice retrieves the collection into a []map[string]interface{}.
+// AsMapSlice retrieves the collection into a []map[string]any.
 // If recursive is true, then all subsequent Objects/ObjectsCollections are translated.
 //
 // This is horrendously inefficient, use it only as a guide!
-func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, error) {
+func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]any, error) {
 	length, err := O.Len()
 	if err != nil {
 		return nil, fmt.Errorf("Len: %w", err)
 	}
-	m := make([]map[string]interface{}, 0, length)
+	m := make([]map[string]any, 0, length)
 	for curr, err := O.First(); err == nil; curr, err = O.Next(curr) {
 		if v, err := O.Get(curr); err != nil {
 			return m, fmt.Errorf("Get(%v): %w", curr, err)
@@ -460,7 +460,7 @@ func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]interface{}, 
 }
 
 // FromSlice read from a slice of primitives.
-func (O ObjectCollection) FromSlice(v []interface{}) error {
+func (O ObjectCollection) FromSlice(v []any) error {
 	if O.dpiObject == nil {
 		return nil
 	}
@@ -485,7 +485,7 @@ func (O ObjectCollection) FromSlice(v []interface{}) error {
 }
 
 // FromMap populates the Object starting from a map, according to the Object's Attributes.
-func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
+func (O *Object) FromMap(recursive bool, m map[string]any) error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
@@ -507,15 +507,15 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 				}
 				defer coll.Close()
 				switch v := v.(type) {
-				case []map[string]interface{}:
+				case []map[string]any:
 					if err := coll.FromMapSlice(recursive, v); err != nil {
 						return fmt.Errorf("%q.FromMapSlice: %w", a, err)
 					}
-				case []interface{}:
+				case []any:
 					if ot.IsObject() {
-						m := make([]map[string]interface{}, 0, len(v))
+						m := make([]map[string]any, 0, len(v))
 						for _, e := range v {
-							m = append(m, e.(map[string]interface{}))
+							m = append(m, e.(map[string]any))
 						}
 						if err := coll.FromMapSlice(recursive, m); err != nil {
 							return fmt.Errorf("%q.FromMapSlice: %w", a, err)
@@ -533,7 +533,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 						}
 					}
 				default:
-					return fmt.Errorf("%q is a collection, needs []interface{} or []map[string]interface{}, got %T", a, v)
+					return fmt.Errorf("%q is a collection, needs []any or []map[string]any, got %T", a, v)
 				}
 				if err = O.Set(a, coll); err != nil {
 					return fmt.Errorf("%q.Set(%v): %w", a, coll, err)
@@ -547,7 +547,7 @@ func (O *Object) FromMap(recursive bool, m map[string]interface{}) error {
 			if err != nil {
 				return fmt.Errorf("%q.FromMap: %w", a, err)
 			}
-			if err := newO.FromMap(recursive, v.(map[string]interface{})); err != nil {
+			if err := newO.FromMap(recursive, v.(map[string]any)); err != nil {
 				newO.Close()
 				return fmt.Errorf("%q.FromMap: %w", a, err)
 			}
@@ -601,7 +601,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 		if !ok {
 			return fmt.Errorf("key %q not found", k)
 		}
-		var v interface{}
+		var v any
 		var C func() error
 		if a.ObjectType.CollectionOf != nil {
 			coll, err := a.ObjectType.NewCollection()
@@ -649,7 +649,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 }
 
 // FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
-func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]interface{}) error {
+func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]any) error {
 	if O.dpiObject == nil {
 		return nil
 	}
@@ -711,7 +711,7 @@ func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
 }
 
 // AsSlice retrieves the collection into a slice.
-func (O ObjectCollection) AsSlice(dest interface{}) (interface{}, error) {
+func (O ObjectCollection) AsSlice(dest any) (any, error) {
 	var dr reflect.Value
 	if dest != nil {
 		dr = reflect.ValueOf(dest)
@@ -804,7 +804,7 @@ func (O ObjectCollection) AppendData(data *Data) error {
 }
 
 // Append v to the collection.
-func (O ObjectCollection) Append(v interface{}) error {
+func (O ObjectCollection) Append(v any) error {
 	if data, ok := v.(*Data); ok {
 		return O.AppendData(data)
 	}
@@ -867,7 +867,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 }
 
 // Get the i-th element of the collection.
-func (O ObjectCollection) Get(i int) (interface{}, error) {
+func (O ObjectCollection) Get(i int) (any, error) {
 	data := scratch.Get()
 	defer scratch.Put(data)
 	err := O.GetItem(data, i)
@@ -885,7 +885,7 @@ func (O ObjectCollection) SetItem(i int, data *Data) error {
 }
 
 // Set the i-th element of the collection with value.
-func (O ObjectCollection) Set(i int, v interface{}) error {
+func (O ObjectCollection) Set(i int, v any) error {
 	if data, ok := v.(*Data); ok {
 		return O.SetItem(i, data)
 	}
@@ -1373,7 +1373,7 @@ func GetObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType
 	return c.GetObjectType(typeName)
 }
 
-var scratch = &dataPool{Pool: sync.Pool{New: func() interface{} { return &Data{} }}}
+var scratch = &dataPool{Pool: sync.Pool{New: func() any { return &Data{} }}}
 
 type dataPool struct{ sync.Pool }
 
