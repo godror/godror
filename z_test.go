@@ -2188,6 +2188,75 @@ func TestColumnSize(t *testing.T) {
 	}
 }
 
+func TestColumnPrecision(t *testing.T) {
+	t.Parallel()
+	testDb.Exec("DROP TABLE test_column_precision")
+	if _, err := testDb.Exec(`CREATE TABLE test_column_precision (
+            timestamp_s TIMESTAMP(0),
+            timestamp_ms TIMESTAMP(3),
+	    timestamp_us TIMESTAMP(6),
+	    timestamp_ns TIMESTAMP(9),
+            num NUMBER(10)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_column_precision")
+
+	r, err := testDb.Query("SELECT * FROM test_column_precision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	rts, err := r.ColumnTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(rts) != 5 {
+		t.Fatalf("expected 5 columns, got %d", len(rts))
+	}
+
+	expected := []int64{0, 3, 6, 9, 10}
+	for i, col := range rts {
+		prec, _, ok := col.DecimalSize()
+
+		if !ok {
+			t.Fatalf("column %q: expected precision, got none", col.Name())
+		} else if prec != expected[i] {
+			t.Fatalf("column %q: expected precision %d, got %d", col.Name(), expected[i], prec)
+		}
+	}
+}
+
+func TestColumnPrecisionDescribeQuery(t *testing.T) {
+	t.Parallel()
+	testDb.Exec("DROP TABLE test_column_precision_describe_query")
+	if _, err := testDb.Exec(`CREATE TABLE test_column_precision_describe_query (
+            timestamp_s TIMESTAMP(0),
+            timestamp_ms TIMESTAMP(3),
+	    timestamp_us TIMESTAMP(6),
+	    timestamp_ns TIMESTAMP(9),
+            num NUMBER(10)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	defer testDb.Exec("DROP TABLE test_column_precision")
+
+	cols, err := godror.DescribeQuery(context.Background(), testDb, "SELECT * FROM test_column_precision_describe_query")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cols) != 5 {
+		t.Fatalf("expected 5 columns, got %d", len(cols))
+	}
+	expected := []int{0, 3, 6, 9, 10}
+	for i, col := range cols {
+		if col.Precision != expected[i] {
+			t.Fatalf("column %q: expected precision %d, got %d", col.Name, expected[i], col.Precision)
+		}
+	}
+}
+
 func TestReturning(t *testing.T) {
 	t.Parallel()
 	defer tl.enableLogging(t)()

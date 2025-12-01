@@ -326,11 +326,15 @@ func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, e
 		r := dR.(*rows)
 		cols = make([]QueryColumn, len(r.columns))
 		for i, col := range r.columns {
+			precision := int(col.Precision)
+			if precision == 0 && col.FsPrecision != 0 {
+				precision = int(col.FsPrecision)
+			}
 			cols[i] = QueryColumn{
 				Name:      col.Name,
 				Type:      int(col.OracleType),
 				Length:    int(col.Size),
-				Precision: int(col.Precision),
+				Precision: int(precision),
 				Scale:     int(col.Scale),
 				Nullable:  col.Nullable,
 			}

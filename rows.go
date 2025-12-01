@@ -220,6 +220,8 @@ func (r *rows) ColumnTypePrecisionScale(index int) (precision, scale int64, ok b
 		//C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64,
 		C.DPI_ORACLE_TYPE_NUMBER:
 		return int64(col.Precision), int64(col.Scale), true
+	case C.DPI_ORACLE_TYPE_TIMESTAMP, C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ:
+		return int64(col.FsPrecision), 0, true
 	default:
 		return 0, 0, false
 	}
