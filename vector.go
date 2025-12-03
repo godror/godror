@@ -29,10 +29,10 @@ import (
 
 // Vector holds the embedding VECTOR column starting from 23ai.
 type Vector struct {
-	Dimensions uint32      // Total dimensions of the vector.
-	Indices    []uint32    // Indices of non-zero values (sparse format).
-	Values     any // Non-zero values (sparse format) or all values (dense format).
-	IsSparse   bool        // Flag to detect if it's a sparse vector
+	Dimensions uint32   // Total dimensions of the vector.
+	Indices    []uint32 // Indices of non-zero values (sparse format).
+	Values     any      // Non-zero values (sparse format) or all values (dense format).
+	IsSparse   bool     // Flag to detect if it's a sparse vector
 }
 
 // SetVectorValue converts a Go `Vector` into a godror data type.

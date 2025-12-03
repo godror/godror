@@ -6,15 +6,15 @@
 package godror
 
 import (
-	"os"
+	_ "embed"
 	"errors"
-	"strconv"
 	"fmt"
+	"os"
 	"sort"
-	"time"
+	"strconv"
 	"strings"
 	"sync"
-	_ "embed"
+	"time"
 
 	"github.com/godror/godror/dsn"
 	"github.com/godror/godror/slog"
@@ -145,5 +145,3 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 	}
 	return tz, off, nil
 }
-
-

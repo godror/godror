@@ -407,7 +407,7 @@ type JSONValue struct {
 // uint, uint8, uint16, uint32, uint64, float32, float64, string,
 // map, array, string, byte[], time.Time, time.Duration, godror.Number and bool.
 type JSONScalar struct {
-	dpiJsonNode *C.dpiJsonNode
+	dpiJsonNode  *C.dpiJsonNode
 	stringOption JSONOption
 }
 
@@ -548,7 +548,7 @@ func jsonArraySlice(arr *C.dpiJsonArray) []C.dpiJsonNode {
 // JSONObject represents the map input.
 type JSONObject struct {
 	dpiJsonObject *C.dpiJsonObject
-	stringOption JSONOption
+	stringOption  JSONOption
 }
 
 // Len returns the number of keys in the JSONObject
