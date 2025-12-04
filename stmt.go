@@ -1281,9 +1281,11 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 	case bool, []bool:
 		if st.dpiStmtInfo.isPLSQL == 1 || st.stmtOptions.boolString.IsZero() || st.PlSQLArrays() {
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN
-			info.set = dataSetBool
-			if info.isOut {
-				*get = dataGetBool
+			if !nilPtr {
+				info.set = dataSetBool
+				if info.isOut {
+					*get = dataGetBool
+				}
 			}
 		} else {
 			info.typ, info.natTyp = C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_NATIVE_TYPE_BYTES

@@ -3774,6 +3774,77 @@ func (b booler) Value() (driver.Value, error) {
 	return "N", nil
 }
 
+func TestBoolValueTypes(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("NullBool"), 10*time.Second)
+	defer cancel()
+	const tbl = "test_bool_value_types_t"
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (F_bool NUMBER(1))"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+	}
+	defer func() { testDb.ExecContext(testContext("Bool-value-types-drop"), "DROP TABLE "+tbl) }()
+
+	tests := []struct {
+		name   string
+		obj    interface{}
+		expect interface{}
+	}{
+		{
+			name:   "null with nil bool ptr",
+			obj:    (*bool)(nil),
+			expect: nil,
+		},
+		{
+			name:   "null with nil",
+			obj:    nil,
+			expect: nil,
+		},
+		{
+			name:   "true",
+			obj:    true,
+			expect: int64(1),
+		},
+		{
+			name:   "true with bool ptr",
+			obj:    func() *bool { b := true; return &b }(),
+			expect: int64(1),
+		},
+		{
+			name:   "false",
+			obj:    false,
+			expect: int64(0),
+		},
+		{
+			name:   "false with bool ptr",
+			obj:    func() *bool { b := false; return &b }(),
+			expect: int64(0),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			qry = "INSERT INTO " + tbl + " (F_bool) VALUES (:1)"
+			if _, err := testDb.ExecContext(ctx, qry, test.obj); err != nil {
+				t.Fatal(fmt.Errorf("%s: %w", qry, err))
+			}
+			qry = "SELECT F_bool FROM " + tbl
+			var result interface{}
+			if err := testDb.QueryRowContext(ctx, qry).Scan(&result); err != nil {
+				t.Fatal(fmt.Errorf("%s: %w", qry, err))
+			}
+			if !reflect.DeepEqual(test.expect, result) {
+				t.Errorf("wanted %+v, got %+v", test.expect, result)
+			}
+			// Clean up
+			if _, err := testDb.ExecContext(ctx, "DELETE FROM "+tbl); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestResetSession(t *testing.T) {
 	const poolSize = 4
 	P, err := godror.ParseDSN(testConStr)
