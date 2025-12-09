@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.49.6]
+### Added
+- *bool == nil -> NULL in DB.
+
+## [v0.49.5]
+- ODPI-C v5.6.4
+
 ## [v0.49.4]
 ### Added
 - New WithQueueTable option for NewQueue.
