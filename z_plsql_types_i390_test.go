@@ -19,13 +19,20 @@ import (
 )
 
 func TestPlSqlNestedObj(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 1*time.Minute)
+	t.Run("200", func(t *testing.T) {
+		testPlSqlNestedObj(t, 200)
+	})
+	t.Run("1", func(t *testing.T) { testPlSqlNestedObj(t, 1) })
+}
+
+func testPlSqlNestedObj(t *testing.T, step int) {
+	if step < 2 {
+		step = 2
+	}
+	stepS := strconv.Itoa(step)
+	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes["+stepS+"]"), 1*time.Minute)
 	defer cancel()
 	// defer tl.enableLogging(t)()
-
-	const step = 200
-	stepS := strconv.Itoa(step)
-	//godror.SetLogger(zlog.NewT(t).SLog())
 
 	createTypes := func(ctx context.Context, db *sql.DB) error {
 		qry := []string{
@@ -149,14 +156,14 @@ func TestPlSqlNestedObj(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("%s: %d; process memory (rss): %.3f MiB\n", t.Name(), loopCnt, float64(rss)/MiB)
-		if rss > startMem[t.Name()]*2 {
+		if start, ok := startMem[t.Name()]; ok && rss > start*2 {
 			t.Errorf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
 				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
 		} else {
 			t.Logf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
-				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
+				start/MiB, rss/MiB, float64(rss*100)/float64(start))
 		}
 	}
 
@@ -250,9 +257,11 @@ func TestPlSqlNestedObj(t *testing.T) {
 			t.Logf("dl: %v dur:%v", dl, dur)
 			for ; time.Now().Before(dl); loopCnt++ {
 				if err := callObjectType(ctx, testDb, dir); err != nil {
-					t.Fatal(err)
+					t.Fatal("callObjectType:", err)
 				}
-
+				if step <= 2 {
+					break
+				}
 				if startMem[t.Name()] == 0 {
 					runtime.GC()
 					var err error
