@@ -540,7 +540,7 @@ func (c *conn) NewData(baseType any, sliceLen, bufSize int) ([]*Data, error) {
 		return nil, errors.New("connection is nil")
 	}
 
-	vi, err := newVarInfo(baseType, sliceLen, bufSize)
+	vi, err := c.newVarInfo(baseType, sliceLen, bufSize)
 	if err != nil {
 		return nil, err
 	}
@@ -559,7 +559,7 @@ func (c *conn) NewData(baseType any, sliceLen, bufSize int) ([]*Data, error) {
 	return data, nil
 }
 
-func newVarInfo(baseType any, sliceLen, bufSize int) (varInfo, error) {
+func (c *conn) newVarInfo(baseType any, sliceLen, bufSize int) (varInfo, error) {
 	var vi varInfo
 
 	switch v := baseType.(type) {
@@ -613,16 +613,30 @@ func newVarInfo(baseType any, sliceLen, bufSize int) (varInfo, error) {
 	case []time.Time, []NullTime:
 		// Maybe vi.Typ should be C.DPI_ORACLE_TYPE_DATE
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
-	case userType, []userType:
+	case ObjectWriter:
 		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-		switch v := v.(type) {
-		case userType:
-			vi.ObjectType = v.ObjectRef().ObjectType.dpiObjectType
-		case []userType:
-			if len(v) > 0 {
-				vi.ObjectType = v[0].ObjectRef().ObjectType.dpiObjectType
-			}
+		ot, err := c.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return vi, err
 		}
+		vi.ObjectType = ot.dpiObjectType
+	case []ObjectWriter:
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		if len(v) > 0 {
+			ot, err := c.GetObjectType(v[0].ObjectTypeName())
+			if err != nil {
+				return vi, err
+			}
+			vi.ObjectType = ot.dpiObjectType
+		}
+	case ObjectCollectionWriter:
+		vi.Typ, vi.NatTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		ot, err := c.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return vi, err
+		}
+		vi.ObjectType = ot.dpiObjectType
+
 	default:
 		return vi, fmt.Errorf("unknown type %T", v)
 	}

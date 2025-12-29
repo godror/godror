@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"reflect"
 	"runtime"
 	"sort"
@@ -1399,13 +1400,29 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			*get = st.dataGetObject
 		}
 
-	case userType:
-		info.objType = v.ObjectRef().ObjectType.dpiObjectType
+	case ObjectWriter:
+		ot, err := st.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return value, err
+		}
+		info.objType = ot.dpiObjectType
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		info.set = st.dataSetObject
 		if info.isOut {
 			*get = st.dataGetObject
 		}
+	case ObjectCollectionWriter:
+		ot, err := st.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return value, err
+		}
+		info.objType = ot.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+
 	case JSON:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
 		info.set = st.conn.dataSetJSON
@@ -2836,20 +2853,52 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	return nil
 }
 
-type userType interface {
-	ObjectRef() *Object
-}
+type (
+	// ObjectTypeNamer is an interface that provides the Object's type name.
 
-// ObjectScanner assigns a value from a database object
-type ObjectScanner interface {
-	sql.Scanner
-	userType
-}
+	ObjectTypeNamer interface {
+		// ObjectTypeName returns the ObjectType's name to be able to create the Object.
+		ObjectTypeName() string
+	}
 
-// ObjectWriter update database object before binding
-type ObjectWriter interface {
-	WriteObject() error
-	userType
+	// ObjectScanner assigns a value from a database object
+	ObjectScanner interface {
+		sql.Scanner
+		ObjectTypeNamer
+	}
+
+	// ObjectWriter update database object before binding
+	ObjectWriter interface {
+		ObjectTypeNamer
+		// WriteObject writes the data to the Object.
+		WriteObject(*Object) error
+	}
+
+	// ObjectCollectionWriter allows writing an ObjectCollection from something iterable.
+	ObjectCollectionWriter interface {
+		ObjectTypeNamer
+		Iter() iter.Seq[ObjectWriter]
+	}
+
+	objCollWriter struct {
+		ObjectTypeNamer
+		Iter iter.Seq[ObjectWriter]
+	}
+)
+
+// SliceToObjeCollWriter returns an ObjectCollectionWriter from a slice (and ObjectTypeNamer) of ObjectWriters.
+func SliceToObjCollWriter[E ObjectWriter, T interface {
+	ObjectTypeNamer
+	[]E
+}](slice T) objCollWriter {
+	return objCollWriter{ObjectTypeNamer: slice,
+		Iter: func(yield func(ObjectWriter) bool) {
+			for _, item := range slice {
+				if !yield(item) {
+					break
+				}
+			}
+		}}
 }
 
 func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
@@ -2860,38 +2909,79 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
-	objs := []Object{{}}
-	switch o := vv.(type) {
+	objs := []*Object{{}}
+	switch v := vv.(type) {
 	case Object:
-		objs[0] = o
+		objs[0] = &v
 	case *Object:
-		objs[0] = *o
+		objs[0] = v
+
 	case []Object:
-		objs = o
-	case []*Object:
-		objs = make([]Object, len(o))
-		for i, x := range o {
-			objs[i] = *x
+		objs = make([]*Object, len(v))
+		for i, x := range v {
+			objs[i] = &x
 		}
+	case []*Object:
+		objs = v
+
 	case ObjectWriter:
-		err := o.WriteObject()
+		ot, err := c.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
-		objs[0] = *o.ObjectRef()
+		o, err := ot.NewObject()
+		if err != nil {
+			return err
+		}
+		if err := v.WriteObject(o); err != nil {
+			return err
+		}
 	case []ObjectWriter:
-		for _, ut := range o {
-			err := ut.WriteObject()
+		var ot *ObjectType
+		for _, ut := range v {
+			if ot == nil {
+				var err error
+				if ot, err = c.GetObjectType(ut.ObjectTypeName()); err != nil {
+					return err
+				}
+			}
+			o, err := ot.NewObject()
 			if err != nil {
 				return err
 			}
-			objs = append(objs, *ut.ObjectRef())
+			if err := ut.WriteObject(o); err != nil {
+				return err
+			}
+			objs = append(objs, o)
 		}
-	case userType:
-		objs[0] = *o.ObjectRef()
-	case []userType:
-		for _, ut := range o {
-			objs = append(objs, *ut.ObjectRef())
+
+	case ObjectCollectionWriter:
+		ot, err := c.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return err
+		}
+		o, err := ot.NewObject()
+		if err != nil {
+			return err
+		}
+		coll := ObjectCollection{o}
+		objs[0] = o
+		ot = nil
+		for item := range v.Iter() {
+			if ot == nil {
+				if ot, err = c.GetObjectType(item.ObjectTypeName()); err != nil {
+					return err
+				}
+			}
+			if o, err = ot.NewObject(); err != nil {
+				return err
+			}
+			if err = item.WriteObject(o); err != nil {
+				return err
+			}
+			if err = coll.Append(o); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -2912,7 +3002,9 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 }
 
 // dataSetObjectStructObj creates an ot typed object from rv.
-func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv reflect.Value) (*Object, error) {
+func (c *conn) dataSetObjectStructObj(
+	ctx context.Context, ot *ObjectType, rv reflect.Value,
+) (*Object, error) {
 	logger := getLogger(ctx)
 	rvt := rv.Type()
 	if rvt.Kind() == reflect.Pointer {
@@ -3087,22 +3179,23 @@ func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dp
 	if err != nil {
 		return err
 	}
-	defer obj.Close()
-
-	if obj.dpiObject == nil {
+	if obj == nil || obj.dpiObject == nil {
 		data.isNull = 1
 		return nil
 	}
+	fmt.Printf("dataSetObjectStructObj=%p\n", obj.dpiObject)
+
 	data.isNull = 0
 	if err := c.checkExec(func() C.int {
 		return C.dpiVar_setFromObject(dv, C.uint32_t(0), obj.dpiObject)
 	}); err != nil {
+		defer obj.Close()
 		if logger != nil {
 			logger.Error("setFromObject", "i", 0, "dv", dv, "obj", obj, "error", err)
 		}
 		return fmt.Errorf("setFromObject[%d]: %w", 0, err)
 	}
-	return obj.Close()
+	return nil
 }
 
 func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error {
@@ -3141,8 +3234,12 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 
 	case ObjectScanner:
+		ot, err := c.GetObjectType(out.ObjectTypeName())
+		if err != nil {
+			return err
+		}
 		d := Data{
-			ObjectType: out.ObjectRef().ObjectType,
+			ObjectType: ot,
 			dpiData:    data[0],
 		}
 		obj := d.GetObject()
@@ -3150,7 +3247,7 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
 		}
-		err := out.Scan(obj)
+		err = out.Scan(obj)
 		obj.Close()
 		return err
 
@@ -3194,12 +3291,6 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 		re := reflect.New(rvt.Elem()).Elem()
 		ret := re.Type()
 		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return err
-			}
 			if first {
 				first = false
 				length, err := coll.Len()
@@ -3220,10 +3311,10 @@ func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj
 			switch x := x.(type) {
 			case *Object:
 				err := c.dataGetObjectStructObj(ctx, re, x)
-				x.Close()
 				if err != nil {
 					return err
 				}
+				// x.Close()
 			default:
 				ev := reflect.ValueOf(x)
 				if ev.Type() != ret {
@@ -3292,10 +3383,10 @@ Loop:
 			rf.Set(reflect.ValueOf(v))
 		case *Object:
 			err := c.dataGetObjectStructObj(ctx, rf, v)
-			v.Close()
 			if err != nil {
 				return err
 			}
+			// v.Close()
 			continue Loop
 		case string:
 			if rf.Kind() == reflect.String {
@@ -3417,12 +3508,12 @@ func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v any, d
 			return nil
 		}
 		err := c.dataGetObjectStructObj(ctx, rv, obj)
-		if obj != nil {
-			obj.Close()
-		}
 		if err != nil {
 			return err
 		}
+		// if  obj != nil {
+		// 	obj.Close()
+		// }
 	}
 	return nil
 }

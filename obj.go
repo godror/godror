@@ -235,12 +235,30 @@ func (O *Object) Collection() ObjectCollection {
 	return ObjectCollection{Object: O}
 }
 
+// Iter ate over the collection.
+func (O ObjectCollection) Iter() iter.Seq2[*Object, error] {
+	return func(yield func(*Object, error) bool) {
+		data := scratch.Get()
+		defer scratch.Put(data)
+
+		for i, err := O.First(); err == nil; i, err = O.Next(i) {
+			if err := O.GetItem(data, i); err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(data.GetObject(), nil) {
+				break
+			}
+		}
+	}
+}
+
 // Close releases a reference to the object.
 func (O *Object) Close() error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
-	oldRefCount := O.dpiObject.refCount
+	// fmt.Printf("Object.Close0 %p\n", O.dpiObject)
 	logger := getLogger(context.TODO())
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", O.dpiObject))
@@ -262,12 +280,13 @@ func (O *Object) Close() error {
 				continue
 			}
 			obj := data.GetObject()
-			if obj == nil {
+			if obj == nil || obj.dpiObject == nil {
 				continue
 			}
 			if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 				logger.Debug("ObjectCollection.Close close item", "idx", curr, "object", fmt.Sprintf("%p", obj))
 			}
+			// fmt.Printf("Close obj=%p\n", obj.dpiObject)
 			if err = obj.Close(); err != nil && logger != nil && false {
 				logger.Error("close sub-object", "idx", curr, "error", err)
 			}
@@ -303,15 +322,13 @@ func (O *Object) Close() error {
 
 	dpiObject := O.dpiObject
 	O.dpiObject = nil
-
+	if dpiObject == nil {
+		return nil
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_release(dpiObject)
 	}); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
-	}
-
-	if warnDpiObjectRefCount {
-		fmt.Printf("%s[%p] refCount %d -> %d\n", O.Name, dpiObject, oldRefCount, dpiObject.refCount)
 	}
 
 	return nil

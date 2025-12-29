@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"log/slog"
 	"runtime"
 	"strings"
@@ -27,20 +28,24 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var _ godror.ObjectScanner = new(MyRecord)
-var _ godror.ObjectWriter = new(MyRecord)
+var (
+	_ godror.ObjectScanner = (*MyRecord)(nil)
+	_ godror.ObjectWriter  = (*MyRecord)(nil)
 
-var _ godror.ObjectScanner = new(MyTable)
+	_ godror.ObjectScanner          = (*MyTable)(nil)
+	_ godror.ObjectCollectionWriter = (*MyTable)(nil)
+)
 
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
-	*godror.Object
 	Txt, AClob string
 	ID         int64
 	DT         time.Time
 }
 
 type coder interface{ Code() int }
+
+func (r *MyRecord) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_RECORD" }
 
 func (r *MyRecord) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
@@ -85,47 +90,30 @@ func (r *MyRecord) Scan(src any) error {
 
 // WriteObject update godror.Object with struct attributes values.
 // Implement this method if you need the record as an input parameter.
-func (r MyRecord) WriteObject() error {
+func (r MyRecord) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	err := r.ResetAttributes()
+	err := o.ResetAttributes()
 	if err != nil {
 		return err
 	}
 
 	var data godror.Data
-	err = r.GetAttribute(&data, "ID")
-	if err != nil {
-		return err
-	}
 	data.SetInt64(r.ID)
-	r.SetAttribute("ID", &data)
+	o.SetAttribute("ID", &data)
 
 	if r.Txt != "" {
-		err = r.GetAttribute(&data, "TXT")
-		if err != nil {
-			return err
-		}
-
 		data.SetBytes([]byte(r.Txt))
-		r.SetAttribute("TXT", &data)
+		o.SetAttribute("TXT", &data)
 	}
 
 	if !r.DT.IsZero() {
-		err = r.GetAttribute(&data, "DT")
-		if err != nil {
-			return err
-		}
 		data.SetTime(r.DT)
-		r.SetAttribute("DT", &data)
+		o.SetAttribute("DT", &data)
 	}
 
 	if r.AClob != "" {
-		err = r.GetAttribute(&data, "ACLOB")
-		if err != nil {
-			return err
-		}
 		data.SetBytes([]byte(r.AClob))
-		r.SetAttribute("ACLOB", &data)
+		o.SetAttribute("ACLOB", &data)
 	}
 
 	return nil
@@ -133,12 +121,10 @@ func (r MyRecord) WriteObject() error {
 
 // MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
-	godror.ObjectCollection
 	Items []*MyRecord
-	conn  interface {
-		NewData(baseType any, sliceLen, bufSize int) ([]*godror.Data, error)
-	}
 }
+
+func (t *MyTable) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_TABLE" }
 
 func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
@@ -191,26 +177,14 @@ func (t *MyTable) Scan(src any) error {
 	return err
 }
 
-func (r MyTable) WriteObject(ctx context.Context) error {
-	if len(r.Items) == 0 {
-		return nil
-	}
-
-	data, err := r.conn.NewData(r.Items[0], len(r.Items), 0)
-	if err != nil {
-		return err
-	}
-
-	for i, item := range r.Items {
-		err = item.WriteObject()
-		if err != nil {
-			return err
+func (r MyTable) Iter() iter.Seq[godror.ObjectWriter] {
+	return func(yield func(godror.ObjectWriter) bool) {
+		for _, it := range r.Items {
+			if !yield(it) {
+				break
+			}
 		}
-		d := data[i]
-		d.SetObject(item.ObjectRef())
-		r.Append(d)
 	}
-	return nil
 }
 
 func createPackages(ctx context.Context) error {
@@ -480,6 +454,7 @@ func TestPlSqlTypes(t *testing.T) {
 	})
 
 	t.Run("Osh", func(t *testing.T) {
+		defer tl.enableLogging(t)()
 		in := oshNumberList{NumberList: []float64{1, 2, 3}}
 		var out oshSliceStruct
 		const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
@@ -500,28 +475,16 @@ func TestPlSqlTypes(t *testing.T) {
 	})
 
 	t.Run("Record", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		obj, err := objType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj.Close()
-
 		for tName, tCase := range map[string]struct {
 			txt  string
 			want MyRecord
 			ID   int64
 		}{
-			"default":    {ID: 1, txt: "test", want: MyRecord{Object: obj, ID: 1, Txt: "test"}},
-			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{Object: obj, ID: 2}},
-			"zeroValues": {want: MyRecord{Object: obj}},
+			"default":    {ID: 1, txt: "test", want: MyRecord{ID: 1, Txt: "test"}},
+			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{ID: 2}},
+			"zeroValues": {want: MyRecord{}},
 		} {
-			rec := MyRecord{Object: obj}
+			rec := MyRecord{}
 			params := []any{
 				sql.Named("id", tCase.ID),
 				sql.Named("txt", tCase.txt),
@@ -536,19 +499,13 @@ func TestPlSqlTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if d := cmp.Diff(rec.String(), tCase.want.String()); d != "" {
+			if d := cmp.Diff(rec, tCase.want); d != "" {
 				t.Errorf("%s: record got %v, wanted %v\n%s", tName, rec, tCase.want, d)
 			}
 		}
 	})
 
 	t.Run("Record IN OUT", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		for tName, tCase := range map[string]struct {
 			wantTxt string
 			in      MyRecord
@@ -559,13 +516,7 @@ func TestPlSqlTypes(t *testing.T) {
 			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed "},
 		} {
 
-			obj, err := objType.NewObject()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer obj.Close()
-
-			rec := MyRecord{Object: obj, ID: tCase.in.ID, Txt: tCase.in.Txt}
+			rec := MyRecord{ID: tCase.in.ID, Txt: tCase.in.Txt}
 			params := []any{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
@@ -610,7 +561,7 @@ func TestPlSqlTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection(), conn: conn}
+			tb := MyTable{}
 			params := []any{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -643,31 +594,11 @@ func TestPlSqlTypes(t *testing.T) {
 
 	t.Run("Table IN", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
-		tableObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		recordObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		items := make([]*MyRecord, 0)
 
-		obj1, err := recordObjType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj1.Close()
-		items = append(items, &MyRecord{ID: 1, Txt: "test - 2", Object: obj1})
+		items = append(items, &MyRecord{ID: 1, Txt: "test - 2"})
 
-		obj2, err := recordObjType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj2.Close()
-		items = append(items, &MyRecord{ID: 2, Txt: "test - 4", Object: obj2})
+		items = append(items, &MyRecord{ID: 2, Txt: "test - 4"})
 
 		for tName, tCase := range map[string]struct {
 			want MyTable
@@ -676,13 +607,7 @@ func TestPlSqlTypes(t *testing.T) {
 			"two": {want: MyTable{Items: items}},
 		} {
 
-			obj, err := tableObjType.NewObject()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer obj.Close()
-
-			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items, conn: conn}
+			tb := MyTable{Items: tCase.want.Items}
 			params := []any{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}

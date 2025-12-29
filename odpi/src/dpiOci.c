@@ -1048,7 +1048,6 @@ int dpiOci__collAppend(dpiConn *conn, const void *elem, const void *elemInd,
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
     status = (*dpiOciSymbols.fnCollAppend)(conn->env->handle, error->handle,
             elem, elemInd, coll);
-    printf(" ociobject append %x into %x \n",elem, coll);
     DPI_OCI_CHECK_AND_RETURN(error, status, conn, "append element");
 }
 
@@ -2921,7 +2920,6 @@ int dpiOci__objectFree(void *envHandle, void *data, int checkError,
 
     DPI_OCI_LOAD_SYMBOL("OCIObjectFree", dpiOciSymbols.fnObjectFree)
     DPI_OCI_ENSURE_ERROR_HANDLE(error)
-    printf(" ociobject free %x \n", data);
     status = (*dpiOciSymbols.fnObjectFree)(envHandle, error->handle, data,
             DPI_OCI_DEFAULT);
     if (checkError && DPI_OCI_ERROR_OCCURRED(status)) {
@@ -2989,7 +2987,6 @@ int dpiOci__objectNew(dpiObject *obj, dpiError *error)
     status = (*dpiOciSymbols.fnObjectNew)(obj->env->handle, error->handle,
             obj->type->conn->handle, obj->type->typeCode, obj->type->tdo, NULL,
             DPI_OCI_DURATION_SESSION, 1, &obj->instance);
-    printf(" ociobject new[%d/%x:%s] %x \n", obj->type->typeCode, obj->type->tdo, obj->type->name, obj->instance);
     DPI_OCI_CHECK_AND_RETURN(error, status, obj->type->conn, "create object");
 }
 

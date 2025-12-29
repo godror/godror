@@ -85,7 +85,6 @@ import (
 	"github.com/godror/godror/slog"
 	"io"
 	"math"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -154,8 +153,6 @@ const (
 // It cannot be longer than 30 bytes !
 var (
 	DriverName = "godror : " + Version
-
-	warnDpiObjectRefCount, _ = strconv.ParseBool(os.Getenv("GODROR_WARN_DPI_OBJECT_REFCOUNT"))
 )
 
 // dsn is separated out for fuzzing, but keep it as "internal"
