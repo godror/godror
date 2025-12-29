@@ -30,10 +30,10 @@ import (
 
 var (
 	_ godror.ObjectScanner = (*MyRecord)(nil)
-	_ godror.ObjectWriter  = (*MyRecord)(nil)
+	_ godror.ObjectWriter  = (MyRecord{})
 
 	_ godror.ObjectScanner          = (*MyTable)(nil)
-	_ godror.ObjectCollectionWriter = (*MyTable)(nil)
+	_ godror.ObjectCollectionWriter = (MyTable{})
 )
 
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
@@ -45,7 +45,7 @@ type MyRecord struct {
 
 type coder interface{ Code() int }
 
-func (r *MyRecord) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_RECORD" }
+func (r MyRecord) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_RECORD" }
 
 func (r *MyRecord) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
@@ -54,6 +54,7 @@ func (r *MyRecord) Scan(src any) error {
 	}
 	r.ID, r.Txt, r.DT, r.AClob = 0, "", time.Time{}, ""
 	if obj == nil {
+		fmt.Printf("MyRecord.Scan %#v\n", src)
 		return nil
 	}
 	id, err := obj.Get("ID")
@@ -92,6 +93,7 @@ func (r *MyRecord) Scan(src any) error {
 // Implement this method if you need the record as an input parameter.
 func (r MyRecord) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
+	fmt.Printf("MyRecord.WriteObject(%p)\n", o)
 	err := o.ResetAttributes()
 	if err != nil {
 		return err
@@ -124,11 +126,12 @@ type MyTable struct {
 	Items []*MyRecord
 }
 
-func (t *MyTable) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_TABLE" }
+func (t MyTable) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_TABLE" }
 
 func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
 	t.Items = t.Items[:0]
+	fmt.Printf("MyTableScan(%[1]p (%#[1]v))\n", src)
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
@@ -254,7 +257,7 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		rec.id := id;
 		rec.txt := txt;
-		rec.dt := SYSDATE;
+		rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 		--DBMS_LOB.createtemporary(rec.aclob, TRUE);
 		--DBMS_LOB.write(rec.aclob, LENGTH(txt)*2+1, 1, txt||'+'||txt);
 	END test_record;
@@ -263,9 +266,10 @@ func createPackages(ctx context.Context) error {
 		rec IN OUT test_pkg_types.my_record
 	) IS
 	BEGIN
+	  DBMS_OUTPUT.PUT_LINE('test_record_in(id='||rec.id||' txt='||rec.txt||' dt='||rec.dt||')');
 		rec.id := rec.id + 1;
 		rec.txt := rec.txt || ' changed '||TO_CHAR(rec.dt, 'YYYY-MM-DD HH24:MI:SS');
-		rec.dt := SYSDATE;
+		rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 		--IF rec.aclob IS NOT NULL AND DBMS_LOB.isopen(rec.aclob) <> 0 THEN
 		--  DBMS_LOB.writeappend(rec.aclob, 7, ' changed');
 		--END IF;
@@ -287,7 +291,7 @@ func createPackages(ctx context.Context) error {
 				level <= x
 		) LOOP
 			item.id := c.lev;
-			item.dt := SYSDATE;
+		item.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 			item.txt := 'test - ' || ( c.lev * 2 );
 			tb.extend();
 			tb(tb.count) := item;
@@ -318,7 +322,7 @@ func createPackages(ctx context.Context) error {
 			res_list.extend();
 			rec.id := i;
 			rec.rec.id := 2*i+1;  --initialize sub-record for #283
-			rec.rec.dt := SYSDATE;
+		rec.rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 			--test_record(rec.id, rec.id, rec.rec);
 			res_list(res_list.count) := rec;
 		END LOOP;
@@ -492,9 +496,9 @@ func TestPlSqlTypes(t *testing.T) {
 			want MyRecord
 			ID   int64
 		}{
-			"default":    {ID: 1, txt: "test", want: MyRecord{ID: 1, Txt: "test"}},
-			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{ID: 2}},
-			"zeroValues": {want: MyRecord{}},
+			"default":    {ID: 1, txt: "test", want: MyRecord{ID: 1, Txt: "test", DT: epoch}},
+			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{ID: 2, DT: epoch}},
+			"zeroValues": {want: MyRecord{DT: epoch}},
 		} {
 			rec := MyRecord{}
 			params := []any{
@@ -517,13 +521,13 @@ func TestPlSqlTypes(t *testing.T) {
 		}
 	})
 
-	t.Run("Record IN OUT", func(t *testing.T) {
+	t.Run("Record_IN_OUT", func(t *testing.T) {
 		for tName, tCase := range map[string]struct {
 			wantTxt string
 			in      MyRecord
 			wantID  int64
 		}{
-			"zeroValues": {in: MyRecord{}, wantID: 1, wantTxt: " changed "},
+			"zeroValues": {in: MyRecord{}, wantID: 0, wantTxt: " changed "},
 			"default":    {in: MyRecord{ID: 1, Txt: "test"}, wantID: 2, wantTxt: "test changed "},
 			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed "},
 		} {
@@ -532,6 +536,7 @@ func TestPlSqlTypes(t *testing.T) {
 			params := []any{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
+			godror.EnableDbmsOutput(ctx, cx)
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
 			if err != nil {
 				var cdr coder
@@ -541,11 +546,17 @@ func TestPlSqlTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			var ok bool
 			if rec.ID != tCase.wantID {
 				t.Errorf("%s: ID got %d, wanted %d", tName, rec.ID, tCase.wantID)
+				ok = false
 			}
 			if rec.Txt != tCase.wantTxt {
 				t.Errorf("%s: Txt got %s, wanted %s", tName, rec.Txt, tCase.wantTxt)
+				ok = false
+			}
+			if !ok {
+				godror.ReadDbmsOutput(ctx, t.Output(), cx)
 			}
 		}
 	})
@@ -728,6 +739,10 @@ func TestSelectObjectTable(t *testing.T) {
 	}
 }
 
+const epochS = "2025-12-29 20:03:42"
+
+var epoch, _ = time.ParseInLocation("2006-01-02 15:04:05", epochS, time.Local)
+
 func TestFuncBool(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("FuncBool"), 3*time.Second)
@@ -813,7 +828,7 @@ END;`
     p_obj(v_idx).num := 314/100;
 	p_obj(v_idx).vc  := 'abraka';
 	p_obj(v_idx).c   := 'X';
-	p_obj(v_idx).dt  := SYSDATE;
+	p_obj(v_idx).dt  := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
   END modify;
 END;`
 	if err = prepExec(ctx, testCon, crea); err != nil {

@@ -58,12 +58,11 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 		return fmt.Errorf("get %s[%s]: %w (have: %q)", O.Name, name, ErrNoSuchKey, O.AttributeNames())
 	}
 
-	data.reset()
+	data.reset(O.dpiObject == nil)
 	data.NativeTypeNum = attr.NativeTypeNum
 	data.ObjectType = attr.ObjectType
 	data.implicitObj = true
 	if O.dpiObject == nil {
-		data.SetNull()
 		return nil
 	}
 	// the maximum length of that buffer must be supplied
@@ -163,7 +162,7 @@ func (O *Object) resetAttributes(skipErrors bool) error {
 	defer scratch.Put(data)
 	var errs []error
 	for _, attr := range O.Attributes {
-		data.reset()
+		data.reset(true)
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
@@ -901,7 +900,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	if exists == 0 {
 		return ErrNotExist
 	}
-	data.reset()
+	data.reset(false)
 	data.ObjectType = O.CollectionOf
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 	data.implicitObj = true
@@ -1448,7 +1447,7 @@ var scratch = &dataPool{Pool: sync.Pool{New: func() any { return &Data{} }}}
 type dataPool struct{ sync.Pool }
 
 func (dp *dataPool) Get() *Data  { return dp.Pool.Get().(*Data) }
-func (dp *dataPool) Put(d *Data) { d.reset(); dp.Pool.Put(d) }
+func (dp *dataPool) Put(d *Data) { d.reset(true); dp.Pool.Put(d) }
 
 // SetAttribute sets an object's attribute, evading ORA-21602
 //

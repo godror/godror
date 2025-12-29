@@ -1,4 +1,4 @@
-// Copyright 2017, 2023 The Godror Authors
+// Copyright 2017, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -2927,6 +2927,8 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		if err := v.WriteObject(o); err != nil {
 			return err
 		}
+		objs[0] = o
+
 	case []ObjectWriter:
 		var ot *ObjectType
 		for _, ut := range v {
@@ -3038,6 +3040,9 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 		obj := d.GetObject()
 		// fmt.Printf("data: %#v t=%v obj=%#v\n", d, d.Get(), obj)
+		if obj == nil {
+			fmt.Printf("ObjectScanner.GetObject(%#v of %s) is nil\n", d, ot)
+		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
 		}
