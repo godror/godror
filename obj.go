@@ -1522,3 +1522,53 @@ func (O ObjectCollection) Indexes() iter.Seq2[int, error] {
 		}
 	}
 }
+
+// NewStructObjectScanWriter returns an ObjectScanner and ObjectWriter.
+//
+// The strct must be a pointer!
+func NewStructObjectScanWriter[E any, P *E](objectTypeName string, strct P) structObjectScanWriter[E, P] {
+	return structObjectScanWriter[E, P]{objecTypeName: objectTypeName, strct: strct}
+}
+
+type structObjectScanWriter[E any, P *E] struct {
+	objecTypeName string
+	strct         P
+}
+
+func (sow structObjectScanWriter[E, P]) ObjectTypeName() string { return sow.objecTypeName }
+
+// WriteObject writes data from the struct to the Object.
+func (sow structObjectScanWriter[E, P]) WriteObject(o *Object) error {
+	return ErrNotImplemented
+}
+
+func (sow structObjectScanWriter[E, P]) Scan(v any) error {
+	return ErrNotImplemented
+}
+
+type ObjectCollectionScanWriter interface {
+	ObjectCollectionWriter
+	ObjectScanner
+}
+
+func NewSliceObjectCollectionScanWriter[E any, T []E, P *T](objectTypeName string, pslice P) sliceObjectCollectionScanWriter[E, T, P] {
+	return sliceObjectCollectionScanWriter[E, T, P]{objectTypeName: objectTypeName, pslice: pslice}
+}
+
+type sliceObjectCollectionScanWriter[E any, T []E, P *T] struct {
+	objectTypeName string
+	pslice         P
+}
+
+func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[E] {
+	return func(yield func(E) bool) {
+		if soc.pslice == nil || len(*soc.pslice) == 0 {
+			return
+		}
+		for _, item := range *soc.pslice {
+			if !yield(item) {
+				break
+			}
+		}
+	}
+}

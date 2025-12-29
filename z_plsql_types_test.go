@@ -351,38 +351,50 @@ func dropPackages(ctx context.Context) {
 	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
 }
 
-type objectStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
-	ID                    int32         `godror:"ID"`
-	Txt                   string        `godror:"TXT"`
-	DT                    time.Time     `godror:"DT"`
-	AClob                 string        `godror:"ACLOB"`
-	NInt32                sql.NullInt32 `godror:"INT32"`
+type (
+	objectStruct struct {
+		// godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
+		ID     int32         `godror:"ID"`
+		Txt    string        `godror:"TXT"`
+		DT     time.Time     `godror:"DT"`
+		AClob  string        `godror:"ACLOB"`
+		NInt32 sql.NullInt32 `godror:"INT32"`
+	}
+	sliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+		ObjSlice []objectStruct `godror:",type=test_pkg_types.my_table"`
+	}
+
+	oshNumberList struct {
+		NumberList []float64 `godror:",type=test_pkg_types.number_list"`
+	}
+
+	oshStruct struct {
+		// godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
+
+		ID      int32         `godror:"ID"`
+		Numbers oshNumberList `godror:"NUMBERS,type=test_pkg_types.number_list"`
+		Record  objectStruct  `godror:"REC,type=test_pkg_types.my_record"`
+	}
+
+	oshSliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+
+		List []oshStruct `godror:",type=test_pkg_types.osh_table"`
+	}
+)
+
+func (objectStruct) ObjectTypeName() string { return "test_pkg_types.my_record" }
+func (os objectStruct) ObjectWriter(o *godror.Object) error {
+	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
 }
-type sliceStruct struct {
-	godror.ObjectTypeName `json:"-"`
-	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
+func (sliceStruct) ObjectTypeName() string { return "test_pkg_types.my_table" }
+func (ss sliceStruct) Iter() iter.Seq[objectStruct] {
+	return godror.NewSliceObjectCollectionScanWriter("test_pkg_types.my_table", &ss.ObjSlice).Iter()
 }
-
-type oshNumberList struct {
-	godror.ObjectTypeName `json:"-"`
-
-	NumberList []float64 `godror:",type=test_pkg_types.number_list"`
-}
-
-type oshStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
-
-	ID      int32         `godror:"ID"`
-	Numbers oshNumberList `godror:"NUMBERS,type=test_pkg_types.number_list"`
-	Record  objectStruct  `godror:"REC,type=test_pkg_types.my_record"`
-}
-
-type oshSliceStruct struct {
-	godror.ObjectTypeName `json:"-"`
-
-	List []oshStruct `godror:",type=test_pkg_types.osh_table"`
-}
+func (oshNumberList) ObjectTypeName() string  { return "test_pkg_types.number_list" }
+func (oshStruct) ObjectTypeName() string      { return "test_pkg_types.osh_record" }
+func (oshSliceStruct) ObjectTypeName() string { return "test_pkg_types.osh_table" }
 
 func TestPlSqlTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 30*time.Second)
@@ -2317,29 +2329,36 @@ END;`,
 	t.Log(resp)
 }
 
-type RatePlan struct {
-	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_tt" json:"-"`
-	RateCodes             []RateCode `json:"rateCodes"`
-}
+type (
+	RatePlan struct {
+		// godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_tt" json:"-"`
+		RateCodes []RateCode `json:"rateCodes"`
+	}
 
-type RateCode struct {
-	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_rt" json:"-"`
-	RateCodeId            int    `godror:"RATECODE_ID" json:"rateCodeId" db:"RATECODE_ID"`
-	RateCode              string `json:"rateCode" db:"RATECODE"`
-	RateCodeName          string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
-	RateStucture          string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
-}
+	RateCode struct {
+		// godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_rt" json:"-"`
+		RateCodeId   int    `godror:"RATECODE_ID" json:"rateCodeId" db:"RATECODE_ID"`
+		RateCode     string `json:"rateCode" db:"RATECODE"`
+		RateCodeName string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
+		RateStucture string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
+	}
 
-type parentObject struct {
-	godror.ObjectTypeName `godror:"test_parent_ot"`
-	ID                    int         `godror:"ID"`
-	Child                 childObject `godror:"CHILD"`
-}
-type childObject struct {
-	godror.ObjectTypeName `godror:"test_child_ot"`
-	ID                    int    `godror:"ID"`
-	Name                  string `godror:"NAME"`
-}
+	parentObject struct {
+		// godror.ObjectTypeName `godror:"test_parent_ot"`
+		ID    int         `godror:"ID"`
+		Child childObject `godror:"CHILD"`
+	}
+	childObject struct {
+		// godror.ObjectTypeName `godror:"test_child_ot"`
+		ID   int    `godror:"ID"`
+		Name string `godror:"NAME"`
+	}
+)
+
+func (RatePlan) ObjectTypeName() string     { return "test_aor_pkg.test_aor_tt" }
+func (RateCode) ObjectTypeName() string     { return "test_aor_pkg.test_aor_rt" }
+func (parentObject) ObjectTypeName() string { return "test_parent_ot" }
+func (childObject) ObjectTypeName() string  { return "test_child_ot" }
 
 func TestIssue319(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Issue319"), 10*time.Second)
@@ -2421,6 +2440,14 @@ END;`,
 	}
 }
 
+type clob struct {
+	// godror.ObjectTypeName `godror:"test_clob_ot"`
+	Id    float64 `godror:"ID"`
+	Value string  `godror:"VALUE"`
+}
+
+func (clob) ObjectTypeName() string { return "test_clob_ot" }
+
 func TestObjLobClose(t *testing.T) {
 	const dropQry = `DROP TYPE test_clob_ot`
 	cleanup := func() { testDb.ExecContext(context.Background(), dropQry) }
@@ -2451,12 +2478,6 @@ func TestObjLobClose(t *testing.T) {
 
 		_, err = stmt.ExecContext(ctx, variables...)
 		return err
-	}
-
-	type clob struct {
-		godror.ObjectTypeName `godror:"test_clob_ot"`
-		Id                    float64 `godror:"ID"`
-		Value                 string  `godror:"VALUE"`
 	}
 
 	testConnectInClob := func(ctx context.Context, db *sql.DB, i float64) {
@@ -2521,33 +2542,40 @@ func TestObjLobClose(t *testing.T) {
 	}
 }
 
-type I323Child struct {
-	godror.ObjectTypeName `godror:"I323CHILD"`
-	ID                    float64 `godror:"ID" json:"id"`
-	Name                  string  `godror:"NAME" json:"name"`
-}
+type (
+	I323Child struct {
+		// godror.ObjectTypeName `godror:"I323CHILD"`
+		ID   float64 `godror:"ID" json:"id"`
+		Name string  `godror:"NAME" json:"name"`
+	}
 
-type I323ChildArray struct {
-	godror.ObjectTypeName
-	ChildArray []I323Child `godror:",type=I323CHILDARRAY" json:"childArray"`
-}
+	I323ChildArray struct {
+		// godror.ObjectTypeName
+		ChildArray []I323Child `godror:",type=I323CHILDARRAY" json:"childArray"`
+	}
 
-type I323Parent struct {
-	godror.ObjectTypeName `godror:"I323PARENT"`
-	Id                    float64        `godror:"ID" json:"id"`
-	Name                  string         `godror:"NAME" json:"name"`
-	ChildArray            I323ChildArray `godror:",type=I323CHILDARRAY"`
-}
+	I323Parent struct {
+		// godror.ObjectTypeName `godror:"I323PARENT"`
+		Id         float64        `godror:"ID" json:"id"`
+		Name       string         `godror:"NAME" json:"name"`
+		ChildArray I323ChildArray `godror:",type=I323CHILDARRAY"`
+	}
 
-type I323ParentArray struct {
-	godror.ObjectTypeName
-	ParentArray []I323Parent `godror:",type=I323PARENTARRAY" json:"parentArray"`
-}
+	I323ParentArray struct {
+		// godror.ObjectTypeName
+		ParentArray []I323Parent `godror:",type=I323PARENTARRAY" json:"parentArray"`
+	}
 
-type I323Grand struct {
-	godror.ObjectTypeName `godror:"I323GRAND"`
-	ParentArray           I323ParentArray `godror:",type=I323PARENTARRAY"`
-}
+	I323Grand struct {
+		// godror.ObjectTypeName `godror:"I323GRAND"`
+		ParentArray I323ParentArray `godror:",type=I323PARENTARRAY"`
+	}
+)
+
+func (I323Child) ObjectTypeName() string      { return "I323CHILD" }
+func (I323ChildArray) ObjectTypeName() string { return "I323CHILDARRAY" }
+func (I323Parent) ObjectTypeName() string     { return "I3232PARENT" }
+func (I323Grand) ObjectTypeName() string      { return "I323GRAND" }
 
 func TestIssue323(t *testing.T) {
 	drop := func() {

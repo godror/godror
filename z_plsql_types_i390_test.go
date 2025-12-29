@@ -25,6 +25,29 @@ func TestPlSqlNestedObj(t *testing.T) {
 	t.Run("1", func(t *testing.T) { testPlSqlNestedObj(t, 1) })
 }
 
+type (
+	i390Pair struct {
+		// godror.ObjectTypeName `godror:"pair" json:"-"`
+
+		Key   int32 `godror:"KEY"`
+		Value int64 `godror:"VALUE"`
+	}
+
+	i390PobjStruct struct {
+		// godror.ObjectTypeName `godror:"pobj" json:"-"`
+		ID    int32      `godror:"ID"`
+		Pairs []i390Pair `godror:",type=pair_list"`
+	}
+	i390PsliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+		ObjSlice []i390PobjStruct `godror:",type=pobj_t"`
+	}
+)
+
+func (i390Pair) ObjectTypeName() string         { return "pair" }
+func (i390PobjStruct) ObjectTypeName() string   { return "pobj" }
+func (i390PsliceStruct) ObjectTypeName() string { return "pobj_t" }
+
 func testPlSqlNestedObj(t *testing.T, step int) {
 	if step < 2 {
 		step = 2
@@ -167,28 +190,11 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		}
 	}
 
-	type pair struct {
-		godror.ObjectTypeName `godror:"pair" json:"-"`
-
-		Key   int32 `godror:"KEY"`
-		Value int64 `godror:"VALUE"`
-	}
-
-	type pobjStruct struct {
-		godror.ObjectTypeName `godror:"pobj" json:"-"`
-		ID                    int32  `godror:"ID"`
-		Pairs                 []pair `godror:",type=pair_list"`
-	}
-	type psliceStruct struct {
-		godror.ObjectTypeName `json:"-"`
-		ObjSlice              []pobjStruct `godror:",type=pobj_t"`
-	}
-
-	pslice := func(nobjs, npairs int) psliceStruct {
-		s := psliceStruct{ObjSlice: make([]pobjStruct, nobjs)}
+	pslice := func(nobjs, npairs int) i390PsliceStruct {
+		s := i390PsliceStruct{ObjSlice: make([]i390PobjStruct, nobjs)}
 		for i := range s.ObjSlice {
 			s.ObjSlice[i].ID = int32(i + 1)
-			s.ObjSlice[i].Pairs = make([]pair, npairs)
+			s.ObjSlice[i].Pairs = make([]i390Pair, npairs)
 			for j := range s.ObjSlice[i].Pairs {
 				s.ObjSlice[i].Pairs[j].Key = int32(j + 1)
 				s.ObjSlice[i].Pairs[j].Value = int64((i+1)*1000 + (j + 1))
