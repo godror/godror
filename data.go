@@ -240,7 +240,7 @@ func (d *Data) GetObject() *Object {
 	if d == nil {
 		panic("null")
 	}
-	if d.IsNull() {
+	if d.IsNull() || !d.IsObject() {
 		return nil
 	}
 

@@ -47,23 +47,27 @@ func (r *MyRecord) Scan(src any) error {
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
 	}
+	r.ID, r.Txt, r.DT, r.AClob = 0, "", time.Time{}, ""
+	if obj == nil {
+		return nil
+	}
 	id, err := obj.Get("ID")
 	if err != nil {
 		return err
 	}
-	r.ID = id.(int64)
+	r.ID, _ = id.(int64)
 
 	txt, err := obj.Get("TXT")
 	if err != nil {
 		return err
 	}
-	r.Txt = txt.(string)
+	r.Txt, _ = txt.(string)
 
 	dt, err := obj.Get("DT")
 	if err != nil {
 		return err
 	}
-	r.DT = dt.(time.Time)
+	r.DT, _ = dt.(time.Time)
 
 	aclob, err := obj.Get("ACLOB")
 	if err != nil {
@@ -138,9 +142,17 @@ type MyTable struct {
 
 func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
+	t.Items = t.Items[:0]
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
+	}
+	if obj == nil {
+		// panic("nil")
+		return nil
+	}
+	if obj.CollectionOf == nil {
+		return fmt.Errorf("%#v: %w", obj, godror.ErrNotCollection)
 	}
 	collection := obj.Collection()
 	length, err := collection.Len()
@@ -224,11 +236,11 @@ func createPackages(ctx context.Context) error {
 
 	TYPE osh_record IS RECORD (
 		id    NUMBER(5),
-		numbers test_pkg_types.number_list, 
+		numbers test_pkg_types.number_list,
 		rec test_pkg_types.my_record
 	);
 	TYPE osh_table IS TABLE OF osh_record;
-	
+
 	END test_pkg_types;
 	`,
 
@@ -250,7 +262,7 @@ func createPackages(ctx context.Context) error {
 	PROCEDURE test_table_in (
 		tb IN OUT test_pkg_types.my_table
 	);
-	
+
 	PROCEDURE test_osh(
 		numbers in test_pkg_types.number_list,
 		res_list out test_pkg_types.osh_table
@@ -320,14 +332,14 @@ func createPackages(ctx context.Context) error {
 	PROCEDURE test_osh(
 		numbers in test_pkg_types.number_list,
 		res_list out test_pkg_types.osh_table
-	) 
+	)
 	AS
 		rec test_pkg_types.osh_record;
 	BEGIN
 		res_list := test_pkg_types.osh_table();
-				
+
 		rec.numbers := numbers;
-		
+
 		FOR i IN 1..3 LOOP
 			res_list.extend();
 			rec.id := i;
@@ -1233,7 +1245,7 @@ func TestObjectTypeClose(t *testing.T) {
 	testDb.ExecContext(ctx, del)
 	// createType
 	const ddl = `create or replace type ` + typeName + ` force as object (
-     id NUMBER(10),  
+     id NUMBER(10),
 	 balance NUMBER(18));`
 	_, err := testDb.ExecContext(ctx, ddl)
 	if err != nil {
@@ -1292,7 +1304,7 @@ func TestSubObjectTypeClose(t *testing.T) {
 	for _, ddl := range []string{
 		`CREATE OR REPLACE TYPE ` + typeName + `_lt FORCE AS VARRAY(30) OF VARCHAR2(30);`,
 		`CREATE OR REPLACE TYPE ` + typeName + `_ot FORCE AS OBJECT (
-     id NUMBER(10),  
+     id NUMBER(10),
 	 list ` + typeName + `_lt);`,
 	} {
 		_, err := testDb.ExecContext(ctx, ddl)
@@ -1348,8 +1360,8 @@ func TestObjectGetList(t *testing.T) {
 		Name, Type, Create string
 	}{
 		{"TEST_CHECK_BLOCKED_REV_BEC" + tblSuffix, "PROCEDURE",
-			`(p_id IN NUMBER, p_list OUT test_consolidation_rev_bec_list` + tblSuffix + `) IS 
-BEGIN 
+			`(p_id IN NUMBER, p_list OUT test_consolidation_rev_bec_list` + tblSuffix + `) IS
+BEGIN
   p_list := test_consolidation_rev_bec_list` + tblSuffix + `();
   p_list.extend;
   p_list(1) := test_consolidation_rev_bec_rec` + tblSuffix + `(cons_year=>2021, cons_01=>p_id);
@@ -1851,7 +1863,7 @@ func TestInputWithNativeSlice(t *testing.T) {
            FOR v IN 1..p_in.COUNT LOOP
              v_result := v_result + p_in(v);
            END LOOP;
-		
+
            p_out := v_result;
          END;`,
 	}
@@ -1972,7 +1984,7 @@ BEGIN
   FOR i IN pCollectionIdTable.FIRST .. pCollectionIdTable.LAST LOOP
     v_out := v_out||'pCollectionIdTable('||i||')='||pCollectionIdTable(i)||CHR(10);
   END LOOP;
-   
+
   RETURN(v_out);
 
 END;
@@ -2270,7 +2282,7 @@ func TestBigXMLType(t *testing.T) {
   <date>1983-01-07</date>
   <regEx>hell0</regEx>
   <enum>online</enum>
-  <elt>Cherilyn</elt><elt>Frieda</elt><elt>Kimberley</elt><elt>Celestyna</elt><elt>Ethel</elt>  
+  <elt>Cherilyn</elt><elt>Frieda</elt><elt>Kimberley</elt><elt>Celestyna</elt><elt>Ethel</elt>
   <Ardys>
     <age>34</age>
   </Ardys>
@@ -2322,11 +2334,11 @@ func TestArrayOfRecords(t *testing.T) {
 	cleanup()
 	defer cleanup()
 	create_query := []string{
-		`CREATE OR REPLACE PACKAGE ` + name + `_pkg AS 
+		`CREATE OR REPLACE PACKAGE ` + name + `_pkg AS
   TYPE ` + name + `_rt IS RECORD (
-    ratecode_id PLS_INTEGER, 
-    ratecode VARCHAR2(20), 
-    ratecode_name VARCHAR2(100), 
+    ratecode_id PLS_INTEGER,
+    ratecode VARCHAR2(20),
+    ratecode_name VARCHAR2(100),
     rate_structure VARCHAR2(20)
   );
   TYPE ` + name + `_tt IS TABLE OF ` + name + `_rt;

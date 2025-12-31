@@ -178,6 +178,9 @@ func (O *Object) resetAttributes(skipErrors bool) error {
 
 // Get scans the named attribute into dest, and returns it.
 func (O *Object) Get(name string) (any, error) {
+	if O == nil {
+		return nil, nil
+	}
 	d := scratch.Get()
 	defer scratch.Put(d)
 	if err := O.GetAttribute(d, name); err != nil {
@@ -225,7 +228,7 @@ func (O *Object) ObjectRef() *Object {
 // Collection returns &ObjectCollection{Object: O} iff the Object is a collection.
 // Otherwise it returns nil.
 func (O *Object) Collection() ObjectCollection {
-	if O.ObjectType.CollectionOf == nil {
+	if O == nil || O.ObjectType == nil || O.ObjectType.CollectionOf == nil {
 		return ObjectCollection{}
 	}
 	return ObjectCollection{Object: O}
@@ -245,7 +248,7 @@ func (O *Object) Close() error {
 	// Close sub-objects first
 	data := scratch.Get()
 	defer scratch.Put(data)
-	if O.ObjectType.CollectionOf != nil {
+	if O.ObjectType.CollectionOf != nil && O.ObjectType.CollectionOf.IsObject() {
 		coll := O.Collection()
 		for curr, err := coll.First(); err == nil; curr, err = coll.Next(curr) {
 			if err = coll.GetItem(data, curr); err != nil {
@@ -253,6 +256,9 @@ func (O *Object) Close() error {
 					logger.Error("get sub-object", "idx", curr, "error", err)
 					continue
 				}
+			}
+			if data.IsNull() || !data.IsObject() {
+				continue
 			}
 			obj := data.GetObject()
 			if obj == nil {
@@ -650,7 +656,7 @@ func (O *Object) FromJSON(dec *json.Decoder) error {
 
 // FromMapSlice populates the ObjectCollection starting from a slice of map, according to the Collections's Attributes.
 func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]any) error {
-	if O.dpiObject == nil {
+	if O.Object == nil || O.dpiObject == nil {
 		return nil
 	}
 	logger := getLogger(context.TODO())
@@ -677,6 +683,9 @@ func (O ObjectCollection) FromMapSlice(recursive bool, m []map[string]any) error
 }
 
 func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	tok, err := dec.Token()
 	if err != nil {
 		if err == io.EOF {
@@ -712,6 +721,9 @@ func (O ObjectCollection) FromJSON(dec *json.Decoder) error {
 
 // AsSlice retrieves the collection into a slice.
 func (O ObjectCollection) AsSlice(dest any) (any, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return nil, ErrNotCollection
+	}
 	var dr reflect.Value
 	if dest != nil {
 		dr = reflect.ValueOf(dest)
@@ -754,6 +766,9 @@ func (O ObjectCollection) AsSlice(dest any) (any, error) {
 
 // ToJSON writes the ObjectCollection as JSON to the io.Writer.
 func (O ObjectCollection) ToJSON(w io.Writer) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	var notFirst bool
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
@@ -795,6 +810,9 @@ func (O ObjectCollection) String() string {
 
 // AppendData to the collection.
 func (O ObjectCollection) AppendData(data *Data) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
@@ -805,6 +823,9 @@ func (O ObjectCollection) AppendData(data *Data) error {
 
 // Append v to the collection.
 func (O ObjectCollection) Append(v any) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if data, ok := v.(*Data); ok {
 		return O.AppendData(data)
 	}
@@ -818,6 +839,9 @@ func (O ObjectCollection) Append(v any) error {
 
 // AppendObject adds an Object to the collection.
 func (O ObjectCollection) AppendObject(obj *Object) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	d := scratch.Get()
 	defer scratch.Put(d)
 	d.ObjectType = obj.ObjectType
@@ -828,6 +852,9 @@ func (O ObjectCollection) AppendObject(obj *Object) error {
 
 // Delete i-th element of the collection.
 func (O ObjectCollection) Delete(i int) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i))
 	}); err != nil {
@@ -838,6 +865,9 @@ func (O ObjectCollection) Delete(i int) error {
 
 // GetItem gets the i-th element of the collection into data.
 func (O ObjectCollection) GetItem(data *Data, i int) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if data == nil {
 		panic("data cannot be nil")
 	}
@@ -855,10 +885,8 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	}
 	data.reset()
 	data.ObjectType = O.CollectionOf
-	if O.CollectionOf != nil {
-		data.NativeTypeNum = O.CollectionOf.NativeTypeNum
-		data.implicitObj = true
-	}
+	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
+	data.implicitObj = true
 	data.prepare(O.CollectionOf.OracleTypeNum)
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
@@ -868,6 +896,9 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 
 // Get the i-th element of the collection.
 func (O ObjectCollection) Get(i int) (any, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return 0, ErrNotCollection
+	}
 	data := scratch.Get()
 	defer scratch.Put(data)
 	err := O.GetItem(data, i)
@@ -876,6 +907,9 @@ func (O ObjectCollection) Get(i int) (any, error) {
 
 // SetItem sets the i-th element of the collection with data.
 func (O ObjectCollection) SetItem(i int, data *Data) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
@@ -886,6 +920,9 @@ func (O ObjectCollection) SetItem(i int, data *Data) error {
 
 // Set the i-th element of the collection with value.
 func (O ObjectCollection) Set(i int, v any) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	if data, ok := v.(*Data); ok {
 		return O.SetItem(i, data)
 	}
@@ -899,6 +936,9 @@ func (O ObjectCollection) Set(i int, v any) error {
 
 // First returns the first element's index of the collection.
 func (O ObjectCollection) First() (int, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return 0, ErrNotCollection
+	}
 	var exists C.int
 	var idx C.int32_t
 	if err := O.drv.checkExec(func() C.int {
@@ -914,6 +954,9 @@ func (O ObjectCollection) First() (int, error) {
 
 // Last returns the index of the last element.
 func (O ObjectCollection) Last() (int, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return 0, ErrNotCollection
+	}
 	var exists C.int
 	var idx C.int32_t
 	if err := O.drv.checkExec(func() C.int {
@@ -929,6 +972,9 @@ func (O ObjectCollection) Last() (int, error) {
 
 // Next returns the succeeding index of i.
 func (O ObjectCollection) Next(i int) (int, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return 0, ErrNotCollection
+	}
 	var exists C.int
 	var idx C.int32_t
 	if err := O.drv.checkExec(func() C.int {
@@ -944,6 +990,9 @@ func (O ObjectCollection) Next(i int) (int, error) {
 
 // Len returns the length of the collection.
 func (O ObjectCollection) Len() (int, error) {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return 0, ErrNotCollection
+	}
 	var size C.int32_t
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_getSize(O.dpiObject, &size)
@@ -955,6 +1004,9 @@ func (O ObjectCollection) Len() (int, error) {
 
 // Trim the collection to n.
 func (O ObjectCollection) Trim(n int) error {
+	if O.Object == nil || O.Object.dpiObject == nil {
+		return ErrNotCollection
+	}
 	return O.drv.checkExec(func() C.int {
 		return C.dpiObject_trim(O.dpiObject, C.uint32_t(n))
 	})

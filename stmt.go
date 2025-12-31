@@ -3146,6 +3146,7 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 			dpiData:    data[0],
 		}
 		obj := d.GetObject()
+		// fmt.Printf("data: %#v t=%v obj=%#v\n", d, d.Get(), obj)
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
 		}
