@@ -3109,9 +3109,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 	logger := getLogger(ctx)
 	switch out := v.(type) {
 	case *ObjectCollection:
+		ot := out.Object.ObjectType
 		d := Data{
-			ObjectType: out.Object.ObjectType,
-			dpiData:    data[0],
+			ObjectType:    ot,
+			dpiData:       data[0],
+			NativeTypeNum: ot.NativeTypeNum,
 		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObject", "typ", "ObjectCollection", "v", fmt.Sprintf("%T", v), "d", d)
@@ -3126,9 +3128,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 
 	case *Object:
+		ot := out.ObjectType
 		d := Data{
-			ObjectType: out.ObjectType,
-			dpiData:    data[0],
+			ObjectType:    ot,
+			dpiData:       data[0],
+			NativeTypeNum: ot.NativeTypeNum,
 		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObject", "typ", "Object", "v", fmt.Sprintf("%T", v), "d", d)
@@ -3141,9 +3145,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 
 	case ObjectScanner:
+		ot := out.ObjectRef().ObjectType
 		d := Data{
-			ObjectType: out.ObjectRef().ObjectType,
-			dpiData:    data[0],
+			ObjectType:    ot,
+			dpiData:       data[0],
+			NativeTypeNum: ot.NativeTypeNum,
 		}
 		obj := d.GetObject()
 		// fmt.Printf("data: %#v t=%v obj=%#v\n", d, d.Get(), obj)
@@ -3401,8 +3407,9 @@ func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v any, d
 	}
 	for _, dt := range data {
 		d := Data{
-			ObjectType: ot,
-			dpiData:    dt,
+			ObjectType:    ot,
+			dpiData:       dt,
+			NativeTypeNum: ot.NativeTypeNum,
 		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)

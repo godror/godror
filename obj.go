@@ -1260,7 +1260,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if t.drv == nil {
 		panic("conn is nil")
 	}
-	if t.Name != "" && t.Attributes != nil {
+	if t.Name != "" && t.Attributes != nil && t.NativeTypeNum != 0 {
 		return nil
 	}
 
@@ -1277,14 +1277,16 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if C.dpiObjectType_getInfo(d, &info) == C.DPI_FAILURE {
 		return fmt.Errorf("%v.getInfo: %w", t, t.drv.getError())
 	}
+	t.NativeTypeNum = C.DPI_NATIVE_TYPE_OBJECT
+	t.OracleTypeNum = C.DPI_ORACLE_TYPE_OBJECT
 	t.Schema = C.GoStringN(info.schema, C.int(info.schemaLength))
 	t.Name = C.GoStringN(info.name, C.int(info.nameLength))
 	t.PackageName = C.GoStringN(info.packageName, C.int(info.packageNameLength))
 	t.CollectionOf = nil
 
 	if info.isCollection == 1 {
-		t.CollectionOf = &ObjectType{drv: t.drv}
-		if err := t.CollectionOf.fromDataTypeInfo(info.elementTypeInfo, cache); err != nil {
+		var err error
+		if t.CollectionOf, err = objectTypeFromDataTypeInfo(t.drv, info.elementTypeInfo, cache); err != nil {
 			return err
 		}
 		if t.CollectionOf.Name == "" {
