@@ -11,11 +11,11 @@ for connecting to Oracle DB, using Anthony Tuininga's excellent OCI wrapper,
 [ODPI-C](https://www.github.com/oracle/odpi).
 
 ## Build-time Requirements
-  - Go 1.15
+  - Go 1.23
   - C compiler with `CGO_ENABLED=1` - so cross-compilation is hard
 
 ## Run-time Requirements
-  - Oracle Client libraries - see [ODPI-C](https://oracle.github.io/odpi/doc/installation.html) 
+  - Oracle Client libraries - see [ODPI-C](https://oracle.github.io/odpi/doc/installation.html)
 
 Although Oracle Client libraries are NOT required for compiling, they *are*
 needed at run time.  Download the free Basic or Basic Light package from
@@ -26,7 +26,7 @@ needed at run time.  Download the free Basic or Basic Light package from
 With Go 1.9, driver-specific things are not needed, everything (I need) can be
 achieved with the standard _database/sql_ library. Even calling stored
 procedures with OUT parameters, or sending/retrieving PL/SQL array types - just
-give a `godror.PlSQLArrays` Option within the parameters of `Exec` (but not in sql.Named)! 
+give a `godror.PlSQLArrays` Option within the parameters of `Exec` (but not in sql.Named)!
 For example, the array size of the returned PL/SQL arrays can be set with
 `godror.ArraySize(2000)` (default value is 1024).
 
@@ -45,11 +45,11 @@ go get github.com/godror/godror@latest
 
 Then install Oracle Client libraries and you're ready to go!
 
-godror is cgo package. 
+godror is cgo package.
 If you want to build your app using godror, you need gcc (a C compiler).
 
-Important: because this is a CGO enabled package, 
-you are required to set the environment variable `CGO_ENABLED=1` 
+Important: because this is a CGO enabled package,
+you are required to set the environment variable `CGO_ENABLED=1`
 and have a gcc compile present within your path.
 
 See [Godror
@@ -95,7 +95,7 @@ See [z_qrcn_test.go](./z_qrcn_test.go) for using that to reach
 Use `ExecContext` and mark each OUT parameter with `sql.Out`.
 
 As sql.DB will close the statement ASAP, for long-lived objects (LOB, REF CURSOR),
-you have to keep the Stmt alive: Prepare the statement, 
+you have to keep the Stmt alive: Prepare the statement,
 and Close only after finished with the Lob/Rows.
 
 ### Using cursors returned by stored procedures
@@ -105,7 +105,7 @@ then either use the `driver.Rows` interface,
 or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
 or (since Go 1.12) just Scan into `*sql.Rows`.
 
-As sql.DB will close the statemenet ASAP, you have to keep the Stmt alive: 
+As sql.DB will close the statemenet ASAP, you have to keep the Stmt alive:
 Prepare the statement, and Close only after finished with the Rows.
 
 For examples, see Anthony Tuininga's
@@ -222,7 +222,7 @@ so we create only one watchdog goroutine, at the first `rows.Next` call.
 It is defused after `rows.Close` (or the cursor is exhausted).
 
 If it is not defused, it will `Break` the currently executing OCI call on the connection,
-when the Context is canceled/timeouted. You should always call `rows.Close` ASAP, but if you 
+when the Context is canceled/timeouted. You should always call `rows.Close` ASAP, but if you
 experience random `Break`s, remember this warning!
 
 
@@ -278,14 +278,14 @@ exec staticcheck
 ```
 
 ### Guidelines
-As ODPI stores the error buffer in a thread-local-storage, we must ensure that the 
+As ODPI stores the error buffer in a thread-local-storage, we must ensure that the
 error is retrieved on the same thread as the prvious function executed on.
 
 This means we have to encapsulate each execute-then-retrieve-error sequence in
 `runtime.LockOSThread()` and `runtime.UnlockOSThread()`.
 For details, see [#120](https://github.com/godror/godror/issues/120).
 
-This is automatically detected by [go run ./check](./check/check.go) which should be called 
+This is automatically detected by [go run ./check](./check/check.go) which should be called
 in the pre-commit hook.
 
 # Third-party
