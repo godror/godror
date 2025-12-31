@@ -3034,14 +3034,16 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		if err != nil {
 			return err
 		}
+		fmt.Printf("%s=%#v\n", out.ObjectTypeName(), ot)
 		d := Data{
-			ObjectType: ot,
-			dpiData:    data[0],
+			ObjectType:    ot,
+			dpiData:       data[0],
+			NativeTypeNum: ot.NativeTypeNum,
 		}
 		obj := d.GetObject()
 		// fmt.Printf("data: %#v t=%v obj=%#v\n", d, d.Get(), obj)
 		if obj == nil {
-			fmt.Printf("ObjectScanner.GetObject(%#v of %s) is nil\n", d, ot)
+			fmt.Printf("ObjectScanner.GetObject(%#v of %s) is nil (%d:%#v)\n", d, ot, ot.NativeTypeNum, d.Get())
 		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)

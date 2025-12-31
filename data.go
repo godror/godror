@@ -246,6 +246,7 @@ func (d *Data) GetObject() *Object {
 		panic("null")
 	}
 	if d.IsNull() || !d.IsObject() {
+		// fmt.Printf("GetObject[%d] isNull=%t\n", d.NativeTypeNum, d.IsNull())
 		return nil
 	}
 
