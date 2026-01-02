@@ -23,6 +23,7 @@ import (
 	"iter"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1552,22 +1553,68 @@ func (sow structObjectScanWriter[E, P]) Scan(v any) error {
 	return structScanObject(reflect.ValueOf(sow.strct), o)
 }
 
-type ObjectCollectionScanWriter interface {
-	ObjectCollectionWriter
-	ObjectScanner
+type (
+	ObjectCollectionScanWriter interface {
+		ObjectCollectionWriter
+		ObjectScanner
+	}
+
+	sliceCollectionScanWriter[E any, T ~[]E, P *T] struct {
+		objectTypeName string
+		pslice         P
+	}
+
+	sliceObjectCollectionScanWriter[E ObjectWriter, T ~[]E, P *T] struct {
+		objectTypeName string
+		pslice         P
+	}
+)
+
+func NewSliceCollectionScanWriter[E any, T ~[]E, P *T](objectTypeName string, pslice P) sliceCollectionScanWriter[E, T, P] {
+	return sliceCollectionScanWriter[E, T, P]{
+		objectTypeName: objectTypeName, pslice: pslice,
+	}
+}
+func (soc sliceCollectionScanWriter[E, T, P]) ObjectTypeName() string { return soc.objectTypeName }
+func (soc sliceCollectionScanWriter[E, T, P]) WriteObject(o *Object) error {
+	coll := o.Collection()
+	if err := coll.Trim(0); err != nil {
+		return err
+	}
+	data := scratch.Get()
+	defer scratch.Put(data)
+	for v := range slices.Values(*soc.pslice) {
+		data.Set(v)
+		if err := coll.AppendData(data); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func NewSliceObjectCollectionScanWriter[E any, T []E, P *T](objectTypeName string, pslice P) sliceObjectCollectionScanWriter[E, T, P] {
+func NewSliceObjectCollectionScanWriter[E ObjectWriter, T []E, P *T](objectTypeName string, pslice P) sliceObjectCollectionScanWriter[E, T, P] {
 	return sliceObjectCollectionScanWriter[E, T, P]{objectTypeName: objectTypeName, pslice: pslice}
 }
 
-type sliceObjectCollectionScanWriter[E any, T []E, P *T] struct {
-	objectTypeName string
-	pslice         P
+func (soc sliceCollectionScanWriter[E, T, P]) Scan(v any) error {
+	o, ok := v.(*Object)
+	if !ok {
+		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
+	}
+	coll := o.Collection()
+	data := scratch.Get()
+	defer scratch.Put(data)
+	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+		if err := coll.GetItem(data, i); err != nil {
+			return err
+		}
+		*soc.pslice = append(*soc.pslice, data.Get().(E))
+	}
+	return nil
 }
 
-func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[E] {
-	return func(yield func(E) bool) {
+func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[ObjectWriter] {
+	return func(yield func(ObjectWriter) bool) {
 		if soc.pslice == nil || len(*soc.pslice) == 0 {
 			return
 		}
@@ -1577,6 +1624,34 @@ func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[E] {
 			}
 		}
 	}
+}
+
+func (soc sliceObjectCollectionScanWriter[E, T, P]) Scan(v any) error {
+	o, ok := v.(*Object)
+	if !ok {
+		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
+	}
+	coll := o.Collection()
+	data := scratch.Get()
+	defer scratch.Put(data)
+	rsp := reflect.ValueOf(soc.pslice)
+	rs := rsp.Elem()
+	rt := rs.Type().Elem()
+	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+		if err := coll.GetItem(data, i); err != nil {
+			return err
+		}
+		rv := reflect.New(rt).Elem()
+		if err := structScanObject(rv, data.GetObject()); err != nil {
+			return err
+		}
+		// fmt.Println("sOCSW data:", data, "rv:", rv.Interface())
+		rs = reflect.Append(rs, rv)
+	}
+	rsp.Elem().Set(rs)
+	// fmt.Println("sOCSW len:", rsp.Elem().Len(), "rsp:", rsp.Elem().Interface())
+	// fmt.Println(len(*soc.pslice))
+	return nil
 }
 
 // structScanObject reads an object and writes it to rv.
@@ -1604,12 +1679,6 @@ func structScanObject(rv reflect.Value, obj *Object) error {
 		re := reflect.New(rvt.Elem()).Elem()
 		ret := re.Type()
 		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return err
-			}
 			if first {
 				first = false
 				length, err := coll.Len()

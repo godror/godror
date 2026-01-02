@@ -397,17 +397,38 @@ type (
 	}
 )
 
+var (
+	_ godror.ObjectWriter           = objectStruct{}
+	_ godror.ObjectCollectionWriter = sliceStruct{}
+	_ godror.ObjectWriter           = oshNumberList{}
+	_ godror.ObjectWriter           = oshStruct{}
+	_ godror.ObjectCollectionWriter = oshSliceStruct{}
+)
+
 func (objectStruct) ObjectTypeName() string { return "test_pkg_types.my_record" }
-func (os objectStruct) ObjectWriter(o *godror.Object) error {
+func (os objectStruct) WriteObject(o *godror.Object) error {
 	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
 }
 func (sliceStruct) ObjectTypeName() string { return "test_pkg_types.my_table" }
-func (ss sliceStruct) Iter() iter.Seq[objectStruct] {
-	return godror.NewSliceObjectCollectionScanWriter("test_pkg_types.my_table", &ss.ObjSlice).Iter()
+func (ss sliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
+	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.ObjSlice).Iter()
 }
-func (oshNumberList) ObjectTypeName() string  { return "test_pkg_types.number_list" }
-func (oshStruct) ObjectTypeName() string      { return "test_pkg_types.osh_record" }
+func (oshNumberList) ObjectTypeName() string { return "test_pkg_types.number_list" }
+func (os oshNumberList) WriteObject(o *godror.Object) error {
+	return godror.NewSliceCollectionScanWriter(os.ObjectTypeName(), &os.NumberList).WriteObject(o)
+}
+func (oshStruct) ObjectTypeName() string { return "test_pkg_types.osh_record" }
+func (os oshStruct) WriteObject(o *godror.Object) error {
+	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
+}
+
 func (oshSliceStruct) ObjectTypeName() string { return "test_pkg_types.osh_table" }
+func (ss oshSliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
+	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.List).Iter()
+}
+func (ss *oshSliceStruct) Scan(v any) error {
+	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.List).Scan(v)
+}
 
 func TestPlSqlTypes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 30*time.Second)
@@ -487,7 +508,7 @@ func TestPlSqlTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		} else if len(out.List) == 0 {
-			t.Fatal("no records found")
+			t.Fatal("oshSliceStruct.List: no records found")
 		} else if out.List[0].ID != 1 || len(out.List[0].Numbers.NumberList) == 0 {
 			t.Fatalf("wrong data from the array: %#v", out.List)
 		}
