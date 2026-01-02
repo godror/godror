@@ -93,7 +93,7 @@ func (r *MyRecord) Scan(src any) error {
 // Implement this method if you need the record as an input parameter.
 func (r MyRecord) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	fmt.Printf("MyRecord.WriteObject(%p)\n", o)
+	fmt.Printf("MyRecord.WriteObject(%p ID=%d)\n", o, r.ID)
 	err := o.ResetAttributes()
 	if err != nil {
 		return err
@@ -145,17 +145,20 @@ func (t *MyTable) Scan(src any) error {
 	}
 	collection := obj.Collection()
 	length, err := collection.Len()
-	//fmt.Printf("Collection[%d] %#v: %+v\n", length, collection, err)
+	// fmt.Printf("Collection[%d] %#v: %+v\n", length, collection, err)
 	if err != nil {
 		return err
 	}
 	if length == 0 {
 		return nil
 	}
-	t.Items = make([]*MyRecord, 0, length)
+	t.Items = t.Items[:0]
+	if cap(t.Items) < length {
+		t.Items = make([]*MyRecord, 0, length)
+	}
 	var i int
 	for i, err = collection.First(); err == nil; i, err = collection.Next(i) {
-		//fmt.Printf("Scan[%d]: %+v\n", i, err)
+		// fmt.Printf("Scan[%d]: %+v\n", i, err)
 		var data godror.Data
 		err = collection.GetItem(&data, i)
 		if err != nil {
@@ -163,11 +166,11 @@ func (t *MyTable) Scan(src any) error {
 		}
 
 		o := data.GetObject()
-		defer o.Close()
 		//fmt.Printf("%d. data=%#v => o=%#v\n", i, data, o)
 
 		var item MyRecord
 		err = item.Scan(o)
+		o.Close()
 		//fmt.Printf("%d. item=%#v: %+v\n", i, item, err)
 		if err != nil {
 			return err
@@ -303,8 +306,14 @@ func createPackages(ctx context.Context) error {
 	PROCEDURE test_table_in (
 		tb IN OUT test_pkg_types.my_table
 	) IS
+	  v_idx PLS_INTEGER;
 	BEGIN
-	null;
+	  DBMS_OUTPUT.PUT_LINE('tb.COUNT='||tb.COUNT);
+	  v_idx := tb.FIRST;
+	  WHILE v_idx IS NOT NULL LOOP
+	    DBMS_OUTPUT.PUT_LINE('('||v_idx||'): id='||tb(v_idx).ID);
+	    v_idx := tb.NEXT(v_idx);
+	  END LOOP;
 	END test_table_in;
 
 	PROCEDURE test_osh(
@@ -634,7 +643,11 @@ func TestPlSqlTypes(t *testing.T) {
 			params := []any{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
+			godror.EnableDbmsOutput(ctx, cx)
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
+			var buf strings.Builder
+			godror.ReadDbmsOutput(ctx, &buf, cx)
+			t.Log("DBMS_OUTPUT:", buf.String())
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 30757 {
@@ -649,6 +662,7 @@ func TestPlSqlTypes(t *testing.T) {
 				for i := 0; i < len(tb.Items); i++ {
 					got := tb.Items[i]
 					want := tCase.want.Items[i]
+					t.Logf("got %#v", got)
 					if got.ID != want.ID {
 						t.Errorf("%s: record ID got %v, wanted %v", tName, got.ID, want.ID)
 					}
