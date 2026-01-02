@@ -519,7 +519,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if st.PartialBatch() {
 			mode |= C.DPI_MODE_EXEC_BATCH_ERRORS
 		}
-		if mode&(C.DPI_MODE_EXEC_DESCRIBE_ONLY|C.DPI_MODE_EXEC_PARSE_ONLY) == 0 {
+		if st.dpiStmtInfo.isDML == 1 &&
+			mode&(C.DPI_MODE_EXEC_DESCRIBE_ONLY|C.DPI_MODE_EXEC_PARSE_ONLY) == 0 {
 			mode |= C.DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS
 		}
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
