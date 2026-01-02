@@ -1071,7 +1071,15 @@ func TestExecuteMany(t *testing.T) {
 	defer cancel()
 	tbl := "test_em" + tblSuffix
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
-	testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (f_id INTEGER, f_int INTEGER, f_num NUMBER, f_num_6 NUMBER(6), F_num_5_2 NUMBER(5,2), f_vc VARCHAR2(30), F_dt DATE)")
+	testDb.ExecContext(ctx, "CREATE TABLE "+tbl+` (
+		f_id INTEGER,
+		f_int INTEGER,
+		f_num NUMBER,
+		f_num_6 NUMBER(6),
+		F_num_5_2 NUMBER(5,2),
+		f_vc VARCHAR2(30),
+		F_dt DATE
+	)`)
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	const num = 1000
@@ -1102,105 +1110,229 @@ func TestExecuteMany(t *testing.T) {
 		strs[i] = fmt.Sprintf("%x", i)
 		dates[i] = now.Add(-time.Duration(i) * time.Hour)
 	}
-	for i, tc := range []struct {
-		Value any
-		Name  string
-	}{
-		{Name: "f_int", Value: ints},
-		{Name: "f_num", Value: nums},
-		{Name: "f_num_6", Value: int32s},
-		{Name: "f_num_5_2", Value: floats},
-		{Name: "f_vc", Value: strs},
-		{Name: "f_dt", Value: dates},
-	} {
-		res, execErr := tx.ExecContext(ctx,
-			"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
-			tc.Value)
-		if execErr != nil {
-			t.Fatalf("%d. INSERT INTO "+tbl+" (%q) VALUES (%+v): %#v", //nolint:gas
-				i, tc.Name, tc.Value, execErr)
+
+	t.Run("one-col", func(t *testing.T) {
+		for i, tc := range []struct {
+			Value any
+			Name  string
+		}{
+			{Name: "f_int", Value: ints},
+			{Name: "f_num", Value: nums},
+			{Name: "f_num_6", Value: int32s},
+			{Name: "f_num_5_2", Value: floats},
+			{Name: "f_vc", Value: strs},
+			{Name: "f_dt", Value: dates},
+		} {
+			res, execErr := tx.ExecContext(ctx,
+				"INSERT INTO "+tbl+" ("+tc.Name+") VALUES (:1)", //nolint:gas
+				tc.Value)
+			if execErr != nil {
+				t.Fatalf("%d. INSERT INTO "+tbl+" (%q) VALUES (%+v): %#v", //nolint:gas
+					i, tc.Name, tc.Value, execErr)
+			}
+			ra, raErr := res.RowsAffected()
+			if raErr != nil {
+				t.Error(raErr)
+			} else if ra != num {
+				t.Errorf("%d. %q: wanted %d rows, got %d", i, tc.Name, num, ra)
+			}
 		}
-		ra, raErr := res.RowsAffected()
-		if raErr != nil {
-			t.Error(raErr)
-		} else if ra != num {
-			t.Errorf("%d. %q: wanted %d rows, got %d", i, tc.Name, num, ra)
-		}
-	}
-	tx.Rollback()
+		tx.Rollback()
+	})
 
 	testDb.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
 
-	if tx, err = testDb.BeginTx(ctx, nil); err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO `+tbl+ //nolint:gas
-			` (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
-			VALUES
-			(:1, :2, :3, :4, :5, :6, :7)`,
-		ids, ints, nums, int32s, floats, strs, dates)
-	if err != nil {
-		t.Fatalf("%#v", err)
-	}
-	ra, err := res.RowsAffected()
-	if err != nil {
-		t.Error(err)
-	} else if ra != num {
-		t.Errorf("wanted %d rows, got %d", num, ra)
-	}
-
-	rows, err := tx.QueryContext(ctx,
-		"SELECT * FROM "+tbl+" ORDER BY F_id", //nolint:gas
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	i := 0
-	for rows.Next() {
-		var id, Int int
-		var num string
-		var vc string
-		var num6 int32
-		var num52 float64
-		var dt time.Time
-		if err := rows.Scan(&id, &Int, &num, &num6, &num52, &vc, &dt); err != nil {
+	t.Run("multi-col", func(t *testing.T) {
+		if tx, err = testDb.BeginTx(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
-		if id != i {
-			t.Fatalf("ID got %d, wanted %d.", id, i)
+		defer tx.Rollback()
+
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO `+tbl+ //nolint:gas
+				` (f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
+			VALUES
+			(:1, :2, :3, :4, :5, :6, :7)`,
+			ids, ints, nums, int32s, floats, strs, dates)
+		if err != nil {
+			t.Fatalf("%#v", err)
 		}
-		if Int != ints[i] {
-			t.Errorf("%d. INT got %d, wanted %d.", i, Int, ints[i])
+		ra, err := res.RowsAffected()
+		if err != nil {
+			t.Error(err)
+		} else if ra != num {
+			t.Errorf("wanted %d rows, got %d", num, ra)
 		}
-		if num != string(nums[i]) {
-			t.Errorf("%d. NUM got %q, wanted %q.", i, num, nums[i])
+
+		rows, err := tx.QueryContext(ctx,
+			"SELECT * FROM "+tbl+" ORDER BY F_id", //nolint:gas
+		)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if num6 != int32s[i] {
-			t.Errorf("%d. NUM_6 got %v, wanted %v.", i, num6, int32s[i])
+		defer rows.Close()
+		i := 0
+		for rows.Next() {
+			var id, Int int
+			var num string
+			var vc string
+			var num6 int32
+			var num52 float64
+			var dt time.Time
+			if err := rows.Scan(&id, &Int, &num, &num6, &num52, &vc, &dt); err != nil {
+				t.Fatal(err)
+			}
+			if id != i {
+				t.Fatalf("ID got %d, wanted %d.", id, i)
+			}
+			if Int != ints[i] {
+				t.Errorf("%d. INT got %d, wanted %d.", i, Int, ints[i])
+			}
+			if num != string(nums[i]) {
+				t.Errorf("%d. NUM got %q, wanted %q.", i, num, nums[i])
+			}
+			if num6 != int32s[i] {
+				t.Errorf("%d. NUM_6 got %v, wanted %v.", i, num6, int32s[i])
+			}
+			rounded := float64(int64(floats[i]/0.005+0.5)) * 0.005
+			if math.Abs(num52-rounded) > 0.05 {
+				t.Errorf("%d. NUM_5_2 got %v, wanted %v.", i, num52, rounded)
+			}
+			if vc != strs[i] {
+				t.Errorf("%d. VC got %q, wanted %q.", i, vc, strs[i])
+			}
+			t.Logf("%d. dt=%v", i, dt)
+			if !dt.Equal(dates[i]) {
+				if fmt.Sprintf("%v", dt) == "2017-10-29 02:27:53 +0100 CET" &&
+					fmt.Sprintf("%v", dates[i]) == "2017-10-29 00:27:53 +0000 UTC" {
+					t.Logf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
+				} else {
+					t.Errorf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
+				}
+			}
+			i++
 		}
-		rounded := float64(int64(floats[i]/0.005+0.5)) * 0.005
-		if math.Abs(num52-rounded) > 0.05 {
-			t.Errorf("%d. NUM_5_2 got %v, wanted %v.", i, num52, rounded)
+	})
+
+	testDb.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
+
+	t.Run("returning-one", func(t *testing.T) {
+		if tx, err = testDb.BeginTx(ctx, nil); err != nil {
+			t.Fatal(err)
 		}
-		if vc != strs[i] {
-			t.Errorf("%d. VC got %q, wanted %q.", i, vc, strs[i])
+		defer tx.Rollback()
+
+		qry := `DECLARE
+  v_id PLS_INTEGER;
+BEGIN
+  INSERT INTO ` + tbl + `
+			(f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
+	VALUES
+	(:1, :2, :3, :4, :5, :6, :7)
+	RETURNING F_id INTO v_id;
+	:8 := v_id;
+END;`
+
+		var id int
+		res, err := tx.ExecContext(ctx, qry,
+			ids[0], ints[0], nums[0], int32s[0], floats[0], strs[0], dates[0],
+			sql.Out{Dest: &id},
+		)
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Logf("%d. dt=%v", i, dt)
-		if !dt.Equal(dates[i]) {
-			if fmt.Sprintf("%v", dt) == "2017-10-29 02:27:53 +0100 CET" &&
-				fmt.Sprintf("%v", dates[i]) == "2017-10-29 00:27:53 +0000 UTC" {
-				t.Logf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
-			} else {
-				t.Errorf("%d. got DT %v, wanted %v (%v)", i, dt, dates[i], dt.Sub(dates[i]))
+		ra, err := res.RowsAffected()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("rowsAffected=%d", ra)
+		t.Logf("id=%d", id)
+		if id != ids[0] {
+			t.Errorf("got id=%d, wanted %d", id, ids[0])
+		}
+	})
+
+	testDb.ExecContext(ctx, "TRUNCATE TABLE "+tbl+"")
+
+	t.Run("returning-many", func(t *testing.T) {
+		if tx, err = testDb.BeginTx(ctx, nil); err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+
+		qry := `DECLARE
+	TYPE id_tt IS TABLE OF ` + tbl + `.F_id%TYPE INDEX BY PLS_INTEGER;
+	l_ids id_tt := :ids;
+	l_ints id_tt := :ints;
+	TYPE num_tt IS TABLE OF ` + tbl + `.F_num%TYPE INDEX BY PLS_INTEGER;
+	l_nums num_tt := :nums;
+	TYPE num6_tt IS TABLE OF ` + tbl + `.F_num_6%TYPE INDEX BY PLS_INTEGER;
+	l_num6s num6_tt := :int32s;
+	TYPE num5_tt IS TABLE OF ` + tbl + `.F_num_5_2%TYPE INDEX BY PLS_INTEGER;
+	l_num5s num5_tt := :floats;
+	TYPE vc_tt IS TABLE OF ` + tbl + `.F_vc%TYPE INDEX BY PLS_INTEGER;
+	l_strs vc_tt := :strs;
+	TYPE dt_tt IS TABLE OF ` + tbl + `.F_dt%TYPE INDEX BY PLS_INTEGER;
+	l_dts dt_tt := :dts;
+
+  l_tab id_tt;
+BEGIN
+	FORALL i IN l_ids.FIRST .. l_ids.LAST
+	  INSERT INTO ` + tbl + `
+		(f_id, f_int, f_num, f_num_6, F_num_5_2, F_vc, F_dt)
+	VALUES
+	(l_ids(i), l_ints(i), l_nums(i), l_num6s(i), l_num5s(i), l_strs(i), l_dts(i))
+	RETURNING F_id BULK COLLECT INTO l_tab;
+	:rids := l_tab;
+END;`
+
+		rIDs := make([]godror.Number, len(ids))
+		O := func(ss []int) []godror.Number {
+			nn := make([]godror.Number, len(ss))
+			for i, s := range ss {
+				nn[i] = godror.Number(strconv.FormatInt(int64(s), 10))
+			}
+			return nn
+		}
+		O32 := func(ss []int32) []godror.Number {
+			nn := make([]godror.Number, len(ss))
+			for i, s := range ss {
+				nn[i] = godror.Number(strconv.FormatInt(int64(s), 10))
+			}
+			return nn
+		}
+		OF := func(ss []float64) []godror.Number {
+			nn := make([]godror.Number, len(ss))
+			for i, s := range ss {
+				nn[i] = godror.Number(strconv.FormatFloat(s, 'f', -1, 64))
+			}
+			return nn
+		}
+
+		res, err := tx.ExecContext(ctx, qry, godror.PlSQLArrays,
+			sql.Named("ids", O(ids)), sql.Named("ints", O(ints)),
+			sql.Named("nums", nums), sql.Named("int32s", O32(int32s)),
+			sql.Named("floats", OF(floats)), sql.Named("strs", strs),
+			sql.Named("dts", dates),
+			sql.Named("rids", sql.Out{Dest: &rIDs}),
+		)
+		if err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+		ra, err := res.RowsAffected()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("rowsAffected=%d", ra)
+		t.Logf("ids=%v", rIDs)
+		for i := range rIDs {
+			if string(rIDs[i]) != strconv.Itoa(ids[i]) {
+				t.Errorf("%d. got id=%s, wanted %d", i, rIDs[i], ids[i])
 			}
 		}
-		i++
-	}
+	})
 }
+
 func TestReadWriteLOB(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), 30*time.Second)
@@ -2613,16 +2745,16 @@ func TestIssue134(t *testing.T) {
 	,TASK_COST NUMBER
 	,SOURCE_PARENT_ID NUMBER
 	,TASK_TYPE VARCHAR2(100)
-	,QUANTITY NUMBER 
+	,QUANTITY NUMBER
 	,data BLOB
 )`,
 		`CREATE OR REPLACE TYPE test_PRJ_TASK_tt IS TABLE OF test_PRJ_TASK_ot`,
 		`CREATE OR REPLACE FUNCTION test_CREATE_TASK_ACTIVITY (
     p_create_task_i IN test_PRJ_TASK_tt,
-	p_project_id_i IN NUMBER) RETURN test_prj_task_ot 
-IS 
+	p_project_id_i IN NUMBER) RETURN test_prj_task_ot
+IS
   v_obj test_prj_task_ot;
-BEGIN 
+BEGIN
   IF p_create_task_i.COUNT = 0 THEN
     v_obj := test_prj_task_ot(
 	PROJECT_NUMBER=>NULL
@@ -2640,7 +2772,7 @@ BEGIN
     v_obj := p_create_task_i(p_create_task_i.FIRST);
   END IF;
   DBMS_LOB.createtemporary(v_obj.data, TRUE, 31);
-  DBMS_LOB.writeAppend(v_obj.data, 10, 
+  DBMS_LOB.writeAppend(v_obj.data, 10,
     UTL_RAW.cast_to_raw(TO_CHAR(SYSDATE, 'YYYY-MM-DD')));
   RETURN(v_obj);
 END;`,
@@ -2983,7 +3115,7 @@ func TestDST(t *testing.T) {
 	now := time.Now()
 	maxNum := (365*4 + 1) * (now.Year() - start.Year() + 1) / 4
 	qry := `SELECT dt, TO_CHAR(dt, 'YYYY-MM-DD') as tx FROM (
-		SELECT TO_DATE('` + start.Format("2006-01-02") + `', 'YYYY-MM-DD')+rn AS dt 
+		SELECT TO_DATE('` + start.Format("2006-01-02") + `', 'YYYY-MM-DD')+rn AS dt
 			FROM (SELECT ROWNUM AS rn FROM DUAL CONNECT BY LEVEL <= ` + strconv.Itoa(maxNum) + "))"
 	rows, err := testDb.QueryContext(ctx, qry)
 	if err != nil {
