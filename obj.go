@@ -58,12 +58,11 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 		return fmt.Errorf("get %s[%s]: %w (have: %q)", O.Name, name, ErrNoSuchKey, O.AttributeNames())
 	}
 
-	data.reset()
+	data.reset(O.dpiObject == nil)
 	data.NativeTypeNum = attr.NativeTypeNum
 	data.ObjectType = attr.ObjectType
 	data.implicitObj = true
 	if O.dpiObject == nil {
-		data.SetNull()
 		return nil
 	}
 	// the maximum length of that buffer must be supplied
@@ -163,7 +162,7 @@ func (O *Object) resetAttributes(skipErrors bool) error {
 	defer scratch.Put(data)
 	var errs []error
 	for _, attr := range O.Attributes {
-		data.reset()
+		data.reset(true)
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
 		if C.dpiObject_setAttributeValue(O.dpiObject, attr.dpiObjectAttr, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
@@ -235,12 +234,30 @@ func (O *Object) Collection() ObjectCollection {
 	return ObjectCollection{Object: O}
 }
 
+// Iter ate over the collection.
+func (O ObjectCollection) Iter() iter.Seq2[*Object, error] {
+	return func(yield func(*Object, error) bool) {
+		data := scratch.Get()
+		defer scratch.Put(data)
+
+		for i, err := O.First(); err == nil; i, err = O.Next(i) {
+			if err := O.GetItem(data, i); err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(data.GetObject(), nil) {
+				break
+			}
+		}
+	}
+}
+
 // Close releases a reference to the object.
 func (O *Object) Close() error {
 	if O == nil || O.dpiObject == nil {
 		return nil
 	}
-	oldRefCount := O.dpiObject.refCount
+	// fmt.Printf("Object.Close0 %p\n", O.dpiObject)
 	logger := getLogger(context.TODO())
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", O.dpiObject))
@@ -262,12 +279,13 @@ func (O *Object) Close() error {
 				continue
 			}
 			obj := data.GetObject()
-			if obj == nil {
+			if obj == nil || obj.dpiObject == nil {
 				continue
 			}
 			if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 				logger.Debug("ObjectCollection.Close close item", "idx", curr, "object", fmt.Sprintf("%p", obj))
 			}
+			// fmt.Printf("Close obj=%p\n", obj.dpiObject)
 			if err = obj.Close(); err != nil && logger != nil && false {
 				logger.Error("close sub-object", "idx", curr, "error", err)
 			}
@@ -303,15 +321,13 @@ func (O *Object) Close() error {
 
 	dpiObject := O.dpiObject
 	O.dpiObject = nil
-
+	if dpiObject == nil {
+		return nil
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_release(dpiObject)
 	}); err != nil {
 		return fmt.Errorf("error on close object: %w", err)
-	}
-
-	if warnDpiObjectRefCount {
-		fmt.Printf("%s[%p] refCount %d -> %d\n", O.Name, dpiObject, oldRefCount, dpiObject.refCount)
 	}
 
 	return nil
@@ -884,7 +900,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	if exists == 0 {
 		return ErrNotExist
 	}
-	data.reset()
+	data.reset(false)
 	data.ObjectType = O.CollectionOf
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
 	data.implicitObj = true
@@ -1090,8 +1106,8 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		}
 	}
 	if t != nil {
-		if t.drv != nil {
-			//fmt.Println("GetObjectType CACHED", name)
+		if t.drv != nil && t.NativeTypeNum != 0 {
+			// fmt.Println("GetObjectType CACHED", name)
 			return t, nil
 		}
 		//fmt.Printf("GetObjectType(%q) %p is CLOSED on %p\n", name, t, c)
@@ -1433,7 +1449,7 @@ var scratch = &dataPool{Pool: sync.Pool{New: func() any { return &Data{} }}}
 type dataPool struct{ sync.Pool }
 
 func (dp *dataPool) Get() *Data  { return dp.Pool.Get().(*Data) }
-func (dp *dataPool) Put(d *Data) { d.reset(); dp.Pool.Put(d) }
+func (dp *dataPool) Put(d *Data) { d.reset(true); dp.Pool.Put(d) }
 
 // SetAttribute sets an object's attribute, evading ORA-21602
 //
@@ -1507,3 +1523,433 @@ func (O ObjectCollection) Indexes() iter.Seq2[int, error] {
 		}
 	}
 }
+
+// StructWriteObject helps implementing ObjectWriter: writes the given struct into the given Object.
+func StructWriteObject[E any, P *E](o *Object, strct P) error {
+	return structWriteObject(o, reflect.ValueOf(strct))
+}
+
+// StructScan helps implementing sql.Sanner: copies data from Object to the struct.
+func StructScan[E any, P *E](strct P, v any) error {
+	o, ok := v.(*Object)
+	if !ok {
+		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
+	}
+	return structScanObject(reflect.ValueOf(strct), o)
+}
+
+type (
+	ObjectCollectionScanWriter interface {
+		ObjectCollectionWriter
+		ObjectScanner
+	}
+)
+
+// SliceWriteObject helps implementing an ObjectWriter for a slice.
+func SliceWriteObject[E any](o *Object, ss []E) error {
+	coll := o.Collection()
+	if err := coll.Trim(0); err != nil {
+		return err
+	}
+	data := scratch.Get()
+	defer scratch.Put(data)
+	var ot *ObjectType
+	for _, v := range ss {
+		if ow, ok := any(v).(ObjectWriter); ok {
+			if ot == nil {
+				ot = o.ObjectType.CollectionOf
+			}
+			sub, err := ot.NewObject()
+			if err != nil {
+				return err
+			}
+			if err := ow.WriteObject(sub); err != nil {
+				return err
+			}
+			data.SetObject(sub)
+		} else {
+			data.Set(v)
+		}
+		if err := coll.AppendData(data); err != nil {
+			return err
+		}
+	}
+	return nil
+
+}
+
+// SliceIter helps implementing ObjectSliceWriter.
+func SliceIter[E ObjectWriter](ss []E) iter.Seq[ObjectWriter] {
+	return func(yield func(ObjectWriter) bool) {
+		if len(ss) == 0 {
+			return
+		}
+		for _, item := range ss {
+			if !yield(item) {
+				break
+			}
+		}
+	}
+}
+
+// SliceScan helps implementing sql.Scanner for a slice.
+func SliceScan[E any](ss *[]E, v any) error {
+	o, ok := v.(*Object)
+	if !ok {
+		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
+	}
+	coll := o.Collection()
+	data := scratch.Get()
+	defer scratch.Put(data)
+	var z E
+	if _, ok := any(&z).(sql.Scanner); ok {
+		// fmt.Printf("%T is a scanner\n", z)
+		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+			if err := coll.GetItem(data, i); err != nil {
+				return err
+			}
+			var e E
+			scn := any(&e).(sql.Scanner)
+			if err := scn.Scan(data.Get()); err != nil {
+				return err
+			}
+			*ss = append(*ss, e)
+		}
+		return nil
+	}
+	// fmt.Printf("%T is NOT a scanner\n", z)
+
+	rsp := reflect.ValueOf(ss)
+	rs := rsp.Elem()
+	rt := rs.Type().Elem()
+	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+		if err := coll.GetItem(data, i); err != nil {
+			return err
+		}
+
+		rv := reflect.New(rt).Elem()
+		switch rt.Kind() {
+		case reflect.Bool:
+			rv.SetBool(data.GetBool())
+		case reflect.Float32, reflect.Float64:
+			rv.SetFloat(data.GetFloat64())
+		case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
+			rv.SetInt(data.GetInt64())
+		case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			rv.SetUint(data.GetUint64())
+		case reflect.String:
+			rv.SetString(string(data.GetBytes()))
+		default:
+			if data.IsObject() {
+				if err := structScanObject(rv, data.GetObject()); err != nil {
+					return err
+				}
+			} else {
+				rv.Set(reflect.ValueOf(data.Get()))
+			}
+		}
+		// fmt.Println("sOCSW data:", data, "rv:", rv.Interface())
+		rs = reflect.Append(rs, rv)
+	}
+	rsp.Elem().Set(rs)
+	// fmt.Println("sOCSW len:", rsp.Elem().Len(), "rsp:", rsp.Elem().Interface())
+	// fmt.Println(len(*soc.pslice))
+	return nil
+}
+
+// structScanObject reads an object and writes it to rv.
+func structScanObject(rv reflect.Value, obj *Object) error {
+	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
+	}
+
+	if obj == nil {
+		if rv.CanSet() {
+			rv.SetZero()
+		} else {
+			rv.Addr().SetZero()
+		}
+		return nil
+	}
+	ad := scratch.Get()
+	defer scratch.Put(ad)
+	if obj.CollectionOf != nil && rvt.Kind() == reflect.Slice {
+		coll := obj.Collection()
+		orig := rv
+		if n, _ := coll.Len(); n > rv.Cap() {
+			rv.Grow(n)
+		}
+		rv.SetLen(0)
+		first := true
+		re := reflect.New(rvt.Elem()).Elem()
+		ret := re.Type()
+		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+			if first {
+				first = false
+				length, err := coll.Len()
+				if err != nil {
+					return err
+				}
+				if true || rv.Cap() < length { // Forcing new slice helps #323
+					rv = reflect.MakeSlice(rvt, 0, length)
+				}
+			}
+			if err := coll.GetItem(ad, i); err != nil {
+				return err
+			}
+			x := ad.Get()
+			switch x := x.(type) {
+			case *Object:
+				err := structScanObject(re, x)
+				x.Close()
+				if err != nil {
+					return err
+				}
+			default:
+				ev := reflect.ValueOf(x)
+				if ev.Type() != ret {
+					ev = ev.Convert(ret)
+				}
+				re.Set(ev)
+				if cl, ok := x.(io.Closer); ok {
+					cl.Close()
+				}
+			}
+			rv = reflect.Append(rv, re)
+		}
+		orig.Set(rv)
+		return nil
+	}
+
+Loop:
+	for i, n := 0, rvt.NumField(); i < n; i++ {
+		f := rvt.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		rf := rv.FieldByIndex(f.Index)
+		if obj.CollectionOf != nil {
+			// we must find the slice in the struct
+			if f.Type.Kind() != reflect.Slice {
+				continue
+			}
+			return structScanObject(rf, obj)
+		}
+		nm, typ, _ := parseStructTag(f.Tag)
+		if nm == "-" {
+			continue
+		}
+		fieldTag := typ
+		if fieldTag == "" {
+			fieldTag = nm
+		}
+
+		if nm == "" {
+			nm = strings.ToUpper(f.Name)
+		}
+		if err := obj.GetAttribute(ad, nm); err != nil {
+			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
+		}
+		if ad.IsNull() {
+			rf.SetZero()
+			continue
+		}
+		x := ad.Get()
+		switch v := x.(type) {
+		case time.Time:
+			rf.Set(reflect.ValueOf(v))
+		case *Object:
+			err := structScanObject(rf, v)
+			v.Close()
+			if err != nil {
+				return err
+			}
+			continue Loop
+		case string:
+			if rf.Kind() == reflect.String {
+				rf.SetString(v)
+			} else {
+				rf.SetBytes([]byte(v))
+			}
+		case []byte:
+			if rf.Kind() == reflect.String {
+				rf.SetString(string(v))
+			} else {
+				rf.SetBytes(v)
+			}
+		case *Lob:
+			var buf bytes.Buffer
+			if v != nil && v.Reader != nil {
+				if _, err := buf.ReadFrom(v.Reader); err != nil {
+					return fmt.Errorf("GetLobAttribute(%q): %w", nm, err)
+				}
+			}
+			if cl, ok := x.(io.Closer); ok {
+				cl.Close()
+			} else if cl, ok := v.Reader.(io.Closer); ok {
+				cl.Close()
+			}
+			if rf.Kind() == reflect.String {
+				rf.SetString(buf.String())
+			} else {
+				rf.SetBytes(buf.Bytes())
+			}
+		default:
+			switch vv := reflect.ValueOf(v); vv.Kind() {
+			case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				switch null := rf.Addr().Interface().(type) {
+				case *sql.NullInt32:
+					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetUint64())}
+				case *sql.NullInt64:
+					*null = sql.NullInt64{Valid: true, Int64: int64(ad.GetUint64())}
+				}
+				rf.SetUint(ad.GetUint64())
+			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
+				switch null := rf.Addr().Interface().(type) {
+				case *sql.NullInt32:
+					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetInt64())}
+				case *sql.NullInt64:
+					*null = sql.NullInt64{Valid: true, Int64: ad.GetInt64()}
+				default:
+					rf.SetInt(ad.GetInt64())
+				}
+			case reflect.Float32:
+				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
+					*null = sql.NullFloat64{Valid: true, Float64: float64(ad.GetFloat32())}
+				} else {
+					rf.SetFloat(float64(ad.GetFloat32()))
+				}
+			case reflect.Float64:
+				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
+					*null = sql.NullFloat64{Valid: true, Float64: ad.GetFloat64()}
+				} else {
+					rf.SetFloat(ad.GetFloat64())
+				}
+			default:
+				return fmt.Errorf("%w: %T", errUnknownType, v)
+			}
+		}
+	}
+	return nil
+}
+
+// structWriteObject creates an ot typed object from rv.
+func structWriteObject(o *Object, rv reflect.Value) error {
+	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
+	}
+	if rv.IsZero() {
+		return nil
+	}
+	switch rvt.Kind() {
+	case reflect.Slice:
+		coll := o.Collection()
+		if !o.CollectionOf.IsObject() {
+			for i, n := 0, rv.Len(); i < n; i++ {
+				if err := coll.Append(rv.Index(i).Interface()); err != nil {
+					coll.Close()
+					return fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
+				}
+			}
+		} else {
+			for i, n := 0, rv.Len(); i < n; i++ {
+				sub, err := o.CollectionOf.NewObject()
+				if err != nil {
+					coll.Close()
+					return fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
+				}
+				if err := structWriteObject(sub, rv.Index(i)); err != nil {
+					coll.Close()
+					return fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
+				}
+				err = coll.AppendObject(sub)
+				sub.Close()
+				if err != nil {
+					coll.Close()
+					return err
+				}
+			}
+		}
+		return nil
+
+	case reflect.Struct:
+		ad := scratch.Get()
+		defer scratch.Put(ad)
+		for i, n := 0, rvt.NumField(); i < n; i++ {
+			f := rvt.Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			rf := rv.FieldByIndex(f.Index)
+			nm, typ, _ := parseStructTag(f.Tag)
+			_ = typ
+			if nm == "-" {
+				continue
+			}
+			if nm == "" {
+				nm = strings.ToUpper(f.Name)
+			}
+			attr, ok := o.Attributes[nm]
+			if !ok {
+				return fmt.Errorf("copy %s to %s.%s: %w (have: %q)",
+					f.Name,
+					o.Name, nm, ErrNoSuchKey, o.AttributeNames())
+			}
+			if err := func() error {
+				if !attr.IsObject() {
+					if err := ad.Set(rf.Interface()); err != nil {
+						return fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
+					}
+				} else {
+					ot := attr.ObjectType
+					sub, err := ot.NewObject()
+					if err != nil {
+						return err
+					}
+					if err = structWriteObject(sub, rf); err != nil {
+						return err
+					}
+					ad.SetObject(sub)
+					defer sub.Close()
+				}
+				if err := o.SetAttribute(nm, ad); err != nil {
+					return fmt.Errorf("SetAttribute(%q): %w", nm, err)
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("%T: not a struct or a slice: %w", rv.Interface(), errUnknownType)
+	}
+}
+
+func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]string) {
+	tag = s.Get(StructTag)
+	if strings.IndexByte(tag, ',') < 0 {
+		return tag, typ, opts
+	}
+	vv := strings.Split(tag, ",")
+	tag, vv = vv[0], vv[1:]
+	for _, s := range vv {
+		var ok bool
+		if typ, ok = strings.CutPrefix(s, "type="); ok {
+			continue
+		}
+		if i := strings.IndexByte(s, '='); i >= 0 {
+			if opts == nil {
+				opts = make(map[string]string, len(vv))
+			}
+			opts[s[:i]] = s[i+1:]
+		}
+	}
+	return tag, typ, opts
+}
+
+// StructTag is the prefix that tags godror-specific struct fields
+const StructTag = "godror"

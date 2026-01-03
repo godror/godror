@@ -19,13 +19,51 @@ import (
 )
 
 func TestPlSqlNestedObj(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 1*time.Minute)
+	t.Run("200", func(t *testing.T) {
+		testPlSqlNestedObj(t, 200)
+	})
+	t.Run("1", func(t *testing.T) { testPlSqlNestedObj(t, 1) })
+}
+
+type (
+	i390Pair struct {
+		// godror.ObjectTypeName `godror:"pair" json:"-"`
+
+		Key   int32 `godror:"KEY"`
+		Value int64 `godror:"VALUE"`
+	}
+
+	i390PobjStruct struct {
+		// godror.ObjectTypeName `godror:"pobj" json:"-"`
+		ID    int32      `godror:"ID"`
+		Pairs []i390Pair `godror:",type=pair_list"`
+	}
+	i390PsliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+		ObjSlice []i390PobjStruct `godror:",type=pobj_t"`
+	}
+)
+
+func (i390Pair) ObjectTypeName() string       { return "pair" }
+func (i390PobjStruct) ObjectTypeName() string { return "pobj" }
+func (os i390PobjStruct) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &os)
+}
+func (os *i390PobjStruct) Scan(v any) error     { return godror.StructScan(os, v) }
+func (i390PsliceStruct) ObjectTypeName() string { return "pobj_t" }
+func (ss i390PsliceStruct) WriteObject(o *godror.Object) error {
+	return godror.SliceWriteObject(o, ss.ObjSlice)
+}
+func (ss i390PsliceStruct) Scan(v any) error { return godror.SliceScan(&ss.ObjSlice, v) }
+
+func testPlSqlNestedObj(t *testing.T, step int) {
+	if step < 2 {
+		step = 2
+	}
+	stepS := strconv.Itoa(step)
+	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes["+stepS+"]"), 1*time.Minute)
 	defer cancel()
 	// defer tl.enableLogging(t)()
-
-	const step = 200
-	stepS := strconv.Itoa(step)
-	//godror.SetLogger(zlog.NewT(t).SLog())
 
 	createTypes := func(ctx context.Context, db *sql.DB) error {
 		qry := []string{
@@ -149,39 +187,22 @@ func TestPlSqlNestedObj(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("%s: %d; process memory (rss): %.3f MiB\n", t.Name(), loopCnt, float64(rss)/MiB)
-		if rss > startMem[t.Name()]*2 {
-			t.Errorf("%s: started with RSS %d, got %d (%.3f%%)",
+		if start, ok := startMem[t.Name()]; ok && rss > start*2 {
+			t.Fatalf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
 				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
 		} else {
 			t.Logf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
-				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
+				start/MiB, rss/MiB, float64(rss*100)/float64(start))
 		}
 	}
 
-	type pair struct {
-		godror.ObjectTypeName `godror:"pair" json:"-"`
-
-		Key   int32 `godror:"KEY"`
-		Value int64 `godror:"VALUE"`
-	}
-
-	type pobjStruct struct {
-		godror.ObjectTypeName `godror:"pobj" json:"-"`
-		ID                    int32  `godror:"ID"`
-		Pairs                 []pair `godror:",type=pair_list"`
-	}
-	type psliceStruct struct {
-		godror.ObjectTypeName `json:"-"`
-		ObjSlice              []pobjStruct `godror:",type=pobj_t"`
-	}
-
-	pslice := func(nobjs, npairs int) psliceStruct {
-		s := psliceStruct{ObjSlice: make([]pobjStruct, nobjs)}
+	pslice := func(nobjs, npairs int) i390PsliceStruct {
+		s := i390PsliceStruct{ObjSlice: make([]i390PobjStruct, nobjs)}
 		for i := range s.ObjSlice {
 			s.ObjSlice[i].ID = int32(i + 1)
-			s.ObjSlice[i].Pairs = make([]pair, npairs)
+			s.ObjSlice[i].Pairs = make([]i390Pair, npairs)
 			for j := range s.ObjSlice[i].Pairs {
 				s.ObjSlice[i].Pairs[j].Key = int32(j + 1)
 				s.ObjSlice[i].Pairs[j].Value = int64((i+1)*1000 + (j + 1))
@@ -248,21 +269,26 @@ func TestPlSqlNestedObj(t *testing.T) {
 			dl := time.Now().Add(dur)
 			loopCnt = 0
 			t.Logf("dl: %v dur:%v", dl, dur)
+			var lastPrint time.Time
 			for ; time.Now().Before(dl); loopCnt++ {
 				if err := callObjectType(ctx, testDb, dir); err != nil {
-					t.Fatal(err)
+					t.Fatal("callObjectType:", err)
 				}
-
+				if step <= 2 {
+					break
+				}
 				if startMem[t.Name()] == 0 {
 					runtime.GC()
 					var err error
 					if startMem[t.Name()], err = readMem(pid); err != nil {
 						t.Fatal(err)
 					}
+					continue
 				}
-
-				if loopCnt%step == 0 {
+				now := time.Now()
+				if lastPrint.Before(now.Add(-2 * time.Second)) {
 					printStats(t)
+					lastPrint = now
 				}
 			}
 			printStats(t)

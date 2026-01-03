@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"log/slog"
 	"runtime"
 	"strings"
@@ -27,20 +28,24 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var _ godror.ObjectScanner = new(MyRecord)
-var _ godror.ObjectWriter = new(MyRecord)
+var (
+	_ godror.ObjectScanner = (*MyRecord)(nil)
+	_ godror.ObjectWriter  = (MyRecord{})
 
-var _ godror.ObjectScanner = new(MyTable)
+	_ godror.ObjectScanner          = (*MyTable)(nil)
+	_ godror.ObjectCollectionWriter = (MyTable{})
+)
 
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
-	*godror.Object
 	Txt, AClob string
 	ID         int64
 	DT         time.Time
 }
 
 type coder interface{ Code() int }
+
+func (r MyRecord) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_RECORD" }
 
 func (r *MyRecord) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
@@ -49,6 +54,7 @@ func (r *MyRecord) Scan(src any) error {
 	}
 	r.ID, r.Txt, r.DT, r.AClob = 0, "", time.Time{}, ""
 	if obj == nil {
+		// fmt.Printf("MyRecord.Scan %#v\n", src)
 		return nil
 	}
 	id, err := obj.Get("ID")
@@ -85,47 +91,39 @@ func (r *MyRecord) Scan(src any) error {
 
 // WriteObject update godror.Object with struct attributes values.
 // Implement this method if you need the record as an input parameter.
-func (r MyRecord) WriteObject() error {
+func (r MyRecord) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	err := r.ResetAttributes()
+	// fmt.Printf("MyRecord.WriteObject(%p ID=%d)\n", o, r.ID)
+	err := o.ResetAttributes()
 	if err != nil {
 		return err
 	}
 
 	var data godror.Data
-	err = r.GetAttribute(&data, "ID")
-	if err != nil {
+	data.SetInt64(r.ID)
+	if err = o.SetAttribute("ID", &data); err != nil {
 		return err
 	}
-	data.SetInt64(r.ID)
-	r.SetAttribute("ID", &data)
 
 	if r.Txt != "" {
-		err = r.GetAttribute(&data, "TXT")
-		if err != nil {
+		data.SetBytes([]byte(r.Txt))
+		if err = o.SetAttribute("TXT", &data); err != nil {
 			return err
 		}
-
-		data.SetBytes([]byte(r.Txt))
-		r.SetAttribute("TXT", &data)
 	}
 
 	if !r.DT.IsZero() {
-		err = r.GetAttribute(&data, "DT")
-		if err != nil {
+		data.SetTime(r.DT)
+		if err = o.SetAttribute("DT", &data); err != nil {
 			return err
 		}
-		data.SetTime(r.DT)
-		r.SetAttribute("DT", &data)
 	}
 
 	if r.AClob != "" {
-		err = r.GetAttribute(&data, "ACLOB")
-		if err != nil {
+		data.SetBytes([]byte(r.AClob))
+		if err = o.SetAttribute("ACLOB", &data); err != nil {
 			return err
 		}
-		data.SetBytes([]byte(r.AClob))
-		r.SetAttribute("ACLOB", &data)
 	}
 
 	return nil
@@ -133,16 +131,15 @@ func (r MyRecord) WriteObject() error {
 
 // MYTable represents TEST_PKG_TYPES.MY_TABLE
 type MyTable struct {
-	godror.ObjectCollection
 	Items []*MyRecord
-	conn  interface {
-		NewData(baseType any, sliceLen, bufSize int) ([]*godror.Data, error)
-	}
 }
+
+func (t MyTable) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_TABLE" }
 
 func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
 	t.Items = t.Items[:0]
+	// fmt.Printf("MyTableScan(%[1]p (%#[1]v))\n", src)
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
@@ -156,17 +153,20 @@ func (t *MyTable) Scan(src any) error {
 	}
 	collection := obj.Collection()
 	length, err := collection.Len()
-	//fmt.Printf("Collection[%d] %#v: %+v\n", length, collection, err)
+	// fmt.Printf("Collection[%d] %#v: %+v\n", length, collection, err)
 	if err != nil {
 		return err
 	}
 	if length == 0 {
 		return nil
 	}
-	t.Items = make([]*MyRecord, 0, length)
+	t.Items = t.Items[:0]
+	if cap(t.Items) < length {
+		t.Items = make([]*MyRecord, 0, length)
+	}
 	var i int
 	for i, err = collection.First(); err == nil; i, err = collection.Next(i) {
-		//fmt.Printf("Scan[%d]: %+v\n", i, err)
+		// fmt.Printf("Scan[%d]: %+v\n", i, err)
 		var data godror.Data
 		err = collection.GetItem(&data, i)
 		if err != nil {
@@ -174,11 +174,11 @@ func (t *MyTable) Scan(src any) error {
 		}
 
 		o := data.GetObject()
-		defer o.Close()
 		//fmt.Printf("%d. data=%#v => o=%#v\n", i, data, o)
 
 		var item MyRecord
 		err = item.Scan(o)
+		o.Close()
 		//fmt.Printf("%d. item=%#v: %+v\n", i, item, err)
 		if err != nil {
 			return err
@@ -191,26 +191,14 @@ func (t *MyTable) Scan(src any) error {
 	return err
 }
 
-func (r MyTable) WriteObject(ctx context.Context) error {
-	if len(r.Items) == 0 {
-		return nil
-	}
-
-	data, err := r.conn.NewData(r.Items[0], len(r.Items), 0)
-	if err != nil {
-		return err
-	}
-
-	for i, item := range r.Items {
-		err = item.WriteObject()
-		if err != nil {
-			return err
+func (r MyTable) Iter() iter.Seq[godror.ObjectWriter] {
+	return func(yield func(godror.ObjectWriter) bool) {
+		for _, it := range r.Items {
+			if !yield(it) {
+				break
+			}
 		}
-		d := data[i]
-		d.SetObject(item.ObjectRef())
-		r.Append(d)
 	}
-	return nil
 }
 
 func createPackages(ctx context.Context) error {
@@ -280,7 +268,7 @@ func createPackages(ctx context.Context) error {
 	BEGIN
 		rec.id := id;
 		rec.txt := txt;
-		rec.dt := SYSDATE;
+		rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 		--DBMS_LOB.createtemporary(rec.aclob, TRUE);
 		--DBMS_LOB.write(rec.aclob, LENGTH(txt)*2+1, 1, txt||'+'||txt);
 	END test_record;
@@ -289,9 +277,10 @@ func createPackages(ctx context.Context) error {
 		rec IN OUT test_pkg_types.my_record
 	) IS
 	BEGIN
+	  DBMS_OUTPUT.PUT_LINE('test_record_in(id='||rec.id||' txt='||rec.txt||' dt='||rec.dt||')');
 		rec.id := rec.id + 1;
 		rec.txt := rec.txt || ' changed '||TO_CHAR(rec.dt, 'YYYY-MM-DD HH24:MI:SS');
-		rec.dt := SYSDATE;
+		rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 		--IF rec.aclob IS NOT NULL AND DBMS_LOB.isopen(rec.aclob) <> 0 THEN
 		--  DBMS_LOB.writeappend(rec.aclob, 7, ' changed');
 		--END IF;
@@ -313,7 +302,7 @@ func createPackages(ctx context.Context) error {
 				level <= x
 		) LOOP
 			item.id := c.lev;
-			item.dt := SYSDATE;
+		item.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 			item.txt := 'test - ' || ( c.lev * 2 );
 			tb.extend();
 			tb(tb.count) := item;
@@ -325,8 +314,14 @@ func createPackages(ctx context.Context) error {
 	PROCEDURE test_table_in (
 		tb IN OUT test_pkg_types.my_table
 	) IS
+	  v_idx PLS_INTEGER;
 	BEGIN
-	null;
+	  DBMS_OUTPUT.PUT_LINE('tb.COUNT='||tb.COUNT);
+	  v_idx := tb.FIRST;
+	  WHILE v_idx IS NOT NULL LOOP
+	    DBMS_OUTPUT.PUT_LINE('('||v_idx||'): id='||tb(v_idx).ID);
+	    v_idx := tb.NEXT(v_idx);
+	  END LOOP;
 	END test_table_in;
 
 	PROCEDURE test_osh(
@@ -344,7 +339,7 @@ func createPackages(ctx context.Context) error {
 			res_list.extend();
 			rec.id := i;
 			rec.rec.id := 2*i+1;  --initialize sub-record for #283
-			rec.rec.dt := SYSDATE;
+		rec.rec.dt := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
 			--test_record(rec.id, rec.id, rec.rec);
 			res_list(res_list.count) := rec;
 		END LOOP;
@@ -377,37 +372,80 @@ func dropPackages(ctx context.Context) {
 	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
 }
 
-type objectStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
-	ID                    int32         `godror:"ID"`
-	Txt                   string        `godror:"TXT"`
-	DT                    time.Time     `godror:"DT"`
-	AClob                 string        `godror:"ACLOB"`
-	NInt32                sql.NullInt32 `godror:"INT32"`
+type (
+	objectStruct struct {
+		// godror.ObjectTypeName `godror:"test_pkg_types.my_record" json:"-"`
+		ID     int32         `godror:"ID"`
+		Txt    string        `godror:"TXT"`
+		DT     time.Time     `godror:"DT"`
+		AClob  string        `godror:"ACLOB"`
+		NInt32 sql.NullInt32 `godror:"INT32"`
+	}
+	sliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+		ObjSlice []objectStruct `godror:",type=test_pkg_types.my_table"`
+	}
+
+	oshNumberList struct {
+		NumberList []float64 `godror:",type=test_pkg_types.number_list"`
+	}
+
+	oshStruct struct {
+		// godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
+
+		ID      int32         `godror:"ID"`
+		Numbers oshNumberList `godror:"NUMBERS,type=test_pkg_types.number_list"`
+		Record  objectStruct  `godror:"REC,type=test_pkg_types.my_record"`
+	}
+
+	oshSliceStruct struct {
+		// godror.ObjectTypeName `json:"-"`
+
+		List []oshStruct `godror:",type=test_pkg_types.osh_table"`
+	}
+)
+
+var (
+	_ godror.ObjectWriter           = objectStruct{}
+	_ sql.Scanner                   = (*objectStruct)(nil)
+	_ godror.ObjectCollectionWriter = sliceStruct{}
+	_ sql.Scanner                   = (*sliceStruct)(nil)
+	_ godror.ObjectWriter           = oshNumberList{}
+	_ godror.ObjectWriter           = oshStruct{}
+	_ godror.ObjectCollectionWriter = oshSliceStruct{}
+)
+
+func (objectStruct) ObjectTypeName() string { return "test_pkg_types.my_record" }
+func (os objectStruct) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &os)
 }
-type sliceStruct struct {
-	godror.ObjectTypeName `json:"-"`
-	ObjSlice              []objectStruct `godror:",type=test_pkg_types.my_table"`
+func (os *objectStruct) Scan(v any) error {
+	return godror.StructScan(os, v)
 }
 
-type oshNumberList struct {
-	godror.ObjectTypeName `json:"-"`
-
-	NumberList []float64 `godror:",type=test_pkg_types.number_list"`
+func (sliceStruct) ObjectTypeName() string { return "test_pkg_types.my_table" }
+func (ss sliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
+	return godror.SliceIter(ss.ObjSlice)
+}
+func (os *sliceStruct) Scan(v any) error {
+	return godror.StructScan(os, v)
 }
 
-type oshStruct struct {
-	godror.ObjectTypeName `godror:"test_pkg_types.osh_record" json:"-"`
-
-	ID      int32         `godror:"ID"`
-	Numbers oshNumberList `godror:"NUMBERS,type=test_pkg_types.number_list"`
-	Record  objectStruct  `godror:"REC,type=test_pkg_types.my_record"`
+func (oshNumberList) ObjectTypeName() string { return "test_pkg_types.number_list" }
+func (os oshNumberList) WriteObject(o *godror.Object) error {
+	return godror.SliceWriteObject(o, os.NumberList)
+}
+func (oshStruct) ObjectTypeName() string { return "test_pkg_types.osh_record" }
+func (os oshStruct) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &os)
 }
 
-type oshSliceStruct struct {
-	godror.ObjectTypeName `json:"-"`
-
-	List []oshStruct `godror:",type=test_pkg_types.osh_table"`
+func (oshSliceStruct) ObjectTypeName() string { return "test_pkg_types.osh_table" }
+func (ss oshSliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
+	return godror.SliceIter(ss.List)
+}
+func (ss *oshSliceStruct) Scan(v any) error {
+	return godror.SliceScan(&ss.List, v)
 }
 
 func TestPlSqlTypes(t *testing.T) {
@@ -480,6 +518,7 @@ func TestPlSqlTypes(t *testing.T) {
 	})
 
 	t.Run("Osh", func(t *testing.T) {
+		defer tl.enableLogging(t)()
 		in := oshNumberList{NumberList: []float64{1, 2, 3}}
 		var out oshSliceStruct
 		const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
@@ -487,7 +526,7 @@ func TestPlSqlTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
 		} else if len(out.List) == 0 {
-			t.Fatal("no records found")
+			t.Fatal("oshSliceStruct.List: no records found")
 		} else if out.List[0].ID != 1 || len(out.List[0].Numbers.NumberList) == 0 {
 			t.Fatalf("wrong data from the array: %#v", out.List)
 		}
@@ -500,28 +539,16 @@ func TestPlSqlTypes(t *testing.T) {
 	})
 
 	t.Run("Record", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		obj, err := objType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj.Close()
-
 		for tName, tCase := range map[string]struct {
 			txt  string
 			want MyRecord
 			ID   int64
 		}{
-			"default":    {ID: 1, txt: "test", want: MyRecord{Object: obj, ID: 1, Txt: "test"}},
-			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{Object: obj, ID: 2}},
-			"zeroValues": {want: MyRecord{Object: obj}},
+			"default":    {ID: 1, txt: "test", want: MyRecord{ID: 1, Txt: "test", DT: epoch}},
+			"emptyTxt":   {ID: 2, txt: "", want: MyRecord{ID: 2, DT: epoch}},
+			"zeroValues": {want: MyRecord{DT: epoch}},
 		} {
-			rec := MyRecord{Object: obj}
+			rec := MyRecord{}
 			params := []any{
 				sql.Named("id", tCase.ID),
 				sql.Named("txt", tCase.txt),
@@ -536,19 +563,13 @@ func TestPlSqlTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if d := cmp.Diff(rec.String(), tCase.want.String()); d != "" {
+			if d := cmp.Diff(rec, tCase.want); d != "" {
 				t.Errorf("%s: record got %v, wanted %v\n%s", tName, rec, tCase.want, d)
 			}
 		}
 	})
 
-	t.Run("Record IN OUT", func(t *testing.T) {
-		// you must have execute privilege on package and use uppercase
-		objType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
+	t.Run("Record_IN_OUT", func(t *testing.T) {
 		for tName, tCase := range map[string]struct {
 			wantTxt string
 			in      MyRecord
@@ -559,16 +580,11 @@ func TestPlSqlTypes(t *testing.T) {
 			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed "},
 		} {
 
-			obj, err := objType.NewObject()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer obj.Close()
-
-			rec := MyRecord{Object: obj, ID: tCase.in.ID, Txt: tCase.in.Txt}
+			rec := MyRecord{ID: tCase.in.ID, Txt: tCase.in.Txt}
 			params := []any{
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
+			godror.EnableDbmsOutput(ctx, cx)
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
 			if err != nil {
 				var cdr coder
@@ -578,11 +594,17 @@ func TestPlSqlTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			var ok bool
 			if rec.ID != tCase.wantID {
 				t.Errorf("%s: ID got %d, wanted %d", tName, rec.ID, tCase.wantID)
+				ok = false
 			}
 			if rec.Txt != tCase.wantTxt {
 				t.Errorf("%s: Txt got %s, wanted %s", tName, rec.Txt, tCase.wantTxt)
+				ok = false
+			}
+			if !ok {
+				godror.ReadDbmsOutput(ctx, t.Output(), cx)
 			}
 		}
 	})
@@ -610,7 +632,7 @@ func TestPlSqlTypes(t *testing.T) {
 			}
 			defer obj.Close()
 
-			tb := MyTable{ObjectCollection: obj.Collection(), conn: conn}
+			tb := MyTable{}
 			params := []any{
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
@@ -643,31 +665,11 @@ func TestPlSqlTypes(t *testing.T) {
 
 	t.Run("Table IN", func(t *testing.T) {
 		// you must have execute privilege on package and use uppercase
-		tableObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_TABLE")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		recordObjType, err := conn.GetObjectType("TEST_PKG_TYPES.MY_RECORD")
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		items := make([]*MyRecord, 0)
 
-		obj1, err := recordObjType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj1.Close()
-		items = append(items, &MyRecord{ID: 1, Txt: "test - 2", Object: obj1})
+		items = append(items, &MyRecord{ID: 1, Txt: "test - 2"})
 
-		obj2, err := recordObjType.NewObject()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer obj2.Close()
-		items = append(items, &MyRecord{ID: 2, Txt: "test - 4", Object: obj2})
+		items = append(items, &MyRecord{ID: 2, Txt: "test - 4"})
 
 		for tName, tCase := range map[string]struct {
 			want MyTable
@@ -676,17 +678,15 @@ func TestPlSqlTypes(t *testing.T) {
 			"two": {want: MyTable{Items: items}},
 		} {
 
-			obj, err := tableObjType.NewObject()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer obj.Close()
-
-			tb := MyTable{ObjectCollection: obj.Collection(), Items: tCase.want.Items, conn: conn}
+			tb := MyTable{Items: tCase.want.Items}
 			params := []any{
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
+			godror.EnableDbmsOutput(ctx, cx)
 			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
+			var buf strings.Builder
+			godror.ReadDbmsOutput(ctx, &buf, cx)
+			t.Log("DBMS_OUTPUT:", buf.String())
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 30757 {
@@ -701,6 +701,7 @@ func TestPlSqlTypes(t *testing.T) {
 				for i := 0; i < len(tb.Items); i++ {
 					got := tb.Items[i]
 					want := tCase.want.Items[i]
+					t.Logf("got %#v", got)
 					if got.ID != want.ID {
 						t.Errorf("%s: record ID got %v, wanted %v", tName, got.ID, want.ID)
 					}
@@ -791,6 +792,10 @@ func TestSelectObjectTable(t *testing.T) {
 	}
 }
 
+const epochS = "2025-12-29 20:03:42"
+
+var epoch, _ = time.ParseInLocation("2006-01-02 15:04:05", epochS, time.Local)
+
 func TestFuncBool(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("FuncBool"), 3*time.Second)
@@ -876,7 +881,7 @@ END;`
     p_obj(v_idx).num := 314/100;
 	p_obj(v_idx).vc  := 'abraka';
 	p_obj(v_idx).c   := 'X';
-	p_obj(v_idx).dt  := SYSDATE;
+	p_obj(v_idx).dt  := TO_DATE('` + epochS + `', 'YYYY-MM-DD HH24:MI:SS');
   END modify;
 END;`
 	if err = prepExec(ctx, testCon, crea); err != nil {
@@ -2392,29 +2397,36 @@ END;`,
 	t.Log(resp)
 }
 
-type RatePlan struct {
-	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_tt" json:"-"`
-	RateCodes             []RateCode `json:"rateCodes"`
-}
+type (
+	RatePlan struct {
+		// godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_tt" json:"-"`
+		RateCodes []RateCode `json:"rateCodes"`
+	}
 
-type RateCode struct {
-	godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_rt" json:"-"`
-	RateCodeId            int    `godror:"RATECODE_ID" json:"rateCodeId" db:"RATECODE_ID"`
-	RateCode              string `json:"rateCode" db:"RATECODE"`
-	RateCodeName          string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
-	RateStucture          string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
-}
+	RateCode struct {
+		// godror.ObjectTypeName `godror:"test_aor_pkg.test_aor_rt" json:"-"`
+		RateCodeId   int    `godror:"RATECODE_ID" json:"rateCodeId" db:"RATECODE_ID"`
+		RateCode     string `json:"rateCode" db:"RATECODE"`
+		RateCodeName string `godror:"RATECODE_NAME" json:"rateCodeName" db:"RATECODE_NAME"`
+		RateStucture string `godror:"RATE_STRUCTURE" json:"rateStucture" db:"RATE_STRUCTURE"`
+	}
 
-type parentObject struct {
-	godror.ObjectTypeName `godror:"test_parent_ot"`
-	ID                    int         `godror:"ID"`
-	Child                 childObject `godror:"CHILD"`
-}
-type childObject struct {
-	godror.ObjectTypeName `godror:"test_child_ot"`
-	ID                    int    `godror:"ID"`
-	Name                  string `godror:"NAME"`
-}
+	parentObject struct {
+		// godror.ObjectTypeName `godror:"test_parent_ot"`
+		ID    int         `godror:"ID"`
+		Child childObject `godror:"CHILD"`
+	}
+	childObject struct {
+		// godror.ObjectTypeName `godror:"test_child_ot"`
+		ID   int    `godror:"ID"`
+		Name string `godror:"NAME"`
+	}
+)
+
+func (RatePlan) ObjectTypeName() string     { return "test_aor_pkg.test_aor_tt" }
+func (RateCode) ObjectTypeName() string     { return "test_aor_pkg.test_aor_rt" }
+func (parentObject) ObjectTypeName() string { return "test_parent_ot" }
+func (childObject) ObjectTypeName() string  { return "test_child_ot" }
 
 func TestIssue319(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Issue319"), 10*time.Second)
@@ -2496,6 +2508,14 @@ END;`,
 	}
 }
 
+type clob struct {
+	// godror.ObjectTypeName `godror:"test_clob_ot"`
+	Id    float64 `godror:"ID"`
+	Value string  `godror:"VALUE"`
+}
+
+func (clob) ObjectTypeName() string { return "test_clob_ot" }
+
 func TestObjLobClose(t *testing.T) {
 	const dropQry = `DROP TYPE test_clob_ot`
 	cleanup := func() { testDb.ExecContext(context.Background(), dropQry) }
@@ -2526,12 +2546,6 @@ func TestObjLobClose(t *testing.T) {
 
 		_, err = stmt.ExecContext(ctx, variables...)
 		return err
-	}
-
-	type clob struct {
-		godror.ObjectTypeName `godror:"test_clob_ot"`
-		Id                    float64 `godror:"ID"`
-		Value                 string  `godror:"VALUE"`
 	}
 
 	testConnectInClob := func(ctx context.Context, db *sql.DB, i float64) {
@@ -2596,33 +2610,40 @@ func TestObjLobClose(t *testing.T) {
 	}
 }
 
-type I323Child struct {
-	godror.ObjectTypeName `godror:"I323CHILD"`
-	ID                    float64 `godror:"ID" json:"id"`
-	Name                  string  `godror:"NAME" json:"name"`
-}
+type (
+	I323Child struct {
+		// godror.ObjectTypeName `godror:"I323CHILD"`
+		ID   float64 `godror:"ID" json:"id"`
+		Name string  `godror:"NAME" json:"name"`
+	}
 
-type I323ChildArray struct {
-	godror.ObjectTypeName
-	ChildArray []I323Child `godror:",type=I323CHILDARRAY" json:"childArray"`
-}
+	I323ChildArray struct {
+		// godror.ObjectTypeName
+		ChildArray []I323Child `godror:",type=I323CHILDARRAY" json:"childArray"`
+	}
 
-type I323Parent struct {
-	godror.ObjectTypeName `godror:"I323PARENT"`
-	Id                    float64        `godror:"ID" json:"id"`
-	Name                  string         `godror:"NAME" json:"name"`
-	ChildArray            I323ChildArray `godror:",type=I323CHILDARRAY"`
-}
+	I323Parent struct {
+		// godror.ObjectTypeName `godror:"I323PARENT"`
+		Id         float64        `godror:"ID" json:"id"`
+		Name       string         `godror:"NAME" json:"name"`
+		ChildArray I323ChildArray `godror:",type=I323CHILDARRAY"`
+	}
 
-type I323ParentArray struct {
-	godror.ObjectTypeName
-	ParentArray []I323Parent `godror:",type=I323PARENTARRAY" json:"parentArray"`
-}
+	I323ParentArray struct {
+		// godror.ObjectTypeName
+		ParentArray []I323Parent `godror:",type=I323PARENTARRAY" json:"parentArray"`
+	}
 
-type I323Grand struct {
-	godror.ObjectTypeName `godror:"I323GRAND"`
-	ParentArray           I323ParentArray `godror:",type=I323PARENTARRAY"`
-}
+	I323Grand struct {
+		// godror.ObjectTypeName `godror:"I323GRAND"`
+		ParentArray I323ParentArray `godror:",type=I323PARENTARRAY"`
+	}
+)
+
+func (I323Child) ObjectTypeName() string      { return "I323CHILD" }
+func (I323ChildArray) ObjectTypeName() string { return "I323CHILDARRAY" }
+func (I323Parent) ObjectTypeName() string     { return "I3232PARENT" }
+func (I323Grand) ObjectTypeName() string      { return "I323GRAND" }
 
 func TestIssue323(t *testing.T) {
 	drop := func() {

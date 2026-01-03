@@ -1,4 +1,4 @@
-// Copyright 2017, 2023 The Godror Authors
+// Copyright 2017, 2025 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"reflect"
 	"runtime"
 	"sort"
@@ -336,6 +337,7 @@ type statement struct {
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
+	tbc      []io.Closer
 	stmtOptions
 	arrLen      int
 	dpiStmtInfo C.dpiStmtInfo
@@ -361,7 +363,7 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 		return nil
 	}
 
-	c, dpiStmt, vars := st.conn, st.dpiStmt, st.vars
+	c, dpiStmt, vars, tbc := st.conn, st.dpiStmt, st.vars, st.tbc
 	st.vars = nil
 	st.isSlice = nil
 	st.query = ""
@@ -374,6 +376,7 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
+	st.tbc = nil
 
 	if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
@@ -387,6 +390,9 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 		if v != nil {
 			C.dpiVar_release(v)
 		}
+	}
+	for _, cl := range tbc {
+		cl.Close()
 	}
 	if dpiStmt.refCount > 0 {
 		C.dpiStmt_release(dpiStmt)
@@ -421,12 +427,6 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 		nargs[i].Value = arg
 	}
 	return st.QueryContext(context.Background(), nargs)
-}
-
-func newDoneCh() (<-chan struct{}, func()) {
-	done := make(chan struct{})
-	var once sync.Once
-	return done, func() { once.Do(func() { close(done) }) }
 }
 
 // ExecContext executes a query that doesn't return rows, such as an INSERT or UPDATE.
@@ -500,6 +500,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil, closeIfBadConn(err)
 		}
 	}
+
+	defer func() {
+		for _, cl := range st.tbc {
+			cl.Close()
+		}
+		st.tbc = st.tbc[:0]
+	}()
 
 	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
@@ -666,6 +673,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		return nil, batchErrors
 	}
+
 	return driver.RowsAffected(count), batchErrors
 }
 
@@ -736,6 +744,12 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err = st.bindVars(ctx, args, logger); err != nil {
 		return nil, closeIfBadConn(err)
 	}
+	defer func() {
+		for _, cl := range st.tbc {
+			cl.Close()
+		}
+		st.tbc = st.tbc[:0]
+	}()
 
 	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
@@ -1400,13 +1414,37 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			*get = st.dataGetObject
 		}
 
-	case userType:
-		info.objType = v.ObjectRef().ObjectType.dpiObjectType
+	case ObjectCollection:
+		info.objType = v.ObjectType.dpiObjectType
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
 		info.set = st.dataSetObject
 		if info.isOut {
 			*get = st.dataGetObject
 		}
+
+	case ObjectWriter:
+		ot, err := st.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return value, err
+		}
+		info.objType = ot.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+	case ObjectCollectionWriter:
+		ot, err := st.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return value, err
+		}
+		info.objType = ot.dpiObjectType
+		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
+		info.set = st.dataSetObject
+		if info.isOut {
+			*get = st.dataGetObject
+		}
+
 	case JSON:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON
 		info.set = st.conn.dataSetJSON
@@ -1480,25 +1518,8 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 				return value, nil
 			}
 
-			if ot, err := st.conn.getStructObjectType(ctx, value, ""); err != nil {
-				if logger != nil {
-					logger.Error("getStructObjectType", "value", fmt.Sprintf("%T", value), "error", err)
-				}
-				if !errors.Is(err, errUnknownType) {
-					return value, err
-				}
-			} else {
-				info.objType = ot.dpiObjectType
-				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_OBJECT, C.DPI_NATIVE_TYPE_OBJECT
-				info.set = func(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
-					return st.dataSetObjectStruct(ctx, ot, dv, &data[0], vv)
-				}
-				if info.isOut {
-					*get = func(ctx context.Context, v any, data []C.dpiData) error {
-						return st.dataGetObjectStruct(ctx, ot, v, data)
-					}
-				}
-				return value, nil
+			if logger != nil {
+				logger.Error("unknown type", "value", fmt.Sprintf("%T", value))
 			}
 			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}
@@ -2837,23 +2858,55 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	return nil
 }
 
-type userType interface {
-	ObjectRef() *Object
+type (
+	// ObjectTypeNamer is an interface that provides the Object's type name. It is used to allow get/set an Object in a Stmt argument.
+
+	ObjectTypeNamer interface {
+		// ObjectTypeName returns the ObjectType's name to be able to create the Object.
+		ObjectTypeName() string
+	}
+
+	// ObjectScanner assigns a value from a database object
+	ObjectScanner interface {
+		sql.Scanner
+		ObjectTypeNamer
+	}
+
+	// ObjectWriter update database object before binding
+	ObjectWriter interface {
+		ObjectTypeNamer
+		// WriteObject writes the data to the Object.
+		WriteObject(*Object) error
+	}
+
+	// ObjectCollectionWriter allows writing an ObjectCollection from something iterable.
+	ObjectCollectionWriter interface {
+		ObjectTypeNamer
+		Iter() iter.Seq[ObjectWriter]
+	}
+
+	objCollWriter struct {
+		ObjectTypeNamer
+		Iter iter.Seq[ObjectWriter]
+	}
+)
+
+// SliceToObjeCollWriter returns an ObjectCollectionWriter from a slice (and ObjectTypeNamer) of ObjectWriters.
+func SliceToObjCollWriter[E ObjectWriter, T interface {
+	ObjectTypeNamer
+	[]E
+}](slice T) objCollWriter {
+	return objCollWriter{ObjectTypeNamer: slice,
+		Iter: func(yield func(ObjectWriter) bool) {
+			for _, item := range slice {
+				if !yield(item) {
+					break
+				}
+			}
+		}}
 }
 
-// ObjectScanner assigns a value from a database object
-type ObjectScanner interface {
-	sql.Scanner
-	userType
-}
-
-// ObjectWriter update database object before binding
-type ObjectWriter interface {
-	WriteObject() error
-	userType
-}
-
-func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
+func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
 		return nil
@@ -2861,38 +2914,82 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
-	objs := []Object{{}}
-	switch o := vv.(type) {
+	objs := []*Object{{}}
+	switch v := vv.(type) {
 	case Object:
-		objs[0] = o
+		objs[0] = &v
 	case *Object:
-		objs[0] = *o
+		objs[0] = v
+
 	case []Object:
-		objs = o
-	case []*Object:
-		objs = make([]Object, len(o))
-		for i, x := range o {
-			objs[i] = *x
+		objs = make([]*Object, len(v))
+		for i, x := range v {
+			objs[i] = &x
 		}
+	case []*Object:
+		objs = v
+
 	case ObjectWriter:
-		err := o.WriteObject()
+		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
-		objs[0] = *o.ObjectRef()
+		o, err := ot.NewObject()
+		if err != nil {
+			return err
+		}
+		if err := v.WriteObject(o); err != nil {
+			return err
+		}
+		// fmt.Printf("ObjectWriter v=%#v o=%v\n", v, o)
+		objs[0] = o
+
 	case []ObjectWriter:
-		for _, ut := range o {
-			err := ut.WriteObject()
+		var ot *ObjectType
+		for _, ut := range v {
+			if ot == nil {
+				var err error
+				if ot, err = stmt.conn.GetObjectType(ut.ObjectTypeName()); err != nil {
+					return err
+				}
+			}
+			o, err := ot.NewObject()
 			if err != nil {
 				return err
 			}
-			objs = append(objs, *ut.ObjectRef())
+			if err := ut.WriteObject(o); err != nil {
+				return err
+			}
+			objs = append(objs, o)
 		}
-	case userType:
-		objs[0] = *o.ObjectRef()
-	case []userType:
-		for _, ut := range o {
-			objs = append(objs, *ut.ObjectRef())
+
+	case ObjectCollectionWriter:
+		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
+		if err != nil {
+			return err
+		}
+		o, err := ot.NewObject()
+		if err != nil {
+			return err
+		}
+		coll := ObjectCollection{o}
+		objs[0] = o
+		ot = nil
+		for item := range v.Iter() {
+			if ot == nil {
+				if ot, err = stmt.conn.GetObjectType(item.ObjectTypeName()); err != nil {
+					return err
+				}
+			}
+			if o, err = ot.NewObject(); err != nil {
+				return err
+			}
+			if err = item.WriteObject(o); err != nil {
+				return err
+			}
+			if err = coll.Append(o); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -2902,208 +2999,16 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 			continue
 		}
 		data[i].isNull = 0
-		if err := c.checkExec(func() C.int {
+		if err := stmt.conn.checkExec(func() C.int {
 			return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
 		}); err != nil {
 			return fmt.Errorf("setFromObject: %w", err)
 		}
-		obj.Close()
+		// Cannot close it before use (exec)
+		// obj.Close()
+		stmt.tbc = append(stmt.tbc, obj)
 	}
 	return nil
-}
-
-// dataSetObjectStructObj creates an ot typed object from rv.
-func (c *conn) dataSetObjectStructObj(ctx context.Context, ot *ObjectType, rv reflect.Value) (*Object, error) {
-	logger := getLogger(ctx)
-	rvt := rv.Type()
-	if rvt.Kind() == reflect.Pointer {
-		rv, rvt = rv.Elem(), rvt.Elem()
-	}
-	if rv.IsZero() {
-		return nil, nil
-	}
-	wrappedSlice := ot.CollectionOf != nil && rvt.Kind() == reflect.Struct
-	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("dataSetObjectStructObj", "ot", ot.FullName(), "rvt", rvt, "kind", rvt.Kind(), "wrappedSlice", wrappedSlice)
-	}
-	if wrappedSlice {
-		for i, n := 0, rvt.NumField(); i < n; i++ {
-			f := rvt.Field(i)
-			if !f.IsExported() || fieldIsObjectTypeName(f) {
-				continue
-			}
-			rv = rv.FieldByIndex(f.Index)
-			rvt = rv.Type()
-			break
-		}
-	}
-	switch rvt.Kind() {
-	case reflect.Slice:
-		coll, err := ot.NewCollection()
-		if err != nil {
-			return nil, err
-		}
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("dataSetObjectStructObj", "collection", coll)
-		}
-		if !ot.CollectionOf.IsObject() {
-			for i, n := 0, rv.Len(); i < n; i++ {
-				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-					logger.Debug("dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
-				}
-				if err := coll.Append(rv.Index(i).Interface()); err != nil {
-					coll.Close()
-					return nil, fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
-				}
-			}
-		} else {
-			for i, n := 0, rv.Len(); i < n; i++ {
-				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-					logger.Debug("dataSetObjectStructObj", "i", i, "collectionOf", ot.CollectionOf, "elt", rv.Index(i).Interface())
-				}
-				sub, err := c.dataSetObjectStructObj(ctx, ot.CollectionOf, rv.Index(i))
-				if err != nil {
-					coll.Close()
-					return nil, fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
-				}
-				err = coll.AppendObject(sub)
-				sub.Close()
-				if err != nil {
-					coll.Close()
-					return nil, err
-				}
-			}
-		}
-		return coll.Object, nil
-
-	case reflect.Struct:
-		if ot.CollectionOf != nil {
-			for i, n := 0, rvt.NumField(); i < n; i++ {
-				f := rvt.Field(i)
-				if !f.IsExported() || fieldIsObjectTypeName(f) {
-					continue
-				}
-				rf := rv.FieldByIndex(f.Index)
-				// we must find the slice in the struct
-				if f.Type.Kind() != reflect.Slice {
-					continue
-				}
-				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-					logger.Debug("dataSetObjectStructObj", "sliceInStruct", f.Name, "ot", ot.FullName(), "rf", rf.Interface())
-				}
-				return c.dataSetObjectStructObj(ctx, ot, rf)
-			}
-		}
-
-		obj, err := ot.NewObject()
-		if err != nil || obj == nil {
-			return nil, err
-		}
-		ad := scratch.Get()
-		defer scratch.Put(ad)
-		for i, n := 0, rvt.NumField(); i < n; i++ {
-			f := rvt.Field(i)
-			if !f.IsExported() || fieldIsObjectTypeName(f) {
-				continue
-			}
-			rf := rv.FieldByIndex(f.Index)
-			nm, typ, _ := parseStructTag(f.Tag)
-			if nm == "-" {
-				continue
-			}
-			if nm == "" {
-				nm = strings.ToUpper(f.Name)
-			}
-			attr, ok := obj.Attributes[nm]
-			if !ok {
-				return nil, fmt.Errorf("copy %s to %s.%s: %w (have: %q)",
-					f.Name,
-					obj.Name, nm, ErrNoSuchKey, obj.AttributeNames())
-			}
-			if err := func() error {
-				if !attr.IsObject() {
-					if err := ad.Set(rf.Interface()); err != nil {
-						return fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
-					}
-				} else {
-					ot := attr.ObjectType
-					if ot == nil && typ != "" {
-						var err error
-						if ot, err = c.GetObjectType(typ); err != nil {
-							return err
-						}
-					}
-					if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-						logger.Debug("dataSetObjectStructObj", "name", nm, "tag", f.Tag, "ot", ot, "typ", typ)
-					}
-					sub, err := c.dataSetObjectStructObj(ctx, ot, rf)
-					if err != nil {
-						return err
-					}
-					ad.SetObject(sub)
-					defer sub.Close()
-				}
-				if err := obj.SetAttribute(nm, ad); err != nil {
-					if logger != nil {
-						logger.Error("SetAttribute", "obj", ot.Name, "nm", nm,
-							"index", f.Index, "kind", f.Type.Kind(),
-							"value", rv.Interface(),
-							"isObject", attr.IsObject(),
-							"data", ad.Get(),
-							"dataNative", ad.NativeTypeNum, "dataObject", ad.ObjectType,
-							"attrNative", attr.NativeTypeNum, "dataObject", attr.ObjectType,
-						)
-					}
-					return fmt.Errorf("SetAttribute(%q): %w", nm, err)
-				}
-				return nil
-			}(); err != nil {
-				return nil, err
-			}
-		}
-		return obj, nil
-
-	default:
-		return nil, fmt.Errorf("%T: not a struct or a slice: %w", rv.Interface(), errUnknownType)
-	}
-}
-
-// dataSetObjectStruct reads from vv, writes it to an ot typed object, and puts it into data.
-func (c *conn) dataSetObjectStruct(ctx context.Context, ot *ObjectType, dv *C.dpiVar, data *C.dpiData, vv any) error {
-	if ot == nil {
-		panic("dataSetObjectStruct with nil ObjectType")
-	}
-	logger := getLogger(ctx)
-	rv := reflect.ValueOf(vv)
-	if rv.Type().Kind() == reflect.Pointer {
-		rv = rv.Elem()
-	}
-	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("dataSetObjectStruct", "v", fmt.Sprintf("%T", vv))
-	}
-	if vv == nil || rv.IsZero() {
-		return nil
-	}
-	obj, err := c.dataSetObjectStructObj(ctx, ot, rv)
-	if err != nil {
-		return err
-	}
-	defer obj.Close()
-
-	if obj.dpiObject == nil {
-		data.isNull = 1
-		return nil
-	}
-	data.isNull = 0
-	if err := c.checkExec(func() C.int {
-		return C.dpiVar_setFromObject(dv, C.uint32_t(0), obj.dpiObject)
-	}); err != nil {
-		if logger != nil {
-			logger.Error("setFromObject", "i", 0, "dv", dv, "obj", obj, "error", err)
-		}
-		return fmt.Errorf("setFromObject[%d]: %w", 0, err)
-	}
-	return obj.Close()
 }
 
 func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error {
@@ -3146,7 +3051,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 
 	case ObjectScanner:
-		ot := out.ObjectRef().ObjectType
+		ot, err := c.GetObjectType(out.ObjectTypeName())
+		if err != nil {
+			return err
+		}
+		// fmt.Printf("ObjectScanner ot: %s=%#v\n", out.ObjectTypeName(), ot)
 		d := Data{
 			ObjectType:    ot,
 			dpiData:       data[0],
@@ -3154,10 +3063,13 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 		obj := d.GetObject()
 		// fmt.Printf("data: %#v t=%v obj=%#v\n", d, d.Get(), obj)
+		if obj == nil {
+			fmt.Printf("ObjectScanner.GetObject(%#v of %s) is nil (%d:%#v)\n", d, ot, ot.NativeTypeNum, d.Get())
+		}
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
 		}
-		err := out.Scan(obj)
+		err = out.Scan(obj)
 		obj.Close()
 		return err
 
@@ -3166,364 +3078,6 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 	}
 
 	return nil
-}
-
-// dataGetObjectStructObj reads an object and writes it to rv.
-func (c *conn) dataGetObjectStructObj(ctx context.Context, rv reflect.Value, obj *Object) error {
-	logger := getLogger(ctx)
-	rvt := rv.Type()
-
-	if obj == nil {
-		if rv.CanSet() {
-			rv.SetZero()
-		} else {
-			rv.Addr().SetZero()
-		}
-		return nil
-	}
-	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("dataGetObjectStructObj", "kind", rvt.Kind(), "collectionOf", obj.CollectionOf)
-	}
-	ad := scratch.Get()
-	defer scratch.Put(ad)
-	if obj.CollectionOf != nil && rvt.Kind() == reflect.Slice {
-		coll := obj.Collection()
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			length, _ := coll.Len()
-			logger.Debug("dataGetObjectStructObj", "length", length, "cap", rv.Cap())
-		}
-		orig := rv
-		if n, _ := coll.Len(); n > rv.Cap() {
-			rv.Grow(n)
-		}
-		rv.SetLen(0)
-		first := true
-		re := reflect.New(rvt.Elem()).Elem()
-		ret := re.Type()
-		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return err
-			}
-			if first {
-				first = false
-				length, err := coll.Len()
-				if err != nil {
-					return err
-				}
-				if true || rv.Cap() < length { // Forcing new slice helps #323
-					rv = reflect.MakeSlice(rvt, 0, length)
-				}
-			}
-			if err := coll.GetItem(ad, i); err != nil {
-				return err
-			}
-			x := ad.Get()
-			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-				logger.Debug("coll.GetItem", "i", i, "x", x, "x.type", fmt.Sprintf("%T", x))
-			}
-			switch x := x.(type) {
-			case *Object:
-				err := c.dataGetObjectStructObj(ctx, re, x)
-				x.Close()
-				if err != nil {
-					return err
-				}
-			default:
-				ev := reflect.ValueOf(x)
-				if ev.Type() != ret {
-					ev = ev.Convert(ret)
-				}
-				re.Set(ev)
-				if c, ok := x.(io.Closer); ok {
-					c.Close()
-				}
-			}
-			rv = reflect.Append(rv, re)
-		}
-		orig.Set(rv)
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			length, _ := coll.Len()
-			logger.Debug("dataGetObjectStructObj", "coll", length, "rv", orig.Len())
-		}
-		return nil
-	}
-
-Loop:
-	for i, n := 0, rvt.NumField(); i < n; i++ {
-		f := rvt.Field(i)
-		if !f.IsExported() || fieldIsObjectTypeName(f) {
-			continue
-		}
-		rf := rv.FieldByIndex(f.Index)
-		if obj.CollectionOf != nil {
-			// we must find the slice in the struct
-			if f.Type.Kind() != reflect.Slice {
-				continue
-			}
-			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-				logger.Debug("dataGetObjectStructObj", "field", f)
-			}
-			return c.dataGetObjectStructObj(ctx, rf, obj)
-		}
-		nm, typ, _ := parseStructTag(f.Tag)
-		if nm == "-" {
-			continue
-		}
-		fieldTag := typ
-		if fieldTag == "" {
-			fieldTag = nm
-		}
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("dataGetObjectStruct", "fieldTag", fieldTag, "nm", nm, "tag", f.Tag, "name", f.Name)
-		}
-
-		if nm == "" {
-			nm = strings.ToUpper(f.Name)
-		}
-		if err := obj.GetAttribute(ad, nm); err != nil {
-			return fmt.Errorf("GetAttribute(%q): %w", nm, err)
-		}
-		if ad.IsNull() {
-			rf.SetZero()
-			continue
-		}
-		x := ad.Get()
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("dataGetObjectStructObj.GetAttribute", "name", nm, "x", x, "x.type", fmt.Sprintf("%T", x))
-		}
-		switch v := x.(type) {
-		case time.Time:
-			rf.Set(reflect.ValueOf(v))
-		case *Object:
-			err := c.dataGetObjectStructObj(ctx, rf, v)
-			v.Close()
-			if err != nil {
-				return err
-			}
-			continue Loop
-		case string:
-			if rf.Kind() == reflect.String {
-				rf.SetString(v)
-			} else {
-				rf.SetBytes([]byte(v))
-			}
-		case []byte:
-			if rf.Kind() == reflect.String {
-				rf.SetString(string(v))
-			} else {
-				rf.SetBytes(v)
-			}
-		case *Lob:
-			var buf bytes.Buffer
-			if v != nil && v.Reader != nil {
-				if _, err := buf.ReadFrom(v.Reader); err != nil {
-					return fmt.Errorf("GetLobAttribute(%q): %w", nm, err)
-				}
-			}
-			if c, ok := x.(io.Closer); ok {
-				c.Close()
-			} else if c, ok := v.Reader.(io.Closer); ok {
-				c.Close()
-			}
-			if rf.Kind() == reflect.String {
-				rf.SetString(buf.String())
-			} else {
-				rf.SetBytes(buf.Bytes())
-			}
-		default:
-			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-				logger.Debug("set", "src", fmt.Sprintf("%#v", v), "dst", rf)
-			}
-			switch vv := reflect.ValueOf(v); vv.Kind() {
-			case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				switch null := rf.Addr().Interface().(type) {
-				case *sql.NullInt32:
-					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetUint64())}
-				case *sql.NullInt64:
-					*null = sql.NullInt64{Valid: true, Int64: int64(ad.GetUint64())}
-				}
-				rf.SetUint(ad.GetUint64())
-			case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
-				switch null := rf.Addr().Interface().(type) {
-				case *sql.NullInt32:
-					*null = sql.NullInt32{Valid: true, Int32: int32(ad.GetInt64())}
-				case *sql.NullInt64:
-					*null = sql.NullInt64{Valid: true, Int64: ad.GetInt64()}
-				default:
-					rf.SetInt(ad.GetInt64())
-				}
-			case reflect.Float32:
-				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
-					*null = sql.NullFloat64{Valid: true, Float64: float64(ad.GetFloat32())}
-				} else {
-					rf.SetFloat(float64(ad.GetFloat32()))
-				}
-			case reflect.Float64:
-				if null, ok := rf.Addr().Interface().(*sql.NullFloat64); ok {
-					*null = sql.NullFloat64{Valid: true, Float64: ad.GetFloat64()}
-				} else {
-					rf.SetFloat(ad.GetFloat64())
-				}
-			default:
-				// TODO: slice/Collection of sth
-				if kind := vv.Kind(); kind == reflect.Struct || (kind == reflect.Pointer && vv.Elem().Kind() == reflect.Struct) {
-					if err := c.dataGetObjectStruct(ctx, obj.ObjectType.Attributes[nm].ObjectType, v, []C.dpiData{ad.dpiData}); err != nil {
-						return err
-					}
-				} else if kind == reflect.Slice &&
-					(vv.Elem().Kind() == reflect.Struct || (vv.Elem().Kind() == reflect.Pointer && vv.Elem().Elem().Kind() == reflect.Struct)) {
-					ot, err := c.getStructObjectType(ctx, v, fieldTag)
-					if err != nil {
-						return err
-					}
-					if err := c.dataGetObjectStruct(ctx, ot, v, []C.dpiData{ad.dpiData}); err != nil {
-						return err
-					}
-				} else {
-					if f.Type != vv.Type() {
-						vv = vv.Convert(f.Type)
-					}
-					rf.Set(vv)
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// dataGetObjectStruct reads the object from data and writes it to v.
-func (c *conn) dataGetObjectStruct(ctx context.Context, ot *ObjectType, v any, data []C.dpiData) error {
-	logger := getLogger(ctx)
-	// Pointer to a struct with ObjectTypeName field and optional "godror" struct tags for struct field-object attribute mapping.
-	rv := reflect.ValueOf(v)
-	rvt := rv.Type()
-	if rvt.Kind() == reflect.Pointer {
-		rv, rvt = rv.Elem(), rvt.Elem()
-	}
-	if kind := rvt.Kind(); kind != reflect.Struct && kind != reflect.Slice {
-		return fmt.Errorf("dataGetObjectStruct: not a struct or slice: %T: %w", v, errUnknownType)
-	}
-	for _, dt := range data {
-		d := Data{
-			ObjectType:    ot,
-			dpiData:       dt,
-			NativeTypeNum: ot.NativeTypeNum,
-		}
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("dataGetObjectStruct", "v", fmt.Sprintf("%T", v), "d", d)
-		}
-		obj := d.GetObject()
-		switch v.(type) {
-		case time.Time, *time.Time:
-			if obj != nil {
-				obj.Close()
-			}
-			rv.Set(reflect.ValueOf(d.GetTime()))
-			return nil
-		}
-		err := c.dataGetObjectStructObj(ctx, rv, obj)
-		if obj != nil {
-			obj.Close()
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ObjectTypeName is for allowing reflection-based Object - struct mapping.
-//
-// Include an ObjectTypeName in your struct, and set the "godror" struct tag to the type name.
-type ObjectTypeName struct{}
-
-func parseStructTag(s reflect.StructTag) (tag, typ string, opts map[string]string) {
-	tag = s.Get(StructTag)
-	if strings.IndexByte(tag, ',') < 0 {
-		return tag, typ, opts
-	}
-	vv := strings.Split(tag, ",")
-	tag, vv = vv[0], vv[1:]
-	for _, s := range vv {
-		var ok bool
-		if typ, ok = strings.CutPrefix(s, "type="); ok {
-			continue
-		}
-		if i := strings.IndexByte(s, '='); i >= 0 {
-			if opts == nil {
-				opts = make(map[string]string, len(vv))
-			}
-			opts[s[:i]] = s[i+1:]
-		}
-	}
-	return tag, typ, opts
-}
-
-// StructTag is the prefix that tags godror-specific struct fields
-const StructTag = "godror"
-
-func (c *conn) getStructObjectType(ctx context.Context, v any, fieldTag string) (*ObjectType, error) {
-	logger := getLogger(ctx)
-	rvt := reflect.ValueOf(v).Type()
-	if rvt.Kind() == reflect.Pointer {
-		rvt = rvt.Elem()
-	}
-	switch rvt.Kind() {
-	case reflect.Slice:
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("getStructObjectType", "fieldTag", fieldTag)
-		}
-		return c.GetObjectType(fieldTag)
-
-	case reflect.Struct:
-		var otFt reflect.StructField
-		var ok bool
-		for i, n := 0, rvt.NumField(); i < n; i++ {
-			f := rvt.Field(i)
-			if fieldIsObjectTypeName(f) {
-				otFt, ok = f, true
-				break
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("no ObjectTypeName field found: %w", errUnknownType)
-		}
-		var otName string
-		if s := otFt.Tag; s.Get(StructTag) != "" {
-			otName, _, _ = parseStructTag(s)
-		} else {
-			for i, n := 0, rvt.NumField(); i < n; i++ {
-				f := rvt.Field(i)
-				if fieldIsObjectTypeName(f) {
-					continue
-				}
-				if f.Type.Kind() == reflect.Slice {
-					_, otName, _ = parseStructTag(f.Tag)
-					break
-				}
-			}
-		}
-		if otName == "" {
-			return nil, fmt.Errorf("%T: no ObjectTypeName specified: %w", v, errUnknownType)
-		}
-		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-			logger.Debug("parseStructTag", "name", otName)
-		}
-		return c.GetObjectType(otName)
-
-	default:
-		return nil, fmt.Errorf("getStructObjectType: %T: not a struct: %w", v, errUnknownType)
-	}
-}
-
-var otnType = reflect.TypeOf(ObjectTypeName{})
-
-func fieldIsObjectTypeName(f reflect.StructField) bool {
-	const otnName = "ObjectTypeName"
-	return f.Name == otnName || f.Type == otnType
 }
 
 func (c *conn) dataGetJSON(ctx context.Context, v any, data []C.dpiData) error {
