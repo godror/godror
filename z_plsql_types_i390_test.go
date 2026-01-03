@@ -44,9 +44,17 @@ type (
 	}
 )
 
-func (i390Pair) ObjectTypeName() string         { return "pair" }
-func (i390PobjStruct) ObjectTypeName() string   { return "pobj" }
+func (i390Pair) ObjectTypeName() string       { return "pair" }
+func (i390PobjStruct) ObjectTypeName() string { return "pobj" }
+func (os i390PobjStruct) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &os)
+}
+func (os *i390PobjStruct) Scan(v any) error     { return godror.StructScan(os, v) }
 func (i390PsliceStruct) ObjectTypeName() string { return "pobj_t" }
+func (ss i390PsliceStruct) WriteObject(o *godror.Object) error {
+	return godror.SliceWriteObject(o, ss.ObjSlice)
+}
+func (ss i390PsliceStruct) Scan(v any) error { return godror.SliceScan(&ss.ObjSlice, v) }
 
 func testPlSqlNestedObj(t *testing.T, step int) {
 	if step < 2 {
@@ -180,7 +188,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		}
 		t.Logf("%s: %d; process memory (rss): %.3f MiB\n", t.Name(), loopCnt, float64(rss)/MiB)
 		if start, ok := startMem[t.Name()]; ok && rss > start*2 {
-			t.Errorf("%s: started with RSS %d, got %d (%.3f%%)",
+			t.Fatalf("%s: started with RSS %d, got %d (%.3f%%)",
 				t.Name(),
 				startMem[t.Name()]/MiB, rss/MiB, float64(rss*100)/float64(startMem[t.Name()]))
 		} else {
@@ -261,6 +269,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 			dl := time.Now().Add(dur)
 			loopCnt = 0
 			t.Logf("dl: %v dur:%v", dl, dur)
+			var lastPrint time.Time
 			for ; time.Now().Before(dl); loopCnt++ {
 				if err := callObjectType(ctx, testDb, dir); err != nil {
 					t.Fatal("callObjectType:", err)
@@ -274,10 +283,12 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 					if startMem[t.Name()], err = readMem(pid); err != nil {
 						t.Fatal(err)
 					}
+					continue
 				}
-
-				if loopCnt%step == 0 {
+				now := time.Now()
+				if lastPrint.Before(now.Add(-2 * time.Second)) {
 					printStats(t)
+					lastPrint = now
 				}
 			}
 			printStats(t)

@@ -54,7 +54,7 @@ func (r *MyRecord) Scan(src any) error {
 	}
 	r.ID, r.Txt, r.DT, r.AClob = 0, "", time.Time{}, ""
 	if obj == nil {
-		fmt.Printf("MyRecord.Scan %#v\n", src)
+		// fmt.Printf("MyRecord.Scan %#v\n", src)
 		return nil
 	}
 	id, err := obj.Get("ID")
@@ -93,7 +93,7 @@ func (r *MyRecord) Scan(src any) error {
 // Implement this method if you need the record as an input parameter.
 func (r MyRecord) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	fmt.Printf("MyRecord.WriteObject(%p ID=%d)\n", o, r.ID)
+	// fmt.Printf("MyRecord.WriteObject(%p ID=%d)\n", o, r.ID)
 	err := o.ResetAttributes()
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func (t MyTable) ObjectTypeName() string { return "TEST_PKG_TYPES.MY_TABLE" }
 func (t *MyTable) Scan(src any) error {
 	//fmt.Printf("Scan(%T(%#v))\n", src, src)
 	t.Items = t.Items[:0]
-	fmt.Printf("MyTableScan(%[1]p (%#[1]v))\n", src)
+	// fmt.Printf("MyTableScan(%[1]p (%#[1]v))\n", src)
 	obj, ok := src.(*godror.Object)
 	if !ok {
 		return fmt.Errorf("Cannot scan from type %T", src)
@@ -417,35 +417,35 @@ var (
 
 func (objectStruct) ObjectTypeName() string { return "test_pkg_types.my_record" }
 func (os objectStruct) WriteObject(o *godror.Object) error {
-	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
+	return godror.StructWriteObject(o, &os)
 }
 func (os *objectStruct) Scan(v any) error {
-	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), os).Scan(v)
+	return godror.StructScan(os, v)
 }
 
 func (sliceStruct) ObjectTypeName() string { return "test_pkg_types.my_table" }
 func (ss sliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
-	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.ObjSlice).Iter()
+	return godror.SliceIter(ss.ObjSlice)
 }
 func (os *sliceStruct) Scan(v any) error {
-	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), os).Scan(v)
+	return godror.StructScan(os, v)
 }
 
 func (oshNumberList) ObjectTypeName() string { return "test_pkg_types.number_list" }
 func (os oshNumberList) WriteObject(o *godror.Object) error {
-	return godror.NewSliceCollectionScanWriter(os.ObjectTypeName(), &os.NumberList).WriteObject(o)
+	return godror.SliceWriteObject(o, os.NumberList)
 }
 func (oshStruct) ObjectTypeName() string { return "test_pkg_types.osh_record" }
 func (os oshStruct) WriteObject(o *godror.Object) error {
-	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
+	return godror.StructWriteObject(o, &os)
 }
 
 func (oshSliceStruct) ObjectTypeName() string { return "test_pkg_types.osh_table" }
 func (ss oshSliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
-	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.List).Iter()
+	return godror.SliceIter(ss.List)
 }
 func (ss *oshSliceStruct) Scan(v any) error {
-	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.List).Scan(v)
+	return godror.SliceScan(&ss.List, v)
 }
 
 func TestPlSqlTypes(t *testing.T) {

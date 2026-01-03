@@ -23,7 +23,6 @@ import (
 	"iter"
 	"reflect"
 	"runtime"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1525,32 +1524,18 @@ func (O ObjectCollection) Indexes() iter.Seq2[int, error] {
 	}
 }
 
-// NewStructObjectScanWriter returns an ObjectScanner and ObjectWriter.
-//
-// The strct must be a pointer!
-func NewStructObjectScanWriter[E any, P *E](objectTypeName string, strct P) structObjectScanWriter[E, P] {
-	return structObjectScanWriter[E, P]{objecTypeName: objectTypeName, strct: strct}
+// StructWriteObject helps implementing ObjectWriter: writes the given struct into the given Object.
+func StructWriteObject[E any, P *E](o *Object, strct P) error {
+	return structWriteObject(o, reflect.ValueOf(strct))
 }
 
-type structObjectScanWriter[E any, P *E] struct {
-	objecTypeName string
-	strct         P
-}
-
-func (sow structObjectScanWriter[E, P]) ObjectTypeName() string { return sow.objecTypeName }
-
-// WriteObject writes data from the underlying struct to the Object.
-func (sow structObjectScanWriter[E, P]) WriteObject(o *Object) error {
-	return structWriteObject(o, reflect.ValueOf(sow.strct))
-}
-
-// Scan the Object into the underlying struct.
-func (sow structObjectScanWriter[E, P]) Scan(v any) error {
+// StructScan helps implementing sql.Sanner: copies data from Object to the struct.
+func StructScan[E any, P *E](strct P, v any) error {
 	o, ok := v.(*Object)
 	if !ok {
 		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
 	}
-	return structScanObject(reflect.ValueOf(sow.strct), o)
+	return structScanObject(reflect.ValueOf(strct), o)
 }
 
 type (
@@ -1558,67 +1543,48 @@ type (
 		ObjectCollectionWriter
 		ObjectScanner
 	}
-
-	sliceCollectionScanWriter[E ~int | ~int32 | ~int64 | ~float32 | ~float64 | ~string, T ~[]E, P *T] struct {
-		objectTypeName string
-		pslice         P
-	}
-
-	sliceObjectCollectionScanWriter[E ObjectWriter, T ~[]E, P *T] struct {
-		objectTypeName string
-		pslice         P
-	}
 )
 
-func NewSliceCollectionScanWriter[E ~int | ~int32 | ~int64 | ~float32 | ~float64 | ~string, T ~[]E, P *T](objectTypeName string, pslice P) sliceCollectionScanWriter[E, T, P] {
-	return sliceCollectionScanWriter[E, T, P]{
-		objectTypeName: objectTypeName, pslice: pslice,
-	}
-}
-func (soc sliceCollectionScanWriter[E, T, P]) ObjectTypeName() string { return soc.objectTypeName }
-func (soc sliceCollectionScanWriter[E, T, P]) WriteObject(o *Object) error {
+// SliceWriteObject helps implementing an ObjectWriter for a slice.
+func SliceWriteObject[E any](o *Object, ss []E) error {
 	coll := o.Collection()
 	if err := coll.Trim(0); err != nil {
 		return err
 	}
 	data := scratch.Get()
 	defer scratch.Put(data)
-	for v := range slices.Values(*soc.pslice) {
-		data.Set(v)
+	var ot *ObjectType
+	for _, v := range ss {
+		if ow, ok := any(v).(ObjectWriter); ok {
+			if ot == nil {
+				ot = o.ObjectType.CollectionOf
+			}
+			sub, err := ot.NewObject()
+			if err != nil {
+				return err
+			}
+			if err := ow.WriteObject(sub); err != nil {
+				return err
+			}
+			data.SetObject(sub)
+		} else {
+			data.Set(v)
+		}
 		if err := coll.AppendData(data); err != nil {
 			return err
 		}
 	}
 	return nil
+
 }
 
-func NewSliceObjectCollectionScanWriter[E ObjectWriter, T []E, P *T](objectTypeName string, pslice P) sliceObjectCollectionScanWriter[E, T, P] {
-	return sliceObjectCollectionScanWriter[E, T, P]{objectTypeName: objectTypeName, pslice: pslice}
-}
-
-func (soc sliceCollectionScanWriter[E, T, P]) Scan(v any) error {
-	o, ok := v.(*Object)
-	if !ok {
-		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
-	}
-	coll := o.Collection()
-	data := scratch.Get()
-	defer scratch.Put(data)
-	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
-		if err := coll.GetItem(data, i); err != nil {
-			return err
-		}
-		*soc.pslice = append(*soc.pslice, data.Get().(E))
-	}
-	return nil
-}
-
-func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[ObjectWriter] {
+// SliceIter helps implementing ObjectSliceWriter.
+func SliceIter[E ObjectWriter](ss []E) iter.Seq[ObjectWriter] {
 	return func(yield func(ObjectWriter) bool) {
-		if soc.pslice == nil || len(*soc.pslice) == 0 {
+		if len(ss) == 0 {
 			return
 		}
-		for _, item := range *soc.pslice {
+		for _, item := range ss {
 			if !yield(item) {
 				break
 			}
@@ -1626,7 +1592,8 @@ func (soc sliceObjectCollectionScanWriter[E, T, P]) Iter() iter.Seq[ObjectWriter
 	}
 }
 
-func (soc sliceObjectCollectionScanWriter[E, T, P]) Scan(v any) error {
+// SliceScan helps implementing sql.Scanner for a slice.
+func SliceScan[E any](ss *[]E, v any) error {
 	o, ok := v.(*Object)
 	if !ok {
 		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
@@ -1634,16 +1601,52 @@ func (soc sliceObjectCollectionScanWriter[E, T, P]) Scan(v any) error {
 	coll := o.Collection()
 	data := scratch.Get()
 	defer scratch.Put(data)
-	rsp := reflect.ValueOf(soc.pslice)
+	var z E
+	if _, ok := any(&z).(sql.Scanner); ok {
+		// fmt.Printf("%T is a scanner\n", z)
+		for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
+			if err := coll.GetItem(data, i); err != nil {
+				return err
+			}
+			var e E
+			scn := any(&e).(sql.Scanner)
+			if err := scn.Scan(data.Get()); err != nil {
+				return err
+			}
+			*ss = append(*ss, e)
+		}
+		return nil
+	}
+	// fmt.Printf("%T is NOT a scanner\n", z)
+
+	rsp := reflect.ValueOf(ss)
 	rs := rsp.Elem()
 	rt := rs.Type().Elem()
 	for i, err := coll.First(); err == nil; i, err = coll.Next(i) {
 		if err := coll.GetItem(data, i); err != nil {
 			return err
 		}
+
 		rv := reflect.New(rt).Elem()
-		if err := structScanObject(rv, data.GetObject()); err != nil {
-			return err
+		switch rt.Kind() {
+		case reflect.Bool:
+			rv.SetBool(data.GetBool())
+		case reflect.Float32, reflect.Float64:
+			rv.SetFloat(data.GetFloat64())
+		case reflect.Int, reflect.Int16, reflect.Int32, reflect.Int64:
+			rv.SetInt(data.GetInt64())
+		case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			rv.SetUint(data.GetUint64())
+		case reflect.String:
+			rv.SetString(string(data.GetBytes()))
+		default:
+			if data.IsObject() {
+				if err := structScanObject(rv, data.GetObject()); err != nil {
+					return err
+				}
+			} else {
+				rv.Set(reflect.ValueOf(data.Get()))
+			}
 		}
 		// fmt.Println("sOCSW data:", data, "rv:", rv.Interface())
 		rs = reflect.Append(rs, rv)

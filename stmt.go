@@ -2846,7 +2846,7 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 }
 
 type (
-	// ObjectTypeNamer is an interface that provides the Object's type name.
+	// ObjectTypeNamer is an interface that provides the Object's type name. It is used to allow get/set an Object in a Stmt argument.
 
 	ObjectTypeNamer interface {
 		// ObjectTypeName returns the ObjectType's name to be able to create the Object.
