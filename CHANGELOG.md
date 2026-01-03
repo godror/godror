@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- StructScan, SliceScan, StructObjectWrite, SliceObjectWrite helpers for implementing what is now behind `godror:"typename,"` struct tags.
+
+### Breaking
+- Remove `godror:"typename"` struct tag scanning - it's complex, error prone and hard to inject. Implement ObjectWriter and ObjectScanner instead (with the help of {Struct,Slice}{WriteObject,Scan} if needed).
 
 ## [v0.49.6]
 ### Added
@@ -189,7 +194,7 @@ change cause SIGSEGV.
 ## [v0.28.1]
 ### Changed
 - ODPI-C v4.3.0
-### Added 
+### Added
 - Add NewTempLob to the Conn interface for #189.
 
 ## [v0.28.0]
@@ -221,7 +226,7 @@ change cause SIGSEGV.
 ### Changed
 - Use dpiConn_setCallTimeout for faster recovers.
 - Faster setTraceTag, drv.init.
-- Buffer dpiLobReader.Read with chunk-sized reads for 
+- Buffer dpiLobReader.Read with chunk-sized reads for
   * avoiding io.ReadAll short read and
   * performance
 
@@ -269,7 +274,7 @@ the last error on some kind of thead-local-storage.
 
 ### Changed
 - Set DefaultPrefetchCount = DefaultArraySize (=100), from the previous 2.
-- Use SESSIONTIMEZONE instead of DBTIMEZONE. 
+- Use SESSIONTIMEZONE instead of DBTIMEZONE.
 
 ## [0.21.0]
 ### Changed
@@ -341,7 +346,7 @@ the last error on some kind of thead-local-storage.
 - Fixed TimeZone caching and lock issues.
 
 ## [0.17.0]
-### Added 
+### Added
 - PrefetchCount statement option to set prefetch row count.
 
 ### Changed
