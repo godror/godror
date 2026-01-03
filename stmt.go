@@ -2928,6 +2928,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		if err := v.WriteObject(o); err != nil {
 			return err
 		}
+		// fmt.Printf("ObjectWriter v=%#v o=%v\n", v, o)
 		objs[0] = o
 
 	case []ObjectWriter:
@@ -2990,7 +2991,8 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		}); err != nil {
 			return fmt.Errorf("setFromObject: %w", err)
 		}
-		obj.Close()
+		// Cannot close it before use (exec)
+		// obj.Close()
 	}
 	return nil
 }
@@ -3039,7 +3041,7 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s=%#v\n", out.ObjectTypeName(), ot)
+		// fmt.Printf("ObjectScanner ot: %s=%#v\n", out.ObjectTypeName(), ot)
 		d := Data{
 			ObjectType:    ot,
 			dpiData:       data[0],

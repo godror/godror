@@ -1559,7 +1559,7 @@ type (
 		ObjectScanner
 	}
 
-	sliceCollectionScanWriter[E any, T ~[]E, P *T] struct {
+	sliceCollectionScanWriter[E ~int | ~int32 | ~int64 | ~float32 | ~float64 | ~string, T ~[]E, P *T] struct {
 		objectTypeName string
 		pslice         P
 	}
@@ -1570,7 +1570,7 @@ type (
 	}
 )
 
-func NewSliceCollectionScanWriter[E any, T ~[]E, P *T](objectTypeName string, pslice P) sliceCollectionScanWriter[E, T, P] {
+func NewSliceCollectionScanWriter[E ~int | ~int32 | ~int64 | ~float32 | ~float64 | ~string, T ~[]E, P *T](objectTypeName string, pslice P) sliceCollectionScanWriter[E, T, P] {
 	return sliceCollectionScanWriter[E, T, P]{
 		objectTypeName: objectTypeName, pslice: pslice,
 	}
@@ -1657,6 +1657,9 @@ func (soc sliceObjectCollectionScanWriter[E, T, P]) Scan(v any) error {
 // structScanObject reads an object and writes it to rv.
 func structScanObject(rv reflect.Value, obj *Object) error {
 	rvt := rv.Type()
+	if rvt.Kind() == reflect.Pointer {
+		rv, rvt = rv.Elem(), rvt.Elem()
+	}
 
 	if obj == nil {
 		if rv.CanSet() {

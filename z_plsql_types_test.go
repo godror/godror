@@ -101,21 +101,29 @@ func (r MyRecord) WriteObject(o *godror.Object) error {
 
 	var data godror.Data
 	data.SetInt64(r.ID)
-	o.SetAttribute("ID", &data)
+	if err = o.SetAttribute("ID", &data); err != nil {
+		return err
+	}
 
 	if r.Txt != "" {
 		data.SetBytes([]byte(r.Txt))
-		o.SetAttribute("TXT", &data)
+		if err = o.SetAttribute("TXT", &data); err != nil {
+			return err
+		}
 	}
 
 	if !r.DT.IsZero() {
 		data.SetTime(r.DT)
-		o.SetAttribute("DT", &data)
+		if err = o.SetAttribute("DT", &data); err != nil {
+			return err
+		}
 	}
 
 	if r.AClob != "" {
 		data.SetBytes([]byte(r.AClob))
-		o.SetAttribute("ACLOB", &data)
+		if err = o.SetAttribute("ACLOB", &data); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -399,7 +407,9 @@ type (
 
 var (
 	_ godror.ObjectWriter           = objectStruct{}
+	_ sql.Scanner                   = (*objectStruct)(nil)
 	_ godror.ObjectCollectionWriter = sliceStruct{}
+	_ sql.Scanner                   = (*sliceStruct)(nil)
 	_ godror.ObjectWriter           = oshNumberList{}
 	_ godror.ObjectWriter           = oshStruct{}
 	_ godror.ObjectCollectionWriter = oshSliceStruct{}
@@ -409,10 +419,18 @@ func (objectStruct) ObjectTypeName() string { return "test_pkg_types.my_record" 
 func (os objectStruct) WriteObject(o *godror.Object) error {
 	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), &os).WriteObject(o)
 }
+func (os *objectStruct) Scan(v any) error {
+	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), os).Scan(v)
+}
+
 func (sliceStruct) ObjectTypeName() string { return "test_pkg_types.my_table" }
 func (ss sliceStruct) Iter() iter.Seq[godror.ObjectWriter] {
 	return godror.NewSliceObjectCollectionScanWriter(ss.ObjectTypeName(), &ss.ObjSlice).Iter()
 }
+func (os *sliceStruct) Scan(v any) error {
+	return godror.NewStructObjectScanWriter(os.ObjectTypeName(), os).Scan(v)
+}
+
 func (oshNumberList) ObjectTypeName() string { return "test_pkg_types.number_list" }
 func (os oshNumberList) WriteObject(o *godror.Object) error {
 	return godror.NewSliceCollectionScanWriter(os.ObjectTypeName(), &os.NumberList).WriteObject(o)
@@ -557,7 +575,7 @@ func TestPlSqlTypes(t *testing.T) {
 			in      MyRecord
 			wantID  int64
 		}{
-			"zeroValues": {in: MyRecord{}, wantID: 0, wantTxt: " changed "},
+			"zeroValues": {in: MyRecord{}, wantID: 1, wantTxt: " changed "},
 			"default":    {in: MyRecord{ID: 1, Txt: "test"}, wantID: 2, wantTxt: "test changed "},
 			"emptyTxt":   {in: MyRecord{ID: 2, Txt: ""}, wantID: 3, wantTxt: " changed "},
 		} {
