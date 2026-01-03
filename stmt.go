@@ -337,6 +337,7 @@ type statement struct {
 	data     [][]C.dpiData
 	vars     []*C.dpiVar
 	varInfos []varInfo
+	tbc      []io.Closer
 	stmtOptions
 	arrLen      int
 	dpiStmtInfo C.dpiStmtInfo
@@ -362,7 +363,7 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 		return nil
 	}
 
-	c, dpiStmt, vars := st.conn, st.dpiStmt, st.vars
+	c, dpiStmt, vars, tbc := st.conn, st.dpiStmt, st.vars, st.tbc
 	st.vars = nil
 	st.isSlice = nil
 	st.query = ""
@@ -375,6 +376,7 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
+	st.tbc = nil
 
 	if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
@@ -388,6 +390,9 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 		if v != nil {
 			C.dpiVar_release(v)
 		}
+	}
+	for _, cl := range tbc {
+		cl.Close()
 	}
 	if dpiStmt.refCount > 0 {
 		C.dpiStmt_release(dpiStmt)
@@ -422,12 +427,6 @@ func (st *statement) Query(args []driver.Value) (driver.Rows, error) {
 		nargs[i].Value = arg
 	}
 	return st.QueryContext(context.Background(), nargs)
-}
-
-func newDoneCh() (<-chan struct{}, func()) {
-	done := make(chan struct{})
-	var once sync.Once
-	return done, func() { once.Do(func() { close(done) }) }
 }
 
 // ExecContext executes a query that doesn't return rows, such as an INSERT or UPDATE.
@@ -501,6 +500,13 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil, closeIfBadConn(err)
 		}
 	}
+
+	defer func() {
+		for _, cl := range st.tbc {
+			cl.Close()
+		}
+		st.tbc = st.tbc[:0]
+	}()
 
 	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
@@ -667,6 +673,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		return nil, batchErrors
 	}
+
 	return driver.RowsAffected(count), batchErrors
 }
 
@@ -737,6 +744,12 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err = st.bindVars(ctx, args, logger); err != nil {
 		return nil, closeIfBadConn(err)
 	}
+	defer func() {
+		for _, cl := range st.tbc {
+			cl.Close()
+		}
+		st.tbc = st.tbc[:0]
+	}()
 
 	mode := st.ExecMode()
 	//fmt.Printf("%p.%p: inTran? %t\n%s\n", st.conn, st, st.inTransaction, st.query)
@@ -2893,7 +2906,7 @@ func SliceToObjCollWriter[E ObjectWriter, T interface {
 		}}
 }
 
-func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
+func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
 		return nil
@@ -2917,7 +2930,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		objs = v
 
 	case ObjectWriter:
-		ot, err := c.GetObjectType(v.ObjectTypeName())
+		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
@@ -2936,7 +2949,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		for _, ut := range v {
 			if ot == nil {
 				var err error
-				if ot, err = c.GetObjectType(ut.ObjectTypeName()); err != nil {
+				if ot, err = stmt.conn.GetObjectType(ut.ObjectTypeName()); err != nil {
 					return err
 				}
 			}
@@ -2951,7 +2964,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		}
 
 	case ObjectCollectionWriter:
-		ot, err := c.GetObjectType(v.ObjectTypeName())
+		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
@@ -2964,7 +2977,7 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 		ot = nil
 		for item := range v.Iter() {
 			if ot == nil {
-				if ot, err = c.GetObjectType(item.ObjectTypeName()); err != nil {
+				if ot, err = stmt.conn.GetObjectType(item.ObjectTypeName()); err != nil {
 					return err
 				}
 			}
@@ -2986,13 +2999,14 @@ func (c *conn) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 			continue
 		}
 		data[i].isNull = 0
-		if err := c.checkExec(func() C.int {
+		if err := stmt.conn.checkExec(func() C.int {
 			return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
 		}); err != nil {
 			return fmt.Errorf("setFromObject: %w", err)
 		}
 		// Cannot close it before use (exec)
 		// obj.Close()
+		stmt.tbc = append(stmt.tbc, obj)
 	}
 	return nil
 }
