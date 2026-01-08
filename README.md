@@ -105,7 +105,7 @@ then either use the `driver.Rows` interface,
 or transform it into a regular `*sql.Rows` with `godror.WrapRows`,
 or (since Go 1.12) just Scan into `*sql.Rows`.
 
-As sql.DB will close the statemenet ASAP, you have to keep the Stmt alive:
+As sql.DB will close the statement ASAP, you have to keep the Stmt alive:
 Prepare the statement, and Close only after finished with the Rows.
 
 For examples, see Anthony Tuininga's
