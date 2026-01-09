@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v0.50.0]
 ### Added
 - StructScan, SliceScan, StructObjectWrite, SliceObjectWrite helpers for implementing what is now behind `godror:"typename,"` struct tags.
+- dsn.PoolParams.NoWait for #396.
 
 ### Breaking
 - Remove `godror:"typename"` struct tag scanning - it's complex, error prone and hard to inject. Implement ObjectWriter and ObjectScanner instead (with the help of {Struct,Slice}{WriteObject,Scan} if needed).
