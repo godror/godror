@@ -786,10 +786,10 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		passwordHash = sha256.Sum256([]byte(P.Password.Secret())) // See issue #245
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
+	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%t\t%s\t%d\t%s",
 		usernameKey, passwordHash[:4], P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
-		P.Heterogeneous.Bool, P.EnableEvents, P.ExternalAuth.Bool,
+		P.Heterogeneous.Bool, P.EnableEvents, P.ExternalAuth.Bool, P.NoWait.Bool,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
 	)
 	logger := P.Logger
@@ -875,6 +875,9 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// assign "get" mode (always used timed wait)
 	poolCreateParams.getMode = C.DPI_MODE_POOL_GET_TIMEDWAIT
+	if P.NoWait.Valid && P.NoWait.Bool {
+		poolCreateParams.getMode = C.DPI_MODE_POOL_GET_NOWAIT
+	}
 
 	// assign wait timeout (number of milliseconds to wait for a session to
 	// become available

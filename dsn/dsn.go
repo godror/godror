@@ -200,7 +200,7 @@ type PoolParams struct {
 	MaxSessionsPerShard                        int
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
 	PingInterval                               time.Duration
-	Heterogeneous, ExternalAuth                sql.NullBool
+	Heterogeneous, ExternalAuth, NoWait        sql.NullBool
 }
 
 // String returns the string representation of PoolParams.
@@ -229,6 +229,9 @@ func (P PoolParams) String() string {
 	}
 	if P.ExternalAuth.Valid {
 		q.Add("externalAuth", b2s(P.ExternalAuth.Bool))
+	}
+	if P.NoWait.Valid {
+		q.Add("noWait", b2s(P.NoWait.Bool))
 	}
 	if P.PingInterval != 0 {
 		q.Add("pingInterval", P.PingInterval.String())
@@ -371,6 +374,9 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	if P.ExternalAuth.Valid {
 		q.Add("externalAuth", b2s(P.ExternalAuth.Bool))
+	}
+	if P.NoWait.Valid {
+		q.Add("noWait", b2s(P.NoWait.Bool))
 	}
 	if P.IsPrelim {
 		q.Add("prelim", "1")
@@ -578,6 +584,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	}{
 		{&P.Heterogeneous, "heterogeneousPool"},
 		{&P.ExternalAuth, "externalAuth"},
+		{&P.NoWait, "noWait"},
 		{&P.StandaloneConnection, "standaloneConnection"},
 	} {
 		s := q.Get(task.Key)
