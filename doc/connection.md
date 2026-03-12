@@ -25,9 +25,9 @@ db, err := sql.Open("godror", `user="scott" password="tiger"
 ```
 
 > [!TIP]
-> On MacOS, when setting `(DY)_LD_LIBRARY_PATH` for the 
-> Oracle Instant Client lib files does not work 
-> ([Variables LD_LIBRARY_PATH / DYLD_LIBRARY_PATH are not passed to the environment of a child process on macOS if System Integrity Protect (SIP) is enabled.](https://stackoverflow.com/a/60128194)), 
+> On MacOS, when setting `(DY)_LD_LIBRARY_PATH` for the
+> Oracle Instant Client lib files does not work
+> ([Variables LD_LIBRARY_PATH / DYLD_LIBRARY_PATH are not passed to the environment of a child process on macOS if System Integrity Protect (SIP) is enabled.](https://stackoverflow.com/a/60128194)),
 > you can put that into the connection string's `libDir` parameter.
 >
 > See this [issue](https://github.com/godror/godror/issues/339#issuecomment-2190310116).
@@ -84,7 +84,7 @@ The `sql.Open()` data source name `connectString` parameter or
    firewalls.
    Note that `connect_timeout` requires at least 19c client.
 
-   The technical article 
+   The technical article
    [Oracle-Net-Easy-Connect-Plus.pdf](https://download.oracle.com/ocomdocs/global/Oracle-Net-Easy-Connect-Plus.pdf)
    contains more information.
 
@@ -141,6 +141,10 @@ The search includes:
 * `/opt/oracle/instantclient_19_8/network/admin` if Instant Client is in `/opt/oracle/instantclient_19_8`.
 * `/usr/lib/oracle/19.8/client64/lib/network/admin` if Oracle 19.8 Instant Client RPMs are used on Linux.
 * `$ORACLE_HOME/network/admin` if godror is using libraries from a database installation.
+
+**WARNING** environment variables are not for communication - setting `TNS_ADMIN` in your program
+may or may not work (putting it in `init()` helps) - see https://github.com/godror/godror/issues/403#issuecomment-4044361373
+for details.
 
 ### <a name="adb"></a> Oracle Autonomous DataBase (ADB)
 
