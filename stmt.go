@@ -1,6 +1,5 @@
 // Copyright 2017, 2025 The Godror Authors
 //
-//
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
 package godror
@@ -470,6 +469,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err != nil {
 		return nil, err
 	}
+	var closed atomic.Bool
 	closeIfBadConn := func(err error) error {
 		cleanup()
 		if err == nil {
@@ -477,28 +477,16 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		c := st.conn
 		if err = maybeBadConn(err, c); err == driver.ErrBadConn {
+			closed.Store(true)
 			_ = st.closeNotLocking(ctx)
 		}
 		return err
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		// bind variables
-		done <- st.bindVars(ctx, args, logger)
-		close(done)
-	}()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	select {
-	case <-ctx.Done():
-		return nil, closeIfBadConn(errors.Join(ctx.Err(), driver.ErrBadConn))
-	case err = <-done:
-		if err != nil {
-			return nil, closeIfBadConn(err)
-		}
+	if err = st.bindVars(ctx, args, logger); err != nil {
+		return nil, closeIfBadConn(err)
 	}
 
 	defer func() {
@@ -900,8 +888,11 @@ type argInfo struct {
 }
 
 // bindVars binds the given args into new variables.
-// Assumes LockOSThread
-func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, logger *slog.Logger) error {
+// Assumes LockOSThread, may panic (SIGSEGV so you can't catch it)
+// when the underlying statement is closed under it.
+func (st *statement) bindVars(
+	ctx context.Context, args []driver.NamedValue, logger *slog.Logger,
+) (err error) {
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("enter bindVars", "st", fmt.Sprintf("%p", st), "args", fmt.Sprintf("%#v", args))
 	}
@@ -1133,7 +1124,11 @@ func (st *statement) bindVars(ctx context.Context, args []driver.NamedValue, log
 		}
 		//fmt.Printf("bindByName(%q)\n", name)
 		cName := C.CString(name)
-		err := st.checkExecNoLOT(func() C.int { return C.dpiStmt_bindByName(st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i]) })
+		err := st.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_bindByName(
+				st.dpiStmt, cName, C.uint32_t(len(name)), st.vars[i],
+			)
+		})
 		C.free(unsafe.Pointer(cName))
 		if err != nil {
 			return fmt.Errorf("bindByName[%q]: %w", name, err)
