@@ -373,6 +373,9 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 // ReadAt reads at the specified offset (in bytes).
 // Works only for BLOBs!
 func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
+	if len(p) == 0 {
+		panic("ReadAt into a zero-length buffer")
+	}
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
 	if dlr.IsClob {
@@ -405,6 +408,10 @@ type dpiLobWriter struct {
 }
 
 func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -534,8 +541,12 @@ func (dl *DirectLob) Trim(size int64) error {
 // Set the contents of the LOB to the given byte slice.
 // The LOB is cleared first.
 func (dl *DirectLob) Set(p []byte) error {
+	var ptr *C.char
+	if len(p) != 0 {
+		ptr = (*C.char)(unsafe.Pointer(&p[0]))
+	}
 	if err := dl.drv.checkExec(func() C.int {
-		return C.dpiLob_setFromBytes(dl.dpiLob, (*C.char)(unsafe.Pointer(&p[0])), C.uint64_t(len(p)))
+		return C.dpiLob_setFromBytes(dl.dpiLob, ptr, C.uint64_t(len(p)))
 	}); err != nil {
 		return fmt.Errorf("setFromBytes: %w", err)
 	}
@@ -552,6 +563,9 @@ func (dl *DirectLob) Set(p []byte) error {
 // For this reason, if a character requires more than one UCS-2 codepoint,
 // the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
+	if len(p) == 0 {
+		panic("ReadAt into an empty buffer")
+	}
 	n := C.uint64_t(len(p))
 	if dl.dpiLob == nil {
 		return 0, io.EOF
@@ -573,6 +587,9 @@ func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 
 // WriteAt writes p starting at offset.
 func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 

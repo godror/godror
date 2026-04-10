@@ -493,7 +493,11 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 				cleanup()
 			}
 			if c != nil && c.dpiConn != nil {
-				fmt.Printf("ERROR: conn %p of createConn is not Closed!\n", c)
+				if logger := getLogger(context.Background()); logger != nil {
+					logger.Error("conn of createConn is not Closed!", "conn", fmt.Sprintf("%p", c))
+				} else {
+					fmt.Printf("ERROR: conn %p of createConn is not Closed!\n", c)
+				}
 				_ = c.closeNotLocking()
 			}
 		})
@@ -505,7 +509,11 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 				cleanup()
 			}
 			if c != nil && c.dpiConn != nil {
-				fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
+				if logger := getLogger(context.Background()); logger != nil {
+					logger.Error("conn of createConn is not Closed!", "conn", fmt.Sprintf("%p", c), "stack", string(stack))
+				} else {
+					fmt.Printf("ERROR: conn %p of createConn is not Closed!\n%s\n", c, stack)
+				}
 				_ = c.closeNotLocking()
 			}
 		})

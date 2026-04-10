@@ -193,6 +193,7 @@ type RowEvent struct {
 type Subscription struct {
 	conn      *conn
 	dpiSubscr *C.dpiSubscr
+	subscrID  *C.uint64_t
 	callback  func(Event)
 	ID        uint64
 }
@@ -250,9 +251,9 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 	subscr.ID = subscriptionsID
 	subscriptions[subscr.ID] = &subscr
 	subscriptionsMu.Unlock()
-	subscrID := (*C.uint64_t)(C.malloc(8))
-	*subscrID = C.uint64_t(subscriptionsID)
-	params.callbackContext = unsafe.Pointer(subscrID)
+	subscr.subscrID = (*C.uint64_t)(C.malloc(8))
+	*subscr.subscrID = C.uint64_t(subscr.ID)
+	params.callbackContext = unsafe.Pointer(subscr.subscrID)
 
 	dpiSubscr := (*C.dpiSubscr)(C.malloc(C.sizeof_void))
 
@@ -260,6 +261,7 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 		return C.dpiConn_subscribe(c.dpiConn, params, (**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)))
 	}); err != nil {
 		C.free(unsafe.Pointer(dpiSubscr))
+		C.free(params.callbackContext)
 		err = fmt.Errorf("newSubscription: %w", err)
 		if strings.Contains(errors.Unwrap(err).Error(), "DPI-1065:") {
 			err = fmt.Errorf("specify \"enableEvents=1\" connection parameter on connection to be able to use subscriptions: %w", err)
@@ -310,11 +312,11 @@ func (s *Subscription) Close() error {
 	subscriptionsMu.Lock()
 	delete(subscriptions, s.ID)
 	subscriptionsMu.Unlock()
-	dpiSubscr := s.dpiSubscr
-	conn := s.conn
-	s.conn = nil
-	s.dpiSubscr = nil
-	s.callback = nil
+	dpiSubscr, conn, subscrID := s.dpiSubscr, s.conn, s.subscrID
+	s.dpiSubscr, s.conn, s.callback, s.subscrID = nil, nil, nil, nil
+	if subscrID != nil {
+		C.free(unsafe.Pointer(subscrID))
+	}
 	if dpiSubscr == nil || conn == nil || conn.dpiConn == nil {
 		return nil
 	}

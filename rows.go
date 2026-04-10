@@ -626,7 +626,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				if logger != nil {
 					logger.Error("Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 				}
-				//C.dpiStmt_release(st.dpiStmt)
+				//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
 				return fmt.Errorf("getNumQueryColumns: %w", err)
 			}
 			st.Lock()
@@ -834,10 +834,10 @@ func (r *rows) NextResultSet() error {
 		if logger != nil {
 			logger.Error("NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
 		}
-		//C.dpiStmt_release(st.dpiStmt)
+		//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
 		return err
 	}
-	// keep the originam statement for the succeeding NextResultSet calls.
+	// keep the original statement for the succeeding NextResultSet calls.
 	st.Lock()
 	nr, err := st.openRows(ctx, int(n))
 	st.Unlock()

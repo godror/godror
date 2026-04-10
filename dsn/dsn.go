@@ -357,7 +357,7 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 		q.Add("poolMaxSessions", strconv.Itoa(P.MaxSessions))
 	}
 	if P.MaxSessionsPerShard != 0 {
-		q.Add("poolMasSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
+		q.Add("poolMaxSessionsPerShard", strconv.Itoa(P.MaxSessionsPerShard))
 	}
 	q.Add("poolIncrement", strconv.Itoa(P.SessionIncrement))
 	if P.AdminRole != "" {
@@ -632,9 +632,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	}{
 		{&P.MinSessions, "poolMinSessions"},
 		{&P.MaxSessions, "poolMaxSessions"},
-		{&P.MaxSessionsPerShard, "poolMasSessionsPerShard"},
-		{&P.SessionIncrement, "poolIncrement"},
+		{&P.MaxSessionsPerShard, "poolMaxSessionsPerShard"},
 		{&P.SessionIncrement, "sessionIncrement"},
+		{&P.SessionIncrement, "poolIncrement"},
 		{&P.StmtCacheSize, "stmtCacheSize"},
 	} {
 		s := q.Get(task.Key)

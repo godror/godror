@@ -117,7 +117,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	logger := getLogger(context.TODO())
 	if Q.tableName == "" {
 		if err := func() error {
-			const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table 
+			const qry = `SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')||'.'||queue_table AS queue_table
 	  FROM user_queues
 	  WHERE name = :name
 	UNION SELECT owner||'.'||queue_table
@@ -178,7 +178,11 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 		if !logLingeringResourceStack.Load() {
 			runtime.SetFinalizer(&Q, func(Q *Queue) {
 				if Q != nil && Q.dpiQueue != nil {
-					fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
+					if logger := getLogger(context.Background()); logger != nil {
+						logger.Error("queue of NewQueue is not Closed!", "queue", fmt.Sprintf("%p", Q))
+					} else {
+						fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
+					}
 					Q.Close()
 				}
 			})
@@ -187,7 +191,11 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 			stack := a[:runtime.Stack(a[:], false)]
 			runtime.SetFinalizer(&Q, func(Q *Queue) {
 				if Q != nil && Q.dpiQueue != nil {
-					fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+					if logger := getLogger(context.Background()); logger != nil {
+						logger.Error("queue of NewQueue is not Closed!", "queue", fmt.Sprintf("%p", Q), "stack", string(stack))
+					} else {
+						fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n%s\n", Q, stack)
+					}
 					Q.Close()
 				}
 			})
