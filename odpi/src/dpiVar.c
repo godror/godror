@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -617,13 +617,9 @@ static void dpiVar__finalizeBuffer(dpiVar *var, dpiVarBuffer *buffer,
         dpiUtils__freeMemory(buffer->returnCode);
         buffer->returnCode = NULL;
     }
-    if (buffer->actualLength16) {
-        dpiUtils__freeMemory(buffer->actualLength16);
-        buffer->actualLength16 = NULL;
-    }
-    if (buffer->actualLength32) {
-        dpiUtils__freeMemory(buffer->actualLength32);
-        buffer->actualLength32 = NULL;
+    if (buffer->actualLength) {
+        dpiUtils__freeMemory(buffer->actualLength);
+        buffer->actualLength = NULL;
     }
     if (buffer->externalData) {
         dpiUtils__freeMemory(buffer->externalData);
@@ -723,10 +719,6 @@ int dpiVar__getValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
         }
     }
 
-    // for 11g, dynamic lengths are 32-bit whereas static lengths are 16-bit
-    if (buffer->actualLength16 && buffer->actualLength32)
-        buffer->actualLength16[pos] = (uint16_t) buffer->actualLength32[pos];
-
     // transform the various types
     oracleTypeNum = var->type->oracleTypeNum;
     switch (var->nativeTypeNum) {
@@ -787,9 +779,7 @@ int dpiVar__getValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
                     if (buffer->dynamicBytes)
                         return dpiVar__setBytesFromDynamicBytes(bytes,
                                 &buffer->dynamicBytes[pos], error);
-                    if (buffer->actualLength16)
-                        bytes->length = buffer->actualLength16[pos];
-                    else bytes->length = buffer->actualLength32[pos];
+                    bytes->length = buffer->actualLength[pos];
                     return DPI_SUCCESS;
                 case DPI_ORACLE_TYPE_CLOB:
                 case DPI_ORACLE_TYPE_NCLOB:
@@ -874,10 +864,8 @@ int32_t dpiVar__inBindCallback(dpiVar *var, UNUSED void *bindp,
         }
     } else {
         dpiVar__assignCallbackBuffer(var, &var->buffer, iter, bufpp);
-        if (var->buffer.actualLength16)
-            *alenp = var->buffer.actualLength16[iter];
-        else if (var->buffer.actualLength32)
-            *alenp = var->buffer.actualLength32[iter];
+        if (var->buffer.actualLength)
+            *alenp = var->buffer.actualLength[iter];
         else *alenp = var->type->sizeInBytes;
     }
     *piecep = DPI_OCI_ONE_PIECE;
@@ -930,23 +918,13 @@ static int dpiVar__initBuffer(dpiVar *var, dpiVarBuffer *buffer,
 
     // allocate the actual length buffers for all but dynamic bytes which are
     // handled differently; ensure actual length starts out as maximum value
-    if (!var->isDynamic && !buffer->actualLength16 &&
-            !buffer->actualLength32) {
-        if (var->env->versionInfo->versionNum < 12 && buffer == &var->buffer) {
-            if (dpiUtils__allocateMemory(buffer->maxArraySize,
-                    sizeof(uint16_t), 0, "allocate actual length",
-                    (void**) &buffer->actualLength16, error) < 0)
-                return DPI_FAILURE;
-            for (i = 0; i < buffer->maxArraySize; i++)
-                buffer->actualLength16[i] = (uint16_t) var->sizeInBytes;
-        } else {
-            if (dpiUtils__allocateMemory(buffer->maxArraySize,
-                    sizeof(uint32_t), 0, "allocate actual length",
-                    (void**) &buffer->actualLength32, error) < 0)
-                return DPI_FAILURE;
-            for (i = 0; i < buffer->maxArraySize; i++)
-                buffer->actualLength32[i] = var->sizeInBytes;
-        }
+    if (!var->isDynamic && !buffer->actualLength) {
+        if (dpiUtils__allocateMemory(buffer->maxArraySize,
+                sizeof(uint32_t), 0, "allocate actual length",
+                (void**) &buffer->actualLength, error) < 0)
+            return DPI_FAILURE;
+        for (i = 0; i < buffer->maxArraySize; i++)
+            buffer->actualLength[i] = var->sizeInBytes;
     }
 
     // for variable length data, also allocate the return code array
@@ -1136,15 +1114,9 @@ int32_t dpiVar__outBindCallback(dpiVar *var, void *bindp, UNUSED uint32_t iter,
                 var->error) < 0)
             return DPI_OCI_ERROR;
         dpiVar__assignCallbackBuffer(var, buffer, index, bufpp);
-        if (buffer->actualLength32 || buffer->actualLength16) {
-            if (!buffer->actualLength32) {
-                if (dpiUtils__allocateMemory(buffer->maxArraySize,
-                        sizeof(uint32_t), 1, "allocate 11g lengths",
-                        (void**) &buffer->actualLength32, var->error) < 0)
-                    return DPI_OCI_ERROR;
-            }
-            buffer->actualLength32[index] = var->sizeInBytes;
-            *alenpp = &(buffer->actualLength32[index]);
+        if (buffer->actualLength) {
+            buffer->actualLength[index] = var->sizeInBytes;
+            *alenpp = &(buffer->actualLength[index]);
         } else if (*alenpp && var->type->sizeInBytes)
             **alenpp = var->type->sizeInBytes;
         if (buffer->objectIndicator)
@@ -1299,10 +1271,8 @@ static int dpiVar__setFromBytes(dpiVar *var, uint32_t pos, const char *value,
         if (valueLength > 0)
             memcpy(bytes->ptr, value, valueLength);
         if (var->type->sizeInBytes == 0) {
-            if (var->buffer.actualLength32)
-                var->buffer.actualLength32[pos] = valueLength;
-            else if (var->buffer.actualLength16)
-                var->buffer.actualLength16[pos] = (uint16_t) valueLength;
+            if (var->buffer.actualLength)
+                var->buffer.actualLength[pos] = valueLength;
         }
         if (var->buffer.returnCode)
             var->buffer.returnCode[pos] = 0;
@@ -1633,11 +1603,8 @@ int dpiVar__setValue(dpiVar *var, dpiVarBuffer *buffer, uint32_t pos,
             if (oracleTypeNum == DPI_ORACLE_TYPE_NUMBER)
                 return dpiDataBuffer__toOracleNumberFromText(&data->value,
                         var->env, error, &buffer->data.asNumber[pos]);
-            if (buffer->actualLength32)
-                buffer->actualLength32[pos] = data->value.asBytes.length;
-            else if (buffer->actualLength16)
-                buffer->actualLength16[pos] =
-                        (uint16_t) data->value.asBytes.length;
+            if (buffer->actualLength)
+                buffer->actualLength[pos] = data->value.asBytes.length;
             if (buffer->returnCode)
                 buffer->returnCode[pos] = 0;
             break;

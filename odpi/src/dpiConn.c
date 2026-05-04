@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -710,6 +710,11 @@ static int dpiConn__getAttributeText(dpiConn *conn, uint32_t attribute,
         case DPI_OCI_ATTR_SERVICENAME:
             status = dpiOci__attrGet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
                     (void*) value, valueLength, attribute, "get server value",
+                    &error);
+            break;
+        case DPI_OCI_ATTR_PDBNAME:
+            status = dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                    (void*) value, valueLength, attribute, "get PDB name",
                     &error);
             break;
         default:
@@ -1707,6 +1712,25 @@ int dpiConn_changePassword(dpiConn *conn, const char *userName,
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_clearAppContext() [PUBLIC]
+//   Clear the context for the namespace associated with the connection.
+//-----------------------------------------------------------------------------
+int dpiConn_clearAppContext(dpiConn *conn, const char *namespaceName,
+        uint32_t namespaceNameLength)
+{
+    dpiError error;
+    int status;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, namespaceName)
+    status = dpiOci__appCtxClearAll(conn, namespaceName, namespaceNameLength,
+            &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_close() [PUBLIC]
 //   Close the connection and ensure it can no longer be used.
 //-----------------------------------------------------------------------------
@@ -2222,12 +2246,10 @@ int dpiConn_getObjectType(dpiConn *conn, const char *name, uint32_t nameLength,
             DPI_OCI_HTYPE_DESCRIBE, "allocate describe handle", &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
 
-    // Oracle Client 12.1 is capable of using OCITypeByFullName() but will
+    // Oracle Client 12.1+ is capable of using OCITypeByFullName() but will
     // fail if accessing an Oracle 11.2 database
     useTypeByFullName = 1;
-    if (conn->env->versionInfo->versionNum < 12)
-        useTypeByFullName = 0;
-    else if (dpiConn__getServerVersion(conn, 0, &error) < 0)
+    if (dpiConn__getServerVersion(conn, 0, &error) < 0)
         return DPI_FAILURE;
     else if (conn->versionInfo.versionNum < 12)
         useTypeByFullName = 0;
@@ -2307,6 +2329,15 @@ int dpiConn_getOciAttr(dpiConn *conn, uint32_t handleType,
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
+//-----------------------------------------------------------------------------
+// dpiConn_getPdbName() [PUBLIC]
+//   Returns the Pluggable Database name.
+//-----------------------------------------------------------------------------
+int dpiConn_getPdbName(dpiConn *conn, const char **value, uint32_t *valueLength)
+{
+    return dpiConn__getAttributeText(conn, DPI_OCI_ATTR_PDBNAME, value,
+            valueLength, __func__);
+}
 
 //-----------------------------------------------------------------------------
 // dpiConn_getServerVersion() [PUBLIC]
@@ -2695,6 +2726,34 @@ int dpiConn_setAction(dpiConn *conn, const char *value, uint32_t valueLength)
 
 
 //-----------------------------------------------------------------------------
+// dpiConn_setAppContext() [PUBLIC]
+//   Set one or more application context entries on the connection.
+//-----------------------------------------------------------------------------
+int dpiConn_setAppContext(dpiConn *conn, uint32_t numAppContext,
+        dpiAppContext *appContext)
+{
+    int status = DPI_SUCCESS;
+    dpiAppContext *entry;
+    dpiError error;
+    uint32_t i;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    for (i = 0; i < numAppContext; i++) {
+        entry = &appContext[i];
+        DPI_CHECK_PTR_AND_LENGTH(conn, entry->namespaceName)
+        DPI_CHECK_PTR_AND_LENGTH(conn, entry->name)
+        DPI_CHECK_PTR_AND_LENGTH(conn, entry->value)
+        status = dpiOci__appCtxSet(conn, entry, &error);
+        if (status < 0)
+            break;
+    }
+
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiConn_setCallTimeout() [PUBLIC]
 //   Set the call timeout (in milliseconds) used for round-trips to the
 // database. This is only valid in Oracle Client 18c and higher.
@@ -2866,6 +2925,26 @@ int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize)
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
+
+//-----------------------------------------------------------------------------
+// dpiConn_stmtFromHandle() [PUBLIC]
+//   Initialize a stmt from OCIStmt handle
+//-----------------------------------------------------------------------------
+int dpiConn_stmtFromHandle(dpiConn *conn, void *externalHandle,
+       dpiStmt **stmt)
+{
+    dpiStmt *tempStmt;
+    dpiError error;
+
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiStmt__allocate(conn, 0, &tempStmt, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    tempStmt->handle = externalHandle;
+    tempStmt->externalHandle = 1;
+    *stmt = tempStmt;
+    return dpiGen__endPublicFn(conn, DPI_SUCCESS, &error);
+}
 
 //-----------------------------------------------------------------------------
 // dpiConn_resumeSessionlessTransaction() [PUBLIC]

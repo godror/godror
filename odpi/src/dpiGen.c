@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -323,7 +323,7 @@ int dpiGen__startPublicFn(const void *ptr, dpiHandleTypeNum typeNum,
 
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn start %s(%p)\n", fnName, ptr);
-    if (dpiGlobal__initError(fnName, error) < 0)
+    if (dpiGlobal__initError(fnName, 1, error) < 0)
         return DPI_FAILURE;
     if (dpiGen__checkHandle(ptr, typeNum, "check main handle", error) < 0)
         return DPI_FAILURE;

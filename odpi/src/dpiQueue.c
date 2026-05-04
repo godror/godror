@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2019, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2019, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -246,6 +246,8 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
     // perform dequeue
     if (dpiQueue__getPayloadTDO(queue, &payloadTDO, error) < 0)
         return DPI_FAILURE;
+    if (dpiConn__getServerVersion(queue->conn, 0, error) < 0)
+        return DPI_FAILURE;
     if (*numProps == 1) {
         status = dpiOci__aqDeq(queue->conn, queue->name,
                 queue->deqOptions->handle, queue->buffer.handles[0],
@@ -253,7 +255,7 @@ static int dpiQueue__deq(dpiQueue *queue, uint32_t *numProps,
                 queue->buffer.msgIds, error);
         if (status < 0)
             *numProps = 0;
-    } else if (queue->isJson) {
+    } else if (queue->isJson && queue->conn->versionInfo.versionNum < 23) {
         status = DPI_SUCCESS;
         for (i = 0; i < *numProps; i++) {
             status = dpiOci__aqDeq(queue->conn, queue->name,

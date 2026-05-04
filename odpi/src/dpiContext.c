@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -42,12 +42,9 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
         unsigned int minorVersion, dpiContextCreateParams *params,
         dpiContext **context, dpiError *error)
 {
+    dpiContextCreateParams localParams;
     dpiVersionInfo *versionInfo;
     dpiContext *tempContext;
-
-    // ensure global infrastructure is initialized
-    if (dpiGlobal__ensureInitialized(fnName, params, &versionInfo, error) < 0)
-        return DPI_FAILURE;
 
     // validate context handle
     if (!context)
@@ -59,6 +56,22 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
         return dpiError__set(error, "check version",
                 DPI_ERR_VERSION_NOT_SUPPORTED, majorVersion, majorVersion,
                 minorVersion, DPI_MAJOR_VERSION, DPI_MINOR_VERSION);
+
+    // make a copy of the parameters so that the addition of defaults doesn't
+    // modify the original parameters that were passed; then add defaults, if
+    // needed
+    if (params) {
+        memcpy(&localParams, params, sizeof(localParams));
+    } else {
+        memset(&localParams, 0, sizeof(localParams));
+    }
+    if (!localParams.loadErrorUrl)
+        localParams.loadErrorUrl = DPI_DEFAULT_LOAD_ERROR_URL;
+
+    // ensure global infrastructure is initialized
+    if (dpiGlobal__ensureInitialized(fnName, &localParams, &versionInfo,
+            error) < 0)
+        return DPI_FAILURE;
 
     // allocate context and initialize it
     if (dpiGen__allocate(DPI_HTYPE_CONTEXT, NULL, (void**) &tempContext,
@@ -72,32 +85,40 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
     // flag completely
     if (versionInfo->versionNum > 23 ||
             (versionInfo->versionNum == 23 && versionInfo->releaseNum >= 4)) {
-        tempContext->sodaUseJsonDesc = params->sodaUseJsonDesc;
-        tempContext->useJsonId = params->useJsonId;
-    } else {
-        params->sodaUseJsonDesc = 0;
+        tempContext->sodaUseJsonDesc = localParams.sodaUseJsonDesc;
+        tempContext->useJsonId = localParams.useJsonId;
     }
 
     // store default encoding, if applicable
-    if (params->defaultEncoding) {
-        if (dpiUtils__allocateMemory(1, strlen(params->defaultEncoding) + 1, 0,
+    if (localParams.defaultEncoding) {
+        if (dpiUtils__allocateMemory(1,
+                strlen(localParams.defaultEncoding) + 1, 0,
                 "allocate default encoding",
                 (void**) &tempContext->defaultEncoding, error) < 0) {
             dpiContext__free(tempContext);
             return DPI_FAILURE;
         }
-        strcpy(tempContext->defaultEncoding, params->defaultEncoding);
+        strcpy(tempContext->defaultEncoding, localParams.defaultEncoding);
     }
 
     // store default driver name, if applicable
-    if (params->defaultDriverName) {
-        if (dpiUtils__allocateMemory(1, strlen(params->defaultDriverName) + 1,
-                0, "allocate default driver name",
+    if (localParams.defaultDriverName) {
+        if (dpiUtils__allocateMemory(1,
+                strlen(localParams.defaultDriverName) + 1, 0,
+                "allocate default driver name",
                 (void**) &tempContext->defaultDriverName, error) < 0) {
             dpiContext__free(tempContext);
             return DPI_FAILURE;
         }
-        strcpy(tempContext->defaultDriverName, params->defaultDriverName);
+        strcpy(tempContext->defaultDriverName, localParams.defaultDriverName);
+    }
+
+    // if parameters were specified, copy some key bits
+    if (params) {
+        params->sodaUseJsonDesc = tempContext->sodaUseJsonDesc;
+        if (!params->oracleClientConfigDir &&
+                localParams.oracleClientConfigDir)
+            params->oracleClientConfigDir = localParams.oracleClientConfigDir;
     }
 
     *context = tempContext;
@@ -213,38 +234,17 @@ int dpiContext_createWithParams(unsigned int majorVersion,
         unsigned int minorVersion, dpiContextCreateParams *params,
         dpiContext **context, dpiErrorInfo *errorInfo)
 {
-    int status, update_use_soda_json_desc = 0;
-    dpiContextCreateParams localParams;
     dpiErrorInfo localErrorInfo;
     dpiError error;
+    int status;
 
-    // make a copy of the parameters so that the addition of defaults doesn't
-    // modify the original parameters that were passed; then add defaults, if
-    // needed
-    if (params) {
-        if (majorVersion < 5 || (majorVersion == 5 && minorVersion < 2)) {
-            memcpy(&localParams, params, sizeof(dpiContextCreateParams__v51));
-        } else {
-            memcpy(&localParams, params, sizeof(localParams));
-            update_use_soda_json_desc = 1;
-        }
-    } else {
-        memset(&localParams, 0, sizeof(localParams));
-    }
-    if (!localParams.loadErrorUrl)
-        localParams.loadErrorUrl = DPI_DEFAULT_LOAD_ERROR_URL;
-
-    status = dpiContext__create(__func__, majorVersion, minorVersion,
-            &localParams, context, &error);
+    dpiGlobal__initError(__func__, 0, &error);
+    status = dpiContext__create(__func__, majorVersion, minorVersion, params,
+            context, &error);
     if (status < 0) {
         dpiError__getInfo(&error, &localErrorInfo);
         memcpy(errorInfo, &localErrorInfo, sizeof(dpiErrorInfo__v33));
     }
-    if (update_use_soda_json_desc)
-        params->sodaUseJsonDesc = localParams.sodaUseJsonDesc;
-    if (params && !params->oracleClientConfigDir &&
-            localParams.oracleClientConfigDir)
-        params->oracleClientConfigDir = localParams.oracleClientConfigDir;
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("fn end %s -> %d\n", __func__, status);
     return status;
@@ -268,8 +268,8 @@ int dpiContext_destroy(dpiContext *context)
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_REFS)
         dpiDebug__print("ref %p (%s) -> 0\n", context, context->typeDef->name);
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
-        (void) sprintf(message, "fn end %s(%p) -> %d", __func__, context,
-                DPI_SUCCESS);
+        (void) sprintf(message, "fn end %s(%p) -> %d", __func__,
+                (void*) context, DPI_SUCCESS);
     dpiContext__free(context);
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("%s\n", message);
@@ -320,7 +320,7 @@ void dpiContext_getError(const dpiContext *context, dpiErrorInfo *info)
 {
     dpiError error;
 
-    dpiGlobal__initError(NULL, &error);
+    dpiGlobal__initError(NULL, 1, &error);
     dpiGen__checkHandle(context, DPI_HTYPE_CONTEXT, "check handle", &error);
     dpiError__getInfo(&error, info);
 }

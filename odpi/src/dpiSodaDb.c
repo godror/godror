@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -295,26 +295,6 @@ int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
     }
 
     *doc = tempDoc;
-    return dpiGen__endPublicFn(db, DPI_SUCCESS, &error);
-}
-
-
-//-----------------------------------------------------------------------------
-// dpiSodaDb_freeCollectionNames() [PUBLIC]
-//   Free the names of the collections allocated earlier with a call to
-// dpiSodaDb_getCollectionNames(). This method is deprecated and should be
-// replaced with a call to dpiContext_freeStringList().
-//-----------------------------------------------------------------------------
-int dpiSodaDb_freeCollectionNames(dpiSodaDb *db, dpiStringList *names)
-{
-    dpiError error;
-
-    // validate parameters
-    if (dpiSodaDb__checkConnected(db, __func__, &error) < 0)
-        return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
-    DPI_CHECK_PTR_NOT_NULL(db, names)
-
-    dpiStringList__free(names);
     return dpiGen__endPublicFn(db, DPI_SUCCESS, &error);
 }
 

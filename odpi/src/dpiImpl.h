@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -331,6 +331,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_FIXUP_CALLBACK                 501
 #define DPI_OCI_ATTR_SQL_ID                         504
 #define DPI_OCI_ATTR_SPOOL_WAIT_TIMEOUT             506
+#define DPI_OCI_ATTR_PDBNAME                        524
 #define DPI_OCI_ATTR_CALL_TIMEOUT                   531
 #define DPI_OCI_ATTR_JSON_COL                       534
 #define DPI_OCI_ATTR_SODA_COLL_NAME                 535
@@ -568,6 +569,14 @@ extern unsigned long dpiDebugLevel;
 //-----------------------------------------------------------------------------
 // Macros
 //-----------------------------------------------------------------------------
+#define DPI_CHECK_LENGTH(handle, parameter, maxLength) \
+    if (parameter > maxLength) { \
+        dpiError__set(&error, "check length parameter " #parameter, \
+                DPI_ERR_PARAM_SIZE_TOO_LARGE, #parameter, parameter, \
+                maxLength); \
+        return dpiGen__endPublicFn(handle, DPI_FAILURE, &error); \
+    }
+
 #define DPI_CHECK_PTR_NOT_NULL(handle, parameter) \
     if (!parameter) { \
         dpiError__set(&error, "check parameter " #parameter, \
@@ -672,6 +681,8 @@ typedef enum {
     DPI_ERR_UNSUPPORTED_VECTOR_FORMAT,
     DPI_ERR_SODA_DOC_IS_JSON,
     DPI_ERR_SODA_DOC_IS_NOT_JSON,
+    DPI_ERR_NOT_A_QUERY,
+    DPI_ERR_PARAM_SIZE_TOO_LARGE,
     DPI_ERR_MAX
 } dpiErrorNum;
 
@@ -726,15 +737,6 @@ typedef enum {
 // old type definitions (to be dropped)
 //-----------------------------------------------------------------------------
 
-// structure used for creating a context
-typedef struct {
-    const char *defaultDriverName;
-    const char *defaultEncoding;
-    const char *loadErrorUrl;
-    const char *oracleClientLibDir;
-    const char *oracleClientConfigDir;
-} dpiContextCreateParams__v51;
-
 // structure used for transferring error information from ODPI-C
 typedef struct {
     int32_t code;
@@ -747,56 +749,6 @@ typedef struct {
     const char *sqlState;
     int isRecoverable;
 } dpiErrorInfo__v33;
-
-// structure used for providing metadata about data types
-typedef struct {
-    dpiOracleTypeNum oracleTypeNum;
-    dpiNativeTypeNum defaultNativeTypeNum;
-    uint16_t ociTypeCode;
-    uint32_t dbSizeInBytes;
-    uint32_t clientSizeInBytes;
-    uint32_t sizeInChars;
-    int16_t precision;
-    int8_t scale;
-    uint8_t fsPrecision;
-    dpiObjectType *objectType;
-    int isJson;
-} dpiDataTypeInfo__v50;
-
-typedef struct {
-    dpiOracleTypeNum oracleTypeNum;
-    dpiNativeTypeNum defaultNativeTypeNum;
-    uint16_t ociTypeCode;
-    uint32_t dbSizeInBytes;
-    uint32_t clientSizeInBytes;
-    uint32_t sizeInChars;
-    int16_t precision;
-    int8_t scale;
-    uint8_t fsPrecision;
-    dpiObjectType *objectType;
-    int isJson;
-    const char *domainSchema;
-    uint32_t domainSchemaLength;
-    const char *domainName;
-    uint32_t domainNameLength;
-    uint32_t numAnnotations;
-    dpiAnnotation *annotations;
-} dpiDataTypeInfo__v51;
-
-// structure used for transferring query metadata from ODPI-C
-typedef struct {
-    const char *name;
-    uint32_t nameLength;
-    dpiDataTypeInfo__v50 typeInfo;
-    int nullOk;
-} dpiQueryInfo__v50;
-
-typedef struct {
-    const char *name;
-    uint32_t nameLength;
-    dpiDataTypeInfo__v51 typeInfo;
-    int nullOk;
-} dpiQueryInfo__v51;
 
 
 //-----------------------------------------------------------------------------
@@ -1274,8 +1226,7 @@ typedef struct {
     uint32_t actualArraySize;           // actual number of rows in arrays
     int16_t *indicator;                 // array of indicator values
     uint16_t *returnCode;               // array of return code values
-    uint16_t *actualLength16;           // array of actual lengths (11.2 only)
-    uint32_t *actualLength32;           // array of actual lengths (12.1+)
+    uint32_t *actualLength;             // array of actual lengths
     void **objectIndicator;             // array of object indicator values
     dpiReferenceBuffer *references;     // array of references (specific types)
     dpiDynamicBytes *dynamicBytes;      // array of dynamically alloced chunks
@@ -1396,6 +1347,7 @@ struct dpiStmt {
     int isReturning;                    // statement has RETURNING clause?
     int deleteFromCache;                // drop from statement cache on close?
     int closing;                        // statement is being closed?
+    int externalHandle;                 // is external handle attached?
     char sqlId[13];                     // SQL_ID (from v$SQL)
     uint32_t sqlIdLength;               // length of the sqlId
 };
@@ -1623,6 +1575,7 @@ struct dpiVector {
     dpiConn *conn;                      // connection which created this
     void *handle;                       // OCI Vector descriptor
     uint8_t format;                     // vector format
+    int isSparse;                       // is vector SPARSE?
     uint32_t numDimensions;             // number of vector dimensions
     uint32_t numSparseValues;           // number of sparse vector values
     uint8_t dimensionSize;              // size of each dimension, in bytes
@@ -1732,7 +1685,8 @@ int dpiGen__startPublicFn(const void *ptr, dpiHandleTypeNum typeNum,
 int dpiGlobal__ensureInitialized(const char *fnName,
         dpiContextCreateParams *params, dpiVersionInfo **clientVersionInfo,
         dpiError *error);
-int dpiGlobal__initError(const char *fnName, dpiError *error);
+int dpiGlobal__initError(const char *fnName, int requireGlobalInit,
+        dpiError *error);
 int dpiGlobal__lookupCharSet(const char *name, uint16_t *charsetId,
         dpiError *error);
 int dpiGlobal__lookupEncoding(uint16_t charsetId, char *encoding,
@@ -1957,6 +1911,10 @@ void dpiVector__free(dpiVector *vector, dpiError *error);
 //-----------------------------------------------------------------------------
 // definition of internal dpiOci methods
 //-----------------------------------------------------------------------------
+int dpiOci__appCtxSet(dpiConn *conn, dpiAppContext *appContext,
+        dpiError *error);
+int dpiOci__appCtxClearAll(dpiConn *conn, const char *namespaceName,
+        uint32_t namespaceLength, dpiError *error);
 int dpiOci__aqDeq(dpiConn *conn, const char *queueName, void *options,
         void *msgProps, void *payloadType, void **payload, void **payloadInd,
         void **msgId, dpiError *error);
@@ -1977,12 +1935,8 @@ int dpiOci__attrGet(const void *handle, uint32_t handleType, void *ptr,
 int dpiOci__attrSet(void *handle, uint32_t handleType, void *ptr,
         uint32_t size, uint32_t attribute, const char *action,
         dpiError *error);
-int dpiOci__bindByName(dpiStmt *stmt, void **bindHandle, const char *name,
-        int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error);
 int dpiOci__bindByName2(dpiStmt *stmt, void **bindHandle, const char *name,
         int32_t nameLength, int dynamicBind, dpiVar *var, dpiError *error);
-int dpiOci__bindByPos(dpiStmt *stmt, void **bindHandle, uint32_t pos,
-        int dynamicBind, dpiVar *var, dpiError *error);
 int dpiOci__bindByPos2(dpiStmt *stmt, void **bindHandle, uint32_t pos,
         int dynamicBind, dpiVar *var, dpiError *error);
 int dpiOci__bindDynamic(dpiVar *var, void *bindHandle, dpiError *error);
@@ -2021,8 +1975,6 @@ int dpiOci__dateTimeSubtract(void *envHandle, void *handle1, void *handle2,
 int dpiOci__dbShutdown(dpiConn *conn, uint32_t mode, dpiError *error);
 int dpiOci__dbStartup(dpiConn *conn, void *adminHandle, uint32_t mode,
         dpiError *error);
-int dpiOci__defineByPos(dpiStmt *stmt, void **defineHandle, uint32_t pos,
-        dpiVar *var, dpiError *error);
 int dpiOci__defineByPos2(dpiStmt *stmt, void **defineHandle, uint32_t pos,
         dpiVar *var, dpiError *error);
 int dpiOci__defineDynamic(dpiVar *var, void *defineHandle, dpiError *error);

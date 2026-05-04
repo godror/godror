@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -68,9 +68,9 @@ extern "C" {
 #endif
 
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   5
-#define DPI_MINOR_VERSION   6
-#define DPI_PATCH_LEVEL     4
+#define DPI_MAJOR_VERSION   6
+#define DPI_MINOR_VERSION   0
+#define DPI_PATCH_LEVEL     0
 #define DPI_VERSION_SUFFIX
 
 #define DPI_STR_HELPER(x)       #x
@@ -90,8 +90,9 @@ extern "C" {
 
 #define DPI_ORACLE_VERSION_TO_NUMBER(versionNum, releaseNum, updateNum, \
                 portReleaseNum, portUpdateNum) \
-        ((versionNum * 100000000) + (releaseNum * 1000000) + \
-                (updateNum * 10000) + (portReleaseNum * 100) + (portUpdateNum))
+        ((versionNum * 100000000ULL) + (releaseNum * 1000000ULL) + \
+                (updateNum * 10000ULL) + (portReleaseNum * 100ULL) + \
+                (portUpdateNum))
 
 // define default array size to use
 #define DPI_DEFAULT_FETCH_ARRAY_SIZE            100
@@ -471,7 +472,6 @@ typedef struct dpiPoolCreateParams dpiPoolCreateParams;
 typedef struct dpiQueryInfo dpiQueryInfo;
 typedef struct dpiSessionlessTransactionId dpiSessionlessTransactionId;
 typedef struct dpiShardingKeyColumn dpiShardingKeyColumn;
-typedef struct dpiStringList dpiSodaCollNames;
 typedef struct dpiSodaOperOptions dpiSodaOperOptions;
 typedef struct dpiStmtInfo dpiStmtInfo;
 typedef struct dpiStringList dpiStringList;
@@ -802,22 +802,11 @@ struct dpiShardingKeyColumn {
     dpiDataBuffer value;
 };
 
-// structure used for getting an array of strings from the database; the unions
-// are for aliases for the names used when the structure was called
-// dpiSodaCollNames instead
+// structure used for getting an array of strings from the database
 struct dpiStringList {
-    union {
-        uint32_t numStrings;
-        uint32_t numNames;
-    };
-    union {
-        const char **strings;
-        const char **names;
-    };
-    union {
-        uint32_t *stringLengths;
-        uint32_t *nameLengths;
-    };
+    uint32_t numStrings;
+    const char **strings;
+    uint32_t *stringLengths;
 };
 
 // structure used for SODA operations (find/replace/remove)
@@ -950,6 +939,7 @@ struct dpiVectorInfo {
     uint32_t numDimensions;
     uint8_t dimensionSize;
     dpiVectorDimensionBuffer dimensions;
+    int isSparse;
     uint32_t numSparseValues;
     uint32_t *sparseIndices;
 };
@@ -1029,6 +1019,10 @@ DPI_EXPORT int dpiConn_changePassword(dpiConn *conn, const char *userName,
         uint32_t userNameLength, const char *oldPassword,
         uint32_t oldPasswordLength, const char *newPassword,
         uint32_t newPasswordLength);
+
+// clear application context for the namespace
+DPI_EXPORT int dpiConn_clearAppContext(dpiConn *conn,
+        const char *namespaceName, uint32_t namespaceNameLength);
 
 // close the connection now, not when the reference count reaches zero
 DPI_EXPORT int dpiConn_close(dpiConn *conn, dpiConnCloseMode mode,
@@ -1114,6 +1108,10 @@ DPI_EXPORT int dpiConn_getObjectType(dpiConn *conn, const char *name,
 DPI_EXPORT int dpiConn_getOciAttr(dpiConn *conn, uint32_t handleType,
         uint32_t attribute, dpiDataBuffer *value, uint32_t *valueLength);
 
+// get Pluggable Database name
+DPI_EXPORT int dpiConn_getPdbName(dpiConn *conn, const char **value,
+        uint32_t *valueLength);
+
 // return information about the server version in use
 DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
         const char **releaseString, uint32_t *releaseStringLength,
@@ -1185,6 +1183,10 @@ DPI_EXPORT int dpiConn_rollback(dpiConn *conn);
 DPI_EXPORT int dpiConn_setAction(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
+// set application context entries on the connection
+DPI_EXPORT int dpiConn_setAppContext(dpiConn *conn, uint32_t numAppContext,
+        dpiAppContext *appContext);
+
 // set call timeout for subsequent round-trips with this connection
 DPI_EXPORT int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value);
 
@@ -1237,6 +1239,10 @@ DPI_EXPORT int dpiConn_startupDatabase(dpiConn *conn, dpiStartupMode mode);
 // startup the database with a PFILE
 DPI_EXPORT int dpiConn_startupDatabaseWithPfile(dpiConn *conn,
         const char *pfile, uint32_t pfileLength, dpiStartupMode mode);
+
+// initialize a dpiStmt from an external handle
+DPI_EXPORT int dpiConn_stmtFromHandle(dpiConn *conn, void *externalHandle,
+        dpiStmt **stmt);
 
 // subscribe to events in the database
 DPI_EXPORT int dpiConn_subscribe(dpiConn *conn, dpiSubscrCreateParams *params,
@@ -2029,10 +2035,6 @@ DPI_EXPORT int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
         uint32_t keyLength, const dpiJsonNode *content, uint32_t flags,
         dpiSodaDoc **doc);
 
-// free the memory allocated when getting an array of SODA collection names
-DPI_EXPORT int dpiSodaDb_freeCollectionNames(dpiSodaDb *db,
-        dpiStringList *names);
-
 // return a cursor to iterate over SODA collections
 DPI_EXPORT int dpiSodaDb_getCollections(dpiSodaDb *db, const char *startName,
         uint32_t startNameLength, uint32_t flags, dpiSodaCollCursor **cursor);
@@ -2183,6 +2185,9 @@ DPI_EXPORT int dpiStmt_getBindNames(dpiStmt *stmt, uint32_t *numBindNames,
 
 // get the number of rows to (internally) fetch at one time
 DPI_EXPORT int dpiStmt_getFetchArraySize(dpiStmt *stmt, uint32_t *arraySize);
+
+// get OCIStmt handle
+DPI_EXPORT int dpiStmt_getHandle(dpiStmt *stmt, void **handle);
 
 // get next implicit result from previous execution; NULL if no more exist
 DPI_EXPORT int dpiStmt_getImplicitResult(dpiStmt *stmt,

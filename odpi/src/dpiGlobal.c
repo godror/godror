@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -91,14 +91,6 @@ int dpiGlobal__ensureInitialized(const char *fnName,
         dpiContextCreateParams *params, dpiVersionInfo **clientVersionInfo,
         dpiError *error)
 {
-    // initialize error buffer output to global error buffer structure; this is
-    // the value that is used if an error takes place before the thread local
-    // error structure can be returned
-    error->handle = NULL;
-    error->buffer = &dpiGlobalErrorBuffer;
-    error->buffer->fnName = fnName;
-
-    // perform global initializations, if needed
     if (!dpiGlobalInitialized) {
         dpiMutex__acquire(dpiGlobalMutex);
         if (!dpiGlobalInitialized)
@@ -258,7 +250,8 @@ static int dpiGlobal__getErrorBuffer(const char *fnName, dpiError *error)
 // an error structure cannot be determined for some reason, the global error
 // buffer structure is returned instead.
 //-----------------------------------------------------------------------------
-int dpiGlobal__initError(const char *fnName, dpiError *error)
+int dpiGlobal__initError(const char *fnName, int requireGlobalInit,
+        dpiError *error)
 {
     // initialize error buffer output to global error buffer structure; this is
     // the value that is used if an error takes place before the thread local
@@ -267,6 +260,8 @@ int dpiGlobal__initError(const char *fnName, dpiError *error)
     error->buffer = &dpiGlobalErrorBuffer;
     if (fnName)
         error->buffer->fnName = fnName;
+    if (!requireGlobalInit)
+        return DPI_SUCCESS;
 
     // check to see if global environment has been initialized; if not, no call
     // to dpiContext_createWithParams() was made successfully

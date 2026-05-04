@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -94,7 +94,7 @@ static int dpiDeqOptions__getAttrValue(dpiDeqOptions *options,
 //-----------------------------------------------------------------------------
 static int dpiDeqOptions__setAttrValue(dpiDeqOptions *options,
         uint32_t attribute, const char *fnName, const void *value,
-        uint32_t valueLength)
+        uint32_t valueLength, uint32_t maxValueLength)
 {
     dpiError error;
     int status;
@@ -103,6 +103,9 @@ static int dpiDeqOptions__setAttrValue(dpiDeqOptions *options,
             &error) < 0)
         return dpiGen__endPublicFn(options, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(options, value)
+    if (maxValueLength > 0) {
+        DPI_CHECK_LENGTH(options, valueLength, maxValueLength)
+    }
     status = dpiOci__attrSet(options->handle, DPI_OCI_DTYPE_AQDEQ_OPTIONS,
             (void*) value, valueLength, attribute, "set attribute value",
             &error);
@@ -264,7 +267,7 @@ int dpiDeqOptions_setCondition(dpiDeqOptions *options, const char *value,
         uint32_t valueLength)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_DEQCOND, __func__,
-            value, valueLength);
+            value, valueLength, 0);
 }
 
 
@@ -276,7 +279,7 @@ int dpiDeqOptions_setConsumerName(dpiDeqOptions *options, const char *value,
         uint32_t valueLength)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_CONSUMER_NAME,
-            __func__, value, valueLength);
+            __func__, value, valueLength, 128);
 }
 
 
@@ -288,7 +291,7 @@ int dpiDeqOptions_setCorrelation(dpiDeqOptions *options, const char *value,
         uint32_t valueLength)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_CORRELATION,
-            __func__, value, valueLength);
+            __func__, value, valueLength, 128);
 }
 
 
@@ -300,7 +303,7 @@ int dpiDeqOptions_setDeliveryMode(dpiDeqOptions *options,
         dpiMessageDeliveryMode value)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_MSG_DELIVERY_MODE,
-            __func__, &value, 0);
+            __func__, &value, 0, 0);
 }
 
 
@@ -311,7 +314,7 @@ int dpiDeqOptions_setDeliveryMode(dpiDeqOptions *options,
 int dpiDeqOptions_setMode(dpiDeqOptions *options, dpiDeqMode value)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_DEQ_MODE,
-            __func__, &value, 0);
+            __func__, &value, 0, 0);
 }
 
 
@@ -346,7 +349,7 @@ int dpiDeqOptions_setMsgId(dpiDeqOptions *options, const char *value,
 int dpiDeqOptions_setNavigation(dpiDeqOptions *options, dpiDeqNavigation value)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_NAVIGATION,
-            __func__, &value, 0);
+            __func__, &value, 0, 0);
 }
 
 
@@ -358,7 +361,7 @@ int dpiDeqOptions_setTransformation(dpiDeqOptions *options, const char *value,
         uint32_t valueLength)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_TRANSFORMATION,
-            __func__, value, valueLength);
+            __func__, value, valueLength, 128);
 }
 
 
@@ -369,7 +372,7 @@ int dpiDeqOptions_setTransformation(dpiDeqOptions *options, const char *value,
 int dpiDeqOptions_setVisibility(dpiDeqOptions *options, dpiVisibility value)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_VISIBILITY,
-            __func__, &value, 0);
+            __func__, &value, 0, 0);
 }
 
 
@@ -380,5 +383,5 @@ int dpiDeqOptions_setVisibility(dpiDeqOptions *options, dpiVisibility value)
 int dpiDeqOptions_setWait(dpiDeqOptions *options, uint32_t value)
 {
     return dpiDeqOptions__setAttrValue(options, DPI_OCI_ATTR_WAIT, __func__,
-            &value, 0);
+            &value, 0, 0);
 }

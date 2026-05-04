@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -126,7 +126,8 @@ static int dpiMsgProps__getAttrValue(dpiMsgProps *props, uint32_t attribute,
 //   Set the attribute value in OCI.
 //-----------------------------------------------------------------------------
 static int dpiMsgProps__setAttrValue(dpiMsgProps *props, uint32_t attribute,
-        const char *fnName, const void *value, uint32_t valueLength)
+        const char *fnName, const void *value, uint32_t valueLength,
+        uint32_t maxValueLength)
 {
     dpiError error;
     int status;
@@ -134,6 +135,9 @@ static int dpiMsgProps__setAttrValue(dpiMsgProps *props, uint32_t attribute,
     if (dpiGen__startPublicFn(props, DPI_HTYPE_MSG_PROPS, fnName, &error) < 0)
         return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(props, value)
+    if (maxValueLength > 0) {
+        DPI_CHECK_LENGTH(props, valueLength, maxValueLength)
+    }
     status = dpiOci__attrSet(props->handle, DPI_OCI_DTYPE_AQMSG_PROPERTIES,
             (void*) value, valueLength, attribute, "set attribute value",
             &error);
@@ -426,7 +430,7 @@ int dpiMsgProps_setCorrelation(dpiMsgProps *props, const char *value,
         uint32_t valueLength)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_CORRELATION, __func__,
-            value, valueLength);
+            value, valueLength, 0);
 }
 
 
@@ -437,7 +441,7 @@ int dpiMsgProps_setCorrelation(dpiMsgProps *props, const char *value,
 int dpiMsgProps_setDelay(dpiMsgProps *props, int32_t value)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_DELAY, __func__,
-            &value, 0);
+            &value, 0, 0);
 }
 
 
@@ -449,7 +453,7 @@ int dpiMsgProps_setExceptionQ(dpiMsgProps *props, const char *value,
         uint32_t valueLength)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_EXCEPTION_QUEUE,
-            __func__, value, valueLength);
+            __func__, value, valueLength, 128);
 }
 
 
@@ -460,7 +464,7 @@ int dpiMsgProps_setExceptionQ(dpiMsgProps *props, const char *value,
 int dpiMsgProps_setExpiration(dpiMsgProps *props, int32_t value)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_EXPIRATION, __func__,
-            &value, 0);
+            &value, 0, 0);
 }
 
 
@@ -563,7 +567,7 @@ int dpiMsgProps_setPayloadObject(dpiMsgProps *props, dpiObject *obj)
 int dpiMsgProps_setPriority(dpiMsgProps *props, int32_t value)
 {
     return dpiMsgProps__setAttrValue(props, DPI_OCI_ATTR_PRIORITY, __func__,
-            &value, 0);
+            &value, 0, 0);
 }
 
 
@@ -586,6 +590,11 @@ int dpiMsgProps_setRecipients(dpiMsgProps *props,
     if (dpiUtils__allocateMemory(numRecipients, sizeof(void*), 1,
             "allocate memory for agents", (void**) &aqAgents, &error) < 0)
         return dpiGen__endPublicFn(props, DPI_FAILURE, &error);
+    for (i = 0; i < numRecipients; i++) {
+        if (recipients[i].name) {
+            DPI_CHECK_LENGTH(props, recipients[i].nameLength, 120)
+        }
+    }
     status = dpiMsgProps__setRecipients(props, recipients, numRecipients,
             aqAgents, &error);
     for (i = 0; i < numRecipients; i++) {

@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2025, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -165,16 +165,10 @@ static int dpiStmt__bind(dpiStmt *stmt, dpiVar *var, uint32_t pos,
     entry->var = var;
     dynamicBind = stmt->isReturning || var->isDynamic;
     if (pos > 0) {
-        if (stmt->env->versionInfo->versionNum < 12)
-            status = dpiOci__bindByPos(stmt, &bindHandle, pos, dynamicBind,
-                    var, error);
-        else status = dpiOci__bindByPos2(stmt, &bindHandle, pos, dynamicBind,
+        status = dpiOci__bindByPos2(stmt, &bindHandle, pos, dynamicBind,
                 var, error);
     } else {
-        if (stmt->env->versionInfo->versionNum < 12)
-            status = dpiOci__bindByName(stmt, &bindHandle, name,
-                    (int32_t) nameLength, dynamicBind, var, error);
-        else status = dpiOci__bindByName2(stmt, &bindHandle, name,
+        status = dpiOci__bindByName2(stmt, &bindHandle, name,
                 (int32_t) nameLength, dynamicBind, var, error);
     }
 
@@ -349,8 +343,10 @@ int dpiStmt__close(dpiStmt *stmt, const char *tag, uint32_t tagLength,
         } else if (!stmt->conn->deadSession && stmt->conn->handle) {
             if (stmt->isOwned)
                 dpiOci__handleFree(stmt->handle, DPI_OCI_HTYPE_STMT);
-            else status = dpiOci__stmtRelease(stmt, tag, tagLength,
-                    propagateErrors, error);
+            else if (!stmt->externalHandle) {
+                status = dpiOci__stmtRelease(stmt, tag, tagLength,
+                        propagateErrors, error);
+            }
         }
         stmt->handle = NULL;
     }
@@ -518,13 +514,8 @@ static int dpiStmt__define(dpiStmt *stmt, uint32_t pos, dpiVar *var,
                 queryInfo->typeInfo.objectType->name);
 
     // perform the define
-    if (stmt->env->versionInfo->versionNum < 12) {
-        if (dpiOci__defineByPos(stmt, &defineHandle, pos, var, error) < 0)
-            return DPI_FAILURE;
-    } else {
-        if (dpiOci__defineByPos2(stmt, &defineHandle, pos, var, error) < 0)
-            return DPI_FAILURE;
-    }
+    if (dpiOci__defineByPos2(stmt, &defineHandle, pos, var, error) < 0)
+        return DPI_FAILURE;
 
     // set the charset form if applicable
     if (var->type->charsetForm != DPI_SQLCS_IMPLICIT) {
@@ -858,8 +849,6 @@ static int dpiStmt__getBatchErrors(dpiStmt *stmt, dpiError *error)
 static int dpiStmt__getRowCount(dpiStmt *stmt, uint64_t *count,
         dpiError *error)
 {
-    uint32_t rowCount32;
-
     if (stmt->statementType == DPI_STMT_TYPE_SELECT)
         *count = stmt->rowCount;
     else if (stmt->statementType != DPI_STMT_TYPE_INSERT &&
@@ -870,11 +859,6 @@ static int dpiStmt__getRowCount(dpiStmt *stmt, uint64_t *count,
             stmt->statementType != DPI_STMT_TYPE_BEGIN &&
             stmt->statementType != DPI_STMT_TYPE_DECLARE) {
         *count = 0;
-    } else if (stmt->env->versionInfo->versionNum < 12) {
-        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &rowCount32, 0,
-                DPI_OCI_ATTR_ROW_COUNT, "get row count", error) < 0)
-            return DPI_FAILURE;
-        *count = rowCount32;
     } else {
         if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, count, 0,
                 DPI_OCI_ATTR_UB8_ROW_COUNT, "get row count", error) < 0)
@@ -1570,6 +1554,22 @@ int dpiStmt_getFetchArraySize(dpiStmt *stmt, uint32_t *arraySize)
 
 
 //-----------------------------------------------------------------------------
+// dpiStmt_getHandle() [PUBLIC]
+//   Get OCIStmt handle
+//-----------------------------------------------------------------------------
+int dpiStmt_getHandle(dpiStmt *stmt, void **handle)
+{
+    dpiError error;
+
+    if (dpiStmt__check(stmt, __func__, &error) < 0)
+        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(stmt, handle);
+    *handle = stmt->handle;
+    return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
+}
+
+
+//-----------------------------------------------------------------------------
 // dpiStmt_getImplicitResult() [PUBLIC]
 //   Return the next implicit result from the previously executed statement. If
 // no more implicit results exist, NULL is returned.
@@ -1762,16 +1762,7 @@ int dpiStmt_getQueryInfo(dpiStmt *stmt, uint32_t pos, dpiQueryInfo *info)
     }
 
     // copy query information from internal cache
-    // the size of the dpiDataTypeInfo structure changed in version 5.1 and
-    // again in 5.2; this check and memcpy() for older versions can be removed
-    // once 6.0 is released
-    if (stmt->env->context->dpiMinorVersion > 1) {
-        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
-    } else if (stmt->env->context->dpiMinorVersion == 1) {
-        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo__v51));
-    } else {
-        memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo__v50));
-    }
+    memcpy(info, &stmt->queryInfo[pos - 1], sizeof(dpiQueryInfo));
 
     return dpiGen__endPublicFn(stmt, DPI_SUCCESS, &error);
 }
