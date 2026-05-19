@@ -483,9 +483,10 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
 		if strings.Contains(uSid, " AS ") {
 			for _, role := range adminRoles {
-				if s := role.String(); strings.HasSuffix(uSid, " AS "+s) {
+				s := role.String()
+				if dsn, ok := strings.CutSuffix(uSid, " AS "+s); ok {
 					P.AdminRole = role
-					dataSourceName = dataSourceName[:len(dataSourceName)-len(s)]
+					dataSourceName = dataSourceName[:len(dsn)]
 					break
 				}
 			}

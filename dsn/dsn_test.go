@@ -125,20 +125,27 @@ func TestParse(t *testing.T) {
 	wantLibDir.LibDir = "/Users/cjones/instantclient_19_3"
 
 	// From fuzzing
-	for _, in := range []string{
-		"oracle://[]",
-		"@oracle://[]",
+	for _, tC := range []struct {
+		In        string
+		WantError bool
+	}{
+		{In: "@oracle://[]", WantError: false},
+		{In: "oracle://[]", WantError: true},
 	} {
-		if _, err := Parse(in); err != nil {
-			t.Errorf("%q: %+v", in, err)
+		if _, err := Parse(tC.In); tC.WantError != (err != nil) {
+			t.Errorf("%q: %+v", tC.In, err)
 		}
 	}
+
+	wantDefaultSysdba := wantDefault
+	wantDefaultSysdba.AdminRole = SysDBA
 	for tName, tCase := range map[string]struct {
 		In   string
 		Want ConnectionParams
 	}{
 		"simple":   {In: "user/pass@sid", Want: wantDefault},
 		"userpass": {In: "user/pass", Want: wantEmptyConnectString},
+		"sysdba":   {In: "user/pass@sid AS SYSDBA", Want: wantDefaultSysdba},
 
 		"full": {In: "oracle://user:pass@sid/?poolMinSessions=3&poolMaxSessions=9&poolIncrement=3&connectionClass=TestClassName&standaloneConnection=0&adminRole=SYSOPER&poolWaitTimeout=200ms&poolSessionMaxLifetime=4000s&poolSessionTimeout=2000s&pingInterval=4s",
 			Want: ConnectionParams{
@@ -323,7 +330,5 @@ func ExampleParse() {
 	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
 	fmt.Println(P.StringWithPassword())
 	// Output:
-	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2"
-	// alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH"
-	// connectionClass= newPassword= poolIncrement=0 poolMinSessions=0 poolSessionTimeout=42s
+	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2" alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH" connectionClass= newPassword= poolIncrement=0 poolMinSessions=0 poolSessionTimeout=42s
 }
