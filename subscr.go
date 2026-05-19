@@ -275,7 +275,7 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 // Register a query for Change Notification.
 //
 // This code is EXPERIMENTAL yet!
-func (s *Subscription) Register(qry string, params ...any) error {
+func (s *Subscription) Register(qry string, params ...any) (C.uint64_t, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -284,25 +284,25 @@ func (s *Subscription) Register(qry string, params ...any) error {
 
 	var dpiStmt *C.dpiStmt
 	if C.dpiSubscr_prepareStmt(s.dpiSubscr, cQry, C.uint32_t(len(qry)), &dpiStmt) == C.DPI_FAILURE {
-		return fmt.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.conn.getError())
+		return 0, fmt.Errorf("prepareStmt[%p]: %w", s.dpiSubscr, s.conn.getError())
 	}
 	defer func() { C.dpiStmt_release(dpiStmt) }()
 
 	mode := C.dpiExecMode(C.DPI_MODE_EXEC_DEFAULT)
 	var qCols C.uint32_t
 	if C.dpiStmt_execute(dpiStmt, mode, &qCols) == C.DPI_FAILURE {
-		return fmt.Errorf("executeStmt: %w", s.conn.getError())
+		return 0, fmt.Errorf("executeStmt: %w", s.conn.getError())
 	}
 	var queryID C.uint64_t
 	if C.dpiStmt_getSubscrQueryId(dpiStmt, &queryID) == C.DPI_FAILURE {
-		return fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
+		return 0, fmt.Errorf("getSubscrQueryId: %w", s.conn.getError())
 	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Debug("subscribed", "query", qry, "id", queryID)
 	}
 
-	return nil
+	return queryID, nil
 }
 
 // Close the subscription.

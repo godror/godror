@@ -23,3 +23,5 @@ require (
 )
 
 // retract v0.45.0
+
+replace github.com/godror/godror => github.com/ddelpero/godror
