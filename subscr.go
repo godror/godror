@@ -217,7 +217,7 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 	C.dpiContext_initSubscrCreateParams(c.drv.dpiContext, params)
 	params.subscrNamespace = C.DPI_SUBSCR_NAMESPACE_DBCHANGE
 	params.protocol = C.DPI_SUBSCR_PROTO_CALLBACK
-	params.qos = 1 // C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
+	params.qos = C.DPI_SUBSCR_QOS_BEST_EFFORT | C.DPI_SUBSCR_QOS_QUERY | C.DPI_SUBSCR_QOS_ROWIDS
 	params.operations = C.DPI_OPCODE_ALL_OPS
 	if name != "" || p.IPAddress != "" {
 		if name != "" {
