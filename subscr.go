@@ -275,7 +275,7 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 // Register a query for Change Notification.
 //
 // This code is EXPERIMENTAL yet!
-func (s *Subscription) Register(qry string, params ...any) (C.uint64_t, error) {
+func (s *Subscription) Register(qry string, params ...any) (uint64, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -302,7 +302,7 @@ func (s *Subscription) Register(qry string, params ...any) (C.uint64_t, error) {
 		logger.Debug("subscribed", "query", qry, "id", queryID)
 	}
 
-	return queryID, nil
+	return uint64(queryID), nil
 }
 
 // Close the subscription.
