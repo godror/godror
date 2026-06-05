@@ -616,3 +616,248 @@ func TestBatchFlushError(t *testing.T) {
 
 	t.Logf("Got expected error: %v", err)
 }
+
+// TestBatchAllNilColumn tests that Flush doesn't panic when a column is entirely nil (NULL) across all Add calls.
+// This verifies the fix for the issue #409 where rValues[0].Len() was called without IsValid() check.
+func TestBatchAllNilColumn(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchAllNilColumn"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_allnil" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (col_a NUMBER(9), col_b NUMBER(9), col_c NUMBER(9))`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (col_a, col_b, col_c) VALUES (:1, :2, :3)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 5}
+
+	// Add rows where col_a is nil in all calls - this should NOT panic on Flush
+	if err = b.Add(ctx, nil, 2, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, nil, 4, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, nil, 6, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	// This was the panic point in the original bug - rValues[0].Len() on invalid Value
+	if err = b.Flush(ctx); err != nil {
+		t.Fatalf("Flush should not panic on all-nil column: %v", err)
+	}
+
+	// Verify rowsAffected count
+	if rowsAffected := b.RowsAffected(); rowsAffected != 3 {
+		t.Errorf("expected 3 rows affected, got %d", rowsAffected)
+	}
+
+	// Verify data was inserted correctly - NUMBER columns make NULL detection unambiguous
+	rows, err := testDb.QueryContext(ctx, "SELECT col_a, col_b, col_c FROM "+tbl+" ORDER BY col_b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	expected := []struct {
+		colA sql.NullInt64
+		colB int
+		colC int
+	}{
+		{sql.NullInt64{Valid: false}, 2, 3},
+		{sql.NullInt64{Valid: false}, 4, 5},
+		{sql.NullInt64{Valid: false}, 6, 7},
+	}
+
+	i := 0
+	for rows.Next() {
+		var colA sql.NullInt64
+		var colB, colC int
+		if err = rows.Scan(&colA, &colB, &colC); err != nil {
+			t.Fatal(err)
+		}
+		if i >= len(expected) {
+			t.Fatalf("more rows than expected: got row %d", i+1)
+		}
+		exp := expected[i]
+		if colA.Valid != exp.colA.Valid {
+			t.Errorf("row %d col_a: expected Valid=%v, got Valid=%v", i, exp.colA.Valid, colA.Valid)
+		}
+		if colB != exp.colB {
+			t.Errorf("row %d col_b: expected %d, got %d", i, exp.colB, colB)
+		}
+		if colC != exp.colC {
+			t.Errorf("row %d col_c: expected %d, got %d", i, exp.colC, colC)
+		}
+		i++
+	}
+	if i != len(expected) {
+		t.Errorf("expected %d rows, got %d", len(expected), i)
+	}
+}
+
+// TestBatchMultipleNilColumns tests multiple columns being entirely nil across all Add calls.
+func TestBatchMultipleNilColumns(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchMultipleNilColumns"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_multnil" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (col_a NUMBER(9), col_b NUMBER(9), col_c NUMBER(9))`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (col_a, col_b, col_c) VALUES (:1, :2, :3)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 5}
+
+	// Add rows where col_a and col_c are nil in all calls
+	if err = b.Add(ctx, nil, 10, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, nil, 20, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not panic when multiple columns are entirely nil
+	if err = b.Flush(ctx); err != nil {
+		t.Fatalf("Flush should not panic: %v", err)
+	}
+
+	// Verify all rows inserted - NUMBER columns make NULL detection unambiguous
+	rows, err := testDb.QueryContext(ctx, "SELECT col_a, col_b, col_c FROM "+tbl+" ORDER BY col_b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	expected := []struct {
+		colA sql.NullInt64
+		colB int
+		colC sql.NullInt64
+	}{
+		{sql.NullInt64{Valid: false}, 10, sql.NullInt64{Valid: false}},
+		{sql.NullInt64{Valid: false}, 20, sql.NullInt64{Valid: false}},
+	}
+
+	i := 0
+	for rows.Next() {
+		var colA, colC sql.NullInt64
+		var colB int
+		if err = rows.Scan(&colA, &colB, &colC); err != nil {
+			t.Fatal(err)
+		}
+		if i >= len(expected) {
+			t.Fatalf("more rows than expected: got row %d", i+1)
+		}
+		exp := expected[i]
+		if colA.Valid != exp.colA.Valid {
+			t.Errorf("row %d col_a: expected Valid=%v, got Valid=%v", i, exp.colA.Valid, colA.Valid)
+		}
+		if colB != exp.colB {
+			t.Errorf("row %d col_b: expected %d, got %d", i, exp.colB, colB)
+		}
+		if colC.Valid != exp.colC.Valid {
+			t.Errorf("row %d col_c: expected Valid=%v, got Valid=%v", i, exp.colC.Valid, colC.Valid)
+		}
+		i++
+	}
+	if i != len(expected) {
+		t.Errorf("expected %d rows, got %d", len(expected), i)
+	}
+}
+
+// TestBatchAllColumnsNil tests the extreme case where all columns are nil in all Add calls.
+func TestBatchAllColumnsNil(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(testContext("BatchAllColumnsNil"), time.Minute)
+	defer cancel()
+
+	tbl := "test_batch_allcolsnil" + tblSuffix
+	create := `CREATE TABLE ` + tbl + ` (col_a NUMBER(9), col_b NUMBER(9))`
+	if _, err := testDb.ExecContext(ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
+	}()
+
+	insQry := `INSERT INTO ` + tbl + ` (col_a, col_b) VALUES (:1, :2)`
+	stmt, err := testDb.PrepareContext(ctx, insQry)
+	if err != nil {
+		t.Fatalf("%s: %+v", insQry, err)
+	}
+	defer stmt.Close()
+
+	b := godror.Batch{Stmt: stmt, Limit: 5}
+
+	// Add rows where ALL columns are nil
+	if err = b.Add(ctx, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = b.Add(ctx, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not panic when all columns are nil - rValues[0] would be invalid
+	if err = b.Flush(ctx); err != nil {
+		t.Fatalf("Flush should not panic: %v", err)
+	}
+
+	// Verify rows were inserted as NULLs - NUMBER columns make NULL detection unambiguous
+	rows, err := testDb.QueryContext(ctx, "SELECT col_a, col_b FROM "+tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	expected := []struct {
+		colA sql.NullInt64
+		colB sql.NullInt64
+	}{
+		{sql.NullInt64{Valid: false}, sql.NullInt64{Valid: false}},
+		{sql.NullInt64{Valid: false}, sql.NullInt64{Valid: false}},
+	}
+
+	i := 0
+	for rows.Next() {
+		var colA, colB sql.NullInt64
+		if err = rows.Scan(&colA, &colB); err != nil {
+			t.Fatal(err)
+		}
+		if i >= len(expected) {
+			t.Fatalf("more rows than expected: got row %d", i+1)
+		}
+		exp := expected[i]
+		if colA.Valid != exp.colA.Valid {
+			t.Errorf("row %d col_a: expected Valid=%v, got Valid=%v", i, exp.colA.Valid, colA.Valid)
+		}
+		if colB.Valid != exp.colB.Valid {
+			t.Errorf("row %d col_b: expected Valid=%v, got Valid=%v", i, exp.colB.Valid, colB.Valid)
+		}
+		i++
+	}
+	if i != len(expected) {
+		t.Errorf("expected %d rows, got %d", len(expected), i)
+	}
+}
