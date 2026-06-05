@@ -89,7 +89,7 @@ func (b *Batch) RowsAffected() int64 { return b.rowsAffected }
 
 // Flush executes the statement and clears the storage.
 func (b *Batch) Flush(ctx context.Context) error {
-	if len(b.rValues) == 0 || b.rValues[0].Len() == 0 {
+	if b.size == 0 || len(b.rValues) == 0 {
 		return nil
 	}
 
