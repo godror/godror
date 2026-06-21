@@ -91,26 +91,28 @@ static int dpiContext__create(const char *fnName, unsigned int majorVersion,
 
     // store default encoding, if applicable
     if (localParams.defaultEncoding) {
-        if (dpiUtils__allocateMemory(1,
-                strlen(localParams.defaultEncoding) + 1, 0,
+        size_t encodingLen = strlen(localParams.defaultEncoding) + 1;
+        if (dpiUtils__allocateMemory(1, encodingLen, 0,
                 "allocate default encoding",
                 (void**) &tempContext->defaultEncoding, error) < 0) {
             dpiContext__free(tempContext);
             return DPI_FAILURE;
         }
-        strcpy(tempContext->defaultEncoding, localParams.defaultEncoding);
+        memcpy(tempContext->defaultEncoding, localParams.defaultEncoding,
+                encodingLen);
     }
 
     // store default driver name, if applicable
     if (localParams.defaultDriverName) {
-        if (dpiUtils__allocateMemory(1,
-                strlen(localParams.defaultDriverName) + 1, 0,
+        size_t driverNameLen = strlen(localParams.defaultDriverName) + 1;
+        if (dpiUtils__allocateMemory(1, driverNameLen, 0,
                 "allocate default driver name",
                 (void**) &tempContext->defaultDriverName, error) < 0) {
             dpiContext__free(tempContext);
             return DPI_FAILURE;
         }
-        strcpy(tempContext->defaultDriverName, localParams.defaultDriverName);
+        memcpy(tempContext->defaultDriverName, localParams.defaultDriverName,
+                driverNameLen);
     }
 
     // if parameters were specified, copy some key bits
@@ -268,8 +270,8 @@ int dpiContext_destroy(dpiContext *context)
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_REFS)
         dpiDebug__print("ref %p (%s) -> 0\n", context, context->typeDef->name);
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
-        (void) sprintf(message, "fn end %s(%p) -> %d", __func__,
-                (void*) context, DPI_SUCCESS);
+        (void) snprintf(message, sizeof(message), "fn end %s(%p) -> %d",
+                __func__, (void*) context, DPI_SUCCESS);
     dpiContext__free(context);
     if (dpiDebugLevel & DPI_DEBUG_LEVEL_FNS)
         dpiDebug__print("%s\n", message);
