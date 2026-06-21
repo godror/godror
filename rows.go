@@ -1,4 +1,4 @@
-// Copyright 2017, 2020 The Godror Authors
+// Copyright 2017, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -21,7 +21,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"github.com/godror/godror/slog"
 	"io"
 	"math"
 	"reflect"
@@ -30,6 +29,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/godror/godror/slog"
 )
 
 var _ = driver.Rows((*rows)(nil))
@@ -640,7 +641,7 @@ func (r *rows) Next(dest []driver.Value) error {
 				return err
 			}
 			r2.fromData = true
-			stmtSetFinalizer(ctx, st, "Next")
+			stmtAddCleanup(ctx, st, "Next")
 			dest[i] = r2
 
 		case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
@@ -848,7 +849,7 @@ func (r *rows) NextResultSet() error {
 		st.Close()
 		return err
 	}
-	stmtSetFinalizer(ctx, st, "NextResultSet")
+	stmtAddCleanup(ctx, st, "NextResultSet")
 	nr.origSt = r.origSt
 	if nr.origSt == nil {
 		nr.origSt = r.statement

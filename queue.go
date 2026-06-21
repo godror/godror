@@ -1,4 +1,4 @@
-// Copyright 2019, 2025 The Godror Authors
+// Copyright 2019, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -55,6 +55,7 @@ type Queue struct {
 	defDeqOpts                     DeqOptions
 	defEnqOpts                     EnqOptions
 	props                          []*C.dpiMsgProps
+	cleanup                        runtime.Cleanup
 	mu                             sync.Mutex
 	connIsOwned                    bool
 	deqOptsTainted, enqOptsTainted bool
@@ -176,7 +177,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	if guardWithFinalizers.Load() {
 		if !logLingeringResourceStack.Load() {
-			runtime.SetFinalizer(&Q, func(Q *Queue) {
+			Q.cleanup = runtime.AddCleanup(&Q, func(Q *Queue) {
 				if Q != nil && Q.dpiQueue != nil {
 					if logger := getLogger(context.Background()); logger != nil {
 						logger.Error("queue of NewQueue is not Closed!", "queue", fmt.Sprintf("%p", Q))
@@ -185,7 +186,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 					}
 					Q.Close()
 				}
-			})
+			}, &Q)
 		} else {
 			var a [4096]byte
 			stack := a[:runtime.Stack(a[:], false)]
@@ -230,6 +231,7 @@ func (Q *Queue) Close() error {
 	if q == nil {
 		return nil
 	}
+	Q.cleanup.Stop()
 	if err := c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
 		return fmt.Errorf("release: %w", err)
 	}

@@ -1,4 +1,4 @@
-// Copyright 2019, 2021 The Godror Authors
+// Copyright 2019, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -381,7 +381,7 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 		st.Close()
 		return nil, err
 	}
-	stmtSetFinalizer(ctx, st, "prepareContext")
+	stmtAddCleanup(ctx, st, "prepareContext")
 	return st, nil
 }
 func (c *conn) Commit() error {

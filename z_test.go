@@ -1,4 +1,4 @@
-// Copyright 2020, 2025 Tamás Gulácsi
+// Copyright 2020, 2026 Tamás Gulácsi
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -293,8 +293,16 @@ func StopConnStats() {
 	}
 }
 
-func testContext(name string) context.Context {
-	ctx := godror.ContextWithTraceTag(context.Background(), godror.TraceTag{Module: "Test" + name})
+func testContext(name string, ctxs ...context.Context) context.Context {
+	var ctx context.Context
+	if len(ctxs) != 0 {
+		ctx = ctxs[0]
+	} else {
+		ctx = context.Background()
+	}
+	ctx = godror.ContextWithTraceTag(ctx,
+		godror.TraceTag{Module: "Test" + name},
+	)
 	if Verbose {
 		logger.Info("testContext", "name", name)
 		ctx = godror.ContextWithLogger(ctx, logger)

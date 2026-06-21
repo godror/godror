@@ -1,4 +1,4 @@
-// Copyright 2017, 2025 The Godror Authors
+// Copyright 2017, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -42,6 +42,7 @@ var _ = fmt.Printf
 // Object represents a dpiObject.
 type Object struct {
 	dpiObject *C.dpiObject
+	cleanup   runtime.Cleanup
 	*ObjectType
 }
 
@@ -318,6 +319,7 @@ func (O *Object) Close() error {
 	}
 	// Reset all attributes
 	O.resetAttributes(true)
+	O.cleanup.Stop()
 
 	dpiObject := O.dpiObject
 	O.dpiObject = nil
@@ -1041,6 +1043,7 @@ type ObjectType struct {
 	mu                                  sync.RWMutex
 	OracleTypeNum                       C.dpiOracleTypeNum
 	NativeTypeNum                       C.dpiNativeTypeNum
+	cleanup                             runtime.Cleanup
 	DomainAnnotation
 	Precision   int16
 	Scale       int8
@@ -1181,13 +1184,13 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	O := &Object{ObjectType: t, dpiObject: obj}
 
 	if warnMissingObjectClose && guardWithFinalizers.Load() {
-		runtime.SetFinalizer(O, func(O *Object) {
+		O.cleanup = runtime.AddCleanup(O, func(O *Object) {
 			if O == nil || O.dpiObject == nil {
 				return
 			}
 			fmt.Printf("WARN Object %v is not closed\n", O)
 			O.Close()
-		})
+		}, O)
 	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
@@ -1237,6 +1240,7 @@ func (t *ObjectType) Close() error {
 		}
 	}
 
+	t.cleanup.Stop()
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("ObjectType.Close", "name", t.Name)
 	}
@@ -1371,7 +1375,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		cache[t.FullName()] = t
 	}
 	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
-		runtime.SetFinalizer(t, func(t *ObjectType) { t.Close() })
+		t.cleanup = runtime.AddCleanup(t, func(t *ObjectType) { t.Close() }, t)
 	}
 	return nil
 }

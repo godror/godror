@@ -1,4 +1,4 @@
-// Copyright 2017, 2025 The Godror Authors
+// Copyright 2017, 2026 The Godror Authors
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
 
@@ -340,6 +340,7 @@ type statement struct {
 	stmtOptions
 	arrLen      int
 	dpiStmtInfo C.dpiStmtInfo
+	cleanup     runtime.Cleanup
 	sync.Mutex
 }
 type dataGetter func(ctx context.Context, v any, data []C.dpiData) error
@@ -396,6 +397,7 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	if dpiStmt.refCount > 0 {
 		C.dpiStmt_release(dpiStmt)
 	}
+	st.cleanup.Stop()
 	if c == nil {
 		return driver.ErrBadConn
 	}
@@ -2708,7 +2710,7 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 		st2.Close()
 		return err
 	}
-	stmtSetFinalizer(ctx, st2, "dataGetStmtC")
+	stmtAddCleanup(ctx, st2, "dataGetStmtC")
 	r2.fromData = true
 	*row = r2
 	return nil
@@ -3533,13 +3535,13 @@ func isInvalidErr(err error) bool {
 
 var maxStackSize uint32 = 2048
 
-func stmtSetFinalizer(ctx context.Context, st *statement, tag string) {
+func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 	if !guardWithFinalizers.Load() {
 		return
 	}
 	logger := getLogger(ctx)
 	if !logLingeringResourceStack.Load() {
-		runtime.SetFinalizer(st, func(st *statement) {
+		st.cleanup = runtime.AddCleanup(st, func(st *statement) {
 			if st != nil && st.dpiStmt != nil {
 				if logger != nil {
 					logger.Error("statement is not closed", "stmt", st, "tag", tag)
@@ -3548,7 +3550,9 @@ func stmtSetFinalizer(ctx context.Context, st *statement, tag string) {
 				}
 				_ = st.closeNotLocking(ctx)
 			}
-		})
+		},
+			st,
+		)
 		return
 	}
 

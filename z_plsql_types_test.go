@@ -1,4 +1,4 @@
-// Copyright 2019, 2025 The Godror Authors
+// Copyright 2019, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -604,7 +604,9 @@ func TestPlSqlTypes(t *testing.T) {
 				ok = false
 			}
 			if !ok {
-				godror.ReadDbmsOutput(ctx, t.Output(), cx)
+				// TODO: use t.Output() (needs go1.25)
+				defer tl.enableLogging(t)()
+				godror.ReadDbmsOutput(ctx, tl, cx)
 			}
 		}
 	})
