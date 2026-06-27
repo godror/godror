@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.51.0]
+### Changed
+- Use ODPI-C v6.0.0
+
 ## [v0.50.0]
 ### Added
 - StructScan, SliceScan, StructObjectWrite, SliceObjectWrite helpers for implementing what is now behind `godror:"typename,"` struct tags.
