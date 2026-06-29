@@ -1184,13 +1184,9 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	O := &Object{ObjectType: t, dpiObject: obj}
 
 	if warnMissingObjectClose && guardWithFinalizers.Load() {
-		O.cleanup = runtime.AddCleanup(O, func(O *Object) {
-			if O == nil || O.dpiObject == nil {
-				return
-			}
-			fmt.Printf("WARN Object %v is not closed\n", O)
-			O.Close()
-		}, O)
+		O.cleanup = runtime.AddCleanup(O, func(addr string) {
+			fmt.Printf("WARN Object %s is not closed\n", addr)
+		}, fmt.Sprintf("%p", O))
 	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
@@ -1374,9 +1370,9 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if cache != nil {
 		cache[t.FullName()] = t
 	}
-	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
-		t.cleanup = runtime.AddCleanup(t, func(t *ObjectType) { t.Close() }, t)
-	}
+	// if closeObjectWithFinalizer && guardWithFinalizers.Load() {
+	// 	t.cleanup = runtime.AddCleanup(t, func(t *ObjectType) { t.Close() }, t)
+	// }
 	return nil
 }
 

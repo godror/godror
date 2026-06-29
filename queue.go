@@ -177,16 +177,13 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	if guardWithFinalizers.Load() {
 		if !logLingeringResourceStack.Load() {
-			Q.cleanup = runtime.AddCleanup(&Q, func(Q *Queue) {
-				if Q != nil && Q.dpiQueue != nil {
-					if logger := getLogger(context.Background()); logger != nil {
-						logger.Error("queue of NewQueue is not Closed!", "queue", fmt.Sprintf("%p", Q))
-					} else {
-						fmt.Printf("ERROR: queue %p of NewQueue is not Closed!\n", Q)
-					}
-					Q.Close()
+			Q.cleanup = runtime.AddCleanup(&Q, func(addr string) {
+				if logger := getLogger(context.Background()); logger != nil {
+					logger.Error("queue of NewQueue is not Closed!", "queue", addr)
+				} else {
+					fmt.Printf("ERROR: queue %s of NewQueue is not Closed!\n", addr)
 				}
-			}, &Q)
+			}, fmt.Sprintf("%p", &Q))
 		} else {
 			var a [4096]byte
 			stack := a[:runtime.Stack(a[:], false)]

@@ -3541,17 +3541,14 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 	}
 	logger := getLogger(ctx)
 	if !logLingeringResourceStack.Load() {
-		st.cleanup = runtime.AddCleanup(st, func(st *statement) {
-			if st != nil && st.dpiStmt != nil {
-				if logger != nil {
-					logger.Error("statement is not closed", "stmt", st, "tag", tag)
-				} else {
-					fmt.Printf("ERROR: statement %p of %s is not closed!\n", st, tag)
-				}
-				_ = st.closeNotLocking(ctx)
+		st.cleanup = runtime.AddCleanup(st, func(addr string) {
+			if logger != nil {
+				logger.Error("statement is not closed", "stmt", addr, "tag", tag)
+			} else {
+				fmt.Printf("ERROR: statement %s of %s is not closed!\n", addr, tag)
 			}
 		},
-			st,
+			fmt.Sprintf("%p", st),
 		)
 		return
 	}
