@@ -324,26 +324,31 @@ var _ driver.StmtQueryContext = (*statement)(nil)
 var _ driver.StmtExecContext = (*statement)(nil)
 var _ driver.NamedValueChecker = (*statement)(nil)
 
-type statement struct {
-	ctx context.Context
-	*conn
-	dpiStmt  *C.dpiStmt
-	query    string
-	columns  []Column
-	isSlice  []bool
-	gets     []dataGetter
-	dests    []any
-	data     [][]C.dpiData
-	vars     []*C.dpiVar
-	varInfos []varInfo
-	tbc      []io.Closer
-	stmtOptions
-	arrLen      int
-	dpiStmtInfo C.dpiStmtInfo
-	cleanup     runtime.Cleanup
-	sync.Mutex
-}
-type dataGetter func(ctx context.Context, v any, data []C.dpiData) error
+type (
+	statement struct {
+		statementInnards
+		ctx context.Context
+		*conn
+		query    string
+		columns  []Column
+		isSlice  []bool
+		gets     []dataGetter
+		dests    []any
+		data     [][]C.dpiData
+		varInfos []varInfo
+		stmtOptions
+		arrLen      int
+		dpiStmtInfo C.dpiStmtInfo
+		cleanup     runtime.Cleanup
+		sync.Mutex
+	}
+	statementInnards struct {
+		dpiStmt *C.dpiStmt
+		vars    []*C.dpiVar
+		tbc     []io.Closer
+	}
+	dataGetter func(ctx context.Context, v any, data []C.dpiData) error
+)
 
 // Close closes the statement.
 //
@@ -358,13 +363,13 @@ func (st *statement) Close() error {
 
 	return st.closeNotLocking(context.Background())
 }
+
 func (st *statement) closeNotLocking(ctx context.Context) error {
 	if st == nil || st.dpiStmt == nil {
 		return nil
 	}
 
-	c, dpiStmt, vars, tbc := st.conn, st.dpiStmt, st.vars, st.tbc
-	st.vars = nil
+	c := st.conn
 	st.isSlice = nil
 	st.query = ""
 	st.data = nil
@@ -372,20 +377,28 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	st.gets = nil
 	st.dests = nil
 	st.columns = nil
-	st.dpiStmt = nil
 	st.conn = nil
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
-	st.tbc = nil
 
 	if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", dpiStmt.refCount)
+		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", st.dpiStmt.refCount)
 		if printStack {
 			var a [4096]byte
 			stack := a[:runtime.Stack(a[:], false)]
 			logger.Debug("closeNotLocking", "stack", string(stack))
 		}
 	}
+	st.cleanup.Stop()
+	if c == nil {
+		return driver.ErrBadConn
+	}
+	return nil
+}
+
+func (st *statementInnards) Close() error {
+	vars, tbc, dpiStmt := st.vars, st.tbc, st.dpiStmt
+	st.vars, st.tbc, st.dpiStmt = nil, nil, nil
 	for _, v := range vars[:cap(vars)] {
 		if v != nil {
 			C.dpiVar_release(v)
@@ -394,12 +407,8 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	for _, cl := range tbc {
 		cl.Close()
 	}
-	if dpiStmt.refCount > 0 {
+	if dpiStmt != nil && dpiStmt.refCount > 0 {
 		C.dpiStmt_release(dpiStmt)
-	}
-	st.cleanup.Stop()
-	if c == nil {
-		return driver.ErrBadConn
 	}
 	return nil
 }
@@ -2688,8 +2697,9 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 		return nil
 	}
 	st2 := &statement{
-		conn: st.conn, dpiStmt: C.dpiData_getStmt(data),
-		stmtOptions: st.stmtOptions, // inherit parent statement's options
+		conn:             st.conn,
+		statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(data)},
+		stmtOptions:      st.stmtOptions, // inherit parent statement's options
 	}
 
 	logger := getLogger(ctx)
@@ -3541,14 +3551,18 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 	}
 	logger := getLogger(ctx)
 	if !logLingeringResourceStack.Load() {
-		st.cleanup = runtime.AddCleanup(st, func(addr string) {
-			if logger != nil {
-				logger.Error("statement is not closed", "stmt", addr, "tag", tag)
-			} else {
-				fmt.Printf("ERROR: statement %s of %s is not closed!\n", addr, tag)
-			}
-		},
-			fmt.Sprintf("%p", st),
+		st.cleanup = runtime.AddCleanup(
+			st,
+			func(st *statementInnards) {
+				addr := fmt.Sprintf("%p", st)
+				if logger != nil {
+					logger.Error("statement is not closed", "stmt", addr, "tag", tag)
+				} else {
+					fmt.Printf("ERROR: statement %s of %s is not closed!\n", addr, tag)
+				}
+				st.Close()
+			},
+			&st.statementInnards,
 		)
 		return
 	}

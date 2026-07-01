@@ -284,7 +284,11 @@ func (d *Data) GetStmt() driver.Stmt {
 	if d.IsNull() {
 		return nil
 	}
-	return &statement{dpiStmt: C.dpiData_getStmt(&d.dpiData)}
+	st := &statement{statementInnards: statementInnards{
+		dpiStmt: C.dpiData_getStmt(&d.dpiData),
+	}}
+	stmtAddCleanup(context.TODO(), st, "GetStmt")
+	return st
 }
 
 // SetStmt sets Stmt to data.

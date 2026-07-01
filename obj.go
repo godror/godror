@@ -1032,23 +1032,29 @@ func (O ObjectCollection) Trim(n int) error {
 }
 
 // ObjectType holds type info of an Object.
-type ObjectType struct {
-	CollectionOf                        *ObjectType
-	Attributes                          map[string]ObjectAttribute
-	drv                                 *drv
-	dpiObjectType                       *C.dpiObjectType
-	Schema, Name, PackageName           string
-	Annotations                         []Annotation
-	DBSize, ClientSizeInBytes, CharSize int
-	mu                                  sync.RWMutex
-	OracleTypeNum                       C.dpiOracleTypeNum
-	NativeTypeNum                       C.dpiNativeTypeNum
-	cleanup                             runtime.Cleanup
-	DomainAnnotation
-	Precision   int16
-	Scale       int8
-	FsPrecision uint8
-}
+type (
+	ObjectType struct {
+		objectTypeInnards
+		Schema, Name, PackageName           string
+		Annotations                         []Annotation
+		DBSize, ClientSizeInBytes, CharSize int
+		mu                                  sync.RWMutex
+		OracleTypeNum                       C.dpiOracleTypeNum
+		NativeTypeNum                       C.dpiNativeTypeNum
+		cleanup                             runtime.Cleanup
+		DomainAnnotation
+		Precision   int16
+		Scale       int8
+		FsPrecision uint8
+	}
+
+	objectTypeInnards struct {
+		CollectionOf  *ObjectType
+		dpiObjectType *C.dpiObjectType
+		Attributes    map[string]ObjectAttribute
+		drv           *drv
+	}
+)
 
 // AttributeNames returns the Attributes' names ordered as on the database (by ObjectAttribute.Sequence).
 func (t *ObjectType) AttributeNames() []string {
@@ -1146,7 +1152,10 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 			return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
 		}
 	}
-	t = &ObjectType{drv: c.drv, dpiObjectType: objType}
+	t = &ObjectType{objectTypeInnards: objectTypeInnards{
+		drv:           c.drv,
+		dpiObjectType: objType,
+	}}
 	if err = t.init(c.objTypes); err != nil {
 		return t, err
 	}
@@ -1184,9 +1193,17 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	O := &Object{ObjectType: t, dpiObject: obj}
 
 	if warnMissingObjectClose && guardWithFinalizers.Load() {
-		O.cleanup = runtime.AddCleanup(O, func(addr string) {
-			fmt.Printf("WARN Object %s is not closed\n", addr)
-		}, fmt.Sprintf("%p", O))
+		O.cleanup = runtime.AddCleanup(
+			O,
+			func(dpiObject *C.dpiObject) {
+				fmt.Printf("WARN Object %p is not closed\n", dpiObject)
+				if err := O.drv.checkExec(func() C.int {
+					return C.dpiObject_release(dpiObject)
+				}); err != nil {
+					fmt.Printf("error on close object: %+v", err)
+				}
+			},
+			obj)
 	}
 	// https://github.com/oracle/odpi/issues/112#issuecomment-524479532
 	return O, O.ResetAttributes()
@@ -1216,36 +1233,39 @@ func (t *ObjectType) Close() error {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	t.cleanup.Stop()
+
+	return t.objectTypeInnards.Close()
+}
+
+func (t *objectTypeInnards) Close() error {
+	logger := getLogger(context.TODO())
 	attributes, cof, ot, drv := t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv
 	t.Attributes, t.CollectionOf, t.dpiObjectType, t.drv = nil, nil, nil, nil
-
 	if ot == nil {
 		return nil
 	}
-
-	logger := getLogger(context.TODO())
 	if cof != nil {
 		if err := cof.Close(); err != nil && logger != nil {
-			logger.Error("ObjectType.Close CollectionOf.Close", "name", t.Name, "collectionOf", cof.Name, "error", err)
+			logger.Error("ObjectType.Close CollectionOf.Close", "collectionOf", cof.Name, "error", err)
 		}
 	}
 
 	for _, attr := range attributes {
 		if err := attr.Close(); err != nil && logger != nil {
-			logger.Error("ObjectType.Close attr.Close", "name", t.Name, "attr", attr.Name, "error", err)
+			logger.Error("ObjectType.Close attr.Close", "attr", attr.Name, "error", err)
 		}
 	}
 
-	t.cleanup.Stop()
 	if logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
-		logger.Debug("ObjectType.Close", "name", t.Name)
+		logger.Debug("ObjectType.Close")
 	}
 	if err := drv.checkExec(func() C.int {
 		return C.dpiObjectType_release(ot)
 	}); err != nil {
 		return fmt.Errorf("error releasing object type: %w", err)
 	}
-
 	return nil
 }
 
@@ -1259,8 +1279,10 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 		return nil, err
 	}
 	o := &Object{
-		ObjectType: &ObjectType{dpiObjectType: objectType, drv: c.drv},
-		dpiObject:  object,
+		ObjectType: &ObjectType{objectTypeInnards: objectTypeInnards{
+			dpiObjectType: objectType, drv: c.drv,
+		}},
+		dpiObject: object,
 	}
 	c.mu.RLock()
 	err := o.ObjectType.init(c.objTypes)
@@ -1370,9 +1392,16 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 	if cache != nil {
 		cache[t.FullName()] = t
 	}
-	// if closeObjectWithFinalizer && guardWithFinalizers.Load() {
-	// 	t.cleanup = runtime.AddCleanup(t, func(t *ObjectType) { t.Close() }, t)
-	// }
+	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
+		t.cleanup = runtime.AddCleanup(
+			t,
+			func(t *objectTypeInnards) {
+				fmt.Printf("WARN ObjectType %p is not closed\n", t)
+				t.Close()
+			},
+			&t.objectTypeInnards,
+		)
+	}
 	return nil
 }
 
@@ -1406,7 +1435,7 @@ func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]
 	if typ.oracleTypeNum == 0 {
 		panic("typ is nil")
 	}
-	t := &ObjectType{drv: d}
+	t := &ObjectType{objectTypeInnards: objectTypeInnards{drv: d}}
 	err := t.fromDataTypeInfo(typ, cache)
 	return t, err
 }

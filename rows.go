@@ -235,52 +235,52 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 	case C.DPI_NATIVE_TYPE_BYTES, C.DPI_ORACLE_TYPE_RAW,
 		C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID,
 		C.DPI_ORACLE_TYPE_LONG_RAW:
-		return reflect.TypeOf([]byte(nil))
+		return reflect.TypeFor[[]byte]()
 	case C.DPI_ORACLE_TYPE_NUMBER:
 		switch col.NativeType {
 		case C.DPI_NATIVE_TYPE_INT64:
-			return reflect.TypeOf(int64(0))
+			return reflect.TypeFor[int64]()
 		case C.DPI_NATIVE_TYPE_UINT64:
-			return reflect.TypeOf(uint64(0))
+			return reflect.TypeFor[uint64]()
 		//case C.DPI_NATIVE_TYPE_FLOAT:
-		//	return reflect.TypeOf(float32(0))
+		//	return reflect.TypeFor[float32]()
 		//case C.DPI_NATIVE_TYPE_DOUBLE:
-		//		return reflect.TypeOf(float64(0))
+		//		return reflect.TypeFor[float64]()
 		default:
-			return reflect.TypeOf(Number(""))
+			return reflect.TypeFor[Number]()
 		}
 	case C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT:
-		return reflect.TypeOf(float32(0))
+		return reflect.TypeFor[float32]()
 	case C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE:
-		return reflect.TypeOf(float64(0))
+		return reflect.TypeFor[float64]()
 	case C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64:
-		return reflect.TypeOf(int64(0))
+		return reflect.TypeFor[int64]()
 	case C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64:
-		return reflect.TypeOf(uint64(0))
+		return reflect.TypeFor[uint64]()
 	case C.DPI_ORACLE_TYPE_TIMESTAMP, C.DPI_NATIVE_TYPE_TIMESTAMP,
 		C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
 		C.DPI_ORACLE_TYPE_DATE:
-		return reflect.TypeOf(NullTime{})
+		return reflect.TypeFor[NullTime]()
 	case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
-		return reflect.TypeOf(time.Duration(0))
+		return reflect.TypeFor[time.Duration]()
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB:
-		return reflect.TypeOf("")
+		return reflect.TypeFor[string]()
 	case C.DPI_ORACLE_TYPE_BLOB, C.DPI_ORACLE_TYPE_BFILE:
-		return reflect.TypeOf([]byte(nil))
+		return reflect.TypeFor[[]byte]()
 	case C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT:
-		return reflect.TypeOf(&statement{})
+		return reflect.TypeFor[*statement]()
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
-		return reflect.TypeOf(false)
+		return reflect.TypeFor[bool]()
 	case C.DPI_ORACLE_TYPE_JSON:
-		return reflect.TypeOf(JSON{})
+		return reflect.TypeFor[JSON]()
 	case C.DPI_ORACLE_TYPE_JSON_OBJECT:
-		return reflect.TypeOf(JSONObject{})
+		return reflect.TypeFor[JSONObject]()
 	case C.DPI_ORACLE_TYPE_JSON_ARRAY:
-		return reflect.TypeOf(JSONArray{})
+		return reflect.TypeFor[JSONArray]()
 	case C.DPI_ORACLE_TYPE_VECTOR:
-		return reflect.TypeOf(Vector{})
+		return reflect.TypeFor[Vector]()
 	default:
-		return reflect.TypeOf("")
+		return reflect.TypeFor[string]()
 	}
 }
 
@@ -617,9 +617,12 @@ func (r *rows) Next(dest []driver.Value) error {
 				dest[i] = nil
 				continue
 			}
-			st := &statement{conn: r.conn, dpiStmt: C.dpiData_getStmt(d),
-				stmtOptions: r.statement.stmtOptions, // inherit parent statement's options
+			st := &statement{
+				conn:             r.conn,
+				statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
+				stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
 			}
+			stmtAddCleanup(ctx, st, "rows.Next")
 			var colCount C.uint32_t
 			if err := r.statement.checkExecNoLOT(func() C.int {
 				return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
@@ -824,9 +827,11 @@ func (r *rows) NextResultSet() error {
 		return fmt.Errorf("getImplicitResult: %w", io.EOF)
 	}
 	st := &statement{
-		conn: r.conn, dpiStmt: r.nextRs,
-		stmtOptions: r.statement.stmtOptions,
+		conn:             r.conn,
+		statementInnards: statementInnards{dpiStmt: r.nextRs},
+		stmtOptions:      r.statement.stmtOptions,
 	}
+	stmtAddCleanup(ctx, st, "rows.NextResultSet")
 
 	var n C.uint32_t
 	logger := getLogger(context.TODO())

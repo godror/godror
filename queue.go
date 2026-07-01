@@ -42,26 +42,55 @@ var DefaultDeqOptions = DeqOptions{
 	Wait:         0,
 }
 
-// Queue represents an Oracle Advanced Queue.
-type Queue struct {
-	PayloadObjectType *ObjectType
-	conn              *conn
-	dpiQueue          *C.dpiQueue
-	name, tableName   string
-	sizeStmt          interface {
-		io.Closer
-		driver.StmtQueryContext
+type (
+	// Queue represents an Oracle Advanced Queue.
+	Queue struct {
+		queueInnards
+		name, tableName                string
+		defDeqOpts                     DeqOptions
+		defEnqOpts                     EnqOptions
+		props                          []*C.dpiMsgProps
+		cleanup                        runtime.Cleanup
+		mu                             sync.Mutex
+		deqOptsTainted, enqOptsTainted bool
 	}
-	defDeqOpts                     DeqOptions
-	defEnqOpts                     EnqOptions
-	props                          []*C.dpiMsgProps
-	cleanup                        runtime.Cleanup
-	mu                             sync.Mutex
-	connIsOwned                    bool
-	deqOptsTainted, enqOptsTainted bool
-}
 
-type queueOption interface{ qOption() }
+	queueInnards struct {
+		PayloadObjectType *ObjectType
+		conn              *conn
+		dpiQueue          *C.dpiQueue
+		sizeStmt          interface {
+			io.Closer
+			driver.StmtQueryContext
+		}
+		connIsOwned bool
+	}
+
+	queueOption interface{ qOption() }
+
+	// EnqOptions are the options used to enqueue a message.
+	EnqOptions struct {
+		Transformation string
+		Visibility     Visibility
+		DeliveryMode   DeliveryMode
+	}
+
+	// DeqOptions are the options used to dequeue a message.
+	DeqOptions struct {
+		Condition, Consumer, Correlation string
+		MsgID                            []byte
+		Transformation                   string
+		Mode                             DeqMode
+		DeliveryMode                     DeliveryMode
+		Navigation                       DeqNavigation
+		Visibility                       Visibility
+		Wait                             time.Duration
+	}
+
+	queueTableName struct {
+		Name string
+	}
+)
 
 // WithDeqOptions returns a queueOption usable in NewQueue, applying the given DeqOptions.
 func WithDeqOptions(o DeqOptions) queueOption { return o }
@@ -71,10 +100,6 @@ func WithEnqOptions(o EnqOptions) queueOption { return o }
 
 // WithQueueTable returns a queueOption usable in NewQueue, setting the queue table explicitly.
 func WithQueueTable(name string) queueOption { return queueTableName{name} }
-
-type queueTableName struct {
-	Name string
-}
 
 func (queueTableName) qOption() {}
 
@@ -101,7 +126,12 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 			cx2.Close()
 		}
 	}
-	Q := Queue{conn: cx.(*conn), name: name, connIsOwned: execerIsPool}
+	Q := Queue{
+		queueInnards: queueInnards{
+			conn: cx.(*conn), connIsOwned: execerIsPool,
+		},
+		name: name,
+	}
 	enqOpts := DefaultEnqOptions
 	deqOpts := DefaultDeqOptions
 	for _, o := range options {
@@ -177,13 +207,19 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	if guardWithFinalizers.Load() {
 		if !logLingeringResourceStack.Load() {
-			Q.cleanup = runtime.AddCleanup(&Q, func(addr string) {
-				if logger := getLogger(context.Background()); logger != nil {
-					logger.Error("queue of NewQueue is not Closed!", "queue", addr)
-				} else {
-					fmt.Printf("ERROR: queue %s of NewQueue is not Closed!\n", addr)
-				}
-			}, fmt.Sprintf("%p", &Q))
+			Q.cleanup = runtime.AddCleanup(
+				&Q,
+				func(Q *queueInnards) {
+					addr := fmt.Sprintf("%p", Q)
+					if logger := getLogger(context.Background()); logger != nil {
+						logger.Error("queue of NewQueue is not Closed!", "queue", addr)
+					} else {
+						fmt.Printf("ERROR: queue %s of NewQueue is not Closed!\n", addr)
+					}
+					Q.Close()
+				},
+				&Q.queueInnards,
+			)
 		} else {
 			var a [4096]byte
 			stack := a[:runtime.Stack(a[:], false)]
@@ -220,6 +256,12 @@ func (Q *Queue) Close() error {
 	if Q == nil {
 		return nil
 	}
+	err := Q.queueInnards.Close()
+	Q.cleanup.Stop()
+	return err
+}
+
+func (Q *queueInnards) Close() error {
 	c, q, ot, st := Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt
 	Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt = nil, nil, nil, nil
 	if st != nil {
@@ -228,7 +270,6 @@ func (Q *Queue) Close() error {
 	if q == nil {
 		return nil
 	}
-	Q.cleanup.Stop()
 	if err := c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
 		return fmt.Errorf("release: %w", err)
 	}
@@ -737,13 +778,6 @@ func (M *Message) writeMsgID(value *C.char, length C.uint) {
 	}
 }
 
-// EnqOptions are the options used to enqueue a message.
-type EnqOptions struct {
-	Transformation string
-	Visibility     Visibility
-	DeliveryMode   DeliveryMode
-}
-
 func (EnqOptions) qOption() {}
 
 func (E *EnqOptions) fromOra(d *drv, opts *C.dpiEnqOptions) error {
@@ -807,18 +841,6 @@ func (Q *Queue) SetEnqOptions(E EnqOptions) error {
 		return fmt.Errorf("getEnqOptions: %w", err)
 	}
 	return E.toOra(Q.conn.drv, opts)
-}
-
-// DeqOptions are the options used to dequeue a message.
-type DeqOptions struct {
-	Condition, Consumer, Correlation string
-	MsgID                            []byte
-	Transformation                   string
-	Mode                             DeqMode
-	DeliveryMode                     DeliveryMode
-	Navigation                       DeqNavigation
-	Visibility                       Visibility
-	Wait                             time.Duration
 }
 
 func (DeqOptions) qOption() {}
