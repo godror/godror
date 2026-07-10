@@ -210,7 +210,11 @@ type drv struct {
 	mu            sync.RWMutex
 }
 
+// NewDriver creates a new drv.
+// Useful when you want to mess with libDir and configDir.
 func NewDriver() *drv { return &drv{} }
+
+// Close the drv, purge the pools and try to destroy the dpiContext in a timely manner.
 func (d *drv) Close() error {
 	if d == nil {
 		return nil
