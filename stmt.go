@@ -816,39 +816,49 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
+	cnt, names, err := st.BindNames()
+	if err != nil {
+		panic(err)
+	}
+	if names == nil {
+		return cnt
+	}
+	// cnt is the number of *unique* arguments
+	return len(names)
+}
+
+// BindNames returns the number of bindable inputs, and (iff the're named) their names.
+func (st *statement) BindNames() (int, []string, error) {
 	ctx := context.Background()
 	logger := getLogger(ctx)
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NumInput", "stmt", fmt.Sprintf("%p", st), "dpiStmt", fmt.Sprintf("%p", st.dpiStmt), "query", st.query)
 	}
 	if st.query == wrapResultset {
-		return 1
+		return 1, nil, nil
 	}
 	if st.dpiStmt == nil {
 		switch st.query {
 		case getConnection, wrapResultset:
-			return 1
+			return 1, nil, nil
 		}
-		return 0
+		return 0, nil, fmt.Errorf("already closed")
 	}
 
 	st.Lock()
 	defer st.Unlock()
 	var cnt C.uint32_t
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindCount(st.dpiStmt, &cnt) }); err != nil {
-		if logger != nil {
-			logger.Error("getBindCount", "error", err)
-		}
 		if st.conn == nil {
 			panic(driver.ErrBadConn)
 		}
-		panic(err)
+		return 0, nil, err
 	}
-	if cnt < 2 { // 1 can't decrease...
+	if cnt < 1 { // 0 can't decrease...
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 		}
-		return int(cnt)
+		return int(cnt), nil, nil
 	}
 
 	var prevColon bool
@@ -867,36 +877,83 @@ func (st *statement) NumInput() int {
 		}
 	}
 	if !mayHaveBoundName {
-		return int(cnt)
+		return int(cnt), nil, nil
 	}
 
+	var n C.uint32_t
 	names := make([]*C.char, int(cnt))
 	lengths := make([]C.uint32_t, int(cnt))
-	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) }); err != nil {
-		if logger != nil {
-			logger.Error("getBindNames", "error", err)
-		}
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindNames(st.dpiStmt, &n, &names[0], &lengths[0]) }); err != nil {
 		if st.conn == nil {
 			panic(driver.ErrBadConn)
 		}
-		panic(err)
+		return int(cnt), nil, err
 	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 	}
 
-	// return the number of *unique* arguments
-	return int(cnt)
+	ss := make([]string, int(n))
+	for i := range len(ss) {
+		ss[i] = C.GoStringN(names[i], C.int(lengths[i]))
+	}
+	return int(cnt), ss, nil
 }
 
-type argInfo struct {
-	objType     *C.dpiObjectType
-	set         dataSetter
-	bufSize     int
-	typ         C.dpiOracleTypeNum
-	natTyp      C.dpiNativeTypeNum
-	isIn, isOut bool
+func (st *statement) Info() StatementInfo {
+	if st == nil {
+		return StatementInfo{}
+	}
+	info := StatementInfo{
+		IsDDL:       st.dpiStmtInfo.isDDL != 0,
+		IsDML:       st.dpiStmtInfo.isDML != 0,
+		IsPLSQL:     st.dpiStmtInfo.isPLSQL != 0,
+		IsQuery:     st.dpiStmtInfo.isQuery != 0,
+		IsReturning: st.dpiStmtInfo.isReturning != 0,
+		Type:        statementType(st.dpiStmtInfo.statementType),
+	}
+	if st.dpiStmtInfo.sqlIdLength != 0 && st.dpiStmtInfo.sqlId != nil {
+		info.ID = C.GoStringN(st.dpiStmtInfo.sqlId, C.int(st.dpiStmtInfo.sqlIdLength))
+	}
+	return info
 }
+
+type (
+	StatementInfo struct {
+		ID                                          string
+		Type                                        statementType
+		IsDDL, IsDML, IsPLSQL, IsQuery, IsReturning bool
+	}
+
+	statementType uint32
+
+	argInfo struct {
+		objType     *C.dpiObjectType
+		set         dataSetter
+		bufSize     int
+		typ         C.dpiOracleTypeNum
+		natTyp      C.dpiNativeTypeNum
+		isIn, isOut bool
+	}
+)
+
+const (
+	StUnknown      = statementType(C.DPI_STMT_TYPE_UNKNOWN)      // 0
+	StSelect       = statementType(C.DPI_STMT_TYPE_SELECT)       // 1
+	StUpdate       = statementType(C.DPI_STMT_TYPE_UPDATE)       // 2
+	StDelete       = statementType(C.DPI_STMT_TYPE_DELETE)       // 3
+	StInsert       = statementType(C.DPI_STMT_TYPE_INSERT)       // 4
+	StCreate       = statementType(C.DPI_STMT_TYPE_CREATE)       // 5
+	StDrop         = statementType(C.DPI_STMT_TYPE_DROP)         // 6
+	StAlter        = statementType(C.DPI_STMT_TYPE_ALTER)        // 7
+	StBegin        = statementType(C.DPI_STMT_TYPE_BEGIN)        // 8
+	StDeclare      = statementType(C.DPI_STMT_TYPE_DECLARE)      // 9
+	StCall         = statementType(C.DPI_STMT_TYPE_CALL)         // 10
+	StExplain_plan = statementType(C.DPI_STMT_TYPE_EXPLAIN_PLAN) // 15
+	StMerge        = statementType(C.DPI_STMT_TYPE_MERGE)        // 16
+	StRollback     = statementType(C.DPI_STMT_TYPE_ROLLBACK)     // 17
+	StCommit       = statementType(C.DPI_STMT_TYPE_COMMIT)       // 21
+)
 
 // bindVars binds the given args into new variables.
 // Assumes LockOSThread, may panic (SIGSEGV so you can't catch it)
