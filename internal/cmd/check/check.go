@@ -19,7 +19,6 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-	//"github.com/kortschak/utter"
 )
 
 func main() {

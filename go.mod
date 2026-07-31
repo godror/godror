@@ -10,6 +10,7 @@ require (
 	github.com/godror/knownpb v0.3.0
 	github.com/google/go-cmp v0.7.0
 	github.com/oklog/ulid/v2 v2.0.2
+	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
 	golang.org/x/sync v0.14.0
 	golang.org/x/sys v0.22.0
