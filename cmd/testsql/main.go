@@ -45,7 +45,7 @@ func Main() error {
 			} else {
 				qry = strings.Join(args, " ")
 			}
-			log.Println("parse", qry)
+			// log.Println("parse", qry)
 			db, err := sql.Open("godror", *flagConnect)
 			if err != nil {
 				return fmt.Errorf("connect to %q: %w", *flagConnect, err)
@@ -84,14 +84,20 @@ func Main() error {
 				}
 				var rows driver.Rows
 				if !info.IsQuery {
-					_, err = stmt.Exec(args)
+					var ec *godror.OraErr
+					if _, err = stmt.Exec(args); err == nil || errors.As(err, &ec) && ec.Code() == 6502 {
+						err = nil
+					}
 				} else {
 					rows, err = stmt.Query(args)
 					if rows != nil {
 						rows.Close()
 					}
 				}
-				return err
+				if err != nil {
+					return fmt.Errorf("exec %s: %w", qry, err)
+				}
+				return nil
 			})
 		},
 	}
