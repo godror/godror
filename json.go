@@ -640,7 +640,7 @@ func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 }
 
 // populateJSONNode populates dpiJsonNode from user inputs.
-// It creates a seperate memory for the new output value, jsonnode.
+// It creates a separate memory for the new output value, jsonnode.
 // memory from user input, in is not shared with jsonnode.
 // Caller has to explicitly free using godror_dpiJsonfreeMem
 func populateJSONNode(jsonnode *C.dpiJsonNode, in any) error {
