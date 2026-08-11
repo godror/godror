@@ -633,6 +633,13 @@ func maybeBadConn(err error, c *conn) error {
 			if logger != nil {
 				logger.Error("maybeBadConn close", "conn", c, "error", err)
 			}
+			// dpiConn_close before release so an orphaned dpiStmt (abandoned by
+			// database/sql on a force-closed conn) can't pin the pooled session busy
+			// forever (ORA-24496, #415). Only the bad-conn path hard-closes; healthy
+			// Close keeps the plain release (queues/LOBs outlive the conn via refcount).
+			if c.dpiConn != nil {
+				C.dpiConn_close(c.dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
+			}
 			_ = c.closeNotLocking()
 		}
 	}
@@ -961,8 +968,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 // If implemented, drivers may return the underlying error from queries,
 // even if the connection should be discarded by the connection pool.
 //
-// This implementation returns the underlying session to the OCI session pool,
-// iff this is a pooled connection. ResetSession will reacquire it.
+// A pooled connection keeps its session so it stays reusable; the session
+// returns to the OCI pool only when the connection is closed.
 func (c *conn) IsValid() bool {
 	if c == nil {
 		return false
@@ -988,16 +995,6 @@ func (c *conn) IsValid() bool {
 		return dpiConnOK
 	}
 
-	// FIXME(tgulacsi): Prepared statements hold the previous session,
-	// so sometimes sessions are not released, resulting in
-	//
-	//     ORA-24459: OCISessionGet()
-	//
-	// See https://github.com/godror/godror/issues/57 for example.
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_ = c.closeNotLocking()
-	c.released = true
 	return true
 }
 
