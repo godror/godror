@@ -66,11 +66,11 @@ func Main() error {
 				if err != nil {
 					return err
 				}
-				args := make([]driver.Value, 0, min(cnt, len(names)))
+				args := make([]driver.NamedValue, 0, min(cnt, len(names)))
 				if cnt != 0 {
 					if len(names) == 0 {
 						for range cnt {
-							args = append(args, "")
+							args = append(args, driver.NamedValue{Value: ""})
 						}
 					} else {
 						for _, nm := range names {
@@ -85,11 +85,11 @@ func Main() error {
 				var rows driver.Rows
 				if !info.IsQuery {
 					var ec *godror.OraErr
-					if _, err = stmt.Exec(args); err == nil || errors.As(err, &ec) && ec.Code() == 6502 {
+					if _, err = stmt.(driver.StmtExecContext).ExecContext(ctx, args); err == nil || errors.As(err, &ec) && ec.Code() == 6502 {
 						err = nil
 					}
 				} else {
-					rows, err = stmt.Query(args)
+					rows, err = stmt.(driver.StmtQueryContext).QueryContext(ctx, args)
 					if rows != nil {
 						rows.Close()
 					}

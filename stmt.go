@@ -852,7 +852,7 @@ func (st *statement) BindNames() (int, []string, error) {
 		if st.conn == nil {
 			panic(driver.ErrBadConn)
 		}
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("getBindCount: %w", err)
 	}
 	if cnt < 1 { // 0 can't decrease...
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -880,20 +880,19 @@ func (st *statement) BindNames() (int, []string, error) {
 		return int(cnt), nil, nil
 	}
 
-	var n C.uint32_t
 	names := make([]*C.char, int(cnt))
 	lengths := make([]C.uint32_t, int(cnt))
-	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindNames(st.dpiStmt, &n, &names[0], &lengths[0]) }); err != nil {
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getBindNames(st.dpiStmt, &cnt, &names[0], &lengths[0]) }); err != nil {
 		if st.conn == nil {
 			panic(driver.ErrBadConn)
 		}
-		return int(cnt), nil, err
+		return int(cnt), nil, fmt.Errorf("getBindNames[%d](%s): %w", cnt, st.query, err)
 	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NumInput", "count", cnt, "stmt", fmt.Sprintf("%p", st))
 	}
 
-	ss := make([]string, int(n))
+	ss := make([]string, int(cnt))
 	for i := range len(ss) {
 		ss[i] = C.GoStringN(names[i], C.int(lengths[i]))
 	}
