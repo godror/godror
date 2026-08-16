@@ -65,6 +65,10 @@ type CommonSimpleParams struct {
 	NoBreakOnContextCancel                      bool
 }
 
+func (P CommonSimpleParams) IsZero() bool {
+	return P.Username == "" && P.ConnectString == "" && P.Token == "" && P.PrivateKey == "" && P.Password.IsZero()
+}
+
 // CommonParams holds the common parameters for pooled or standalone connections.
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
@@ -160,6 +164,10 @@ type ConnParams struct {
 	IsPrelim                      bool
 }
 
+func (P ConnParams) IsZero() bool {
+	return P.NewPassword.secret == "" && P.ConnClass == "" && P.ShardingKey == nil && P.SuperShardingKey == nil && P.AdminRole == "" && !P.IsPrelim
+}
+
 // String returns the string representation of the ConnParams.
 func (P ConnParams) String() string {
 	q := acquireParamsArray(8)
@@ -201,6 +209,10 @@ type PoolParams struct {
 	WaitTimeout, MaxLifeTime, SessionTimeout   time.Duration
 	PingInterval                               time.Duration
 	Heterogeneous, ExternalAuth, NoWait        sql.NullBool
+}
+
+func (P PoolParams) IsZero() bool {
+	return P.MinSessions == 0 && P.MaxSessions == 0 && P.SessionIncrement == 0 && P.MaxSessionsPerShard == 0 && P.WaitTimeout == 0 && P.MaxLifeTime == 0 && P.SessionTimeout == 0 && P.PingInterval == 0 && !P.Heterogeneous.Valid && !P.ExternalAuth.Valid
 }
 
 // String returns the string representation of PoolParams.
@@ -248,6 +260,10 @@ type ConnectionParams struct {
 	PoolParams
 	// ConnParams.NewPassword is used iff StandaloneConnection is true!
 	StandaloneConnection sql.NullBool
+}
+
+func (P ConnectionParams) IsZero() bool {
+	return P.CommonParams.IsZero() && P.ConnParams.IsZero() && P.PoolParams.IsZero()
 }
 
 // IsStandalone returns whether the connection should be standalone, not pooled.
@@ -729,7 +745,12 @@ func NewPassword(secret string) Password {
 const obfuscatedPassword = "SECRET-***"
 
 // String returns the secret obfuscated irreversibly.
-func (P Password) String() string { return obfuscatedPassword }
+func (P Password) String() string {
+	if P.secret == "" {
+		return ""
+	}
+	return obfuscatedPassword
+}
 
 // Secret reveals the real password.
 func (P Password) Secret() string { return P.secret }
@@ -749,7 +770,12 @@ func (P *Password) Set(secret string) {
 }
 
 // LogValue implements slog.LogValuer.
-func (P Password) LogValue() slog.Value { return slog.StringValue(obfuscatedPassword) }
+func (P Password) LogValue() slog.Value {
+	if P.secret == "" {
+		return slog.StringValue("")
+	}
+	return slog.StringValue(obfuscatedPassword)
+}
 
 var ErrCannotMarshal = errors.New("cannot be marshaled")
 
