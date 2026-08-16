@@ -362,6 +362,14 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 			defer cancel()
 			rows, err := Q.sizeStmt.QueryContext(ctx, nil)
 			if err != nil {
+				var oe *OraErr
+				if ok := errors.As(err, &oe); ok && oe.Code() == 942 { // ORA-00942: table does not exist
+					if logger != nil {
+						logger.Warn("check queue size", "table", Q.tableName, "error", err)
+					}
+					num = 1
+					return nil
+				}
 				return fmt.Errorf("%s: %w", qry, err)
 			}
 			defer rows.Close()
