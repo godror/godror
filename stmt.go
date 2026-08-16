@@ -339,13 +339,13 @@ type (
 		stmtOptions
 		arrLen      int
 		dpiStmtInfo C.dpiStmtInfo
-		cleanup     runtime.Cleanup
 		sync.Mutex
 	}
 	statementInnards struct {
 		dpiStmt *C.dpiStmt
 		vars    []*C.dpiVar
 		tbc     []io.Closer
+		cleanup runtime.Cleanup
 	}
 	dataGetter func(ctx context.Context, v any, data []C.dpiData) error
 )
@@ -365,9 +365,10 @@ func (st *statement) Close() error {
 }
 
 func (st *statement) closeNotLocking(ctx context.Context) error {
-	if st == nil || st.dpiStmt == nil {
+	if st == nil {
 		return nil
 	}
+	err := st.statementInnards.close(ctx)
 
 	c := st.conn
 	st.isSlice = nil
@@ -381,6 +382,18 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 	st.dpiStmtInfo = C.dpiStmtInfo{}
 	st.ctx = nil
 
+	if c == nil {
+		return driver.ErrBadConn
+	}
+
+	return err
+}
+
+func (st *statementInnards) close(ctx context.Context) error {
+	st.cleanup.Stop()
+	if st.dpiStmt == nil {
+		return nil
+	}
 	if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("statement.closeNotLocking", "st", fmt.Sprintf("%p", st), "refCount", st.dpiStmt.refCount)
 		if printStack {
@@ -389,14 +402,6 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 			logger.Debug("closeNotLocking", "stack", string(stack))
 		}
 	}
-	st.cleanup.Stop()
-	if c == nil {
-		return driver.ErrBadConn
-	}
-	return nil
-}
-
-func (st *statementInnards) Close() error {
 	vars, tbc, dpiStmt := st.vars, st.tbc, st.dpiStmt
 	st.vars, st.tbc, st.dpiStmt = nil, nil, nil
 	for _, v := range vars[:cap(vars)] {
@@ -3616,7 +3621,7 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 				} else {
 					fmt.Printf("ERROR: statement %s of %s is not closed!\n", addr, tag)
 				}
-				st.Close()
+				st.close(ctx)
 			},
 			&st.statementInnards,
 		)
