@@ -446,6 +446,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		drv: d, dpiConn: dc,
 		params:   dsn.ConnectionParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams},
 		poolKey:  poolKey,
+		started:  time.Now(),
 		objTypes: make(map[string]*ObjectType),
 	}
 	logger := P.Logger
