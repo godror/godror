@@ -1052,7 +1052,7 @@ END;
 	defer cancel()
 
 	cleanup()
-	for _, qry := range strings.Split(crea, "CREATE OR") {
+	for qry := range strings.SplitSeq(crea, "CREATE OR") {
 		if qry == "" {
 			continue
 		}

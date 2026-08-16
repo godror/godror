@@ -38,7 +38,7 @@ func TestPoolLeakOnCancel(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -51,7 +51,7 @@ func TestPoolLeakOnCancel(t *testing.T) {
 
 	pctx, pcancel := context.WithTimeout(ctx, 15*time.Second)
 	defer pcancel()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := probe(pctx); err != nil {
 			t.Fatalf("pool did not recover after cancelled queries: %+v", err)
 		}

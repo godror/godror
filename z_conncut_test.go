@@ -1,5 +1,4 @@
 //go:build !posix
-// +build !posix
 
 // Copyright 2020 The Godror Authors
 //

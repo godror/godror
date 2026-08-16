@@ -1,5 +1,4 @@
 //go:build never
-// +build never
 
 // Copyright 2021 The Godror Authors
 

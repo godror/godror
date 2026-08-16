@@ -111,8 +111,7 @@ END tst_bench_25;`,
 		regions[i] = "region"
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 	ctx = godror.ContextWithLogger(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -225,8 +224,7 @@ END tst_bench_inout;`,
 		regions[i] = "region"
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 	ctx = godror.ContextWithLogger(ctx, nil)
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {

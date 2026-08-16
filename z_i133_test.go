@@ -326,7 +326,7 @@ func readSmaps(pid int) (uint64, error) {
 	m := make(map[string]uint64)
 	pfx := []byte("Rss:")
 	var key string
-	for _, line := range bytes.Split(b, []byte("\n")) {
+	for line := range bytes.SplitSeq(b, []byte("\n")) {
 		if bytes.HasPrefix(line, pfx) {
 			line = bytes.TrimSpace(line[len(pfx):])
 			j := bytes.IndexByte(line, ' ')

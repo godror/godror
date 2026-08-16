@@ -3385,7 +3385,7 @@ BEGIN
     vc  => 'abraka dabra',
     dt  => SYSDATE);
 END;`
-	for _, qry := range strings.Split(crea, "\nCREATE OR") {
+	for qry := range strings.SplitSeq(crea, "\nCREATE OR") {
 		if qry == "" {
 			continue
 		}
@@ -3997,8 +3997,8 @@ func TestBoolValueTypes(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		obj    interface{}
-		expect interface{}
+		obj    any
+		expect any
 	}{
 		{
 			name:   "null with nil bool ptr",
@@ -4039,7 +4039,7 @@ func TestBoolValueTypes(t *testing.T) {
 				t.Fatal(fmt.Errorf("%s: %w", qry, err))
 			}
 			qry = "SELECT F_bool FROM " + tbl
-			var result interface{}
+			var result any
 			if err := testDb.QueryRowContext(ctx, qry).Scan(&result); err != nil {
 				t.Fatal(fmt.Errorf("%s: %w", qry, err))
 			}
