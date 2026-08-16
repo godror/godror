@@ -58,7 +58,6 @@ type conn struct {
 	DBName, ServiceName string
 	Server              VersionInfo
 	params              dsn.ConnectionParams
-	started             time.Time
 	mu                  sync.RWMutex
 	objTypes            map[string]*ObjectType
 	tzOffSecs           int
@@ -231,7 +230,6 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
-	c.started = time.Time{}
 	c.currentTT.Store(TraceTag{})
 	dpiConn := c.dpiConn
 	if dpiConn == nil {
@@ -478,9 +476,6 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 
 func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
 	c.released = false
-	if c.started.IsZero() {
-		c.started = time.Now()
-	}
 	logger := c.getLogger(ctx)
 	if logger != nil {
 		logger.Debug("init connection", "params", c.params)
@@ -967,7 +962,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-// IsValid makes *conn a Validator that may be implemented by Conn to allow drivers to
+// Validator may be implemented by Conn to allow drivers to
 // signal if a connection is valid or if it should be discarded.
 //
 // If implemented, drivers may return the underlying error from queries,
@@ -1000,21 +995,6 @@ func (c *conn) IsValid() bool {
 		return dpiConnOK
 	}
 
-	// Some safeguard: after session lifetime, close the connection.
-	if d := max(c.params.SessionTimeout, c.params.PoolParams.MaxLifeTime); d == 0 || !c.started.Add(c.params.PoolParams.MaxLifeTime).Before(time.Now()) {
-		return true
-	}
-
-	// FIXME(tgulacsi): Prepared statements hold the previous session,
-	// so sometimes sessions are not released, resulting in
-	//
-	//     ORA-24459: OCISessionGet()
-	//
-	// See https://github.com/godror/godror/issues/57 for example.
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_ = c.closeNotLocking()
-	c.released = true
 	return true
 }
 
