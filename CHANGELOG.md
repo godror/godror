@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.51.4]
+### Fixed
+- Add missing statementInnards.close in statement.closeNotLocking, which caused hanging sessions thus session buildup.
+
 ## [v0.51.0]
 ### Changed
 - Use ODPI-C v6.0.0

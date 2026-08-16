@@ -26,3 +26,7 @@ require (
 // retract v0.45.0
 
 retract v0.51.1
+
+retract v0.51.2
+
+retract v0.51.3
