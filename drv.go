@@ -360,7 +360,7 @@ func (d *drv) Open(s string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.createConnFromParams(context.Background(), c.(connector).ConnectionParams)
+	return d.createConnFromParams(context.Background(), c.(connector).params)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
@@ -477,7 +477,7 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	err = c.init(ctx, isNew, getOnInit(&c.params.CommonParams))
+	err = c.init(ctx, isNew)
 	cancel()
 	if err != nil {
 		_ = c.closeNotLocking()
@@ -765,7 +765,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 		return conn, nil
 	}
 
-	onInit := getOnInit(&conn.params.CommonParams)
+	onInit := conn.getOnInit()
 	if onInit == nil {
 		return conn, err
 	}
@@ -1276,15 +1276,15 @@ var _ driver.Connector = (*connector)(nil)
 var _ io.Closer = (*connector)(nil)
 
 type connector struct {
-	drv *drv
-	dsn.ConnectionParams
+	drv    *drv
+	params dsn.ConnectionParams
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB
 //
 // ConnectionParams must be complete, so start with what ParseDSN returns!
 func (d *drv) NewConnector(params dsn.ConnectionParams) driver.Connector {
-	return connector{drv: d, ConnectionParams: params}
+	return connector{drv: d, params: params}
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
@@ -1320,8 +1320,8 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 // The returned connection is only used by one goroutine at a
 // time.
 func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
-	params := c.ConnectionParams
-	logger := c.CommonParams.Logger
+	params := c.params
+	logger := params.Logger
 	if ctxValue := ctx.Value(paramsCtxKey{}); ctxValue != nil {
 		if cc, ok := ctxValue.(commonAndConnParams); ok {
 			// ContextWithUserPassw does not fill ConnParam.ConnectString
@@ -1381,7 +1381,9 @@ func NewSessionIniter(m map[string]string) func(context.Context, driver.ConnPrep
 	}
 	return mkExecMany([]string{buf.String()})
 }
-func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext) error {
+
+func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) error {
+	P := &c.params.CommonParams
 	if P.OnInit != nil {
 		return P.OnInit
 	}
@@ -1407,7 +1409,6 @@ func getOnInit(P *CommonParams) func(context.Context, driver.ConnPrepareContext)
 	if len(stmts) == 0 {
 		return nil
 	}
-
 	P.OnInit = mkExecMany(stmts)
 	return P.OnInit
 }

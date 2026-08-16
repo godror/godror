@@ -474,25 +474,25 @@ func (c *conn) ServerVersion() (VersionInfo, error) {
 	return c.Server, nil
 }
 
-func (c *conn) init(ctx context.Context, isNew bool, onInit func(ctx context.Context, conn driver.ConnPrepareContext) error) error {
+func (c *conn) init(ctx context.Context, isNew bool) error {
 	c.released = false
 	logger := c.getLogger(ctx)
 	if logger != nil {
 		logger.Debug("init connection", "params", c.params)
 	}
 
-	if err := c.initTZ(); err != nil || onInit == nil {
+	if err := c.initTZ(); err != nil {
 		return err
-	}
-	if logger != nil {
-		logger.Debug("connection initialized", "conn", c, "haveOnInit", onInit != nil)
 	}
 
 	if c.params.CommonParams.InitOnNewConn && !isNew {
 		return nil
 	}
 
-	return onInit(ctx, c)
+	if onInit := c.getOnInit(); onInit != nil {
+		return onInit(ctx, c)
+	}
+	return nil
 }
 
 func (c *conn) initTZ() error {
