@@ -13,7 +13,6 @@ package godror
 /*
 #cgo nocallback dpiConn_breakExecution
 #cgo nocallback dpiConn_commit
-#cgo nocallback dpiConn_create
 #cgo nocallback dpiConn_getCurrentSchema
 #cgo nocallback dpiConn_getDbDomain
 #cgo nocallback dpiConn_getDbName
@@ -159,7 +158,6 @@ package godror
 #cgo nocallback dpiObjectType_getInfo
 #cgo nocallback dpiObjectType_release
 #cgo nocallback dpiPool_close
-#cgo nocallback dpiPool_create
 #cgo nocallback dpiPool_getBusyCount
 #cgo nocallback dpiPool_getMaxLifetimeSession
 #cgo nocallback dpiPool_getOpenCount
