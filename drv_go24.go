@@ -13,6 +13,8 @@ package godror
 /*
 #cgo nocallback dpiConn_breakExecution
 #cgo nocallback dpiConn_commit
+// TokenCB may invoke Go from ODPI-C during connection creation, so permit callbacks.
+// #cgo nocallback dpiConn_create
 #cgo nocallback dpiConn_getCurrentSchema
 #cgo nocallback dpiConn_getDbDomain
 #cgo nocallback dpiConn_getDbName
@@ -158,6 +160,8 @@ package godror
 #cgo nocallback dpiObjectType_getInfo
 #cgo nocallback dpiObjectType_release
 #cgo nocallback dpiPool_close
+// TokenCB may invoke Go from ODPI-C during pool creation, so permit callbacks.
+// #cgo nocallback dpiPool_create
 #cgo nocallback dpiPool_getBusyCount
 #cgo nocallback dpiPool_getMaxLifetimeSession
 #cgo nocallback dpiPool_getOpenCount
