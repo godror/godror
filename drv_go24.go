@@ -13,7 +13,7 @@ package godror
 /*
 #cgo nocallback dpiConn_breakExecution
 #cgo nocallback dpiConn_commit
-// TokenCB may invoke Go from ODPI-C during connection creation, so permit callbacks.
+// When acquiring a pooled connection, dpiConn_create can invoke the access-token callback implemented in Go (TokenCB).
 // #cgo nocallback dpiConn_create
 #cgo nocallback dpiConn_getCurrentSchema
 #cgo nocallback dpiConn_getDbDomain
@@ -160,7 +160,7 @@ package godror
 #cgo nocallback dpiObjectType_getInfo
 #cgo nocallback dpiObjectType_release
 #cgo nocallback dpiPool_close
-// TokenCB may invoke Go from ODPI-C during pool creation, so permit callbacks.
+// dpiPool_create installs the access-token callback before creating the session pool, and OCI may invoke the Go TokenCB during pool creation.
 // #cgo nocallback dpiPool_create
 #cgo nocallback dpiPool_getBusyCount
 #cgo nocallback dpiPool_getMaxLifetimeSession
