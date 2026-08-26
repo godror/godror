@@ -743,6 +743,24 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	return &c, isNew, nil
 }
 
+// standaloneAttachMu serialises the creation of standalone connections.
+// Oracle Client resolves the OS user name inside OCIServerAttach
+// (osncon/niqname/snigun); when getpwuid() fails for the process uid (no
+// /etc/passwd entry, common in containers running as a numeric USER) and
+// several threads attach at the same time, it double-frees a process-shared
+// buffer and the process aborts inside dpiConn_create with glibc allocator
+// errors (#361, #400, oracle-db-appdev-monitoring#384; confirmed with ASan).
+// Pooled connections attach under the pool and are not affected. Release is
+// not locked: dpiConn_release never runs the user-name lookup, and it only
+// drops a refcount; the env is freed by whichever child handle releases
+// last. The real fix is a passwd entry for the uid; this lock keeps
+// standalone connections from triggering the client bug.
+//
+// The lock is process-wide because the buffer is: one slow or unreachable
+// standalone connect stalls every other standalone connect in the process
+// for the client's connect timeout.
+var standaloneAttachMu sync.Mutex
+
 func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, func(), error) {
 	logger := P.Logger
 	if logger != nil {
@@ -912,6 +930,10 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 
 	// create ODPI-C connection
 	var dc *C.dpiConn
+	if pool == nil {
+		standaloneAttachMu.Lock()
+		defer standaloneAttachMu.Unlock()
+	}
 	if err := d.checkExec(func() C.int {
 		if logger != nil {
 			logger.Debug("dpiConn_create",
