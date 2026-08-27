@@ -767,9 +767,12 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	// execute
 	var colCount C.uint32_t
 	f := func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, &colCount) }
+	// Capture the connection: the BREAK goroutine below may outlive this call
+	// by a moment, racing a concurrent statement Close that nils st.conn.
+	breakConn := st.conn
 	for i := 0; i < 3; i++ {
 		done := make(chan struct{})
-		if !st.conn.params.NoBreakOnContextCancel {
+		if !breakConn.params.NoBreakOnContextCancel {
 			// Forcefully BREAK execution on context cancelation
 			go func() {
 				select {
@@ -781,7 +784,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 						if logger != nil {
 							logger.Warn("BREAK dpiStmt_execute")
 						}
-						st.conn.Break()
+						breakConn.Break()
 					}
 				}
 			}()

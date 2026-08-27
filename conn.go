@@ -160,7 +160,12 @@ func (c *conn) Break() error {
 		if logger != nil {
 			logger.Error("Break", "error", err)
 		}
-		return maybeBadConn(fmt.Errorf("Break: %w", err), c)
+		// Only classify the error here: Break holds c.mu.RLock, and
+		// maybeBadConn with a non-nil conn would release the connection
+		// under the read lock while another goroutine may be inside an
+		// ODPI call on it. The owner of the statement closes the
+		// connection on driver.ErrBadConn.
+		return maybeBadConn(fmt.Errorf("Break: %w", err), nil)
 	}
 	return nil
 }
