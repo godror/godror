@@ -223,19 +223,13 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 		if name != "" {
 			params.name = C.CString(name)
 			params.nameLength = C.uint32_t(len(name))
+			defer C.free(unsafe.Pointer(params.name))
 		}
 		if p.IPAddress != "" {
 			params.ipAddress = C.CString(p.IPAddress)
 			params.ipAddressLength = C.uint32_t(len(p.IPAddress))
+			defer C.free(unsafe.Pointer(params.ipAddress))
 		}
-		defer func() {
-			if params.name != nil {
-				C.free(unsafe.Pointer(params.name))
-			}
-			if params.ipAddress != nil {
-				C.free(unsafe.Pointer(params.ipAddress))
-			}
-		}()
 	}
 	if p.Port != 0 {
 		params.portNumber = C.uint32_t(p.Port)

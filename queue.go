@@ -931,21 +931,28 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 		return false
 	}
 
-	cs := C.CString(D.Transformation)
-	OK(C.dpiDeqOptions_setTransformation(opts, cs, C.uint(len(D.Transformation))), "setTransformation")
-	C.free(unsafe.Pointer(cs))
+	{
+		cs := C.CString(D.Transformation)
+		OK(C.dpiDeqOptions_setTransformation(opts, cs, C.uint(len(D.Transformation))), "setTransformation")
+		C.free(unsafe.Pointer(cs))
+	}
+	{
+		cs := C.CString(D.Condition)
+		OK(C.dpiDeqOptions_setCondition(opts, cs, C.uint(len(D.Condition))), "setCondifion")
+		C.free(unsafe.Pointer(cs))
+	}
 
-	cs = C.CString(D.Condition)
-	OK(C.dpiDeqOptions_setCondition(opts, cs, C.uint(len(D.Condition))), "setCondifion")
-	C.free(unsafe.Pointer(cs))
+	{
+		cs := C.CString(D.Consumer)
+		OK(C.dpiDeqOptions_setConsumerName(opts, cs, C.uint(len(D.Consumer))), "setConsumer")
+		C.free(unsafe.Pointer(cs))
+	}
 
-	cs = C.CString(D.Consumer)
-	OK(C.dpiDeqOptions_setConsumerName(opts, cs, C.uint(len(D.Consumer))), "setConsumer")
-	C.free(unsafe.Pointer(cs))
-
-	cs = C.CString(D.Correlation)
-	OK(C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(D.Correlation))), "setCorrelation")
-	C.free(unsafe.Pointer(cs))
+	{
+		cs := C.CString(D.Correlation)
+		OK(C.dpiDeqOptions_setCorrelation(opts, cs, C.uint(len(D.Correlation))), "setCorrelation")
+		C.free(unsafe.Pointer(cs))
+	}
 
 	OK(C.dpiDeqOptions_setDeliveryMode(opts, C.dpiMessageDeliveryMode(D.DeliveryMode)), "setDeliveryMode")
 	OK(C.dpiDeqOptions_setMode(opts, C.dpiDeqMode(D.Mode)), "setMode")

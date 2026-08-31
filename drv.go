@@ -542,9 +542,11 @@ func (d *drv) init(configDir, libDir string) error {
 	if !(configDir == "" && libDir == "") {
 		if configDir != "" {
 			ctxParams.oracleClientConfigDir = C.CString(configDir)
+			defer C.free(unsafe.Pointer(ctxParams.oracleClientConfigDir))
 		}
 		if libDir != "" {
 			ctxParams.oracleClientLibDir = C.CString(libDir)
+			defer C.free(unsafe.Pointer(ctxParams.oracleClientLibDir))
 		}
 	}
 	logger := getLogger(context.TODO())
