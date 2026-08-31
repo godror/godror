@@ -807,6 +807,9 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 		if cConnClass != nil {
 			C.free(unsafe.Pointer(cConnClass))
 		}
+		if commonCreateParamsPtr != nil && commonCreateParamsPtr.encoding != nil && commonCreateParamsPtr.encoding != cUTF8 {
+			C.free(unsafe.Pointer(commonCreateParamsPtr.encoding))
+		}
 	}()
 
 	// initialize ODPI-C structure for connection creation parameters
