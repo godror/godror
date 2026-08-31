@@ -651,6 +651,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	if M.Correlation != "" {
 		value := C.CString(M.Correlation)
 		OK(C.dpiMsgProps_setCorrelation(props, value, C.uint(len(M.Correlation))), "setCorrelation")
+		C.free(unsafe.Pointer(value))
 	}
 
 	OK(C.dpiMsgProps_setDelay(props, C.int(M.Delay/time.Second)), "setDelay")
@@ -658,6 +659,7 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	if M.ExceptionQ != "" {
 		value := C.CString(M.ExceptionQ)
 		OK(C.dpiMsgProps_setExceptionQ(props, value, C.uint(len(M.ExceptionQ))), "setExceptionQ")
+		C.free(unsafe.Pointer(value))
 	}
 
 	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration/time.Second)), "setExpiration")
