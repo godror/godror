@@ -395,17 +395,37 @@ func Bool(b bool) sql.NullBool { return dsn.Bool(b) }
 
 func NewPassword(s string) Password { return dsn.NewPassword(s) }
 
-func freeAccessToken(accessToken *C.dpiAccessToken) {
-	if accessToken == nil {
+func freeCommonCreateParams(p *C.dpiCommonCreateParams) {
+	if p == nil {
 		return
 	}
-	if accessToken.token != nil {
-		C.free(unsafe.Pointer(accessToken.token))
+	if p.encoding != nil && p.encoding != cUTF8 {
+		C.free(unsafe.Pointer(p.encoding))
 	}
-	if accessToken.privateKey != nil {
-		C.free(unsafe.Pointer(accessToken.privateKey))
+	if p.nencoding != nil && p.nencoding != p.encoding && p.nencoding != cUTF8 {
+		C.free(unsafe.Pointer(p.nencoding))
 	}
-	C.free(unsafe.Pointer(accessToken))
+	p.encoding, p.nencoding = nil, nil
+	if p.driverName != nil && p.driverName != cDriverName {
+		C.free(unsafe.Pointer(p.driverName))
+	}
+	p.driverName = nil
+	if p.edition != nil {
+		C.free(unsafe.Pointer(p.edition))
+		p.edition = nil
+	}
+	if p.accessToken != nil {
+		if p.accessToken.token != nil {
+			C.free(unsafe.Pointer(p.accessToken.token))
+			p.accessToken.token = nil
+		}
+		if p.accessToken.privateKey != nil {
+			C.free(unsafe.Pointer(p.accessToken.privateKey))
+			p.accessToken.privateKey = nil
+		}
+		C.free(unsafe.Pointer(p.accessToken))
+		p.accessToken = nil
+	}
 }
 
 var defaultDrv = &drv{}
@@ -595,7 +615,7 @@ var cUTF8, cDriverName = C.CString("UTF-8"), C.CString(DriverName)
 // defined at the package level for convenience.
 func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bool,
 	stmtCacheSize int, charset string, token string, privateKey string,
-	accessToken *C.dpiAccessToken) error {
+) error {
 	// initialize ODPI-C structure for common creation parameters
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initCommonCreateParams(d.dpiContext, P)
@@ -631,13 +651,14 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 
 	// Token Based Authentication.
 	if token != "" {
-		accessToken.token = C.CString(token)
-		accessToken.tokenLength = C.uint32_t(len(token))
+		t := (*C.dpiAccessToken)(C.malloc(C.sizeof_dpiAccessToken))
+		t.token = C.CString(token)
+		t.tokenLength = C.uint32_t(len(token))
 		if privateKey != "" {
-			accessToken.privateKey = C.CString(privateKey)
-			accessToken.privateKeyLength = C.uint32_t(len(privateKey))
+			t.privateKey = C.CString(privateKey)
+			t.privateKeyLength = C.uint32_t(len(privateKey))
 		}
-		P.accessToken = accessToken
+		P.accessToken = t
 	}
 
 	return nil
@@ -768,51 +789,34 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
 	}
+
 	// initialize ODPI-C structure for common creation parameters;
 	// this is ONLY used when a standalone connection is being created;
 	// when a connection is being acquired from the pool this structure is NOT needed
-	var commonCreateParamsPtr *C.dpiCommonCreateParams
-	var accessToken *C.dpiAccessToken
-
-	if pool == nil {
-		var commonCreateParams C.dpiCommonCreateParams
-		if P.Token != "" { // Token Authentication requested.
-			mem := C.malloc(C.sizeof_dpiAccessToken)
-			accessToken = (*C.dpiAccessToken)(mem)
-			accessToken.token = nil
-			accessToken.privateKey = nil
-			defer freeAccessToken(accessToken)
-		}
-		if err := d.initCommonCreateParams(&commonCreateParams,
-			P.EnableEvents, P.StmtCacheSize,
-			P.Charset, P.Token, P.PrivateKey, accessToken,
-		); err != nil {
-			return nil, false, nil, err
-		}
-		commonCreateParamsPtr = &commonCreateParams
-	}
+	var commonCreateParams *C.dpiCommonCreateParams
 	// manage strings
 	var cUsername, cPassword, cNewPassword, cConnectString, cConnClass *C.char
 	defer func() {
-		if cUsername != nil {
-			C.free(unsafe.Pointer(cUsername))
+		for _, p := range []*C.char{
+			cUsername, cPassword, cNewPassword,
+			cConnectString, cConnClass,
+		} {
+			if p != nil {
+				C.free(unsafe.Pointer(p))
+			}
 		}
-		if cPassword != nil {
-			C.free(unsafe.Pointer(cPassword))
-		}
-		if cNewPassword != nil {
-			C.free(unsafe.Pointer(cNewPassword))
-		}
-		if cConnectString != nil {
-			C.free(unsafe.Pointer(cConnectString))
-		}
-		if cConnClass != nil {
-			C.free(unsafe.Pointer(cConnClass))
-		}
-		if commonCreateParamsPtr != nil && commonCreateParamsPtr.encoding != nil && commonCreateParamsPtr.encoding != cUTF8 {
-			C.free(unsafe.Pointer(commonCreateParamsPtr.encoding))
-		}
+		freeCommonCreateParams(commonCreateParams)
 	}()
+
+	if pool == nil {
+		commonCreateParams = new(C.dpiCommonCreateParams)
+		if err := d.initCommonCreateParams(commonCreateParams,
+			P.EnableEvents, P.StmtCacheSize,
+			P.Charset, P.Token, P.PrivateKey,
+		); err != nil {
+			return nil, false, nil, err
+		}
+	}
 
 	// initialize ODPI-C structure for connection creation parameters
 	var connCreateParams C.dpiConnCreateParams
@@ -946,7 +950,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 				slog.String("username", username), slog.Int("usernameLen", len(username)),
 				slog.String("password", password), slog.Int("passwordLen", len(password)),
 				slog.String("connectString", P.ConnectString), slog.Int("connectStringLen", len(P.ConnectString)),
-				slog.String("commonCreateParams", fmt.Sprintf("%#v", commonCreateParamsPtr)),
+				slog.String("commonCreateParams", fmt.Sprintf("%#v", commonCreateParams)),
 				slog.String("connCreateParams", fmt.Sprintf("%#v", connCreateParams)),
 				slog.String("dpiConn", fmt.Sprintf("%#v", dc)),
 				slog.String("pool", fmt.Sprintf("%#v", pool)),
@@ -958,7 +962,7 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 			cUsername, C.uint32_t(len(username)),
 			cPassword, C.uint32_t(len(password)),
 			cConnectString, C.uint32_t(len(P.ConnectString)),
-			commonCreateParamsPtr,
+			commonCreateParams,
 			&connCreateParams, &dc,
 		)
 	}); err != nil {
@@ -1089,20 +1093,15 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// set up common creation parameters
-	var commonCreateParams C.dpiCommonCreateParams
-	var accessToken *C.dpiAccessToken
+	commonCreateParams := new(C.dpiCommonCreateParams)
 	var wrapTokenCBCtx unsafe.Pointer // cgo.handle wrapped as void* context
-	if P.Token != "" {                // Token Based Authentication requested.
-		mem := C.malloc(C.sizeof_dpiAccessToken)
-		accessToken = (*C.dpiAccessToken)(mem)
-		accessToken.token = nil
-		accessToken.privateKey = nil
-		defer freeAccessToken(accessToken)
-	}
-	if err := d.initCommonCreateParams(&commonCreateParams, P.EnableEvents, P.StmtCacheSize,
-		P.Charset, P.Token, P.PrivateKey, accessToken); err != nil {
+	if err := d.initCommonCreateParams(
+		commonCreateParams, P.EnableEvents, P.StmtCacheSize,
+		P.Charset, P.Token, P.PrivateKey,
+	); err != nil {
 		return nil, err
 	}
+	defer freeCommonCreateParams(commonCreateParams)
 
 	// initialize ODPI-C structure for pool creation parameters
 	var poolCreateParams C.dpiPoolCreateParams
@@ -1179,17 +1178,25 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 
 	// setup credentials
 	var cUsername, cPassword, cConnectString *C.char
+	defer func() {
+		if cUsername != nil {
+			C.free(unsafe.Pointer(cUsername))
+		}
+		if cPassword != nil {
+			C.free(unsafe.Pointer(cPassword))
+		}
+		if cConnectString != nil {
+			C.free(unsafe.Pointer(cConnectString))
+		}
+	}()
 	if P.Username != "" {
 		cUsername = C.CString(P.Username)
-		defer C.free(unsafe.Pointer(cUsername))
 	}
 	if !P.Password.IsZero() {
 		cPassword = C.CString(P.Password.Secret())
-		defer C.free(unsafe.Pointer(cPassword))
 	}
 	if P.ConnectString != "" {
 		cConnectString = C.CString(P.ConnectString)
-		defer C.free(unsafe.Pointer(cConnectString))
 	}
 
 	// create pool
@@ -1208,7 +1215,7 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 			cUsername, C.uint32_t(len(P.Username)),
 			cPassword, C.uint32_t(P.Password.Len()),
 			cConnectString, C.uint32_t(len(P.ConnectString)),
-			&commonCreateParams,
+			commonCreateParams,
 			&poolCreateParams,
 			(**C.dpiPool)(unsafe.Pointer(&dp)),
 		)

@@ -67,9 +67,11 @@ func TokenCallbackHandler(handle C.uintptr_t, accessToken *C.dpiAccessToken) {
 
 // RegisterTokenCallback will populate the callback and context.
 // The void* datatype context is obtained by wrapping the cgo.Handle.
-func RegisterTokenCallback(poolCreateParams *C.dpiPoolCreateParams,
+func RegisterTokenCallback(
+	poolCreateParams *C.dpiPoolCreateParams,
 	tokenGenFn func(context.Context, *dsn.AccessToken) error,
-	tokenCtx context.Context) unsafe.Pointer {
+	tokenCtx context.Context,
+) unsafe.Pointer {
 
 	// typedef int (*dpiAccessTokenCallback)(void* context, dpiAccessToken *accessToken);
 	poolCreateParams.accessTokenCallback = C.dpiAccessTokenCallback(C.godrorTokenCallbackHandlerDebug)
