@@ -5,8 +5,15 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Allow token callbacks during connection creation
+
 ### Changed
 - Incremenet minimal version to Go 1.25.0
+- Serialize standalone connection creation (OCI limitation)
+- Fix leaking Correlatin and ExceptionQ in Enqueue
+- Fix missing frees for encoding and charset C allocation
+
 
 ## [v0.51.4]
 ### Fixed
