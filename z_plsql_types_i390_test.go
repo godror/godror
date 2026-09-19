@@ -8,7 +8,6 @@ package godror_test
 import (
 	"context"
 	"database/sql"
-	"os"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -154,23 +153,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 	}
 	defer dropTypes(testDb)
 
-	readMem := func(pid int32) (uint64, error) {
-		var info syscall.Rusage
-		err := syscall.Getrusage(syscall.RUSAGE_SELF, &info)
-		if err != nil {
-			return 0, err
-		}
-
-		// On macOS, Maxrss is in bytes; on Linux, it's in kilobytes
-		if runtime.GOOS == "darwin" {
-			return uint64(info.Maxrss), nil
-		}
-
-		return uint64(info.Maxrss << 10), nil
-	}
-
 	var m runtime.MemStats
-	pid := int32(os.Getpid())
 	startMem := make(map[string]uint64)
 
 	const MiB = 1 << 20
@@ -182,7 +165,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		t.Logf("%s: Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n", t.Name(),
 			float64(m.Alloc)/MiB, float64(m.HeapInuse)/MiB, float64(m.Sys)/MiB, m.NumGC)
 
-		rss, err := readMem(int32(pid))
+		rss, err := readMem()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,7 +263,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 				if startMem[t.Name()] == 0 {
 					runtime.GC()
 					var err error
-					if startMem[t.Name()], err = readMem(pid); err != nil {
+					if startMem[t.Name()], err = readMem(); err != nil {
 						t.Fatal(err)
 					}
 					continue
@@ -298,4 +281,19 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 	for _, dir := range dirs {
 		run(t, dir)
 	}
+}
+
+func readMem() (uint64, error) {
+	var info syscall.Rusage
+	err := syscall.Getrusage(syscall.RUSAGE_SELF, &info)
+	if err != nil {
+		return 0, err
+	}
+
+	// On macOS, Maxrss is in bytes; on Linux, it's in kilobytes
+	if runtime.GOOS == "darwin" {
+		return uint64(info.Maxrss), nil
+	}
+
+	return uint64(info.Maxrss << 10), nil
 }

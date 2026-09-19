@@ -27,9 +27,11 @@ func TestIssue421_CharsetMemoryLeak(t *testing.T) {
 
 	// Specify non-empty charset to exercise the P.encoding allocation path
 	P.CommonParams.Charset = "AL32UTF8"
+	connector := godror.NewConnector(P)
 
-	for i := 0; i < 50; i++ {
-		db := sql.OpenDB(godror.NewConnector(P))
+	var startRSS uint64
+	for i := range 50 {
+		db := sql.OpenDB(connector)
 		if err := db.Ping(); err != nil {
 			_ = db.Close()
 			t.Fatalf("iter %d: Ping failed: %v", i, err)
@@ -37,5 +39,22 @@ func TestIssue421_CharsetMemoryLeak(t *testing.T) {
 		if err := db.Close(); err != nil {
 			t.Fatalf("iter %d: Close failed: %v", i, err)
 		}
+
+		// Have the first 3 runs be a warmup
+		if i == 3 {
+			if startRSS, err = readMem(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	endRSS, err := readMem()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gainPercent := float32(endRSS*100) / float32(startRSS)
+	t.Logf("start=%d end=%d diff=%d: %.03f%%", startRSS, endRSS, endRSS-startRSS, gainPercent)
+	if endRSS*10 > startRSS*11 {
+		t.Errorf("diff: %.03f%%", gainPercent)
 	}
 }
