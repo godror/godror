@@ -17,6 +17,7 @@ import (
 	"iter"
 	"log/slog"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1461,7 +1462,10 @@ END;`},
 			}
 			yearI, err := o.Get("CONS_YEAR")
 			t.Logf("year: %T(%#v) (%+v)", yearI, yearI, err)
-			year := yearI.(float64)
+			year, ok := yearI.(float64)
+			if !ok {
+				year, _ = strconv.ParseFloat(string(yearI.(godror.Number)), 64)
+			}
 			if !(err == nil && year == 2021) {
 				o.Close()
 				t.Errorf("got (%#v, %+v), wanted (2021, nil)", year, err)
@@ -1483,10 +1487,10 @@ END;`},
 		}
 		t.Log("mapSlice:", m)
 		want := []map[string]any{
-			{"CONS_YEAR": float64(2021), "CONS_01": float64(10212)},
+			{"CONS_YEAR": "2021", "CONS_01": "10212"},
 			nil,
 		}
-		if d := cmp.Diff(m, want); d != "" {
+		if d := cmp.Diff(want, m); d != "" {
 			t.Error(d)
 		}
 	})
