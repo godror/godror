@@ -1432,19 +1432,28 @@ END;`},
 		t.Fatal(err)
 	}
 	defer rt.Close()
-	rs, err := rt.NewCollection()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rs.Close()
-	t.Logf("rs: %#v", rs)
 
-	if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
+	getCollection := func(ctx context.Context) (godror.ObjectCollection, error) {
+		rs, err := rt.NewCollection()
+		if err != nil {
+			return rs, err
+		}
+		// t.Logf("rs: %#v", rs)
+
+		if _, err := stmt.ExecContext(ctx, "10212", sql.Out{Dest: &rs}); err != nil {
+			rs.Close()
+			return rs, fmt.Errorf("%s: %+v", qry, err)
+		}
+		// t.Log("rs:", rs.String())
+		return rs, nil
 	}
-	t.Log("rs:", rs.String())
 
 	t.Run("direct", func(t *testing.T) {
+		rs, err := getCollection(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rs.Close()
 		length, err := rs.Len()
 		t.Logf("length: %d", length)
 		if err != nil {
@@ -1481,6 +1490,10 @@ END;`},
 	})
 
 	t.Run("AsMapSlice", func(t *testing.T) {
+		rs, err := getCollection(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
 		m, err := rs.AsMapSlice(true)
 		if err != nil {
 			t.Fatal(err)
@@ -1499,12 +1512,16 @@ END;`},
 	})
 
 	t.Run("ToJSON", func(t *testing.T) {
+		rs, err := getCollection(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
 		var buf strings.Builder
 		if err := rs.ToJSON(&buf); err != nil {
 			t.Fatal(err)
 		}
 		t.Log(buf.String())
-		if got, want := buf.String(), `[{"CONS_01":10212,"CONS_YEAR":2021},nil]`; got != want {
+		if got, want := buf.String(), `[{"CONS_01":"10212","CONS_YEAR":"2021"},null]`; got != want {
 			t.Errorf("got %q, wanted %q", got, want)
 		}
 	})
