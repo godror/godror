@@ -60,7 +60,7 @@ const (
 
 	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
 	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
-	DefaultMaxSessions = 2
+	DefaultMaxSessions = 4
 )
 
 // TestMain is called instead of the separate Test functions,
@@ -3280,7 +3280,7 @@ func TestCancel(t *testing.T) {
 			t.Error(err)
 		}
 	default:
-		t.Error("hasn't finished yet")
+		t.Error("TestCancel: hasn't finished yet")
 	}
 }
 
