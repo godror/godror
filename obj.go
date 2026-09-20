@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1802,9 +1803,30 @@ Loop:
 				rf.SetBytes([]byte(v))
 			}
 		case []byte:
-			if rf.Kind() == reflect.String {
+			switch rf.Kind() {
+			case reflect.String:
 				rf.SetString(string(v))
-			} else {
+			case reflect.Slice:
+				rf.SetBytes(v)
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				n, err := strconv.ParseInt(string(v), 10, rf.Type().Bits())
+				if err != nil {
+					return fmt.Errorf("GetAttribute(%q): %w", nm, err)
+				}
+				rf.SetInt(n)
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				n, err := strconv.ParseUint(string(v), 10, rf.Type().Bits())
+				if err != nil {
+					return fmt.Errorf("GetAttribute(%q): %w", nm, err)
+				}
+				rf.SetUint(n)
+			case reflect.Float32, reflect.Float64:
+				f, err := strconv.ParseFloat(string(v), rf.Type().Bits())
+				if err != nil {
+					return fmt.Errorf("GetAttribute(%q): %w", nm, err)
+				}
+				rf.SetFloat(f)
+			default:
 				rf.SetBytes(v)
 			}
 		case *Lob:

@@ -2686,8 +2686,14 @@ type (
 
 func (I323Child) ObjectTypeName() string      { return "I323CHILD" }
 func (I323ChildArray) ObjectTypeName() string { return "I323CHILDARRAY" }
-func (I323Parent) ObjectTypeName() string     { return "I3232PARENT" }
+func (I323Parent) ObjectTypeName() string     { return "I323PARENT" }
 func (I323Grand) ObjectTypeName() string      { return "I323GRAND" }
+func (g I323Grand) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &g)
+}
+func (g *I323Grand) Scan(v any) error {
+	return godror.StructScan(g, v)
+}
 
 func TestIssue323(t *testing.T) {
 	drop := func() {
