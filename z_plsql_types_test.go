@@ -1600,17 +1600,25 @@ END;`},
 		t.Fatal(err)
 	}
 	defer rt.Close()
-	rs, err := rt.NewObject()
-	if err != nil {
-		t.Fatal(err)
+	getObject := func(ctx context.Context) (*godror.Object, error) {
+		rs, err := rt.NewObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
+			rs.Close()
+			return nil, fmt.Errorf("%s: %w", qry, err)
+		}
+		// t.Log("rs:", rs.String())
+		return rs, nil
 	}
-	defer rs.Close()
-	if _, err := stmt.ExecContext(ctx, sql.Out{Dest: rs}); err != nil {
-		t.Fatalf("%s: %+v", qry, err)
-	}
-	t.Log("rs:", rs.String())
 
 	t.Run("direct", func(t *testing.T) {
+		rs, err := getObject(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rs.Close()
 		textI, err := rs.Get("STRING")
 		t.Logf("text: %T(%#v) (%+v)", textI, textI, err)
 		text := textI.(string)
@@ -1653,6 +1661,11 @@ END;`},
 	})
 
 	t.Run("AsMap", func(t *testing.T) {
+		rs, err := getObject(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rs.Close()
 		m, err := rs.AsMap(true)
 		if err != nil {
 			t.Fatal(err)
@@ -1670,6 +1683,11 @@ END;`},
 	})
 
 	t.Run("ToJSON", func(t *testing.T) {
+		rs, err := getObject(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rs.Close()
 		var buf strings.Builder
 		if err := rs.ToJSON(&buf); err != nil {
 			t.Fatal(err)
