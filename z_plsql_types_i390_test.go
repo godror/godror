@@ -18,6 +18,9 @@ import (
 )
 
 func TestPlSqlNestedObj(t *testing.T) {
+	if testing.Short() {
+		t.Skip("fix long-running failing RSS doubling TestPlSqlNestedObj")
+	}
 	t.Run("200", func(t *testing.T) {
 		testPlSqlNestedObj(t, 200)
 	})
