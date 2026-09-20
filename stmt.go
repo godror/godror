@@ -1589,7 +1589,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			}
 
 			if logger != nil {
-				logger.Error("unknown type", "value", fmt.Sprintf("%T", value))
+				logger.Error("unknown type", "value", fmt.Sprintf("%[1]T:%#[1]v", value))
 			}
 			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}

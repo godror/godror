@@ -2897,7 +2897,7 @@ END;`,
 
 	qry := "BEGIN :1 := test_create_task_activity(:2, :3); END;"
 	if err := prepExec(ctx, conn, qry,
-		driver.NamedValue{Value: &ret, Ordinal: 1},
+		driver.NamedValue{Value: sql.Out{Dest: ret}, Ordinal: 1},
 		driver.NamedValue{Value: &obj, Ordinal: 2},
 		driver.NamedValue{Value: 1, Ordinal: 3},
 	); err != nil {
