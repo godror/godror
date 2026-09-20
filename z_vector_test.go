@@ -14,11 +14,26 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
 )
+
+// skipIfNoVectorSupport skips the test when the Vector datatype is not
+// supported, either by the database (ORA-00902) or by the Oracle Client
+// library (DPI-1050), otherwise it fails.
+func skipIfNoVectorSupport(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	if errIs(err, 902, "invalid datatype") || strings.Contains(err.Error(), "DPI-1050") {
+		t.Skipf("Vector datatype not supported: %v", err)
+	}
+	t.Fatal(err)
+}
 
 func compareDenseVector(t *testing.T, id godror.Number, got godror.Vector, expected godror.Vector) {
 	t.Helper()
@@ -65,12 +80,7 @@ func TestVectorOutBinds(t *testing.T) {
 			sparse_int_vector Vector(4, int8, SPARSE)
 		)`,
 	)
-	if err != nil {
-		if errIs(err, 902, "invalid datatype") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	skipIfNoVectorSupport(t, err)
 	t.Logf("Vector table %q created", tbl)
 	defer testDb.Exec("DROP TABLE " + tbl)
 
@@ -104,7 +114,7 @@ func TestVectorOutBinds(t *testing.T) {
 		sql.Out{Dest: &outVectors[2]}, sql.Out{Dest: &outVectors[3]},
 		sql.Out{Dest: &outVectors[4]}, sql.Out{Dest: &outVectors[5]})
 	if err != nil {
-		t.Fatalf("ExecContext failed: %v", err)
+		skipIfNoVectorSupport(t, err)
 	}
 
 	// Validate out bind values
@@ -208,12 +218,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE "+tbl+" (id NUMBER(6), image_vector Vector, graph_vector Vector(*, float32, SPARSE) )", //nolint:gas
 	)
-	if err != nil {
-		if errIs(err, 902, "invalid datatype") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	skipIfNoVectorSupport(t, err)
 	t.Logf(" Vector table  %q: ", tbl)
 
 	defer testDb.Exec(
@@ -234,7 +239,7 @@ func TestVectorReadWriteBatch(t *testing.T) {
 
 	// Insert batch
 	if _, err = stmt.ExecContext(ctx, ids[:batchSize], images, graphs); err != nil {
-		t.Fatalf("Batch insert failed: %v", err)
+		skipIfNoVectorSupport(t, err)
 	}
 
 	// Insert batch Pointers
@@ -343,12 +348,7 @@ func TestVectorFlex(t *testing.T) {
 			sparse_int_vector Vector(*, *, SPARSE)
 		)`,
 	)
-	if err != nil {
-		if errIs(err, 902, "invalid datatype") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	skipIfNoVectorSupport(t, err)
 	t.Logf("Vector table %q created", tbl)
 	defer testDb.Exec("DROP TABLE " + tbl)
 
@@ -367,7 +367,7 @@ func TestVectorFlex(t *testing.T) {
 	_, err = stmt.ExecContext(ctx, id, expectedVectors[0], expectedVectors[1], expectedVectors[2], expectedVectors[3], expectedVectors[4],
 		sql.Out{Dest: &outVectors[0]}, sql.Out{Dest: &outVectors[1]}, sql.Out{Dest: &outVectors[2]}, sql.Out{Dest: &outVectors[3]}, sql.Out{Dest: &outVectors[4]})
 	if err != nil {
-		t.Fatalf("ExecContext failed: %v", err)
+		skipIfNoVectorSupport(t, err)
 	}
 
 	// Validate inserted values
@@ -407,12 +407,7 @@ func TestVectorPointerCases(t *testing.T) {
 			flex_sparse_vector2 Vector(*, *, SPARSE)
 		)`,
 	)
-	if err != nil {
-		if errIs(err, 902, "invalid datatype") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
+	skipIfNoVectorSupport(t, err)
 	t.Logf("Vector table %q created", tbl)
 	defer testDb.Exec("DROP TABLE " + tbl)
 
@@ -442,7 +437,7 @@ func TestVectorPointerCases(t *testing.T) {
 	// Execute insertion
 	_, err = stmt.ExecContext(ctx, 1, emptyVector, &sparseVec1, nilPtrEmbedding, sparseVec2)
 	if err != nil {
-		t.Fatalf("ExecContext failed: %v", err)
+		skipIfNoVectorSupport(t, err)
 	}
 
 	// Query results
