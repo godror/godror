@@ -82,10 +82,18 @@ END;
 }
 
 func TestConnPool(t *testing.T) {
+	cs, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.MinSessions, cs.MaxSessions = 3, 3
+	db := sql.OpenDB(godror.NewConnector(cs))
+	defer db.Close()
+
 	ctx, cancel := context.WithTimeout(testContext("ConnPool"), 10*time.Second)
 	defer cancel()
 
-	p := godror.NewConnPool(testDb, 2)
+	p := godror.NewConnPool(db, 2)
 	defer p.Close()
 
 	var savedC1 *sql.Conn
@@ -140,6 +148,7 @@ func TestConnPool(t *testing.T) {
 	if err := savedC1.PingContext(ctx); err != nil {
 		t.Error(err)
 	}
+	savedC1.Close()
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
