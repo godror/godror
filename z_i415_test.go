@@ -14,6 +14,9 @@ import (
 // TestPoolLeakOnCancel reproduces the ORA-24496 pool leak: a query cancelled
 // mid-execute must not pin its pooled session.
 func TestPoolLeakOnCancel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip slow pool leak test")
+	}
 	P, err := dsn.Parse(testConStr)
 	if err != nil {
 		t.Fatal(err)

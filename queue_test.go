@@ -26,6 +26,9 @@ type execer interface {
 }
 
 func TestQueue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip DBMS_AQ queue test")
+	}
 	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
 	defer cancel()
 

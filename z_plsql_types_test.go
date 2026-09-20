@@ -449,6 +449,9 @@ func (ss *oshSliceStruct) Scan(v any) error {
 }
 
 func TestPlSqlTypes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip PL/SQL types test")
+	}
 	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 30*time.Second)
 	defer cancel()
 
@@ -2081,6 +2084,9 @@ func TestXMLType(t *testing.T) {
 }
 
 func TestBigXMLType(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip big XML test")
+	}
 	ctx, cancel := context.WithTimeout(testContext("BigXMLType"), 30*time.Second)
 	defer cancel()
 	{

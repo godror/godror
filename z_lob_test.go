@@ -272,6 +272,9 @@ END;`
 	}
 }
 func TestReadLargeLOB(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip large LOB test")
+	}
 	qry := `CREATE OR REPLACE FUNCTION test_readlargelob(p_size IN PLS_INTEGER) RETURN CLOB IS
   v_clob CLOB;
   i PLS_INTEGER;

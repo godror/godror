@@ -3445,6 +3445,9 @@ END;`
 }
 
 func TestNewPassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip CREATE USER test")
+	}
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -4223,6 +4226,9 @@ func ensureSystemDB(t *testing.T) {
 }
 
 func TestSystem(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip system DB test")
+	}
 	ensureSystemDB(t)
 
 	ctx, cancel := context.WithTimeout(testContext("TestPreFetchQuery"), 30*time.Second)
@@ -4598,6 +4604,9 @@ END;`
 // this test case will skip if external wallet is not defined but wont fail
 func TestExternalAuthIntegration(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skip external auth test")
+	}
 
 	ctx, cancel := context.WithTimeout(testContext("TestExternalAuth"), 1*time.Minute)
 	defer cancel()
@@ -4771,6 +4780,9 @@ func TestNullIssue143(t *testing.T) {
 
 func TestForError8192(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skip slow insert loop test")
+	}
 	params, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)

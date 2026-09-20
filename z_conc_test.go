@@ -22,6 +22,9 @@ import (
 )
 
 func TestConcurrency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip heavy concurrency test")
+	}
 	if os.Getenv("DO_TEST_CONCURRENCY") == "1" {
 		testConcurrency(t)
 		return

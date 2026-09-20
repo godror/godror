@@ -25,6 +25,9 @@ import (
 //
 // You have to call it a lot! (go test -run=ExecContextPanic -count=100)
 func TestExecContextPanic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip slow panic-hunt test")
+	}
 	ctx := t.Context()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {

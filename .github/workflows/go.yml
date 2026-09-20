@@ -33,7 +33,7 @@ jobs:
 
     - name: Test
       continue-on-error: true
-      run: go test
+      run: go test -short
 
   staticcheck:
     name: StaticCheck

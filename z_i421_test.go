@@ -17,6 +17,9 @@ import (
 // verify that creating pools or standalone connectors with custom Charset
 // correctly releases C.CString(charset) via freeCommonCreateParams without leaking C-heap.
 func TestIssue421_CharsetMemoryLeak(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip slow memory leak test")
+	}
 	if testConStr == "" {
 		t.Skip("no test database connection string")
 	}

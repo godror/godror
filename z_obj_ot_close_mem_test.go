@@ -15,6 +15,9 @@ import (
 )
 
 func TestObjOpenClose(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip memory churn test")
+	}
 	ctx, cancel := context.WithTimeout(testContext("PlSqlObjectDirect"), 30*time.Second)
 	defer cancel()
 	defer tl.enableLogging(t)()

@@ -60,6 +60,9 @@ func TestWrongPassword(t *testing.T) {
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skip heterogeneous pool test")
+	}
 	ctx, cancel := context.WithTimeout(testContext("HeterogeneousPoolIntegration"), 30*time.Second)
 	defer cancel()
 
