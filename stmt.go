@@ -2991,6 +2991,10 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		objs[0] = &v
 	case *Object:
 		objs[0] = v
+	case ObjectCollection:
+		objs[0] = v.Object
+	case *ObjectCollection:
+		objs[0] = v.Object
 
 	case []Object:
 		objs = make([]*Object, len(v))
