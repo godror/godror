@@ -2455,10 +2455,22 @@ type (
 	}
 )
 
-func (RatePlan) ObjectTypeName() string     { return "test_aor_pkg.test_aor_tt" }
-func (RateCode) ObjectTypeName() string     { return "test_aor_pkg.test_aor_rt" }
+func (RatePlan) ObjectTypeName() string { return "test_aor_pkg.test_aor_tt" }
+func (rp RatePlan) Iter() iter.Seq[godror.ObjectWriter] {
+	return godror.SliceIter(rp.RateCodes)
+}
+func (RateCode) ObjectTypeName() string { return "test_aor_pkg.test_aor_rt" }
+func (rc RateCode) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &rc)
+}
 func (parentObject) ObjectTypeName() string { return "test_parent_ot" }
-func (childObject) ObjectTypeName() string  { return "test_child_ot" }
+func (po parentObject) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &po)
+}
+func (childObject) ObjectTypeName() string { return "test_child_ot" }
+func (co childObject) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &co)
+}
 
 func TestIssue319(t *testing.T) {
 	ctx, cancel := context.WithTimeout(testContext("Issue319"), 10*time.Second)
