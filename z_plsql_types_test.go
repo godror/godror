@@ -1487,7 +1487,10 @@ END;`},
 		}
 		t.Log("mapSlice:", m)
 		want := []map[string]any{
-			{"CONS_YEAR": "2021", "CONS_01": "10212"},
+			{
+				"CONS_YEAR": godror.Number("2021"),
+				"CONS_01":   godror.Number("10212"),
+			},
 			nil,
 		}
 		if d := cmp.Diff(want, m); d != "" {
