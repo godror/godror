@@ -201,8 +201,6 @@ func setUp() func() {
 		}()
 	} else {
 		// Disable Go db connection pooling
-		testDb.SetMaxIdleConns(0)
-		testDb.SetConnMaxLifetime(0)
 		go func() {
 			godror.Raw(statCtx, testDb, func(c godror.Conn) error {
 				var haveResourceLimit int8
@@ -4140,11 +4138,7 @@ func TestOpenCloseLOB(t *testing.T) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(poolSize)
-	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
-		db.SetMaxIdleConns(poolSize)
-	} else {
-		db.SetMaxIdleConns(0)
-	}
+	db.SetMaxIdleConns(poolSize)
 
 	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()

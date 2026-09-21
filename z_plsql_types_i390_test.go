@@ -209,14 +209,13 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		// godror.GuardWithFinalizers(true)
 		// godror.LogLingeringResourceStack(true)
 		// defer godror.LogLingeringResourceStack(false)
+		cx, err := testDb.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cx.Close()
 
-		callObjectType := func(ctx context.Context, db *sql.DB, dir direction) error {
-			cx, err := db.Conn(ctx)
-			if err != nil {
-				return err
-			}
-			defer cx.Close()
-
+		callObjectType := func(ctx context.Context, dir direction) error {
 			tx, err := cx.BeginTx(ctx, nil)
 			if err != nil {
 				return err
@@ -259,7 +258,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 				t.Logf("dl: %v dur:%v", dl, dur)
 				var lastPrint time.Time
 				for ; time.Now().Before(dl); loopCnt++ {
-					if err := callObjectType(ctx, testDb, dir); err != nil {
+					if err := callObjectType(ctx, dir); err != nil {
 						t.Fatal("callObjectType:", err)
 					}
 					if step <= 2 {
