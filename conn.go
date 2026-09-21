@@ -676,7 +676,7 @@ func IsBadConn(err error) bool {
 	// Yes, this is copied from rana/ora, but I've put it there, so it's mine. @tgulacsi
 	switch cd.Code() {
 	case 0:
-		if strings.Contains(err.Error(), " DPI-1002: ") {
+		if errS := err.Error(); strings.Contains(errS, " DPI-1002: ") || strings.Contains(errS, " DPI-1010: ") {
 			return true
 		}
 

@@ -14,7 +14,6 @@ import (
 )
 
 func TestMaybeBadConn(t *testing.T) {
-	t.Parallel()
 	want := driver.ErrBadConn
 	if got := maybeBadConn(fmt.Errorf("bad: %w", want), nil); got != want {
 		t.Errorf("got %v, wanted %v", got, want)
@@ -22,7 +21,6 @@ func TestMaybeBadConn(t *testing.T) {
 }
 
 func TestCalculateTZ(t *testing.T) {
-	t.Parallel()
 	const bdpstName = "Europe/Budapest"
 	bdpstZone, bdpstOff := "+01:00", int(3600)
 	bdpstLoc, err := time.LoadLocation(bdpstName)

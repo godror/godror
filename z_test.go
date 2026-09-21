@@ -193,7 +193,7 @@ func setUp() func() {
 			}
 			defer conn.Close()
 			for statIter = statStrategy.Start(); ; {
-				fmt.Fprintf(os.Stderr, "testDb: %+v\n", testDb.Stats())
+				fmt.Fprintf(os.Stderr, "%s testDb: %+v\n", time.Now().Format(time.RFC3339), testDb.Stats())
 				if !statIter.Next(statCtx.Done()) {
 					break
 				}
@@ -211,7 +211,7 @@ func setUp() func() {
 					if err := func() error {
 						defer cancel()
 						poolStats, err := c.GetPoolStats()
-						fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
+						fmt.Fprintf(os.Stderr, "%s testDb: %+v: %s %v\n", time.Now().Format(time.RFC3339), testDb.Stats(), poolStats, err)
 						if err != nil {
 							return err
 						}

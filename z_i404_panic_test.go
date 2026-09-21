@@ -8,9 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -63,7 +61,7 @@ func testExecContextPanicOne(t *testing.T, conn *sql.Conn, wait time.Duration) (
 		_, err = conn.ExecContext(ctx, "SELECT :param FROM dual", sql.Named("param", "value"))
 		end := time.Now()
 		dur = end.Sub(start)
-		fmt.Fprintln(os.Stderr, end.Format(time.RFC3339Nano), "select done", dur.String())
+		t.Log(end.Format(time.RFC3339Nano), "select done", dur.String())
 		if err != nil && !errors.Is(err, context.Canceled) && !godror.IsBadConn(err) {
 			if oerr, ok := godror.AsOraErr(err); !(ok && oerr.Code() == 1013) {
 				t.Error(err)
@@ -75,7 +73,7 @@ func testExecContextPanicOne(t *testing.T, conn *sql.Conn, wait time.Duration) (
 
 	wait = (wait >> 5) + time.Duration(rand.Int63n(int64(wait-wait>>5)))
 	time.Sleep(wait) // Might need to adjust offset and jitter to reproduce
-	fmt.Fprintln(os.Stderr, "time", time.Now().Format(time.RFC3339Nano), "cancelling context, waited", wait.String())
+	t.Log("time", time.Now().Format(time.RFC3339Nano), "cancelling context, waited", wait.String())
 	// Pull the rug
 	cancel()
 	doneWg.Wait()

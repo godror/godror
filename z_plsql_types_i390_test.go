@@ -62,11 +62,11 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 	if step < 2 {
 		step = 2
 	}
-	t.Run(strconv.Itoa(step), func(t *testing.T) {
+	stepS := strconv.Itoa(step)
+	t.Run(stepS, func(t *testing.T) {
 		ctx, cancel := testContext(t, 1*time.Minute)
 		defer cancel()
 		// defer tl.enableLogging(t)()
-		stepS := t.Name()
 		const sample = "test_pkg_sample_nested"
 
 		createTypes := func(ctx context.Context, db *sql.DB) error {
