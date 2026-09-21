@@ -1,4 +1,4 @@
-// Copyright 2019, 2020 The Godror Authors
+// Copyright 2019, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -6,16 +6,16 @@
 package godror_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	godror "github.com/godror/godror"
 )
 
 func TestQRCN(t *testing.T) {
-	ctx, cancel := context.WithCancel(testContext("QRCN"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	cx, err := testDb.Conn(ctx)

@@ -485,7 +485,7 @@ func BenchmarkStrconv(b *testing.B) {
 }
 
 func BenchmarkPlSqlObj(b *testing.B) {
-	ctx, cancel := context.WithTimeout(testContext("BenchPlSqlObj"), 3*time.Minute)
+	ctx, cancel := testContext(b, 3*time.Minute)
 	defer cancel()
 	if err := createPackages(ctx); err != nil {
 		b.Fatal(err)

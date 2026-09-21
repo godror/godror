@@ -19,7 +19,7 @@ import (
 )
 
 func TestWrongPassword(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("WrongPassword"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	P, err := godror.ParseConnString(testConStr)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip heterogeneous pool test")
 	}
-	ctx, cancel := context.WithTimeout(testContext("HeterogeneousPoolIntegration"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	const proxyPassword = "myPassword666myPassword"
@@ -108,7 +108,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 		}
 	}
 	defer func() {
-		testHeterogeneousDB.ExecContext(testContext("HeterogeneousPoolIntegration-drop"), "DROP USER "+proxyUser)
+		testHeterogeneousDB.ExecContext(context.Background(), "DROP USER "+proxyUser)
 	}()
 
 	testCases := map[string]struct {
@@ -151,7 +151,7 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 // passing Proxyuser at the time of Go pool creation
 // user = proxyusername[sessionusername], password for proxyusername
 func TestHeterogeneousConnCreationWithProxy(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("HeterogeneousConnCreationWithProxy"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	const sessionUserPassword = "myPassword666myPassword"
@@ -192,7 +192,7 @@ func TestHeterogeneousConnCreationWithProxy(t *testing.T) {
 		}
 	}
 	defer func() {
-		testDb.ExecContext(testContext("HeterogeneousConnCreationWithProxy-drop"), "DROP USER "+sessionUser)
+		testDb.ExecContext(context.Background(), "DROP USER "+sessionUser)
 	}()
 	var result string
 	if err = testHeterogeneousDB.QueryRowContext(ctx, "SELECT user FROM dual").Scan(&result); err != nil {
@@ -204,7 +204,7 @@ func TestHeterogeneousConnCreationWithProxy(t *testing.T) {
 }
 
 func TestContextWithUserPassw(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ContextWithUserPassw"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	cs, err := godror.ParseDSN(testConStr)

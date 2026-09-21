@@ -1589,7 +1589,8 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			}
 
 			if logger != nil {
-				logger.Error("unknown type", "value", fmt.Sprintf("%[1]T:%#[1]v", value))
+				var a [16384]byte
+				logger.Error("unknown type", "Value", fmt.Sprintf("%[1]T:%#[1]v", value), "stack", string(a[:runtime.Stack(a[:], false)]))
 			}
 			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}

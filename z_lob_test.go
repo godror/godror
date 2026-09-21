@@ -29,7 +29,7 @@ import (
 )
 
 func TestLoadXMLLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("LoadXMLLOB"), 60*time.Second)
+	ctx, cancel := testContext(t, 60*time.Second)
 	defer cancel()
 
 	tx, err := testDb.BeginTx(ctx, nil)
@@ -104,7 +104,7 @@ END;`
 }
 
 func TestInsertLargeLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("InsertLargeLOB"), 60*time.Second)
+	ctx, cancel := testContext(t, 60*time.Second)
 	defer cancel()
 
 	tbl := "test_insert_large_lob" + tblSuffix
@@ -179,7 +179,7 @@ func TestCloseTempLOB(t *testing.T) {
 		t.Skip("TestCloseTempLOB needs pooled connection")
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("CloseTempLOB"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	var wg, start sync.WaitGroup
@@ -227,7 +227,7 @@ func newTempLob(ctx context.Context, db *sql.DB) error {
 }
 
 func TestSplitLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SplitLOB"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -290,7 +290,7 @@ END;`
 	}
 	defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION test_readlargelob") }()
 
-	ctx, cancel := context.WithTimeout(testContext("ReadLargeLOB"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -356,7 +356,7 @@ END;`
 }
 
 func TestLOBAppend(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("LOBAppend"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	// To have a valid LOB locator, we have to keep the Stmt around.
@@ -408,7 +408,7 @@ func TestLOBAppend(t *testing.T) {
 
 func TestStatWithLOBs(t *testing.T) {
 	//defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("StatWithLOBs"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	ms, err := newMetricSet(ctx, testDb)

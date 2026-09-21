@@ -36,7 +36,7 @@ func isTokenEnvConfigred(t *testing.T) {
 
 func TestTokenAuthCallBack(t *testing.T) {
 	isTokenEnvConfigred(t)
-	ctx, cancel := context.WithTimeout(testContext("TokenAuthCallBack"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	P, err := godror.ParseConnString(testConStr)
 	if err != nil {
@@ -97,7 +97,7 @@ func TestTokenAuthCallBack(t *testing.T) {
 
 func TestTokenAuthStandAlone(t *testing.T) {
 	isTokenEnvConfigred(t)
-	ctx, cancel := context.WithTimeout(testContext("TokenAuthStandAlone"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {

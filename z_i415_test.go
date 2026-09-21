@@ -1,3 +1,7 @@
+// Copyright 2026 The Godror Authors
+//
+// SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
+
 package godror_test
 
 import (
@@ -29,7 +33,7 @@ func TestPoolLeakOnCancel(t *testing.T) {
 	defer db.Close()
 	db.SetMaxOpenConns(P.PoolParams.MaxSessions)
 
-	ctx, cancel := context.WithTimeout(testContext("PoolLeakOnCancel"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	probe := func(ctx context.Context) error {

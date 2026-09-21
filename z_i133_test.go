@@ -181,7 +181,7 @@ func BenchmarkMergeMemory133(t *testing.B) {
 	useLobs, _ := strconv.ParseBool(os.Getenv("USE_LOBS"))
 	runs, _ := strconv.Atoi(os.Getenv("RUNS"))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	P, err := godror.ParseDSN(testConStr)
@@ -238,7 +238,7 @@ func BenchmarkMergeMemory133(t *testing.B) {
 }
 
 func issue133Inner(ctx context.Context, t testing.TB, conn *sql.Conn, rowsToInsert, firstRowBytes int, useLobs bool) error {
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	tx, err := conn.BeginTx(ctx, nil)

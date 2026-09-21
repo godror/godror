@@ -33,6 +33,7 @@ import (
 	"github.com/go-logfmt/logfmt"
 	"github.com/godror/godror/slog"
 	"github.com/google/go-cmp/cmp"
+	"github.com/rogpeppe/retry"
 	"golang.org/x/sync/errgroup"
 
 	godror "github.com/godror/godror"
@@ -53,6 +54,10 @@ var (
 	maxSessions = 16
 
 	Verbose bool
+
+	statCtx, statCancel = context.WithCancel(context.Background())
+	statStrategy        = retry.Strategy{Delay: 5 * time.Second, Factor: 2, MaxDuration: 30 * time.Second}
+	statIter            *retry.Iter
 )
 
 const (
@@ -60,7 +65,7 @@ const (
 
 	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
 	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
-	DefaultMaxSessions = 2
+	DefaultMaxSessions = 8
 )
 
 // TestMain is called instead of the separate Test functions,
@@ -166,31 +171,32 @@ func setUp() func() {
 	testConStr = P.StringWithPassword()
 	testDb = sql.OpenDB(godror.NewConnector(P))
 	tearDown = append(tearDown, func() { testDb.Close() })
-	ctx, cancel := context.WithTimeout(testContext("init"), 30*time.Second)
+	ctx, cancel := testContext(nil, 30*time.Second)
 	defer cancel()
 
 	if b, err := strconv.ParseBool(os.Getenv("DO_NOT_CONNECT")); b && err == nil {
 		return func() {}
 	}
 
-	statTicks = make(chan time.Time)
-	statTicker = time.NewTicker(60 * time.Second)
-	go func() {
-		time.Sleep(time.Second)
-		statTicks <- time.Now()
-		for t := range statTicker.C {
-			statTicks <- t
-		}
-	}()
-
 	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.String())
 	testDb.SetMaxOpenConns(P.PoolParams.MaxSessions)
+	fmt.Println("Standalone?",
+		P.StandaloneConnection.Valid && P.StandaloneConnection.Bool)
 	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
 		testDb.SetMaxIdleConns(P.PoolParams.MaxSessions / 2)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
-			for range statTicks {
+			conn, err := testDb.Conn(statCtx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "stat: %+v\n", err)
+				return
+			}
+			defer conn.Close()
+			for statIter = statStrategy.Start(); ; {
 				fmt.Fprintf(os.Stderr, "testDb: %+v\n", testDb.Stats())
+				if !statIter.Next(statCtx.Done()) {
+					break
+				}
 			}
 		}()
 	} else {
@@ -198,15 +204,54 @@ func setUp() func() {
 		testDb.SetMaxIdleConns(0)
 		testDb.SetConnMaxLifetime(0)
 		go func() {
-			for range statTicks {
-				ctx, cancel := context.WithTimeout(testContext("poolStats"), time.Second)
-				godror.Raw(ctx, testDb, func(c godror.Conn) error {
-					poolStats, err := c.GetPoolStats()
-					fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
-					return err
-				})
-				cancel()
-			}
+			godror.Raw(statCtx, testDb, func(c godror.Conn) error {
+				var haveResourceLimit int8
+				for statIter = statStrategy.Start(); ; {
+					ctx, cancel := context.WithTimeout(statCtx, time.Second)
+					if err := func() error {
+						defer cancel()
+						poolStats, err := c.GetPoolStats()
+						fmt.Fprintf(os.Stderr, "testDb: %+v: %s %v\n", testDb.Stats(), poolStats, err)
+						if err != nil {
+							return err
+						}
+
+						if haveResourceLimit == -1 {
+							return nil
+						}
+						const qry = `SELECT resource_name,
+	    current_utilization, max_utilization FROM v$resource_limit`
+						stmt, err := c.PrepareContext(ctx, qry)
+						if err != nil {
+							return fmt.Errorf("prepare %s: %w", qry, err)
+						}
+						rows, err := stmt.(driver.StmtQueryContext).QueryContext(ctx, nil)
+						if err != nil {
+							haveResourceLimit = -1
+							return err
+						}
+						defer rows.Close()
+						var nm, cur, max string
+						for {
+							if err := rows.Next([]driver.Value{&nm, &cur, &max}); err != nil {
+								if errors.Is(err, io.EOF) {
+									break
+								}
+								return fmt.Errorf("scan %s: %w", qry, err)
+							}
+							fmt.Fprintf(os.Stderr, "RES[%s]: %s/%s\n", nm, cur, max)
+							haveResourceLimit = 1
+						}
+						return nil
+					}(); err != nil {
+						fmt.Fprintf(os.Stderr, "stat: %+v\n", err)
+					}
+					if !statIter.Next(statCtx.Done()) {
+						break
+					}
+				}
+				return nil
+			})
 		}()
 	}
 
@@ -263,12 +308,6 @@ func setUp() func() {
 		}
 	}
 
-	go func() {
-		for range time.NewTicker(time.Second).C {
-			runtime.GC()
-		}
-	}()
-
 	return func() {
 		for i := len(tearDown) - 1; i >= 0; i-- {
 			tearDown[i]()
@@ -276,38 +315,25 @@ func setUp() func() {
 	}
 }
 
-var statTicker *time.Ticker
-var statTicks chan time.Time
+func PrintConnStats() { statIter.Reset(&statStrategy, time.Now) }
+func StopConnStats()  { statCancel() }
 
-func PrintConnStats() {
-	if statTicks != nil {
-		select {
-		case statTicks <- time.Now():
-		default:
-		}
+func testContext(t testing.TB, dur time.Duration) (context.Context, context.CancelFunc) {
+	ctx := context.Background()
+	var name string
+	if t != nil {
+		ctx = t.Context()
+		name = t.Name()
 	}
-}
-func StopConnStats() {
-	if statTicker != nil {
-		statTicker.Stop()
-	}
-}
-
-func testContext(name string, ctxs ...context.Context) context.Context {
-	var ctx context.Context
-	if len(ctxs) != 0 {
-		ctx = ctxs[0]
-	} else {
-		ctx = context.Background()
-	}
+	ctx, cancel := context.WithTimeout(ctx, dur)
 	ctx = godror.ContextWithTraceTag(ctx,
-		godror.TraceTag{Module: "Test" + name},
+		godror.TraceTag{Module: name},
 	)
 	if Verbose {
 		logger.Info("testContext", "name", name)
 		ctx = godror.ContextWithLogger(ctx, logger)
 	}
-	return ctx
+	return ctx, cancel
 }
 
 var bufPool = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 0, 1024)) }}
@@ -417,7 +443,7 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 }
 
 func TestDescribeQuery(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("DescribeQuery"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	const qry = "SELECT * FROM user_tab_cols"
@@ -429,7 +455,7 @@ func TestDescribeQuery(t *testing.T) {
 }
 
 func TestParseOnly(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ParseOnly"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	tbl := "test_not_exist" + tblSuffix
@@ -458,7 +484,7 @@ func TestParseOnly(t *testing.T) {
 
 func TestInputArray(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("InputArray"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	pkg := strings.ToUpper("test_in_pkg" + tblSuffix)
@@ -633,7 +659,7 @@ END;
 
 func TestDbmsOutput(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("DbmsOutput"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)
@@ -664,7 +690,7 @@ func TestDbmsOutput(t *testing.T) {
 func TestInOutArray(t *testing.T) {
 	defer tl.enableLogging(t)()
 
-	ctx, cancel := context.WithTimeout(testContext("InOutArray"), 20*time.Second)
+	ctx, cancel := testContext(t, 20*time.Second)
 	defer cancel()
 
 	pkg := strings.ToUpper("test_pkg" + tblSuffix)
@@ -888,7 +914,7 @@ END;
 }
 
 func TestOutParam(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("OutParam"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -948,7 +974,7 @@ END;`
 }
 
 func TestSelectRefCursor(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectRefCursor"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM <= 10) FROM DUAL")
 	if err != nil {
@@ -985,7 +1011,7 @@ func TestSelectRefCursor(t *testing.T) {
 }
 
 func TestSelectRefCursorWrap(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectRefCursorWrap"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM <= 10) FROM DUAL")
 	if err != nil {
@@ -1026,7 +1052,7 @@ func TestSelectRefCursorWrap(t *testing.T) {
 
 func TestExecRefCursor(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("ExecRefCursor"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	funName := "test_rc" + tblSuffix
 	funQry := "CREATE OR REPLACE FUNCTION " + funName + ` RETURN SYS_REFCURSOR IS
@@ -1066,7 +1092,7 @@ END;`
 func TestExecuteMany(t *testing.T) {
 	defer tl.enableLogging(t)()
 
-	ctx, cancel := context.WithTimeout(testContext("ExecuteMany"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	tbl := "test_em" + tblSuffix
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
@@ -1333,7 +1359,7 @@ END;`
 }
 
 func TestReadWriteLOB(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -1468,7 +1494,7 @@ func TestReadWriteLOB(t *testing.T) {
 }
 
 func TestReadWriteBfile(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWritBfile"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -1572,7 +1598,7 @@ func TestOpenCloseDB(t *testing.T) {
 	cs.MinSessions, cs.MaxSessions = DefaultMaxSessions, DefaultMaxSessions
 	cs.StandaloneConnection = godror.Bool(true)
 	const countQry = "SELECT COUNT(0) FROM user_objects"
-	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	grp, ctx := errgroup.WithContext(ctx)
 	grp.SetLimit(cs.MaxSessions)
@@ -1610,7 +1636,7 @@ func TestOpenCloseConn(t *testing.T) {
 	db := sql.OpenDB(godror.NewConnector(cs))
 	defer db.Close()
 	const countQry = "SELECT COUNT(0) FROM user_objects"
-	ctx, cancel := context.WithCancel(testContext("OpenCloseConn"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	limitCh := make(chan struct{}, cs.MaxSessions)
 	grp, ctx := errgroup.WithContext(ctx)
@@ -1652,7 +1678,7 @@ func TestOpenCloseTx(t *testing.T) {
 	}()
 	db.SetMaxIdleConns(cs.MinSessions)
 	db.SetMaxOpenConns(cs.MaxSessions)
-	ctx, cancel := context.WithCancel(testContext("OpenCloseTx"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	const module = "godror.v2.test-OpenCloseTx "
 	const countQry = "SELECT COUNT(0) FROM v$session WHERE module LIKE '" + module + "%'"
@@ -1758,7 +1784,7 @@ func TestOpenBadMemory(t *testing.T) {
 }
 
 func TestSelectFloat(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectFloat"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	tbl := "test_numbers" + tblSuffix
 	qry := `CREATE TABLE ` + tbl + ` (
@@ -1874,7 +1900,7 @@ func TestRanaOraIssue244(t *testing.T) {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 	var max int
-	ctx, cancel := context.WithCancel(testContext("RanaOraIssue244-1"))
+	ctx, cancel := testContext(t, time.Minute)
 	txs := make([]*sql.Tx, 0, maxSessions/2)
 	for max = 0; max < maxSessions/2; max++ {
 		tx, err := testDb.BeginTx(ctx, nil)
@@ -1894,7 +1920,7 @@ func TestRanaOraIssue244(t *testing.T) {
 	if testing.Short() {
 		dur = 10 * time.Second
 	}
-	ctx, cancel = context.WithTimeout(testContext("RanaOraIssue244-2"), dur)
+	ctx, cancel = testContext(t, dur)
 	defer cancel()
 	defer testDb.Exec("DROP TABLE " + tableName)
 	const bf = "143"
@@ -2019,7 +2045,7 @@ func TestNumberMarshal(t *testing.T) {
 
 func TestExecHang(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("ExecHang"), 1*time.Second)
+	ctx, cancel := testContext(t, 1*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
 	errMismatch := errors.New("mismatch")
@@ -2049,7 +2075,7 @@ func TestExecHang(t *testing.T) {
 }
 
 func TestNumberNull(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("NumberNull"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	testDb.Exec("DROP TABLE number_test")
 	qry := `CREATE TABLE number_test (
@@ -2276,7 +2302,7 @@ func TestReturning(t *testing.T) {
 }
 
 func TestMaxOpenCursorsORA1000(t *testing.T) {
-	ctx, cancel := context.WithCancel(testContext("ORA1000"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT * FROM user_objects WHERE ROWNUM < 100")
 	if err != nil {
@@ -2315,7 +2341,7 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 }
 
 func TestRO(t *testing.T) {
-	ctx, cancel := context.WithCancel(testContext("RO"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
 	if err != nil {
@@ -2350,7 +2376,7 @@ func TestNullIntoNum(t *testing.T) {
 
 func TestPing(t *testing.T) {
 
-	ctx, cancel := context.WithTimeout(testContext("Ping"), 1*time.Second)
+	ctx, cancel := testContext(t, 1*time.Second)
 	defer cancel()
 	err := testDb.PingContext(ctx)
 	cancel()
@@ -2368,7 +2394,7 @@ func TestPing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel = context.WithTimeout(testContext("Ping"), 1*time.Second)
+	ctx, cancel = testContext(t, 1*time.Second)
 	defer cancel()
 
 	dl, _ := ctx.Deadline()
@@ -2399,7 +2425,7 @@ func TestNoConnectionPooling(t *testing.T) {
 
 func TestExecTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("ExecTimeout"), 100*time.Millisecond)
+	ctx, cancel := testContext(t, 100*time.Millisecond)
 	defer cancel()
 	if _, err := testDb.ExecContext(ctx, "DECLARE cnt PLS_INTEGER; BEGIN SELECT COUNT(0) INTO cnt FROM (SELECT 1 FROM all_objects WHERE ROWNUM < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000); END;"); err != nil {
 		t.Log(err)
@@ -2408,7 +2434,7 @@ func TestExecTimeout(t *testing.T) {
 
 func TestQueryTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("QueryTimeout"), 100*time.Millisecond)
+	ctx, cancel := testContext(t, 100*time.Millisecond)
 	defer cancel()
 	if rows, err := testDb.QueryContext(ctx, "SELECT COUNT(0) FROM (SELECT 1 FROM all_objects WHERE rownum < 1000), (SELECT 1 FROM all_objects WHERE rownum < 1000)"); err != nil {
 		t.Log(err)
@@ -2418,7 +2444,7 @@ func TestQueryTimeout(t *testing.T) {
 }
 func TestQueryLOBTimeout(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext("QueryLOBTimeout"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	tbl := "test_query_lob_" + tblSuffix
 	drop := func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }
@@ -2473,7 +2499,7 @@ func TestQueryLOBTimeout(t *testing.T) {
 }
 
 func TestSDO(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SDO"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	innerQry := `SELECT MDSYS.SDO_GEOMETRY(
 	3001,
@@ -2601,7 +2627,7 @@ func (t *Custom) Scan(v any) error {
 }
 
 func TestSelectCustomType(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectCustomType"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -2664,7 +2690,7 @@ func TestSelectCustomType(t *testing.T) {
 }
 
 func TestExecInt64(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ExecInt64"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PROCEDURE test_i64_out(p_int NUMBER, p_out1 OUT NUMBER, p_out2 OUT NUMBER) IS
 	BEGIN p_out1 := p_int; p_out2 := p_int; END;`
@@ -2684,7 +2710,7 @@ func TestExecInt64(t *testing.T) {
 }
 
 func TestImplicitResults(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ImplicitResults"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const qry = `declare
 			c0 sys_refcursor;
@@ -2734,7 +2760,7 @@ func TestStartupShutdown(t *testing.T) {
 	}
 	db := sql.OpenDB(godror.NewConnector(p))
 	defer db.Close()
-	ctx, cancel := context.WithTimeout(testContext("StartupShutdown"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	if err = db.PingContext(ctx); err != nil {
@@ -2772,7 +2798,7 @@ func TestIssue134(t *testing.T) {
 		}
 	}
 	cleanup()
-	ctx, cancel := context.WithTimeout(testContext("Issue134"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	cx, err := testDb.Conn(ctx)
 	if err != nil {
@@ -2885,7 +2911,8 @@ END;`,
 
 func TestDateRset(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx := testContext("DateRset")
+	ctx, cancel := testContext(t, 15*time.Second)
+	defer cancel()
 
 	const qry = `DECLARE
   v_cur SYS_REFCURSOR;
@@ -2932,7 +2959,8 @@ END;`
 
 func TestTsRset(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx := testContext("TsRset")
+	ctx, cancel := testContext(t, 10*time.Second)
+	defer cancel()
 
 	const qry = `DECLARE
   v_cur SYS_REFCURSOR;
@@ -2977,7 +3005,7 @@ func TestTsTZ(t *testing.T) {
 		"TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}')",
 		"CAST(TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}') AS DATE)",
 	}
-	ctx, cancel := context.WithTimeout(testContext("TsTZ"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	defer tl.enableLogging(t)()
@@ -3038,7 +3066,7 @@ func TestTsTZ(t *testing.T) {
 func TestGetDBTimezone(t *testing.T) {
 	defer tl.enableLogging(t)()
 
-	ctx, cancel := context.WithTimeout(testContext("GetDBTimeZone"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, nil)
 	if err != nil {
@@ -3085,7 +3113,7 @@ func TestGetDBTimezone(t *testing.T) {
 }
 
 func TestConnParamsTimezone(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ConnParamsTZ"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	getServerTZ := func(db *sql.DB) *time.Location {
@@ -3122,7 +3150,7 @@ func TestConnParamsTimezone(t *testing.T) {
 }
 
 func TestNumberAsStringBool(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
+	ctx, cancel := testContext(t, 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
 	rows, err := testDb.QueryContext(ctx, qry, godror.NumberAsString())
@@ -3144,7 +3172,7 @@ func TestNumberAsStringBool(t *testing.T) {
 }
 
 func TestDST(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("DST"), 10*time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	defer tl.enableLogging(t)()
@@ -3198,7 +3226,7 @@ func TestDST(t *testing.T) {
 }
 
 func TestNumberBool(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
+	ctx, cancel := testContext(t, 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, '1' status FROM DUAL"
 	rows, err := testDb.QueryContext(ctx, qry)
@@ -3220,7 +3248,7 @@ func TestNumberBool(t *testing.T) {
 }
 
 func TestCancel(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Cancel"), 5*time.Second)
+	ctx, cancel := testContext(t, 5*time.Second)
 	defer cancel()
 	subCtx, subCancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
@@ -3258,7 +3286,7 @@ func TestTimeout(t *testing.T) {
 	maxConc := maxSessions / 2
 	db.SetMaxOpenConns(maxConc - 1)
 	db.SetMaxIdleConns(1)
-	ctx, cancel := context.WithCancel(testContext("Timeout"))
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	const qryCount = "SELECT COUNT(0) FROM v$session WHERE username = USER AND process = TO_CHAR(:1)"
 	cntStmt, err := testDb.PrepareContext(ctx, qryCount)
@@ -3312,7 +3340,7 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestObject(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Object"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -3413,7 +3441,7 @@ func TestNewPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(testContext("NewPassword"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const user, oldPassword, newPassword = "test_expired", "oldPassw0rd_long", "newPassw0rd_longer"
 
@@ -3474,7 +3502,7 @@ func TestConnClass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(testContext("ConnClass"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	const connClass = "fc8153b840"
@@ -3517,7 +3545,7 @@ func TestOnInit(t *testing.T) {
 	const numChars = "#@"
 	P.SetSessionParamOnInit("nls_numeric_characters", numChars)
 	t.Log(P.String())
-	ctx, cancel := context.WithTimeout(testContext("OnInit"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	db, err := sql.Open("godror", P.StringWithPassword())
@@ -3562,7 +3590,7 @@ func TestOnInitParallel(t *testing.T) {
 	const numChars = "#@"
 	P.SetSessionParamOnInit("nls_numeric_characters", numChars)
 	t.Log(P.String())
-	ctx, cancel := context.WithTimeout(testContext("OnInit"), 1*time.Minute)
+	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
 
 	db, err := sql.Open("godror", P.StringWithPassword())
@@ -3603,7 +3631,7 @@ func TestOnInitParallel(t *testing.T) {
 }
 
 func TestSelectTypes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectTypes"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	const createQry = `CREATE TABLE TEST_TYPES (
 			A_LOB BFILE,
@@ -3640,7 +3668,7 @@ func TestSelectTypes(t *testing.T) {
 		t.Fatalf("%s: %+v", createQry, err)
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(testContext("SelectTypes-drop"), 10*time.Second)
+		ctx, cancel := testContext(t, 10*time.Second)
 		defer cancel()
 		testDb.ExecContext(ctx, "DROP TABLE test_types")
 	}()
@@ -3836,7 +3864,7 @@ func TestSelectTypes(t *testing.T) {
 }
 
 func TestInsertIntervalDS(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("InsertIntervalDS"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const tbl = "test_interval_ds"
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
@@ -3844,7 +3872,7 @@ func TestInsertIntervalDS(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	defer func() { testDb.ExecContext(testContext("InsertIntervalDS-drop"), "DROP TABLE "+tbl) }()
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_interval_ds) VALUES (INTERVAL '32' SECOND)"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
@@ -3875,7 +3903,7 @@ func TestInsertIntervalDS(t *testing.T) {
 	}
 }
 func TestBool(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Bool"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const tbl = "test_bool_t"
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
@@ -3883,7 +3911,7 @@ func TestBool(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	defer func() { testDb.ExecContext(testContext("Bool-drop"), "DROP TABLE "+tbl) }()
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_bool) VALUES ('Y')"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
@@ -3945,7 +3973,7 @@ func (b booler) Value() (driver.Value, error) {
 }
 
 func TestBoolValueTypes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("NullBool"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const tbl = "test_bool_value_types_t"
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
@@ -3953,7 +3981,7 @@ func TestBoolValueTypes(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	defer func() { testDb.ExecContext(testContext("Bool-value-types-drop"), "DROP TABLE "+tbl) }()
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
 
 	tests := []struct {
 		name   string
@@ -4028,7 +4056,7 @@ func TestResetSession(t *testing.T) {
 	defer db.Close()
 	db.SetMaxIdleConns(poolSize)
 
-	ctx, cancel := context.WithTimeout(testContext("ResetSession"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 	for i := range 2 * poolSize {
 		shortCtx, shortCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -4050,7 +4078,7 @@ func TestSelectNullTime(t *testing.T) {
 	const qry = "SELECT SYSDATE, SYSDATE+NULL, SYSDATE+NULL FROM DUAL"
 	var t0, t1 time.Time
 	var nt sql.NullTime
-	ctx, cancel := context.WithTimeout(testContext("SelectNullTime"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	err := testDb.QueryRowContext(ctx, qry, godror.NullDateAsZeroTime()).Scan(&t0, &t1, &nt)
 	cancel()
 	if err != nil {
@@ -4059,7 +4087,7 @@ func TestSelectNullTime(t *testing.T) {
 	t.Logf("t0=%s t1=%s nt=%v", t0, t1, nt)
 }
 func TestSelectROWID(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ROWID"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	const tbl = "test_rowid_t"
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
@@ -4067,7 +4095,7 @@ func TestSelectROWID(t *testing.T) {
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
-	defer func() { testDb.ExecContext(testContext("ROWID-drop"), "DROP TABLE "+tbl) }()
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
 
 	qry = "INSERT INTO " + tbl + " (F_seq) VALUES (:1)"
 	for i := range 10 {
@@ -4118,7 +4146,7 @@ func TestOpenCloseLOB(t *testing.T) {
 		db.SetMaxIdleConns(0)
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("OpenCloseLob"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	const qry = "DECLARE v_lob BLOB; BEGIN DBMS_LOB.CREATETEMPORARY(v_lob, TRUE); DBMS_LOB.WRITEAPPEND(v_lob, 4, HEXTORAW('DEADBEEF')); :1 := v_lob; END;"
@@ -4185,7 +4213,7 @@ func TestSystem(t *testing.T) {
 	}
 	ensureSystemDB(t)
 
-	ctx, cancel := context.WithTimeout(testContext("TestPreFetchQuery"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	// Create a table used for Prefetch, ArrayFetch queries
@@ -4313,7 +4341,7 @@ func getRoundTrips(t *testing.T, sid uint) uint {
 }
 
 func singleRowFetch(t *testing.T, pf int, as int) uint {
-	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	var employeeid int
 	var err error
@@ -4337,7 +4365,7 @@ func singleRowFetch(t *testing.T, pf int, as int) uint {
 
 func multiRowFetch(t *testing.T, pf int, as int) uint {
 
-	ctx, cancel := context.WithTimeout(testContext("Singlerowfetch"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	tbl := "t_employees" + tblSuffix
 	query := "select employee_id from " + tbl + " where rownum < 215"
@@ -4369,7 +4397,7 @@ func multiRowFetch(t *testing.T, pf int, as int) uint {
 	return c
 }
 func TestShortTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ShortTimeout"), 1*time.Minute)
+	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
 	const qry = `SELECT * FROM all_objects ORDER BY DBMS_RANDOM.value`
 	shortCtx, shortCancel := context.WithTimeout(ctx, 500*time.Millisecond)
@@ -4387,7 +4415,7 @@ func TestShortTimeout(t *testing.T) {
 }
 
 func TestIssue100(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Issue100"), 1*time.Minute)
+	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
 	const baseName = "test_issue100"
 	{
@@ -4442,7 +4470,7 @@ END;`
 
 func TestStmtFetchDeadlineForLOB(t *testing.T) {
 
-	ctx, cancel := context.WithTimeout(testContext("TestStmtFetchDeadline"), 60*time.Second)
+	ctx, cancel := testContext(t, 60*time.Second)
 	defer cancel()
 
 	// Create a table used for fetching clob, blob data
@@ -4560,7 +4588,7 @@ func TestExternalAuthIntegration(t *testing.T) {
 		t.Skip("skip external auth test")
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("TestExternalAuth"), 1*time.Minute)
+	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
 
 	cs, err := godror.ParseDSN(testConStr)
@@ -4625,7 +4653,7 @@ func TestExternalAuthIntegration(t *testing.T) {
 		}
 	}
 	defer func() {
-		testExternalAuthDB.ExecContext(testContext("ExternalAuthentication-drop"), "DROP USER "+sessionUser)
+		testExternalAuthDB.ExecContext(context.Background(), "DROP USER "+sessionUser)
 	}()
 
 	// test Proxyuser getsession with pool created with external credentials
@@ -4696,7 +4724,7 @@ func TestNullIssue143(t *testing.T) {
 		    pOutDate IN DATE,
 		    pAmount IN NUMBER DEFAULT NULL) RETURN CLOB IS BEGIN RETURN(NULL); END;`
 
-	ctx, cancel := context.WithTimeout(testContext("NullIssue143"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	if _, err := testDb.ExecContext(ctx, funQry); err != nil {
@@ -4753,7 +4781,7 @@ func TestForError8192(t *testing.T) {
 	}
 	defer dbLocal.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	connUTC, err := dbUTC.Conn(ctx)
@@ -4842,7 +4870,7 @@ func TestObjType_Issue198(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip")
 	}
-	ctx, cancel := context.WithTimeout(testContext("ObjType_Issue198"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -4914,7 +4942,7 @@ func TestLoopInLoop_199(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short")
 	}
-	ctx, cancel := context.WithTimeout(testContext("LoopInLoop_199"), 1*time.Minute)
+	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
 	var first, last, avg time.Duration
 	const cnt = 20
@@ -4956,7 +4984,7 @@ func TestLoopInLoop_199(t *testing.T) {
 	}
 }
 func TestLobAsStringTypeName(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("LobAsStringTypeName"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	tbl := "test_lobasstring" + tblSuffix
@@ -4989,7 +5017,7 @@ func TestLobAsStringTypeName(t *testing.T) {
 }
 
 func TestTTCIssue215(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("TestBreakingOracle12"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	cleanup := func() {
 		for _, qry := range []string{
@@ -5094,7 +5122,7 @@ END;`,
 	t.Log(res.AsMapSlice(true))
 }
 func TestSelectText(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	qry := "SELECT UPPER(:1) FROM DUAL"
 	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -5140,7 +5168,7 @@ func TestReplaceQuestionPlaceholders(t *testing.T) {
 }
 
 func TestPipelinedSelectIssue289(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	funcName := "test_pipelined_" + tblSuffix
 	defer testDb.ExecContext(context.Background(), "DROP FUNCTION "+funcName)
@@ -5191,7 +5219,7 @@ END;`
 }
 
 func TestLevelSerializable(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("LevelSerializable"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	tbl := "test_serializable_" + tblSuffix
@@ -5248,7 +5276,7 @@ func TestLevelSerializable(t *testing.T) {
 }
 
 func TestSelectAlterSessionIssue297(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	db := testSystemDb
@@ -5297,7 +5325,7 @@ type ReaderFunc func([]byte) (int, error)
 func (rf ReaderFunc) Read(p []byte) (int, error) { return rf(p) }
 
 func TestBindNumber(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -5337,7 +5365,7 @@ func TestBindNumber(t *testing.T) {
 
 func TestPartialBatch(t *testing.T) {
 	defer tl.enableLogging(t)()
-	ctx, cancel := context.WithTimeout(testContext(t.Name()), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	tbl := "test_savexc_" + tblSuffix
@@ -5513,7 +5541,7 @@ func (n nilPointerValuer) Value() (driver.Value, error) {
 }
 
 func TestNilPointeValuer(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("NilPointerValuer"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)

@@ -29,7 +29,7 @@ func TestQueue(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip DBMS_AQ queue test")
 	}
-	ctx, cancel := context.WithTimeout(testContext("Queue"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	if err := testDb.PingContext(ctx); err != nil {
@@ -95,7 +95,7 @@ func TestQueue(t *testing.T) {
 			t.Fatalf("%+v", err)
 		}
 		defer func() {
-			if err = tearDown(testContext("queue-teardown"), testDb, user); err != nil {
+			if err = tearDown(context.Background(), testDb, user); err != nil {
 				t.Log(err)
 			}
 		}()
@@ -385,7 +385,7 @@ func testQueue(
 		t.Fatalf("setUp: %+v", err)
 	}
 	defer func() {
-		if err := tearDown(testContext("queue-teardown"), testDb, user); err != nil {
+		if err := tearDown(context.Background(), testDb, user); err != nil {
 			t.Log("tearDown:", err)
 		}
 	}()

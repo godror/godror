@@ -68,7 +68,7 @@ func testStandaloneChurn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, cancel := context.WithTimeout(testContext("StandaloneChurn"), duration)
+	ctx, cancel := testContext(t, duration)
 	defer cancel()
 
 	P, err := dsn.Parse(testConStr)

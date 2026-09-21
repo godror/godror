@@ -16,6 +16,7 @@ require (
 require (
 	github.com/VictoriaMetrics/easyproto v0.1.4 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/rogpeppe/retry v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/term v0.10.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect

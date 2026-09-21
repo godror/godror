@@ -23,6 +23,8 @@ github.com/pelletier/go-toml/v2 v2.0.9 h1:uH2qQXheeefCCkuBBSLi7jCiSmj3VRh2+Goq2N
 github.com/pelletier/go-toml/v2 v2.0.9/go.mod h1:tJU2Z3ZkXwnxa4DPO899bsyIoywizdUvyaeZurnPPDc=
 github.com/peterbourgon/ff/v4 v4.0.0-beta.1 h1:hV8qRu3V7YfiSMsBSfPfdcznAvPQd3jI5zDddSrDoUc=
 github.com/peterbourgon/ff/v4 v4.0.0-beta.1/go.mod h1:onQJUKipvCyFmZ1rIYwFAh1BhPOvftb1uhvSI7krNLc=
+github.com/rogpeppe/retry v0.1.0 h1:6km4oqeZcFrnhx+PCPg/YxV3fnTdROBNVlSl8Pe/ztU=
+github.com/rogpeppe/retry v0.1.0/go.mod h1:/PtRtl9qXn+Pv5S4wN+Y5nusihQeI1PJ9U7KDcKzuvI=
 github.com/rs/zerolog v1.29.0 h1:Zes4hju04hjbvkVkOhdl2HpZa+0PmVwigmo8XoORE5w=
 github.com/rs/zerolog v1.29.0/go.mod h1:NILgTygv/Uej1ra5XxGf82ZFSLk58MFGAUS2o6usyD0=
 golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 h1:y5zboxd6LQAqYIhHnB48p0ByQ/GnQx2BE33L8BOHQkI=

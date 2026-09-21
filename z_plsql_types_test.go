@@ -453,7 +453,7 @@ func TestPlSqlTypes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip PL/SQL types test")
 	}
-	ctx, cancel := context.WithTimeout(testContext("PlSqlTypes"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	errOld := errors.New("client or server < 12")
@@ -722,7 +722,7 @@ func TestPlSqlTypes(t *testing.T) {
 }
 
 func TestSelectObjectTable(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SelectObjectTable"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	const objTypeName, objTableName, pkgName = "test_selectObject", "test_selectObjTab", "test_selectObjPkg"
 	cleanup := func() {
@@ -802,7 +802,7 @@ const epochS = "2025-12-29 20:03:42"
 var epoch, _ = time.ParseInLocation("2006-01-02 15:04:05", epochS, time.Local)
 
 func TestFuncBool(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("FuncBool"), 3*time.Second)
+	ctx, cancel := testContext(t, 3*time.Second)
 	defer cancel()
 	const pkgName = "test_bool"
 	cleanup := func() { testDb.Exec("DROP PROCEDURE " + pkgName) }
@@ -858,7 +858,7 @@ END;`
 }
 
 func TestPlSqlObjectDirect(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PlSqlObjectDirect"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -979,7 +979,7 @@ func prepExec(ctx context.Context, testCon driver.ConnPrepareContext, qry string
 }
 
 func TestPlSqlObject(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PlSqlObject"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -1048,7 +1048,7 @@ BEGIN
 END;
 `
 
-	ctx, cancel := context.WithTimeout(testContext("CallWithObject"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	cleanup()
@@ -1152,7 +1152,7 @@ func BenchmarkObjArray(b *testing.B) {
 		b.Fatal(fmt.Errorf("%s: %w", qry, err))
 	}
 
-	ctx, cancel := context.WithCancel(testContext("BenchmarObjArray"))
+	ctx, cancel := testContext(b, time.Minute)
 	defer cancel()
 
 	b.Run("object", func(b *testing.B) {
@@ -1245,7 +1245,7 @@ END;`
 
 // See https://github.com/godror/godror/issues/179
 func TestObjectTypeClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ObjectTypeClose"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	const typeName = "test_typeclose_t"
 	const del = `DROP TYPE ` + typeName + ` CASCADE`
@@ -1297,7 +1297,7 @@ func TestObjectTypeClose(t *testing.T) {
 
 // See https://github.com/godror/godror/issues/180
 func TestSubObjectTypeClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("SubObjectTypeClose"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	const typeName = "test_subtypeclose"
 	dels := []string{
@@ -1390,7 +1390,7 @@ END;`},
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("ObjectGetList"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	drop(ctx)
@@ -1557,7 +1557,7 @@ END;`},
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("ObjectInObject"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	drop(ctx)
@@ -1717,7 +1717,7 @@ func TestObjectFromMap(t *testing.T) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(testContext("ObjectInObject"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	drop(ctx)
@@ -1804,7 +1804,7 @@ func TestObjectFromMap(t *testing.T) {
 }
 
 func TestObjectWithNativeSlice(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ObjectWithNativeSlice"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	t.Logf("dbstats: %#v", testDb.Stats())
 	name := "test_ons" + tblSuffix
@@ -1888,7 +1888,7 @@ END;`,
 }
 
 func TestInputWithNativeSlice(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("InputWithNativeSlice"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	t.Logf("dbstats: %#v", testDb.Stats())
 	name := "test_ons" + tblSuffix
@@ -1986,7 +1986,7 @@ func TestInputWithNativeSlice(t *testing.T) {
 }
 
 func TestPlSQLNumSlice(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("PlSQLNumSlice"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	name := "test_plsql_numslice" + tblSuffix
@@ -2086,7 +2086,7 @@ END;`,
 }
 
 func TestXMLType(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("XMLType"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	const qry = "SELECT 'text' AS text, XMLElement(\"Date\", SYSDATE) AS xml FROM DUAL"
@@ -2121,7 +2121,7 @@ func TestBigXMLType(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skip big XML test")
 	}
-	ctx, cancel := context.WithTimeout(testContext("BigXMLType"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	{
 		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE test_xml")
@@ -2371,7 +2371,7 @@ func TestBigXMLType(t *testing.T) {
 }
 
 func TestArrayOfRecords(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ArrayOfRecords"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	name := "test_aor"
 
@@ -2483,7 +2483,7 @@ func (co childObject) WriteObject(o *godror.Object) error {
 }
 
 func TestIssue319(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Issue319"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	if Verbose {
 		godror.SetLogger(zlog.NewT(t).SLog())
@@ -2578,7 +2578,7 @@ func TestObjLobClose(t *testing.T) {
   id number,
   value clob
 )`
-	ctx, cancel := context.WithTimeout(testContext("ObjLobClose"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
 		t.Fatalf("%s: %+v", qry, err)
@@ -2621,6 +2621,9 @@ func TestObjLobClose(t *testing.T) {
 			sql.Named(`res`, sql.Out{In: false, Dest: &res}),
 		)
 		t.Log("result", i, res, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	testConnectOutClob := func(ctx context.Context, db *sql.DB, i float64) {
@@ -2639,6 +2642,9 @@ func TestObjLobClose(t *testing.T) {
 			sql.Named(`v_res`, sql.Out{In: false, Dest: &c}),
 		)
 		t.Log("result", i, c, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	P, err := godror.ParseDSN(testConStr)
@@ -2722,7 +2728,7 @@ func TestIssue323(t *testing.T) {
 	drop()
 	defer drop()
 
-	ctx, cancel := context.WithTimeout(testContext("Issue323"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 	for _, qry := range []string{
 		"CREATE OR REPLACE TYPE I323CHILD AS OBJECT (ID NUMBER, NAME VARCHAR2(100))",

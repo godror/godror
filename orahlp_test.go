@@ -1,4 +1,4 @@
-// Copyright 2017, 2020 The Godror Authors
+// Copyright 2017, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -6,7 +6,6 @@
 package godror_test
 
 import (
-	"context"
 	"database/sql"
 	"reflect"
 	"testing"
@@ -90,7 +89,7 @@ func TestConnPool(t *testing.T) {
 	db := sql.OpenDB(godror.NewConnector(cs))
 	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(testContext("ConnPool"), 10*time.Second)
+	ctx, cancel := testContext(t, 10*time.Second)
 	defer cancel()
 
 	p := godror.NewConnPool(db, 2)

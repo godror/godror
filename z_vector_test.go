@@ -1,4 +1,4 @@
-// Copyright 2025 The Godror Authors
+// Copyright 2025, 2026 The Godror Authors
 //
 //
 // SPDX-License-Identifier: UPL-1.0 OR Apache-2.0
@@ -6,7 +6,6 @@
 package godror_test
 
 import (
-	"context"
 	crand "crypto/rand"
 	"database/sql"
 	"fmt"
@@ -57,7 +56,7 @@ func compareSparseVector(t *testing.T, id godror.Number, got godror.Vector, expe
 
 // It Verifies returning godror.Vector columns in outbinds
 func TestVectorOutBinds(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("OutBindsVector"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)
@@ -203,7 +202,7 @@ func randomFloat32Slice(size int) []float32 {
 
 // It Verifies batch insert of Vector columns and verify the inserted rows.
 func TestVectorReadWriteBatch(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteVector"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -324,7 +323,7 @@ func validateVectors(t *testing.T, id godror.Number, expected, actual []godror.V
 
 // It Verifies Flex storage godror.Vector columns.
 func TestVectorFlex(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BindsFlexVector"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)
@@ -383,7 +382,7 @@ func TestVectorFlex(t *testing.T) {
 
 // It Verifies Passing Pointer to Vector type to avoid copies
 func TestVectorPointerCases(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("VectorErrors"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)

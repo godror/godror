@@ -34,7 +34,7 @@ import (
 // The float values are received as strings because DB native type NUMBER
 // is converted to godror.Number.
 func TestReadWriteJSONString(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteJSONString"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -185,7 +185,7 @@ var birthdate = time.Date(1990, 2, 25, 11, 6, 39, 0, time.Local)
 // Application can always convert to required types
 // using conversions after fetching from DB.
 func TestReadWriteJSONMap(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonMap"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -304,7 +304,7 @@ func TestReadWriteJSONMap(t *testing.T) {
 // It inserts Go Array []any and reads the JSON Document from DB.
 // converts JSON Document into []any and compares with source
 func TestReadWriteJSONArray(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonArray"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -422,7 +422,7 @@ func TestReadWriteJSONArray(t *testing.T) {
 // It then fetches field, birthdates of each person and is
 // validated with what is inserted.
 func TestReadJSONScalar(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadJsonScalar"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -554,7 +554,7 @@ func TestReadJSONScalar(t *testing.T) {
 // We again read the BirthDate, LastName from DB and verify its matching with
 // what is written.
 func TestUpdateJSONScalar(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("UpdateJSONObject"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
@@ -715,7 +715,7 @@ func TestUpdateJSONScalar(t *testing.T) {
 // For each unique go-type in the map, their corresponding JSON types,
 // as stored in the DB, are fetched and compared with their expected values.
 func TestJSONStorageTypes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
+	ctx, cancel := testContext(t,
 		30*time.Second)
 	defer cancel()
 
@@ -852,7 +852,7 @@ func errIs(err error, code int, msg string) bool {
 }
 
 func TestJSONIssue371(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("StorageTypes"),
+	ctx, cancel := testContext(t,
 		30*time.Second)
 	defer cancel()
 	const jsonstring = "{\"person\":{\"BirthDate\":\"1999-02-03T00:00:00\",\"ID\":\"12\",\"JoinDate\":\"2020-11-24T12:34:56.123000Z\",\"Name\":\"Alex\",\"RandomString\":\"APKZYKSv2\",\"age\":\"25\",\"creditScore\":[\"700\",\"250\",\"340\"],\"salary\":\"45.23\"}}"
@@ -957,7 +957,7 @@ func (j *jsonDataType) Scan(value any) error {
 // ALTER DATABASE DATAFILE 'demo.dat' OFFLINE DROP;
 // DROP TABLESPACE demo_ts INCLUDING CONTENTS and DATAFILES;
 func TestReadWriteJSONRawMessage(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("ReadWriteJsonRawMessage"), 30*time.Second)
+	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
 	conn, err := testDb.Conn(ctx)

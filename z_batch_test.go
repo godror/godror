@@ -16,7 +16,7 @@ import (
 )
 
 func TestBatch(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("Batch"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	const create = `CREATE TABLE test_batch (F_int NUMBER(9), F_num NUMBER, F_text VARCHAR2(1000), F_date DATE)`
@@ -70,7 +70,7 @@ func TestBatch(t *testing.T) {
 }
 
 func TestBatchErrorHandling(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchErrorHandling"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_error" + tblSuffix
@@ -110,7 +110,7 @@ func TestBatchErrorHandling(t *testing.T) {
 }
 
 func TestBatchRowCountValidation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchRowCountValidation"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_rowcount" + tblSuffix
@@ -160,7 +160,7 @@ func TestBatchRowCountValidation(t *testing.T) {
 }
 
 func TestBatchEmptyFlush(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchEmptyFlush"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_empty" + tblSuffix
@@ -189,7 +189,7 @@ func TestBatchEmptyFlush(t *testing.T) {
 }
 
 func TestBatchNilValues(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchNilValues"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_nil" + tblSuffix
@@ -276,7 +276,7 @@ func TestBatchNilValues(t *testing.T) {
 }
 
 func TestBatchAutoFlush(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchAutoFlush"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_autoflush" + tblSuffix
@@ -361,7 +361,7 @@ func TestBatchAutoFlush(t *testing.T) {
 }
 
 func TestBatchConcurrentUsage(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchConcurrentUsage"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_concurrent" + tblSuffix
@@ -441,7 +441,7 @@ func TestBatchConcurrentUsage(t *testing.T) {
 }
 
 func TestBatchFlushWithRowsAffected(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithRowsAffected"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_flushresult" + tblSuffix
@@ -529,7 +529,7 @@ func TestBatchFlushWithRowsAffected(t *testing.T) {
 }
 
 func TestBatchFlushEmpty(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushEmpty"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_empty_flushresult" + tblSuffix
@@ -565,7 +565,7 @@ func TestBatchFlushEmpty(t *testing.T) {
 }
 
 func TestBatchFlushError(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchFlushError"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_error_flushresult" + tblSuffix
@@ -613,7 +613,7 @@ func TestBatchFlushError(t *testing.T) {
 // TestBatchAllNilColumn tests that Flush doesn't panic when a column is entirely nil (NULL) across all Add calls.
 // This verifies the fix for the issue #409 where rValues[0].Len() was called without IsValid() check.
 func TestBatchAllNilColumn(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchAllNilColumn"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_allnil" + tblSuffix
@@ -701,7 +701,7 @@ func TestBatchAllNilColumn(t *testing.T) {
 
 // TestBatchMultipleNilColumns tests multiple columns being entirely nil across all Add calls.
 func TestBatchMultipleNilColumns(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchMultipleNilColumns"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_multnil" + tblSuffix
@@ -780,7 +780,7 @@ func TestBatchMultipleNilColumns(t *testing.T) {
 
 // TestBatchAllColumnsNil tests the extreme case where all columns are nil in all Add calls.
 func TestBatchAllColumnsNil(t *testing.T) {
-	ctx, cancel := context.WithTimeout(testContext("BatchAllColumnsNil"), time.Minute)
+	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_allcolsnil" + tblSuffix

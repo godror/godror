@@ -47,7 +47,7 @@ func TestConnCut(t *testing.T) {
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(testContext("ConnCut"), 52*time.Second)
+	ctx, cancel := testContext(t, 52*time.Second)
 	defer cancel()
 	const qry = "SELECT SYS_CONTEXT('userenv', 'service_name') FROM all_objects"
 	var upstream net.TCPAddr
