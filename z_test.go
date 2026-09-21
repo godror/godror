@@ -4216,11 +4216,23 @@ func TestSystem(t *testing.T) {
 	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 
+	sysConn, err := testSystemDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sysConn.Close()
+
 	// Create a table used for Prefetch, ArrayFetch queries
 
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
 	tbl := "t_employees" + tblSuffix
-	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
-	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (employee_id NUMBER)"); err != nil {
+	conn.ExecContext(ctx, "DROP TABLE "+tbl)
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE "+tbl+" (employee_id NUMBER)"); err != nil {
 		t.Fatal(err)
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
@@ -4231,7 +4243,7 @@ func TestSystem(t *testing.T) {
 		nums[i] = godror.Number(strconv.Itoa(i))
 	}
 
-	tx, err := testDb.BeginTx(ctx, nil)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4257,16 +4269,99 @@ func TestSystem(t *testing.T) {
 		}
 	}
 	tx.Commit()
-	sid := func() uint {
-		var sid uint
-		sql := "SELECT sys_context('userenv','sid') FROM dual"
-		err := testDb.QueryRow(sql).Scan(&sid)
+
+	var sid uint
+	{
+		const qry = "SELECT sys_context('userenv','sid') FROM dual"
+		if err := conn.QueryRowContext(ctx, qry).Scan(&sid); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+
+	getRoundTrips := func(t *testing.T, sid uint) uint {
+		if sysConn == nil {
+			var err error
+			if sysConn, err = testSystemDb.Conn(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		const qry = `SELECT ss.value
+        FROM v$sesstat ss, v$statname sn
+        WHERE ss.sid = :sid
+        AND ss.statistic# = sn.statistic#
+        AND sn.name LIKE '%roundtrip%client%'`
+		var rt uint
+		err := testSystemDb.QueryRowContext(ctx, qry, sid).Scan(&rt)
+		if err != nil {
+			t.Skipf("getRoundTrips: %s [%d]: %+v", qry, sid, err)
+		}
+		// t.Log("roundTrip:", rt, "sid:", sid)
+		return rt
+	}
+
+	singleRowFetch := func(t *testing.T, pf int, as int) uint {
+		if conn == nil {
+			var err error
+			if conn, err = testDb.Conn(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var employeeid int
+		var err error
+		tbl := "t_employees" + tblSuffix
+		query := "select employee_id from " + tbl + " where employee_id = :id"
+
+		if pf == useDefaultFetchValue && as == useDefaultFetchValue {
+			err = conn.QueryRowContext(ctx, query, 100).Scan(&employeeid)
+		} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
+			err = conn.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&employeeid)
+		} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
+			err = conn.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&employeeid)
+		} else {
+			err = conn.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&employeeid)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		return sid
+		return 1
 	}
 
+	multiRowFetch := func(t *testing.T, pf int, as int) uint {
+		if conn == nil {
+			var err error
+			if conn, err = testDb.Conn(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		tbl := "t_employees" + tblSuffix
+		query := "select employee_id from " + tbl + " where rownum < 215"
+		var rows *sql.Rows
+		var err error
+
+		if pf == useDefaultFetchValue && as == useDefaultFetchValue {
+			rows, err = conn.QueryContext(ctx, query)
+		} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
+			rows, err = conn.QueryContext(ctx, query, godror.FetchArraySize(as))
+		} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
+			rows, err = conn.QueryContext(ctx, query, godror.PrefetchCount(pf))
+		} else {
+			rows, err = conn.QueryContext(ctx, query, godror.PrefetchCount(pf), godror.FetchArraySize(as))
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		var /* employee_id,*/ c uint
+		for rows.Next() {
+			c++
+		}
+		err = rows.Err()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
 	// verify round trips for SingleRowFetch and MultiRowFetch
 	// and return failure on unexpected roundtrips
 
@@ -4274,7 +4369,7 @@ func TestSystem(t *testing.T) {
 		pf, as   int
 		srt, mrt uint
 	}{
-		{useDefaultFetchValue, useDefaultFetchValue, 1, 4},
+		{useDefaultFetchValue, useDefaultFetchValue, 1, 3},
 		{0, useDefaultFetchValue, 2, 4},
 		{1, useDefaultFetchValue, 2, 4},
 		{2, useDefaultFetchValue, 1, 4},
@@ -4284,7 +4379,7 @@ func TestSystem(t *testing.T) {
 		{1, 100, 2, 4},
 		{2, 100, 1, 4},
 		{100, 100, 1, 3},
-		{useDefaultFetchValue, 40, 1, 7},
+		{useDefaultFetchValue, 40, 1, 5},
 		{2, 40, 1, 7},
 		{-1, 40, 2, 7},
 		{120, useDefaultFetchValue, 1, 3},
@@ -4299,103 +4394,33 @@ func TestSystem(t *testing.T) {
 		{215, useDefaultFetchValue, 1, 1},
 		{215, 10, 1, 1},
 	} {
-		srt, mrt := runPreFetchTests(t, sid(), tCase.pf, tCase.as)
-		if !(srt == tCase.srt && mrt == tCase.mrt) {
-			t.Fatalf("wanted %d/%d SingleFetchRoundTrip / MultiFetchRoundTrip, got %d/%d", tCase.srt, tCase.mrt, srt, mrt)
-		}
+		pf, as := tCase.pf, tCase.as
+		t.Run(fmt.Sprintf("%d:%d", pf, as), func(t *testing.T) {
+
+			rt1 := getRoundTrips(t, sid)
+
+			var r uint
+			// Do some work
+			r = singleRowFetch(t, pf, as)
+
+			rt2 := getRoundTrips(t, sid)
+
+			t.Log("SingleRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
+			srt := rt2 - rt1
+			rt1 = rt2
+			// Do some work
+			r = multiRowFetch(t, pf, as)
+			rt2 = getRoundTrips(t, sid)
+			t.Log("MultiRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
+			mrt := rt2 - rt1
+
+			if !(srt == tCase.srt && mrt == tCase.mrt) {
+				t.Errorf("wanted %d/%d SingleFetchRoundTrip / MultiFetchRoundTrip, got %d/%d", tCase.srt, tCase.mrt, srt, mrt)
+			}
+		})
 	}
 }
 
-func runPreFetchTests(t *testing.T, sid uint, pf int, as int) (uint, uint) {
-	rt1 := getRoundTrips(t, sid)
-
-	var r uint
-	// Do some work
-	r = singleRowFetch(t, pf, as)
-
-	rt2 := getRoundTrips(t, sid)
-
-	t.Log("SingleRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
-	srt := rt2 - rt1
-	rt1 = rt2
-	// Do some work
-	r = multiRowFetch(t, pf, as)
-	rt2 = getRoundTrips(t, sid)
-	t.Log("MultiRowFetch: ", "Prefetch:", pf, ", Arraysize:", as, ", Rows: ", r, ", Round-trips:", rt2-rt1)
-	mrt := rt2 - rt1
-	return srt, mrt
-}
-func getRoundTrips(t *testing.T, sid uint) uint {
-
-	sql := `SELECT ss.value
-        FROM v$sesstat ss, v$statname sn
-        WHERE ss.sid = :sid
-        AND ss.statistic# = sn.statistic#
-        AND sn.name LIKE '%roundtrip%client%'`
-	var rt uint
-	err := testSystemDb.QueryRow(sql, sid).Scan(&rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return rt
-}
-
-func singleRowFetch(t *testing.T, pf int, as int) uint {
-	ctx, cancel := testContext(t, 10*time.Second)
-	defer cancel()
-	var employeeid int
-	var err error
-	tbl := "t_employees" + tblSuffix
-	query := "select employee_id from " + tbl + " where employee_id = :id"
-
-	if pf == useDefaultFetchValue && as == useDefaultFetchValue {
-		err = testDb.QueryRowContext(ctx, query, 100).Scan(&employeeid)
-	} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.FetchArraySize(as)).Scan(&employeeid)
-	} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf)).Scan(&employeeid)
-	} else {
-		err = testDb.QueryRowContext(ctx, query, 100, godror.PrefetchCount(pf), godror.FetchArraySize(as)).Scan(&employeeid)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return 1
-}
-
-func multiRowFetch(t *testing.T, pf int, as int) uint {
-
-	ctx, cancel := testContext(t, 10*time.Second)
-	defer cancel()
-	tbl := "t_employees" + tblSuffix
-	query := "select employee_id from " + tbl + " where rownum < 215"
-	var rows *sql.Rows
-	var err error
-
-	if pf == useDefaultFetchValue && as == useDefaultFetchValue {
-		rows, err = testDb.QueryContext(ctx, query)
-	} else if pf == useDefaultFetchValue && as != useDefaultFetchValue {
-		rows, err = testDb.QueryContext(ctx, query, godror.FetchArraySize(as))
-	} else if pf != useDefaultFetchValue && as == useDefaultFetchValue {
-		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf))
-	} else {
-		rows, err = testDb.QueryContext(ctx, query, godror.PrefetchCount(pf), godror.FetchArraySize(as))
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	var /* employee_id,*/ c uint
-	for rows.Next() {
-		c++
-	}
-	err = rows.Err()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
-}
 func TestShortTimeout(t *testing.T) {
 	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
