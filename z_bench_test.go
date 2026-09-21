@@ -487,10 +487,11 @@ func BenchmarkStrconv(b *testing.B) {
 func BenchmarkPlSqlObj(b *testing.B) {
 	ctx, cancel := testContext(b, 3*time.Minute)
 	defer cancel()
-	if err := createPackages(ctx); err != nil {
+	const sample = "test_pkg_sample_bench"
+	if err := createPackages(ctx, sample); err != nil {
 		b.Fatal(err)
 	}
-	defer dropPackages(ctx)
+	defer dropPackages(ctx, sample)
 
 	cx, err := testDb.Conn(ctx)
 	if err != nil {
@@ -513,7 +514,7 @@ func BenchmarkPlSqlObj(b *testing.B) {
 		in := oshNumberList{NumberList: []float64{1, 2, 3}}
 		var out oshSliceStruct
 		for i := 0; i < b.N; i++ {
-			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+			qry := "begin " + sample + ".test_osh(:1, :2); end;"
 			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: &out})
 			b.Logf("struct: %+v", out)
 			if err != nil {
@@ -537,7 +538,7 @@ func BenchmarkPlSqlObj(b *testing.B) {
 		}
 		defer out.Close()
 		for i := 0; i < b.N; i++ {
-			const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+			qry := "begin " + sample + ".test_osh(:1, :2); end;"
 			_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: out})
 			if err != nil {
 				b.Fatalf("%d. %s: %+v", i, qry, err)

@@ -202,7 +202,7 @@ func (r MyTable) Iter() iter.Seq[godror.ObjectWriter] {
 	}
 }
 
-func createPackages(ctx context.Context) error {
+func createPackages(ctx context.Context, sample string) error {
 	qry := []string{`
 	CREATE OR REPLACE PACKAGE test_pkg_types AS
 
@@ -233,7 +233,7 @@ func createPackages(ctx context.Context) error {
 	END test_pkg_types;
 	`,
 
-		`CREATE OR REPLACE PACKAGE test_pkg_sample AS
+		`CREATE OR REPLACE PACKAGE ` + sample + ` AS
 	PROCEDURE test_record (
 		id    IN    NUMBER,
 		txt   IN    VARCHAR,
@@ -257,9 +257,9 @@ func createPackages(ctx context.Context) error {
 		res_list out test_pkg_types.osh_table
 	);
 
-	END test_pkg_sample;`,
+	END ` + sample + `;`,
 
-		`CREATE OR REPLACE PACKAGE BODY test_pkg_sample AS
+		`CREATE OR REPLACE PACKAGE BODY ` + sample + ` AS
 
 	PROCEDURE test_record (
 		id    IN    NUMBER,
@@ -347,7 +347,7 @@ func createPackages(ctx context.Context) error {
 
 	END test_osh;
 
-	END test_pkg_sample;`}
+	END ` + sample + `;`}
 
 	for _, ddl := range qry {
 		_, err := testDb.ExecContext(ctx, ddl)
@@ -368,9 +368,9 @@ func createPackages(ctx context.Context) error {
 	return nil
 }
 
-func dropPackages(ctx context.Context) {
+func dropPackages(ctx context.Context, sample string) {
 	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_types`)
-	testDb.ExecContext(ctx, `DROP PACKAGE test_pkg_sample`)
+	testDb.ExecContext(ctx, `DROP PACKAGE `+sample)
 }
 
 type (
@@ -455,6 +455,7 @@ func TestPlSqlTypes(t *testing.T) {
 	}
 	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
+	const sample = "test_pkg_sample_types"
 
 	errOld := errors.New("client or server < 12")
 	if err := godror.Raw(ctx, testDb, func(conn godror.Conn) error {
@@ -479,10 +480,10 @@ func TestPlSqlTypes(t *testing.T) {
 		}
 	}
 
-	if err := createPackages(ctx); err != nil {
+	if err := createPackages(ctx, sample); err != nil {
 		t.Fatal(err)
 	}
-	defer dropPackages(ctx)
+	defer dropPackages(ctx, sample)
 
 	cx, err := testDb.Conn(ctx)
 	if err != nil {
@@ -500,7 +501,7 @@ func TestPlSqlTypes(t *testing.T) {
 
 	t.Run("Struct", func(t *testing.T) {
 		var s objectStruct
-		const qry = `begin test_pkg_sample.test_record(:1, :2, :3); end;`
+		qry := "begin " + sample + ".test_record(:1, :2, :3); end;"
 		_, err := cx.ExecContext(ctx, qry, 43, "abraka dabra", sql.Out{Dest: &s})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
@@ -510,7 +511,7 @@ func TestPlSqlTypes(t *testing.T) {
 
 	t.Run("Slice", func(t *testing.T) {
 		s := sliceStruct{ObjSlice: []objectStruct{{ID: 1, Txt: "first"}}}
-		const qry = `begin test_pkg_sample.test_table_in(:1); end;`
+		qry := "begin " + sample + ".test_table_in(:1); end;"
 		_, err := cx.ExecContext(ctx,
 			qry,
 			sql.Out{Dest: &s, In: true},
@@ -525,7 +526,7 @@ func TestPlSqlTypes(t *testing.T) {
 		defer tl.enableLogging(t)()
 		in := oshNumberList{NumberList: []float64{1, 2, 3}}
 		var out oshSliceStruct
-		const qry = `begin test_pkg_sample.test_osh(:1, :2); end;`
+		qry := "begin " + sample + ".test_osh(:1, :2); end;"
 		_, err := cx.ExecContext(ctx, qry, in, sql.Out{Dest: &out})
 		if err != nil {
 			t.Fatalf("%s: %+v", qry, err)
@@ -558,7 +559,7 @@ func TestPlSqlTypes(t *testing.T) {
 				sql.Named("txt", tCase.txt),
 				sql.Named("rec", sql.Out{Dest: &rec}),
 			}
-			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record(:id, :txt, :rec); end;`, params...)
+			_, err = cx.ExecContext(ctx, "begin "+sample+".test_record(:id, :txt, :rec); end;", params...)
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 21779 {
@@ -589,7 +590,7 @@ func TestPlSqlTypes(t *testing.T) {
 				sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 			}
 			godror.EnableDbmsOutput(ctx, cx)
-			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
+			_, err = cx.ExecContext(ctx, "begin "+sample+".test_record_in(:rec); end;", params...)
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 21779 {
@@ -643,7 +644,7 @@ func TestPlSqlTypes(t *testing.T) {
 				sql.Named("x", tCase.in),
 				sql.Named("tb", sql.Out{Dest: &tb}),
 			}
-			_, err = cx.ExecContext(ctx, `begin :tb := test_pkg_sample.test_table(:x); end;`, params...)
+			_, err = cx.ExecContext(ctx, "begin :tb := "+sample+".test_table(:x); end;", params...)
 			if err != nil {
 				var cdr coder
 				if errors.As(err, &cdr) && cdr.Code() == 30757 {
@@ -689,7 +690,7 @@ func TestPlSqlTypes(t *testing.T) {
 				sql.Named("tb", sql.Out{Dest: &tb, In: true}),
 			}
 			godror.EnableDbmsOutput(ctx, cx)
-			_, err = cx.ExecContext(ctx, `begin test_pkg_sample.test_table_in(:tb); end;`, params...)
+			_, err = cx.ExecContext(ctx, "begin "+sample+".test_table_in(:tb); end;", params...)
 			var buf strings.Builder
 			godror.ReadDbmsOutput(ctx, &buf, cx)
 			t.Log("DBMS_OUTPUT:", buf.String())

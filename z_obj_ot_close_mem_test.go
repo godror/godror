@@ -21,25 +21,26 @@ func TestObjOpenClose(t *testing.T) {
 	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
 	defer tl.enableLogging(t)()
+	const sample = "test_pkg_sample_close"
 
 	createTypes := func(ctx context.Context, db *sql.DB) error {
 		qry := []string{
 			`create or replace type test_type force as object (
    	  id    number(10)
     );`,
-			`CREATE OR REPLACE PACKAGE test_pkg_sample AS
+			`CREATE OR REPLACE PACKAGE ` + sample + ` AS
 	PROCEDURE test_record_in (
 		rec IN OUT test_type
 	);
-	END test_pkg_sample;`,
-			`CREATE OR REPLACE PACKAGE BODY test_pkg_sample AS
+	END ` + sample + `;`,
+			`CREATE OR REPLACE PACKAGE BODY ` + sample + ` AS
 	PROCEDURE test_record_in (
 		rec IN OUT test_type
 	) IS
 	BEGIN
 		rec.id := rec.id + 1;
 	END test_record_in;
-	END test_pkg_sample;`,
+	END ` + sample + `;`,
 		}
 		for _, ddl := range qry {
 			_, err := db.ExecContext(ctx, ddl)
@@ -51,7 +52,7 @@ func TestObjOpenClose(t *testing.T) {
 	}
 	dropTypes := func(db *sql.DB) {
 		for _, qry := range []string{
-			"DROP PACKAGE test_pkg_sample",
+			"DROP PACKAGE " + sample,
 			"DROP TYPE test_type",
 		} {
 			if _, err := db.Exec(qry); err != nil {
@@ -117,7 +118,7 @@ func TestObjOpenClose(t *testing.T) {
 		params := []any{
 			sql.Named("rec", sql.Out{Dest: &rec, In: true}),
 		}
-		_, err = tx.ExecContext(ctx, `begin test_pkg_sample.test_record_in(:rec); end;`, params...)
+		_, err = tx.ExecContext(ctx, "begin "+sample+".test_record_in(:rec); end;", params...)
 
 		return err
 	}

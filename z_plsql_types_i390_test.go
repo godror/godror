@@ -67,6 +67,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		defer cancel()
 		// defer tl.enableLogging(t)()
 		stepS := t.Name()
+		const sample = "test_pkg_sample_nested"
 
 		createTypes := func(ctx context.Context, db *sql.DB) error {
 			qry := []string{
@@ -82,12 +83,12 @@ func testPlSqlNestedObj(t *testing.T, step int) {
     );`,
 				`create or replace type pobj_t is table of pobj;`,
 
-				`CREATE OR REPLACE PACKAGE test_pkg_sample AS
+				`CREATE OR REPLACE PACKAGE ` + sample + ` AS
 	PROCEDURE test_pobj_in (
 		recs IN OUT pobj_t
 	);
-	END test_pkg_sample;`,
-				`CREATE OR REPLACE PACKAGE BODY test_pkg_sample AS
+	END ` + sample + `;`,
+				`CREATE OR REPLACE PACKAGE BODY ` + sample + ` AS
 	PROCEDURE test_pobj_in (
 		recs IN OUT pobj_t
 	) IS
@@ -117,7 +118,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 			END LOOP;
 		END LOOP;
 	END test_pobj_in;
-	END test_pkg_sample;`,
+	END ` + sample + `;`,
 			}
 			for _, ddl := range qry {
 				_, err := db.ExecContext(ctx, ddl)
@@ -140,7 +141,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 
 		dropTypes := func(db *sql.DB) {
 			for _, qry := range []string{
-				"DROP PACKAGE test_pkg_sample",
+				"DROP PACKAGE " + sample,
 				"DROP TYPE pobj_t",
 				"DROP TYPE pobj",
 				"DROP TYPE pair_list",
@@ -232,7 +233,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 			case inOut:
 				param = sql.Out{Dest: &s, In: true}
 			}
-			const qry = `begin test_pkg_sample.test_pobj_in(:1); end;`
+			qry := "begin " + sample + ".test_pobj_in(:1); end;"
 			_, err = tx.ExecContext(ctx, qry, param)
 			// t.Log(pslice)
 			return err
