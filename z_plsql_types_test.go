@@ -2570,6 +2570,14 @@ type clob struct {
 
 func (clob) ObjectTypeName() string { return "test_clob_ot" }
 
+func (c clob) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &c)
+}
+
+func (c *clob) Scan(v any) error {
+	return godror.StructScan(c, v)
+}
+
 func TestObjLobClose(t *testing.T) {
 	const dropQry = `DROP TYPE test_clob_ot`
 	cleanup := func() { testDb.ExecContext(context.Background(), dropQry) }
