@@ -16,7 +16,6 @@ import (
 )
 
 func TestBatch(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("Batch"), time.Minute)
 	defer cancel()
 
@@ -71,7 +70,6 @@ func TestBatch(t *testing.T) {
 }
 
 func TestBatchErrorHandling(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchErrorHandling"), time.Minute)
 	defer cancel()
 
@@ -112,7 +110,6 @@ func TestBatchErrorHandling(t *testing.T) {
 }
 
 func TestBatchRowCountValidation(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchRowCountValidation"), time.Minute)
 	defer cancel()
 
@@ -163,7 +160,6 @@ func TestBatchRowCountValidation(t *testing.T) {
 }
 
 func TestBatchEmptyFlush(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchEmptyFlush"), time.Minute)
 	defer cancel()
 
@@ -193,7 +189,6 @@ func TestBatchEmptyFlush(t *testing.T) {
 }
 
 func TestBatchNilValues(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchNilValues"), time.Minute)
 	defer cancel()
 
@@ -281,7 +276,6 @@ func TestBatchNilValues(t *testing.T) {
 }
 
 func TestBatchAutoFlush(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchAutoFlush"), time.Minute)
 	defer cancel()
 
@@ -367,7 +361,6 @@ func TestBatchAutoFlush(t *testing.T) {
 }
 
 func TestBatchConcurrentUsage(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchConcurrentUsage"), time.Minute)
 	defer cancel()
 
@@ -448,11 +441,11 @@ func TestBatchConcurrentUsage(t *testing.T) {
 }
 
 func TestBatchFlushWithRowsAffected(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchFlushWithRowsAffected"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_flushresult" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), name VARCHAR2(100))`
 	if _, err := testDb.ExecContext(ctx, create); err != nil {
 		t.Fatal(err)
@@ -536,11 +529,11 @@ func TestBatchFlushWithRowsAffected(t *testing.T) {
 }
 
 func TestBatchFlushEmpty(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchFlushEmpty"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_empty_flushresult" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), name VARCHAR2(100))`
 	if _, err := testDb.ExecContext(ctx, create); err != nil {
 		t.Fatal(err)
@@ -572,11 +565,11 @@ func TestBatchFlushEmpty(t *testing.T) {
 }
 
 func TestBatchFlushError(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchFlushError"), time.Minute)
 	defer cancel()
 
 	tbl := "test_batch_error_flushresult" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9) PRIMARY KEY, name VARCHAR2(100) NOT NULL)`
 	if _, err := testDb.ExecContext(ctx, create); err != nil {
 		t.Fatal(err)
@@ -620,7 +613,6 @@ func TestBatchFlushError(t *testing.T) {
 // TestBatchAllNilColumn tests that Flush doesn't panic when a column is entirely nil (NULL) across all Add calls.
 // This verifies the fix for the issue #409 where rValues[0].Len() was called without IsValid() check.
 func TestBatchAllNilColumn(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchAllNilColumn"), time.Minute)
 	defer cancel()
 
@@ -709,7 +701,6 @@ func TestBatchAllNilColumn(t *testing.T) {
 
 // TestBatchMultipleNilColumns tests multiple columns being entirely nil across all Add calls.
 func TestBatchMultipleNilColumns(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchMultipleNilColumns"), time.Minute)
 	defer cancel()
 
@@ -789,7 +780,6 @@ func TestBatchMultipleNilColumns(t *testing.T) {
 
 // TestBatchAllColumnsNil tests the extreme case where all columns are nil in all Add calls.
 func TestBatchAllColumnsNil(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BatchAllColumnsNil"), time.Minute)
 	defer cancel()
 

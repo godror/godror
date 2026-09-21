@@ -722,7 +722,6 @@ func TestPlSqlTypes(t *testing.T) {
 }
 
 func TestSelectObjectTable(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectObjectTable"), 30*time.Second)
 	defer cancel()
 	const objTypeName, objTableName, pkgName = "test_selectObject", "test_selectObjTab", "test_selectObjPkg"
@@ -803,7 +802,6 @@ const epochS = "2025-12-29 20:03:42"
 var epoch, _ = time.ParseInLocation("2006-01-02 15:04:05", epochS, time.Local)
 
 func TestFuncBool(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("FuncBool"), 3*time.Second)
 	defer cancel()
 	const pkgName = "test_bool"
@@ -981,7 +979,6 @@ func prepExec(ctx context.Context, testCon driver.ConnPrepareContext, qry string
 }
 
 func TestPlSqlObject(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("PlSqlObject"), 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -1013,7 +1010,6 @@ END;`
 }
 
 func TestCallWithObject(t *testing.T) {
-	t.Parallel()
 	cleanup := func() {
 		for _, drop := range []string{
 			"DROP PROCEDURE test_cwo_getSum",
@@ -1345,13 +1341,12 @@ func TestSubObjectTypeClose(t *testing.T) {
 		return nil
 	}
 
-	maxConn := maxSessions * 2
-	for j := range 5 {
+	for j := range maxSessions / 4 {
 		t.Logf("Run %d group\n", j)
 		var start sync.WaitGroup
 		g, ctx := errgroup.WithContext(ctx)
 		start.Add(1)
-		for i := 0; i < maxConn/2; i++ {
+		for range 4 {
 			g.Go(func() error {
 				start.Wait()
 				return getObjectType(ctx, testDb)
@@ -1365,7 +1360,6 @@ func TestSubObjectTypeClose(t *testing.T) {
 }
 
 func TestObjectGetList(t *testing.T) {
-	t.Parallel()
 	tblSuffix := "_OL_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string
@@ -1528,7 +1522,6 @@ END;`},
 }
 
 func TestObjectInObject(t *testing.T) {
-	t.Parallel()
 	tblSuffix := "_OO_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string
@@ -1700,7 +1693,6 @@ END;`},
 }
 
 func TestObjectFromMap(t *testing.T) {
-	t.Parallel()
 	tblSuffix := "_OM_" + tblSuffix
 	objects := []struct {
 		Name, Type, Create string

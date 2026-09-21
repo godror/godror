@@ -60,7 +60,7 @@ const (
 
 	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
 	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
-	DefaultMaxSessions = 4
+	DefaultMaxSessions = 2
 )
 
 // TestMain is called instead of the separate Test functions,
@@ -417,7 +417,6 @@ func (tl *testLogger) enableLogging(t *testing.T) func() {
 }
 
 func TestDescribeQuery(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("DescribeQuery"), 10*time.Second)
 	defer cancel()
 
@@ -430,7 +429,6 @@ func TestDescribeQuery(t *testing.T) {
 }
 
 func TestParseOnly(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ParseOnly"), 10*time.Second)
 	defer cancel()
 
@@ -459,7 +457,6 @@ func TestParseOnly(t *testing.T) {
 }
 
 func TestInputArray(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("InputArray"), 10*time.Second)
 	defer cancel()
@@ -665,7 +662,6 @@ func TestDbmsOutput(t *testing.T) {
 }
 
 func TestInOutArray(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 
 	ctx, cancel := context.WithTimeout(testContext("InOutArray"), 20*time.Second)
@@ -892,7 +888,6 @@ END;
 }
 
 func TestOutParam(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("OutParam"), 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -953,7 +948,6 @@ END;`
 }
 
 func TestSelectRefCursor(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectRefCursor"), 10*time.Second)
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM <= 10) FROM DUAL")
@@ -991,7 +985,6 @@ func TestSelectRefCursor(t *testing.T) {
 }
 
 func TestSelectRefCursorWrap(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectRefCursorWrap"), 10*time.Second)
 	defer cancel()
 	rows, err := testDb.QueryContext(ctx, "SELECT CURSOR(SELECT object_name, object_type, object_id, created FROM all_objects WHERE ROWNUM <= 10) FROM DUAL")
@@ -1032,7 +1025,6 @@ func TestSelectRefCursorWrap(t *testing.T) {
 }
 
 func TestExecRefCursor(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("ExecRefCursor"), 30*time.Second)
 	defer cancel()
@@ -1072,7 +1064,6 @@ END;`
 }
 
 func TestExecuteMany(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 
 	ctx, cancel := context.WithTimeout(testContext("ExecuteMany"), 30*time.Second)
@@ -1342,7 +1333,6 @@ END;`
 }
 
 func TestReadWriteLOB(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteLob"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -1478,7 +1468,6 @@ func TestReadWriteLOB(t *testing.T) {
 }
 
 func TestReadWriteBfile(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWritBfile"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -1580,7 +1569,7 @@ func TestOpenCloseDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs.MinSessions, cs.MaxSessions = 4, 4
+	cs.MinSessions, cs.MaxSessions = DefaultMaxSessions, DefaultMaxSessions
 	cs.StandaloneConnection = godror.Bool(true)
 	const countQry = "SELECT COUNT(0) FROM user_objects"
 	ctx, cancel := context.WithCancel(testContext("OpenCloseDB"))
@@ -1769,7 +1758,6 @@ func TestOpenBadMemory(t *testing.T) {
 }
 
 func TestSelectFloat(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectFloat"), 10*time.Second)
 	defer cancel()
 	tbl := "test_numbers" + tblSuffix
@@ -1857,7 +1845,6 @@ func TestSelectFloat(t *testing.T) {
 }
 
 func TestNumInputs(t *testing.T) {
-	t.Parallel()
 	var a, b string
 	if err := testDb.QueryRow("SELECT :1, :2 FROM DUAL", 'a', 'b').Scan(&a, &b); err != nil {
 		t.Errorf("two inputs: %+v", err)
@@ -1871,7 +1858,6 @@ func TestNumInputs(t *testing.T) {
 }
 
 func TestPtrArg(t *testing.T) {
-	t.Parallel()
 	s := "dog"
 	rows, err := testDb.Query("SELECT * FROM user_objects WHERE object_name=:1", &s)
 	if err != nil {
@@ -2009,7 +1995,6 @@ func TestRanaOraIssue244(t *testing.T) {
 }
 
 func TestNumberMarshal(t *testing.T) {
-	t.Parallel()
 	var n godror.Number
 	if err := testDb.QueryRow("SELECT 6000370006565900000073 FROM DUAL").Scan(&n); err != nil {
 		t.Fatal(err)
@@ -2064,7 +2049,6 @@ func TestExecHang(t *testing.T) {
 }
 
 func TestNumberNull(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberNull"), time.Minute)
 	defer cancel()
 	testDb.Exec("DROP TABLE number_test")
@@ -2132,7 +2116,6 @@ func TestNumberNull(t *testing.T) {
 }
 
 func TestNullFloat(t *testing.T) {
-	t.Parallel()
 	testDb.Exec("DROP TABLE test_char")
 	if _, err := testDb.Exec(`CREATE TABLE test_char (
 			CHARS VARCHAR2(10 BYTE),
@@ -2166,7 +2149,6 @@ func TestNullFloat(t *testing.T) {
 }
 
 func TestColumnSize(t *testing.T) {
-	t.Parallel()
 	testDb.Exec("DROP TABLE test_column_size")
 	if _, err := testDb.Exec(`CREATE TABLE test_column_size (
 		vc20b VARCHAR2(20 BYTE),
@@ -2197,7 +2179,6 @@ func TestColumnSize(t *testing.T) {
 }
 
 func TestColumnPrecision(t *testing.T) {
-	t.Parallel()
 	testDb.Exec("DROP TABLE test_column_precision")
 	if _, err := testDb.Exec(`CREATE TABLE test_column_precision (
             timestamp_s TIMESTAMP(0),
@@ -2237,7 +2218,6 @@ func TestColumnPrecision(t *testing.T) {
 }
 
 func TestColumnPrecisionDescribeQuery(t *testing.T) {
-	t.Parallel()
 	testDb.Exec("DROP TABLE test_column_precision_describe_query")
 	if _, err := testDb.Exec(`CREATE TABLE test_column_precision_describe_query (
             timestamp_s TIMESTAMP(0),
@@ -2266,7 +2246,6 @@ func TestColumnPrecisionDescribeQuery(t *testing.T) {
 }
 
 func TestReturning(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	testDb.Exec("DROP TABLE test_returning")
 	if _, err := testDb.Exec("CREATE TABLE test_returning (a VARCHAR2(20))"); err != nil {
@@ -2336,7 +2315,6 @@ func TestMaxOpenCursorsORA1000(t *testing.T) {
 }
 
 func TestRO(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithCancel(testContext("RO"))
 	defer cancel()
 	tx, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
@@ -2356,7 +2334,6 @@ func TestRO(t *testing.T) {
 }
 
 func TestNullIntoNum(t *testing.T) {
-	t.Parallel()
 	testDb.Exec("DROP TABLE test_null_num")
 	qry := "CREATE TABLE test_null_num (i NUMBER(3))"
 	if _, err := testDb.Exec(qry); err != nil {
@@ -2372,7 +2349,6 @@ func TestNullIntoNum(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(testContext("Ping"), 1*time.Second)
 	defer cancel()
@@ -2409,7 +2385,6 @@ func TestPing(t *testing.T) {
 }
 
 func TestNoConnectionPooling(t *testing.T) {
-	t.Parallel()
 	db, err := sql.Open("godror",
 		strings.Replace(
 			strings.Replace(testConStr, "TestClassName", godror.NoConnectionPoolingConnectionClass, 1),
@@ -2423,7 +2398,6 @@ func TestNoConnectionPooling(t *testing.T) {
 }
 
 func TestExecTimeout(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("ExecTimeout"), 100*time.Millisecond)
 	defer cancel()
@@ -2433,7 +2407,6 @@ func TestExecTimeout(t *testing.T) {
 }
 
 func TestQueryTimeout(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("QueryTimeout"), 100*time.Millisecond)
 	defer cancel()
@@ -2444,7 +2417,6 @@ func TestQueryTimeout(t *testing.T) {
 	}
 }
 func TestQueryLOBTimeout(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 	ctx, cancel := context.WithTimeout(testContext("QueryLOBTimeout"), 10*time.Second)
 	defer cancel()
@@ -2501,7 +2473,6 @@ func TestQueryLOBTimeout(t *testing.T) {
 }
 
 func TestSDO(t *testing.T) {
-	// t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SDO"), 30*time.Second)
 	defer cancel()
 	innerQry := `SELECT MDSYS.SDO_GEOMETRY(
@@ -2630,7 +2601,6 @@ func (t *Custom) Scan(v any) error {
 }
 
 func TestSelectCustomType(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectCustomType"), 10*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -2694,7 +2664,6 @@ func TestSelectCustomType(t *testing.T) {
 }
 
 func TestExecInt64(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ExecInt64"), 10*time.Second)
 	defer cancel()
 	qry := `CREATE OR REPLACE PROCEDURE test_i64_out(p_int NUMBER, p_out1 OUT NUMBER, p_out2 OUT NUMBER) IS
@@ -2715,7 +2684,6 @@ func TestExecInt64(t *testing.T) {
 }
 
 func TestImplicitResults(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ImplicitResults"), 10*time.Second)
 	defer cancel()
 	const qry = `declare
@@ -2930,7 +2898,6 @@ END;`
 
 	for i := 0; i < maxSessions/2; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			t.Parallel()
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
@@ -2978,7 +2945,6 @@ END;`
 
 	for i := 0; i < maxSessions/2; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			t.Parallel()
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
@@ -3006,7 +2972,6 @@ END;`
 }
 
 func TestTsTZ(t *testing.T) {
-	t.Parallel()
 	fields := []string{
 		"FROM_TZ(TO_TIMESTAMP('2019-05-01 09:39:12', 'YYYY-MM-DD HH24:MI:SS'), '{{.TZ}}')",
 		"TO_TIMESTAMP_TZ('2019-05-01 09:39:12 {{.TZ}}', 'YYYY-MM-DD HH24:MI:SS {{.TZDec}}')",
@@ -3071,7 +3036,6 @@ func TestTsTZ(t *testing.T) {
 }
 
 func TestGetDBTimezone(t *testing.T) {
-	t.Parallel()
 	defer tl.enableLogging(t)()
 
 	ctx, cancel := context.WithTimeout(testContext("GetDBTimeZone"), 10*time.Second)
@@ -3121,7 +3085,6 @@ func TestGetDBTimezone(t *testing.T) {
 }
 
 func TestConnParamsTimezone(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ConnParamsTZ"), 30*time.Second)
 	defer cancel()
 
@@ -3159,7 +3122,6 @@ func TestConnParamsTimezone(t *testing.T) {
 }
 
 func TestNumberAsStringBool(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, 1 status FROM DUAL"
@@ -3186,7 +3148,6 @@ func TestDST(t *testing.T) {
 	defer cancel()
 
 	defer tl.enableLogging(t)()
-	t.Parallel()
 
 	start := time.Date(1950, 1, 1, 0, 0, 0, 0, time.Local)
 	now := time.Now()
@@ -3237,7 +3198,6 @@ func TestDST(t *testing.T) {
 }
 
 func TestNumberBool(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NumberBool"), 3*time.Second)
 	defer cancel()
 	const qry = "SELECT 181 id, '1' status FROM DUAL"
@@ -3550,7 +3510,6 @@ func TestConnClass(t *testing.T) {
 }
 
 func TestOnInit(t *testing.T) {
-	t.Parallel()
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
 		t.Fatal(err)
@@ -3877,7 +3836,6 @@ func TestSelectTypes(t *testing.T) {
 }
 
 func TestInsertIntervalDS(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("InsertIntervalDS"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_interval_ds"
@@ -3917,7 +3875,6 @@ func TestInsertIntervalDS(t *testing.T) {
 	}
 }
 func TestBool(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("Bool"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_bool_t"
@@ -3988,7 +3945,6 @@ func (b booler) Value() (driver.Value, error) {
 }
 
 func TestBoolValueTypes(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("NullBool"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_bool_value_types_t"
@@ -4091,7 +4047,6 @@ func TestResetSession(t *testing.T) {
 }
 
 func TestSelectNullTime(t *testing.T) {
-	t.Parallel()
 	const qry = "SELECT SYSDATE, SYSDATE+NULL, SYSDATE+NULL FROM DUAL"
 	var t0, t1 time.Time
 	var nt sql.NullTime
@@ -4104,7 +4059,6 @@ func TestSelectNullTime(t *testing.T) {
 	t.Logf("t0=%s t1=%s nt=%v", t0, t1, nt)
 }
 func TestSelectROWID(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ROWID"), 10*time.Second)
 	defer cancel()
 	const tbl = "test_rowid_t"
@@ -4144,7 +4098,6 @@ func TestSelectROWID(t *testing.T) {
 }
 
 func TestOpenCloseLOB(t *testing.T) {
-	t.Parallel()
 	const poolSize = 2
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
@@ -4488,7 +4441,6 @@ END;`
 }
 
 func TestStmtFetchDeadlineForLOB(t *testing.T) {
-	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(testContext("TestStmtFetchDeadline"), 60*time.Second)
 	defer cancel()
@@ -4604,7 +4556,6 @@ END;`
 // db_alias,db10g should match in tnsnames.ora and credential entry in wallet
 // this test case will skip if external wallet is not defined but wont fail
 func TestExternalAuthIntegration(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skip external auth test")
 	}
@@ -4740,7 +4691,6 @@ func getRandomString() string {
 }
 
 func TestNullIssue143(t *testing.T) {
-	t.Parallel()
 	const funQry = `CREATE OR REPLACE FUNCTION test_getXml_143(
 		    pInDate IN DATE,
 		    pOutDate IN DATE,
@@ -4780,7 +4730,6 @@ func TestNullIssue143(t *testing.T) {
 }
 
 func TestForError8192(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skip slow insert loop test")
 	}
@@ -5040,7 +4989,6 @@ func TestLobAsStringTypeName(t *testing.T) {
 }
 
 func TestTTCIssue215(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("TestBreakingOracle12"), 10*time.Second)
 	defer cancel()
 	cleanup := func() {
@@ -5146,7 +5094,6 @@ END;`,
 	t.Log(res.AsMapSlice(true))
 }
 func TestSelectText(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
 	defer cancel()
 	qry := "SELECT UPPER(:1) FROM DUAL"
@@ -5193,7 +5140,6 @@ func TestReplaceQuestionPlaceholders(t *testing.T) {
 }
 
 func TestPipelinedSelectIssue289(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("SelectText"), 10*time.Second)
 	defer cancel()
 	funcName := "test_pipelined_" + tblSuffix

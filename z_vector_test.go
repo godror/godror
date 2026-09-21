@@ -57,7 +57,6 @@ func compareSparseVector(t *testing.T, id godror.Number, got godror.Vector, expe
 
 // It Verifies returning godror.Vector columns in outbinds
 func TestVectorOutBinds(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("OutBindsVector"), 30*time.Second)
 	defer cancel()
 
@@ -204,7 +203,6 @@ func randomFloat32Slice(size int) []float32 {
 
 // It Verifies batch insert of Vector columns and verify the inserted rows.
 func TestVectorReadWriteBatch(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("ReadWriteVector"), 30*time.Second)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
@@ -326,7 +324,6 @@ func validateVectors(t *testing.T, id godror.Number, expected, actual []godror.V
 
 // It Verifies Flex storage godror.Vector columns.
 func TestVectorFlex(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("BindsFlexVector"), 30*time.Second)
 	defer cancel()
 
@@ -340,11 +337,11 @@ func TestVectorFlex(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		`CREATE TABLE `+tbl+` (
-			id NUMBER(6), 
+			id NUMBER(6),
 			image_vector Vector(*,*),
-			graph_vector Vector(*, *, SPARSE), 
-			int_vector Vector(*, *), 
-			float_vector Vector(*, *), 
+			graph_vector Vector(*, *, SPARSE),
+			int_vector Vector(*, *),
+			float_vector Vector(*, *),
 			sparse_int_vector Vector(*, *, SPARSE)
 		)`,
 	)
@@ -353,7 +350,7 @@ func TestVectorFlex(t *testing.T) {
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	stmt, err := conn.PrepareContext(ctx,
-		`INSERT INTO `+tbl+` (id, image_vector, graph_vector, int_vector, float_vector, sparse_int_vector) 
+		`INSERT INTO `+tbl+` (id, image_vector, graph_vector, int_vector, float_vector, sparse_int_vector)
 		 VALUES (:1, :2, :3, :4, :5, :6) RETURNING image_vector, graph_vector, int_vector, float_vector, sparse_int_vector INTO :7, :8, :9, :10, :11`,
 	)
 	if err != nil {
@@ -386,7 +383,6 @@ func TestVectorFlex(t *testing.T) {
 
 // It Verifies Passing Pointer to Vector type to avoid copies
 func TestVectorPointerCases(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("VectorErrors"), 30*time.Second)
 	defer cancel()
 
@@ -400,10 +396,10 @@ func TestVectorPointerCases(t *testing.T) {
 	conn.ExecContext(ctx, "DROP TABLE "+tbl)
 	_, err = conn.ExecContext(ctx,
 		`CREATE TABLE `+tbl+` (
-			id NUMBER(6), 
+			id NUMBER(6),
 			flex_dense_vector1 Vector(*,*),
-			flex_sparse_vector1 Vector(*, *, SPARSE), 
-			flex_dense_vector2 Vector(*, *), 
+			flex_sparse_vector1 Vector(*, *, SPARSE),
+			flex_dense_vector2 Vector(*, *),
 			flex_sparse_vector2 Vector(*, *, SPARSE)
 		)`,
 	)
@@ -412,7 +408,7 @@ func TestVectorPointerCases(t *testing.T) {
 	defer testDb.Exec("DROP TABLE " + tbl)
 
 	stmt, err := conn.PrepareContext(ctx,
-		`INSERT INTO `+tbl+` (id, flex_dense_vector1, flex_sparse_vector1, flex_dense_vector2, flex_sparse_vector2) 
+		`INSERT INTO `+tbl+` (id, flex_dense_vector1, flex_sparse_vector1, flex_dense_vector2, flex_sparse_vector2)
 		 VALUES (:1, :2, :3, :4, :5) `,
 	)
 	if err != nil {
@@ -442,7 +438,7 @@ func TestVectorPointerCases(t *testing.T) {
 
 	// Query results
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, flex_dense_vector1, flex_sparse_vector1, flex_dense_vector2, flex_sparse_vector2 
+		SELECT id, flex_dense_vector1, flex_sparse_vector1, flex_dense_vector2, flex_sparse_vector2
 		FROM %s`, tbl))
 	if err != nil {
 		t.Errorf("QueryContext failed: %v", err)

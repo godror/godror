@@ -19,7 +19,6 @@ import (
 )
 
 func TestWrongPassword(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("WrongPassword"), 30*time.Second)
 	defer cancel()
 	P, err := godror.ParseConnString(testConStr)
@@ -59,7 +58,6 @@ func TestWrongPassword(t *testing.T) {
 //   - create connection with username, password
 
 func TestHeterogeneousPoolIntegration(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("skip heterogeneous pool test")
 	}
@@ -153,7 +151,6 @@ func TestHeterogeneousPoolIntegration(t *testing.T) {
 // passing Proxyuser at the time of Go pool creation
 // user = proxyusername[sessionusername], password for proxyusername
 func TestHeterogeneousConnCreationWithProxy(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(testContext("HeterogeneousConnCreationWithProxy"), 30*time.Second)
 	defer cancel()
 
