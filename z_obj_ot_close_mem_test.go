@@ -173,9 +173,11 @@ func TestObjOpenClose(t *testing.T) {
 }
 
 type MyObject struct {
-	*godror.Object
-	ID int64
+	*godror.Object `godror:"-"`
+	ID             int64
 }
+
+func (MyObject) ObjectTypeName() string { return "TEST_TYPE" }
 
 func (r *MyObject) Scan(src any) error {
 	obj, ok := src.(*godror.Object)
@@ -193,20 +195,7 @@ func (r *MyObject) Scan(src any) error {
 
 // WriteObject update godror.Object with struct attributes values.
 // Implement this method if you need the record as an input parameter.
-func (r MyObject) WriteObject() error {
+func (r MyObject) WriteObject(o *godror.Object) error {
 	// all attributes must be initialized or you get an "ORA-21525: attribute number or (collection element at index) %s violated its constraints"
-	err := r.ResetAttributes()
-	if err != nil {
-		return err
-	}
-
-	var data godror.Data
-	err = r.GetAttribute(&data, "ID")
-	if err != nil {
-		return err
-	}
-	data.SetInt64(r.ID)
-	r.SetAttribute("ID", &data)
-
-	return nil
+	return godror.StructWriteObject(o, &r)
 }
