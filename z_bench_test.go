@@ -871,3 +871,30 @@ func BenchmarkSelect301(b *testing.B) {
 	}
 	b.Log(nm, oid, typ, ts)
 }
+
+func BenchmarkReusedStmtVaryingStringBinds(b *testing.B) {
+	ctx, cancel := testContext(b, 10*time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	stmt, err := conn.PrepareContext(ctx, "SELECT COUNT(*) FROM DUAL WHERE :1 IS NOT NULL")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer stmt.Close()
+	var values []string
+	for _, n := range []int{1, 10, 40, 600, 3, 900, 20, 1} {
+		values = append(values, strings.Repeat("x", n))
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var n int
+		if err := stmt.QueryRowContext(ctx, values[i%len(values)]).Scan(&n); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
