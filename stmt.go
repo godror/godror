@@ -73,6 +73,7 @@ type stmtOptions struct {
 	warningAsError     bool
 	noRetry            bool
 	jsonAsString       bool
+	bindTimeAsDate     bool
 }
 
 type boolString struct {
@@ -288,6 +289,11 @@ func CallTimeout(d time.Duration) Option {
 // NullDateAsZeroTime is an option to return NULL DATE columns as time.Time{} instead of nil.
 // If you must Scan into time.Time (cannot use sql.NullTime), this may help.
 func NullDateAsZeroTime() Option { return func(o *stmtOptions) { o.nullDateAsZeroTime = true } }
+
+// BindTimeAsDate is an option to bind time.Time input values as DATE instead of TIMESTAMP WITH TIME ZONE.
+// The value is converted to the connection's timezone as usual; fractional seconds are dropped.
+// Binding as DATE avoids the per-value timezone construction, which is much cheaper for array DML into DATE columns.
+func BindTimeAsDate() Option { return func(o *stmtOptions) { o.bindTimeAsDate = true } }
 
 // DeleteFromCache is an option to delete the statement from the statement cache.
 func DeleteFromCache() Option { return func(o *stmtOptions) { o.deleteFromCache = true } }
@@ -1442,6 +1448,9 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 
 	case time.Time, NullTime, *timestamppb.Timestamp:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
+		if st.bindTimeAsDate && !info.isOut {
+			info.typ = C.DPI_ORACLE_TYPE_DATE
+		}
 		info.set = st.conn.dataSetTime
 		if info.isOut {
 			*get = st.conn.dataGetTime
@@ -1449,7 +1458,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 
 	case []time.Time, []NullTime, []*timestamppb.Timestamp:
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_NATIVE_TYPE_TIMESTAMP
-		if st.plSQLArrays {
+		if st.plSQLArrays || (st.bindTimeAsDate && !info.isOut) {
 			info.typ = C.DPI_ORACLE_TYPE_DATE
 		}
 		info.set = st.conn.dataSetTime
