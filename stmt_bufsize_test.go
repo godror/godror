@@ -22,3 +22,25 @@ func TestBindBufSize(t *testing.T) {
 		}
 	}
 }
+
+func TestVarInfoCanHold(t *testing.T) {
+	prev := varInfo{SliceLen: 10, BufSize: 128}
+	for _, tc := range []struct {
+		name string
+		next varInfo
+		want bool
+	}{
+		{"same", varInfo{SliceLen: 10, BufSize: 128}, true},
+		{"smaller buffer", varInfo{SliceLen: 10, BufSize: 32}, true},
+		{"larger buffer", varInfo{SliceLen: 10, BufSize: 2000}, false},
+		{"fewer rows in", varInfo{SliceLen: 3, BufSize: 128}, true},
+		{"fewer rows out", varInfo{SliceLen: 3, BufSize: 128, IsOut: true}, false},
+		{"same rows out", varInfo{SliceLen: 10, BufSize: 128, IsOut: true}, true},
+		{"more rows", varInfo{SliceLen: 11, BufSize: 128}, false},
+		{"plsql array", varInfo{SliceLen: 10, BufSize: 128, IsPLSArray: true}, false},
+	} {
+		if got := prev.canHold(tc.next); got != tc.want {
+			t.Errorf("%s: canHold=%t, want %t", tc.name, got, tc.want)
+		}
+	}
+}

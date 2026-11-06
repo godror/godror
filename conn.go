@@ -423,12 +423,13 @@ type varInfo struct {
 	NatTyp            C.dpiNativeTypeNum
 	Typ               C.dpiOracleTypeNum
 	IsPLSArray        bool
+	IsOut             bool
 }
 
 func (vi varInfo) canHold(other varInfo) bool {
 	return vi.BufSize >= other.BufSize &&
 		vi.ObjectType == other.ObjectType &&
-		vi.SliceLen == other.SliceLen &&
+		(vi.SliceLen == other.SliceLen || !other.IsOut && vi.SliceLen > other.SliceLen) &&
 		vi.NatTyp == other.NatTyp &&
 		vi.Typ == other.Typ &&
 		vi.IsPLSArray == other.IsPLSArray

@@ -1128,6 +1128,7 @@ func (st *statement) bindVars(
 			Typ:        info.typ, NatTyp: info.natTyp,
 			SliceLen: n, BufSize: info.bufSize,
 			ObjectType: info.objType,
+			IsOut:      info.isOut,
 		}
 		if vi.IsPLSArray && vi.SliceLen > maxArraySize {
 			return fmt.Errorf("maximum array size allowed is %d", maxArraySize)
@@ -3613,10 +3614,11 @@ func bindBufSize(n int) int {
 		return 2000
 	case n <= 4000:
 		return 4000
-	case n > 32767:
+	case n <= 32767:
+		return min(1<<bits.Len(uint(n-1)), 32767)
+	default:
 		return n
 	}
-	return min(1<<bits.Len(uint(n-1)), 32767)
 }
 
 func isInvalidErr(err error) bool {
