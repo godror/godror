@@ -1391,7 +1391,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		} else {
 			switch v := v.(type) {
 			case []byte:
-				info.bufSize = len(v)
+				info.bufSize = bindBufSize(len(v))
 			case [][]byte:
 				for _, b := range v {
 					if n := len(b); n > info.bufSize {
@@ -1399,7 +1399,6 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
-			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case Number, []Number:
@@ -1411,7 +1410,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		} else {
 			switch v := v.(type) {
 			case Number:
-				info.bufSize = len(v)
+				info.bufSize = bindBufSize(len(v))
 			case []Number:
 				for _, s := range v {
 					if n := len(s); n > info.bufSize {
@@ -1419,7 +1418,6 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
-			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case string, []string, nil:
@@ -1431,7 +1429,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		} else {
 			switch v := v.(type) {
 			case string:
-				info.bufSize = 4 * len(v)
+				info.bufSize = bindBufSize(4 * len(v))
 			case []string:
 				for _, s := range v {
 					if n := 4 * len(s); n > info.bufSize {
@@ -1439,7 +1437,6 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
-			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case time.Time, NullTime, *timestamppb.Timestamp:
