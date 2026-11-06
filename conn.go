@@ -425,6 +425,15 @@ type varInfo struct {
 	IsPLSArray        bool
 }
 
+func (vi varInfo) canHold(other varInfo) bool {
+	return vi.BufSize >= other.BufSize &&
+		vi.ObjectType == other.ObjectType &&
+		vi.SliceLen == other.SliceLen &&
+		vi.NatTyp == other.NatTyp &&
+		vi.Typ == other.Typ &&
+		vi.IsPLSArray == other.IsPLSArray
+}
+
 func (c *conn) newVar(vi varInfo) (*C.dpiVar, []C.dpiData, error) {
 	if c == nil || c.dpiConn == nil {
 		return nil, nil, errors.New("connection is nil")

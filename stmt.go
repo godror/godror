@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"math/bits"
 	"reflect"
 	"runtime"
 	"sort"
@@ -1132,7 +1133,7 @@ func (st *statement) bindVars(
 			return fmt.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
 		mustAllocate := st.vars[i] == nil || st.data[i] == nil
-		if !mustAllocate && st.varInfos[i] != vi {
+		if !mustAllocate && !st.varInfos[i].canHold(vi) {
 			C.dpiVar_release(st.vars[i])
 			mustAllocate = true
 		}
@@ -1398,6 +1399,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
+			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case Number, []Number:
@@ -1417,6 +1419,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
+			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case string, []string, nil:
@@ -1436,6 +1439,7 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 					}
 				}
 			}
+			info.bufSize = bindBufSize(info.bufSize)
 		}
 
 	case time.Time, NullTime, *timestamppb.Timestamp:
@@ -3600,6 +3604,22 @@ func (sb stringBuilderPool) Get() *strings.Builder {
 func (sb *stringBuilderPool) Put(b *strings.Builder) {
 	b.Reset()
 	sb.p.Put(b)
+}
+
+func bindBufSize(n int) int {
+	switch {
+	case n <= 32:
+		return 32
+	case n <= 128:
+		return 128
+	case n <= 2000:
+		return 2000
+	case n <= 4000:
+		return 4000
+	case n > 32767:
+		return n
+	}
+	return min(1<<bits.Len(uint(n-1)), 32767)
 }
 
 func isInvalidErr(err error) bool {
