@@ -446,6 +446,7 @@ type drv struct {
 	timezones     map[string]locationWithOffSecs
 	clientVersion VersionInfo
 	mu            sync.RWMutex
+	poolMu        sync.Mutex
 }
 
 // NewDriver creates a new drv.
@@ -1068,9 +1069,16 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	if ok {
 		return pool, nil
 	}
+	d.poolMu.Lock()
+	defer d.poolMu.Unlock()
+	d.mu.RLock()
+	pool, ok = d.pools[poolKey]
+	d.mu.RUnlock()
+	if ok {
+		return pool, nil
+	}
 	// createPool uses checkExec wich needs getError which uses RLock,
-	// so we cannot Lock here, thus this little race window for
-	// creating a pool and throwing it away.
+	// so we cannot Lock d.mu here; poolMu serializes pool creation.
 	pool, err := d.createPool(P)
 	if err != nil {
 		return nil, err
