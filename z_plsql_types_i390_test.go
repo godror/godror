@@ -56,7 +56,7 @@ func (i390PsliceStruct) ObjectTypeName() string { return "pobj_t" }
 func (ss i390PsliceStruct) WriteObject(o *godror.Object) error {
 	return godror.SliceWriteObject(o, ss.ObjSlice)
 }
-func (ss i390PsliceStruct) Scan(v any) error { return godror.SliceScan(&ss.ObjSlice, v) }
+func (ss *i390PsliceStruct) Scan(v any) error { return godror.SliceScan(&ss.ObjSlice, v) }
 
 func testPlSqlNestedObj(t *testing.T, step int) {
 	if step < 2 {

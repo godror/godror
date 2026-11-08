@@ -589,6 +589,27 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
+		if !st.noRetry && isInvalidObjectErr(err) {
+			for _, v := range st.conn.objTypes {
+				_ = v.Close()
+			}
+			clear(st.conn.objTypes)
+			for j, v := range st.vars {
+				if v != nil {
+					C.dpiVar_release(v)
+					st.vars[j] = nil
+				}
+			}
+			for _, cl := range st.tbc {
+				cl.Close()
+			}
+			st.tbc = st.tbc[:0]
+			C.dpiStmt_deleteFromCache(st.dpiStmt)
+			if err = st.bindVars(ctx, args, logger); err != nil {
+				return nil, closeIfBadConn(err)
+			}
+			continue
+		}
 		if st.noRetry || !isInvalidErr(err) {
 			break
 		}
@@ -820,6 +841,27 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
+		}
+		if !st.noRetry && isInvalidObjectErr(err) {
+			for _, v := range st.conn.objTypes {
+				_ = v.Close()
+			}
+			clear(st.conn.objTypes)
+			for j, v := range st.vars {
+				if v != nil {
+					C.dpiVar_release(v)
+					st.vars[j] = nil
+				}
+			}
+			for _, cl := range st.tbc {
+				cl.Close()
+			}
+			st.tbc = st.tbc[:0]
+			C.dpiStmt_deleteFromCache(st.dpiStmt)
+			if err = st.bindVars(ctx, args, logger); err != nil {
+				return nil, closeIfBadConn(err)
+			}
+			continue
 		}
 		if st.noRetry || !isInvalidErr(err) {
 			break
@@ -3669,6 +3711,15 @@ func isInvalidErr(err error) bool {
 	code := cdr.Code()
 	// ORA-04068: "existing state of packages has been discarded"
 	return code == 4061 || code == 4065 || code == 4068
+}
+
+func isInvalidObjectErr(err error) bool {
+	var cdr interface{ Code() int }
+	if err == nil || !errors.As(err, &cdr) {
+		return false
+	}
+	// ORA-21700: "object does not exist or is marked for deletion"
+	return cdr.Code() == 21700
 }
 
 var maxStackSize uint32 = 2048
