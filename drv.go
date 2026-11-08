@@ -131,17 +131,12 @@ package godror
 // #cgo nocallback dpiData_getUint64
 #cgo nocallback dpiData_setBool
 #cgo nocallback dpiData_setBytes
-#cgo nocallback dpiData_setDouble
-#cgo nocallback dpiData_setFloat
-#cgo nocallback dpiData_setInt64
 #cgo nocallback dpiData_setIntervalDS
 #cgo nocallback dpiData_setIntervalYM
 #cgo nocallback dpiData_setLOB
 // #cgo nocallback dpiData_setNull
 #cgo nocallback dpiData_setObject
 #cgo nocallback dpiData_setStmt
-#cgo nocallback dpiData_setTimestamp
-#cgo nocallback dpiData_setUint64
 #cgo nocallback dpiDeqOptions_getCondition
 #cgo nocallback dpiDeqOptions_getConsumerName
 #cgo nocallback dpiDeqOptions_getCorrelation
@@ -928,7 +923,7 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 			case int:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-				C.dpiData_setInt64(&tempData, C.int64_t(value))
+				dpiDataSetInt64(&tempData, C.int64_t(value))
 			case string:
 				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
 				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
