@@ -3061,9 +3061,12 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 				return err
 			}
 			if err = item.WriteObject(o); err != nil {
+				o.Close()
 				return err
 			}
-			if err = coll.Append(o); err != nil {
+			err = coll.Append(o)
+			o.Close()
+			if err != nil {
 				return err
 			}
 		}

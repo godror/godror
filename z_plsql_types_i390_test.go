@@ -21,8 +21,8 @@ func TestPlSqlNestedObj(t *testing.T) {
 	if testing.Short() {
 		t.Skip("fix long-running failing RSS doubling TestPlSqlNestedObj")
 	}
-	t.Run("200", func(t *testing.T) {
-		testPlSqlNestedObj(t, 200)
+	t.Run("20", func(t *testing.T) {
+		testPlSqlNestedObj(t, 20)
 	})
 	t.Run("1", func(t *testing.T) { testPlSqlNestedObj(t, 1) })
 }

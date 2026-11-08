@@ -1594,9 +1594,16 @@ func SliceWriteObject[E any](o *Object, ss []E) error {
 				return err
 			}
 			if err := ow.WriteObject(sub); err != nil {
+				sub.Close()
 				return err
 			}
 			data.SetObject(sub)
+			err = coll.AppendData(data)
+			sub.Close()
+			if err != nil {
+				return err
+			}
+			continue
 		} else {
 			data.Set(v)
 		}
@@ -1629,6 +1636,7 @@ func SliceScan[E any](ss *[]E, v any) error {
 		return fmt.Errorf("%w: wanted Object, got %T", errUnknownType, v)
 	}
 	coll := o.Collection()
+	*ss = (*ss)[:0]
 	data := scratch.Get()
 	defer scratch.Put(data)
 	var z E
@@ -1640,7 +1648,12 @@ func SliceScan[E any](ss *[]E, v any) error {
 			}
 			var e E
 			scn := any(&e).(sql.Scanner)
-			if err := scn.Scan(data.Get()); err != nil {
+			x := data.Get()
+			err := scn.Scan(x)
+			if cl, ok := x.(io.Closer); ok {
+				cl.Close()
+			}
+			if err != nil {
 				return err
 			}
 			*ss = append(*ss, e)
@@ -1671,7 +1684,10 @@ func SliceScan[E any](ss *[]E, v any) error {
 			rv.SetString(string(data.GetBytes()))
 		default:
 			if data.IsObject() {
-				if err := structScanObject(rv, data.GetObject()); err != nil {
+				sub := data.GetObject()
+				err := structScanObject(rv, sub)
+				sub.Close()
+				if err != nil {
 					return err
 				}
 			} else {
