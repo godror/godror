@@ -3605,9 +3605,14 @@ func dpiSetFromSlice[T ~string | ~[]byte](dv *C.dpiVar, data []C.dpiData, values
 	buf := slices.Grow(sb.buf[:0], total)
 	lengths := slices.Grow(sb.lengths[:0], len(values))[:len(values)]
 	for i, x := range values {
-		data[i].isNull = C.int(b2i(len(x) == 0))
-		lengths[i] = C.uint32_t(len(x))
-		buf = append(buf, x...)
+		if len(x) == 0 {
+			data[i].isNull = 1
+			lengths[i] = 0
+		} else {
+			data[i].isNull = 0
+			lengths[i] = C.uint32_t(len(x))
+			buf = append(buf, x...)
+		}
 	}
 	sb.buf, sb.lengths = buf, lengths
 	C.godror_setFromBuffer(dv, (*C.char)(unsafe.Pointer(&buf[0])), &lengths[0], C.uint32_t(len(values)))
