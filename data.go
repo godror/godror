@@ -361,7 +361,7 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 		}
 		// fmt.Printf("bounds: %s - %s (%s -> h=%d)\n", zs, ze, t, h)
 	}
-	if logger != nil {
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,
 			"Y", Y, "M", M, "D", D, "h", h, "m", m, "s", s, "t", ns,
 			"tzHour", tzOff/3600, "tzMin", (tzOff%3600)/60)
