@@ -132,7 +132,7 @@ func (d *Data) GetFloat32() float32 {
 func (d *Data) SetFloat32(f float32) {
 	d.reset(false)
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_FLOAT
-	C.dpiData_setFloat(&d.dpiData, C.float(f))
+	dpiDataSetFloat(&d.dpiData, C.float(f))
 }
 
 // GetFloat64 gets float64 from the data.
@@ -149,7 +149,7 @@ func (d *Data) GetFloat64() float64 {
 func (d *Data) SetFloat64(f float64) {
 	d.reset(false)
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_DOUBLE
-	C.dpiData_setDouble(&d.dpiData, C.double(f))
+	dpiDataSetDouble(&d.dpiData, C.double(f))
 }
 
 // GetInt64 gets int64 from the data.
@@ -170,7 +170,7 @@ func (d *Data) GetInt64() int64 {
 func (d *Data) SetInt64(i int64) {
 	d.reset(false)
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-	C.dpiData_setInt64(&d.dpiData, C.int64_t(i))
+	dpiDataSetInt64(&d.dpiData, C.int64_t(i))
 }
 
 // GetIntervalDS gets duration as interval date-seconds from data.
@@ -367,11 +367,32 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 			"tzHour", tzOff/3600, "tzMin", (tzOff%3600)/60)
 	}
 
-	C.dpiData_setTimestamp(dpiData,
-		C.int16_t(Y), C.uint8_t(M), C.uint8_t(D),
-		C.uint8_t(h), C.uint8_t(m), C.uint8_t(s), C.uint32_t(ns),
-		C.int8_t(tzOff/3600), C.int8_t((tzOff%3600)/60),
-	)
+	dpiData.isNull = 0
+	*(*C.dpiTimestamp)(unsafe.Pointer(&dpiData.value)) = C.dpiTimestamp{
+		year: C.int16_t(Y), month: C.uint8_t(M), day: C.uint8_t(D),
+		hour: C.uint8_t(h), minute: C.uint8_t(m), second: C.uint8_t(s), fsecond: C.uint32_t(ns),
+		tzHourOffset: C.int8_t(tzOff / 3600), tzMinuteOffset: C.int8_t((tzOff % 3600) / 60),
+	}
+}
+
+func dpiDataSetInt64(d *C.dpiData, v C.int64_t) {
+	d.isNull = 0
+	*(*C.int64_t)(unsafe.Pointer(&d.value)) = v
+}
+
+func dpiDataSetUint64(d *C.dpiData, v C.uint64_t) {
+	d.isNull = 0
+	*(*C.uint64_t)(unsafe.Pointer(&d.value)) = v
+}
+
+func dpiDataSetFloat(d *C.dpiData, v C.float) {
+	d.isNull = 0
+	*(*C.float)(unsafe.Pointer(&d.value)) = v
+}
+
+func dpiDataSetDouble(d *C.dpiData, v C.double) {
+	d.isNull = 0
+	*(*C.double)(unsafe.Pointer(&d.value)) = v
 }
 
 // GetUint64 gets data as uint64.
@@ -387,7 +408,7 @@ func (d *Data) GetUint64() uint64 {
 func (d *Data) SetUint64(u uint64) {
 	d.reset(false)
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_UINT64
-	C.dpiData_setUint64(&d.dpiData, C.uint64_t(u))
+	dpiDataSetUint64(&d.dpiData, C.uint64_t(u))
 }
 
 // IntervalYM holds Years and Months as interval.
