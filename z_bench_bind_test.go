@@ -9,6 +9,7 @@ package godror_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,28 +21,54 @@ import (
 )
 
 func BenchmarkArrayInsertStrings(b *testing.B) {
+	benchArrayInsert(b, "test_arr_str", "s1 VARCHAR2(40), s2 VARCHAR2(40), s3 VARCHAR2(40), n1 NUMBER, b1 RAW(40)",
+		func(rows int) []any {
+			s1, s2, s3 := make([]string, rows), make([]string, rows), make([]string, rows)
+			n1, b1 := make([]godror.Number, rows), make([][]byte, rows)
+			for i := range rows {
+				s1[i] = strconv.Itoa(i)
+				s2[i] = strings.Repeat("x", 1+i%40)
+				if i%10 != 0 {
+					s3[i] = fmt.Sprintf("row-%08d", i)
+				}
+				n1[i] = godror.Number(strconv.Itoa(i * 7))
+				b1[i] = []byte(s2[i])
+			}
+			return []any{s1, s2, s3, n1, b1}
+		})
+}
+
+func BenchmarkArrayInsertNumbersDates(b *testing.B) {
+	benchArrayInsert(b, "test_arr_num", "i1 NUMBER(15), i2 NUMBER(15), f1 BINARY_DOUBLE, d1 DATE, d2 DATE",
+		func(rows int) []any {
+			i1, i2 := make([]int64, rows), make([]sql.NullInt64, rows)
+			f1 := make([]float64, rows)
+			d1, d2 := make([]time.Time, rows), make([]godror.NullTime, rows)
+			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+			for i := range rows {
+				i1[i] = int64(i) * 7919
+				i2[i] = sql.NullInt64{Int64: int64(i), Valid: i%10 != 0}
+				f1[i] = float64(i) / 7
+				d1[i] = start.AddDate(0, 0, i%300)
+				d2[i] = godror.NullTime{Time: d1[i], Valid: i%10 != 0}
+			}
+			return []any{i1, i2, f1, d1, d2, godror.BindTimeAsDate()}
+		})
+}
+
+func benchArrayInsert(b *testing.B, name, columns string, values func(rows int) []any) {
 	ctx, cancel := testContext(b, 10*time.Minute)
 	defer cancel()
-	tbl := "test_arr_str" + tblSuffix
+	tbl := name + tblSuffix
 	_, _ = testDb.ExecContext(ctx, "DROP TABLE "+tbl)
-	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" (s1 VARCHAR2(40), s2 VARCHAR2(40), s3 VARCHAR2(40), n1 NUMBER, b1 RAW(40))"); err != nil {
+	if _, err := testDb.ExecContext(ctx, "CREATE TABLE "+tbl+" ("+columns+")"); err != nil {
 		b.Fatal(err)
 	}
 	defer testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
-	qry := "INSERT INTO " + tbl + " (s1, s2, s3, n1, b1) VALUES (:1, :2, :3, :4, :5)"
+	qry := "INSERT INTO " + tbl + " VALUES (:1, :2, :3, :4, :5)"
 
 	for _, rows := range []int{100, 1000, 10000} {
-		s1, s2, s3 := make([]string, rows), make([]string, rows), make([]string, rows)
-		n1, b1 := make([]godror.Number, rows), make([][]byte, rows)
-		for i := range rows {
-			s1[i] = strconv.Itoa(i)
-			s2[i] = strings.Repeat("x", 1+i%40)
-			if i%10 != 0 {
-				s3[i] = fmt.Sprintf("row-%08d", i)
-			}
-			n1[i] = godror.Number(strconv.Itoa(i * 7))
-			b1[i] = []byte(s2[i])
-		}
+		args := values(rows)
 		b.Run(strconv.Itoa(rows), func(b *testing.B) {
 			tx, err := testDb.BeginTx(ctx, nil)
 			if err != nil {
@@ -58,7 +85,7 @@ func BenchmarkArrayInsertStrings(b *testing.B) {
 			_ = syscall.Getrusage(syscall.RUSAGE_SELF, &before)
 			b.ResetTimer()
 			for b.Loop() {
-				if _, err := stmt.ExecContext(ctx, s1, s2, s3, n1, b1); err != nil {
+				if _, err := stmt.ExecContext(ctx, args...); err != nil {
 					b.Fatal(err)
 				}
 			}
