@@ -53,6 +53,11 @@ type rows struct {
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
 	fromData       bool
+	current        C.uint32_t
+	options        rowOptions
+	scratch        []driver.Value
+	callsC         []bool
+	logger         *slog.Logger
 }
 
 // Columns returns the names of the columns. The number of
