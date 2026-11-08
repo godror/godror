@@ -1126,7 +1126,7 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		delete(c.objTypes, t.FullName())
 	}
 
-	objType := (*C.dpiObjectType)(C.malloc(C.sizeof_void))
+	var objType *C.dpiObjectType
 	gOT := func(name string) error {
 		cName := C.CString(name)
 		err := c.checkExec(func() C.int {
@@ -1144,7 +1144,6 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 			}
 		}
 		if err != nil {
-			C.free(unsafe.Pointer(objType))
 			if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
 				err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
 				_ = c.closeNotLocking()
@@ -1181,14 +1180,13 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("NewObject", "name", t.Name)
 	}
-	obj := (*C.dpiObject)(C.malloc(C.sizeof_void))
+	var obj *C.dpiObject
 	t.mu.RLock()
 	err := t.drv.checkExec(func() C.int {
 		return C.dpiObjectType_createObject(t.dpiObjectType, &obj)
 	})
 	t.mu.RUnlock()
 	if err != nil {
-		C.free(unsafe.Pointer(obj))
 		return nil, fmt.Errorf("NewObject(%q [%+v]: %w", t.Name, t, err)
 	}
 	O := &Object{ObjectType: t, dpiObject: obj}
