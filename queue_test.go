@@ -253,7 +253,11 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 					if _, err := db.ExecContext(ctx, qry); err != nil {
-						t.Logf("%v", fmt.Errorf("%s: %w", qry, err))
+						err = fmt.Errorf("%s: %w", qry, err)
+						if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
+							return err
+						}
+						t.Logf("%v", err)
 					}
 				}
 
