@@ -2281,44 +2281,44 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 	switch slice := vv.(type) {
 	case int:
 		i, x := 0, slice
-		C.dpiData_setInt64(&data[i], C.int64_t(x))
+		dpiDataSetInt64(&data[i], C.int64_t(x))
 	case []int:
 		for i, x := range slice {
-			C.dpiData_setInt64(&data[i], C.int64_t(x))
+			dpiDataSetInt64(&data[i], C.int64_t(x))
 		}
 	case int8:
 		i, x := 0, slice
-		C.dpiData_setInt64(&data[i], C.int64_t(x))
+		dpiDataSetInt64(&data[i], C.int64_t(x))
 	case []int8:
 		for i, x := range slice {
-			C.dpiData_setInt64(&data[i], C.int64_t(x))
+			dpiDataSetInt64(&data[i], C.int64_t(x))
 		}
 	case int16:
 		i, x := 0, slice
-		C.dpiData_setInt64(&data[i], C.int64_t(x))
+		dpiDataSetInt64(&data[i], C.int64_t(x))
 	case []int16:
 		for i, x := range slice {
-			C.dpiData_setInt64(&data[i], C.int64_t(x))
+			dpiDataSetInt64(&data[i], C.int64_t(x))
 		}
 	case int32:
 		i, x := 0, slice
-		C.dpiData_setInt64(&data[i], C.int64_t(x))
+		dpiDataSetInt64(&data[i], C.int64_t(x))
 	case []int32:
 		for i, x := range slice {
-			C.dpiData_setInt64(&data[i], C.int64_t(x))
+			dpiDataSetInt64(&data[i], C.int64_t(x))
 		}
 	case int64:
 		i, x := 0, slice
-		C.dpiData_setInt64(&data[i], C.int64_t(x))
+		dpiDataSetInt64(&data[i], C.int64_t(x))
 	case []int64:
 		for i, x := range slice {
-			C.dpiData_setInt64(&data[i], C.int64_t(x))
+			dpiDataSetInt64(&data[i], C.int64_t(x))
 		}
 	case sql.NullInt32:
 		i, x := 0, slice
 		if x.Valid {
 			data[i].isNull = 0
-			C.dpiData_setInt64(&data[i], C.int64_t(x.Int32))
+			dpiDataSetInt64(&data[i], C.int64_t(x.Int32))
 		} else {
 			data[i].isNull = 1
 		}
@@ -2326,7 +2326,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 		for i, x := range slice {
 			if x.Valid {
 				data[i].isNull = 0
-				C.dpiData_setInt64(&data[i], C.int64_t(x.Int32))
+				dpiDataSetInt64(&data[i], C.int64_t(x.Int32))
 			} else {
 				data[i].isNull = 1
 			}
@@ -2335,7 +2335,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 		i, x := 0, slice
 		if x.Valid {
 			data[i].isNull = 0
-			C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
+			dpiDataSetInt64(&data[i], C.int64_t(x.Int64))
 		} else {
 			data[i].isNull = 1
 		}
@@ -2343,7 +2343,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 		for i, x := range slice {
 			if x.Valid {
 				data[i].isNull = 0
-				C.dpiData_setInt64(&data[i], C.int64_t(x.Int64))
+				dpiDataSetInt64(&data[i], C.int64_t(x.Int64))
 			} else {
 				data[i].isNull = 1
 			}
@@ -2352,7 +2352,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 		i, x := 0, slice
 		if x.Valid {
 			data[i].isNull = 0
-			C.dpiData_setDouble(&data[i], C.double(x.Float64))
+			dpiDataSetDouble(&data[i], C.double(x.Float64))
 		} else {
 			data[i].isNull = 1
 		}
@@ -2360,7 +2360,7 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 		for i, x := range slice {
 			if x.Valid {
 				data[i].isNull = 0
-				C.dpiData_setDouble(&data[i], C.double(x.Float64))
+				dpiDataSetDouble(&data[i], C.double(x.Float64))
 			} else {
 				data[i].isNull = 1
 			}
@@ -2368,53 +2368,53 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 
 	case uint:
 		i, x := 0, slice
-		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		dpiDataSetUint64(&data[i], C.uint64_t(x))
 	case []uint:
 		for i, x := range slice {
-			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+			dpiDataSetUint64(&data[i], C.uint64_t(x))
 		}
 	case uint8:
 		i, x := 0, slice
-		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		dpiDataSetUint64(&data[i], C.uint64_t(x))
 	case []uint8:
 		for i, x := range slice {
-			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+			dpiDataSetUint64(&data[i], C.uint64_t(x))
 		}
 	case uint16:
 		i, x := 0, slice
-		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		dpiDataSetUint64(&data[i], C.uint64_t(x))
 	case []uint16:
 		for i, x := range slice {
-			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+			dpiDataSetUint64(&data[i], C.uint64_t(x))
 		}
 	case uint32:
 		i, x := 0, slice
-		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		dpiDataSetUint64(&data[i], C.uint64_t(x))
 	case []uint32:
 		for i, x := range slice {
-			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+			dpiDataSetUint64(&data[i], C.uint64_t(x))
 		}
 	case uint64:
 		i, x := 0, slice
-		C.dpiData_setUint64(&data[i], C.uint64_t(x))
+		dpiDataSetUint64(&data[i], C.uint64_t(x))
 	case []uint64:
 		for i, x := range slice {
-			C.dpiData_setUint64(&data[i], C.uint64_t(x))
+			dpiDataSetUint64(&data[i], C.uint64_t(x))
 		}
 
 	case float32:
 		i, x := 0, slice
-		C.dpiData_setFloat(&data[i], C.float(x))
+		dpiDataSetFloat(&data[i], C.float(x))
 	case []float32:
 		for i, x := range slice {
-			C.dpiData_setFloat(&data[i], C.float(x))
+			dpiDataSetFloat(&data[i], C.float(x))
 		}
 	case float64:
 		i, x := 0, slice
-		C.dpiData_setDouble(&data[i], C.double(x))
+		dpiDataSetDouble(&data[i], C.double(x))
 	case []float64:
 		for i, x := range slice {
-			C.dpiData_setDouble(&data[i], C.double(x))
+			dpiDataSetDouble(&data[i], C.double(x))
 		}
 
 	case Number, []Number, decimalDecompose, []decimalDecompose, string, []string:
