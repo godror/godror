@@ -306,6 +306,30 @@ func (r *rows) Next(dest []driver.Value) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	if err := r.fetch(ctx, logger); err != nil {
+		return err
+	}
+	var o rowOptions
+	o.load(r.statement)
+	for i := range r.columns {
+		if err := r.setValue(ctx, logger, &o, i, r.bufferRowIndex, dest); err != nil {
+			return err
+		}
+	}
+	r.bufferRowIndex++
+	r.fetched--
+
+	if debugRowsNext && r.fetched < 2 {
+		fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
+	}
+	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+		logger.Debug("scanned", "row", r.bufferRowIndex, "dest", dest)
+	}
+
+	return nil
+}
+
+func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 	if r.fetched == 0 {
 		// Start the watchdog only once See issue #113 (https://github.com/godror/godror/issues/113)
 		if ctx := r.statement.ctx; ctx != nil {
@@ -377,365 +401,364 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	//fmt.Printf("data=%#v\n", r.data)
 
-	nullDate := r.statement.NullDate()
-	nass := r.statement.NumberAsString()
-	naf := !nass && r.statement.NumberAsFloat64()
-	jsonAsString := r.statement.JSONAsString()
-	jsonStringOption := r.statement.JSONStringOption()
-	// fmt.Printf("%p.%[2]p stmtOptions=%+[2]v\n", r.statement, &r.statement.stmtOptions)
+	return nil
+}
 
-	//fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
-	//fmt.Printf("data=%#v\n", r.data[0][r.bufferRowIndex])
-	//fmt.Printf("VC=%d\n", C.DPI_ORACLE_TYPE_VARCHAR)
-	for i, col := range r.columns {
-		typ := col.OracleType
-		d := &r.data[i][r.bufferRowIndex]
-		isNull := d.isNull == 1
+type rowOptions struct {
+	nullDate         any
+	nass, naf        bool
+	jsonAsString     bool
+	jsonStringOption JSONOption
+}
 
-		switch typ {
-		case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
-			C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
-			C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
-			C.DPI_ORACLE_TYPE_XMLTYPE:
-			//fmt.Printf("CHAR\n")
-			if isNull {
-				dest[i] = ""
-				continue
-			}
-			//b := C.dpiData_getBytes(d)
-			b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
-			if b.length == 0 {
-				dest[i] = ""
-				continue
-			}
-			if b.length < 10 {
-				//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
-				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
-				dest[i] = string(bb)
-			} else {
-				dest[i] = C.GoStringN(b.ptr, C.int(b.length))
-			}
+func (o *rowOptions) load(st *statement) {
+	o.nullDate = st.NullDate()
+	o.nass = st.NumberAsString()
+	o.naf = !o.nass && st.NumberAsFloat64()
+	o.jsonAsString = st.JSONAsString()
+	o.jsonStringOption = st.JSONStringOption()
+}
 
-		case C.DPI_ORACLE_TYPE_NUMBER:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			switch col.NativeType {
-			case C.DPI_NATIVE_TYPE_INT64:
-				//dest[i] = int64(C.dpiData_getInt64(d))
-				i64 := *((*int64)(unsafe.Pointer(&d.value)))
-				if naf {
-					dest[i] = float64(i64)
-				} else {
-					dest[i] = i64
-				}
-			case C.DPI_NATIVE_TYPE_UINT64:
-				//dest[i] = uint64(C.dpiData_getUint64(d))
-				u64 := *((*uint64)(unsafe.Pointer(&d.value)))
-				if naf {
-					dest[i] = float64(u64)
-				} else {
-					dest[i] = u64
-				}
-			case C.DPI_NATIVE_TYPE_FLOAT:
-				//dest[i] = float32(C.dpiData_getFloat(d))
-				//dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
-				f64 := float64(*((*float32)(unsafe.Pointer(&d.value))))
-				if naf {
-					dest[i] = f64
-				} else {
-					dest[i] = printFloat(f64)
-				}
-			case C.DPI_NATIVE_TYPE_DOUBLE:
-				//dest[i] = float64(C.dpiData_getDouble(d))
-				//dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
-				f64 := *((*float64)(unsafe.Pointer(&d.value)))
-				if naf {
-					dest[i] = f64
-				} else {
-					dest[i] = printFloat(f64)
-				}
-			case C.DPI_NATIVE_TYPE_BOOLEAN:
-				dest[i] = d.isNull != 0 && C.dpiData_getBool(d) != 0
-			default:
-				//b := C.dpiData_getBytes(d)
-				b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
-				//s := C.GoStringN(b.ptr, C.int(b.length))
-				//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
-				bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
+func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions, i int, row C.uint32_t, dest []driver.Value) error {
+	nullDate, nass, naf, jsonAsString, jsonStringOption := o.nullDate, o.nass, o.naf, o.jsonAsString, o.jsonStringOption
+	col := r.columns[i]
+	typ := col.OracleType
+	d := &r.data[i][row]
+	isNull := d.isNull == 1
 
-				if nass {
-					dest[i] = string(bb)
-				} else if naf {
-					var err error
-					if dest[i], err = strconv.ParseFloat(string(bb), 64); err != nil {
-						return fmt.Errorf("parse %q as float64: %w", string(bb), err)
-					}
-				} else {
-					dest[i] = Number(bb)
-				}
-			}
-
-		case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			// ROWID as returned by OCIRowidToChar
-			//cRowid := C.dpiData_getRowid(d)
-			cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
-			var cBuf *C.char
-			var cLen C.uint32_t
-			if err := r.statement.checkExecNoLOT(func() C.int {
-				return C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen)
-			}); err != nil {
-				return err
-			}
-			dest[i] = C.GoStringN(cBuf, C.int(cLen))
-
-		case C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//b := C.dpiData_getBytes(d)
-			b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
-			if b.length == 0 {
-				dest[i] = []byte{}
-				continue
-			}
-			dest[i] = C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.length))
-		case C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//dest[i] = float32(C.dpiData_getFloat(d))
-			dest[i] = *((*float32)(unsafe.Pointer(&d.value)))
-		case C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//dest[i] = float64(C.dpiData_getDouble(d))
-			dest[i] = *((*float64)(unsafe.Pointer(&d.value)))
-		case C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//dest[i] = int64(C.dpiData_getInt64(d))
-			dest[i] = *((*int64)(unsafe.Pointer(&d.value)))
-		case C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//dest[i] = uint64(C.dpiData_getUint64(d))
-			dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
-		case C.DPI_ORACLE_TYPE_DATE, C.DPI_ORACLE_TYPE_TIMESTAMP,
-			C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
-			C.DPI_NATIVE_TYPE_TIMESTAMP:
-
-			if isNull {
-				dest[i] = nullDate
-				continue
-			}
-			//ts := C.dpiData_getTimestamp(d)
-			ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
-			tz := r.conn.Timezone()
-			if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
-				tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset,
-					nil, // just obey to what's included in the data
-				)
-			}
-			if tz == nil {
-				if logger != nil {
-					logger.Warn("DATE", "i", i, "tz", tz, "params", r.conn.params)
-				}
-				tz = time.Local
-			}
-			dest[i] = time.Date(
-				int(ts.year), time.Month(ts.month), int(ts.day),
-				int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-				tz,
-			)
-			if logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
-				logger.Debug("DATE", "i", i, "oraTyp", col.OracleType, "tz", fmt.Sprintf("%+v", tz), "ts", fmt.Sprintf("%+v", ts), "dest", dest[i])
-			}
-		case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			var t time.Duration
-			dataGetIntervalDS(ctx, &t, d)
-			dest[i] = t
-		case C.DPI_ORACLE_TYPE_INTERVAL_YM, C.DPI_NATIVE_TYPE_INTERVAL_YM:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//ym := C.dpiData_getIntervalYM(d)
-			ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.value)))
-			dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
-
-		case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
-			C.DPI_ORACLE_TYPE_BLOB,
-			C.DPI_ORACLE_TYPE_BFILE,
-			C.DPI_NATIVE_TYPE_LOB:
-			isClob := typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB
-			if isNull {
-				if isClob && (r.ClobAsString() || !r.LobAsReader()) {
-					dest[i] = ""
-				} else {
-					dest[i] = nil
-				}
-				continue
-			}
-			rdr := &dpiLobReader{
-				drv: r.drv, dpiLob: C.dpiData_getLOB(d),
-				IsClob: isClob,
-			}
-			if isClob && (r.ClobAsString() || !r.LobAsReader()) {
-				sb := stringBuilders.Get()
-				_, err := io.Copy(sb, rdr)
-				C.dpiLob_close(rdr.dpiLob)
-				if err != nil {
-					stringBuilders.Put(sb)
-					return err
-				}
-				dest[i] = sb.String()
-				stringBuilders.Put(sb)
-				continue
-			}
-			dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}
-
-		case C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			st := &statement{
-				conn:             r.conn,
-				statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
-				stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
-			}
-			stmtAddCleanup(ctx, st, "rows.Next")
-			var colCount C.uint32_t
-			if err := r.statement.checkExecNoLOT(func() C.int {
-				return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
-			}); err != nil {
-				if logger != nil {
-					logger.Error("Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
-				}
-				//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
-				return fmt.Errorf("getNumQueryColumns: %w", err)
-			}
-			st.Lock()
-			r2, err := st.openRows(ctx, int(colCount))
-			st.Unlock()
-			if err != nil {
-				if logger != nil {
-					logger.Error("Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
-				}
-				st.Close()
-				return err
-			}
-			r2.fromData = true
-			stmtAddCleanup(ctx, st, "Next")
-			dest[i] = r2
-
-		case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			//dest[i] = C.dpiData_getBool(d) == 1
-			dest[i] = *((*C.int)(unsafe.Pointer(&d.value))) == 1
-
-		case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			o, err := wrapObject(r.conn, col.ObjectType, C.dpiData_getObject(d))
-			if err != nil {
-				return err
-			}
-			dest[i] = o
-
-		case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			switch col.NativeType {
-			case C.DPI_NATIVE_TYPE_JSON:
-				dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
-				j := JSON{dpiJson: dj, stringOption: jsonStringOption}
-				if jsonAsString {
-					var err error
-					if dest[i], err = j.StringWithOption(
-						JSONOptNumberAsString, // Type of conversion for numbers but will respect stringOption for final result.
-					); err != nil {
-						return err
-					}
-				} else {
-					dest[i] = j
-				}
-			default:
-			}
-
-		case C.DPI_NATIVE_TYPE_JSON_OBJECT:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
-		case C.DPI_NATIVE_TYPE_JSON_ARRAY:
-			if isNull {
-				dest[i] = nil
-				continue
-			}
-			dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
-		case C.DPI_ORACLE_TYPE_VECTOR, C.DPI_NATIVE_TYPE_VECTOR:
-			if isNull {
-				dest[i] = Vector{}
-				continue
-			}
-			var (
-				vectorInfo C.dpiVectorInfo
-				err        error
-			)
-			if err = r.checkExec(func() C.int {
-				return C.dpiVector_getValue(C.dpiData_getVector(d),
-					&vectorInfo)
-			}); err != nil {
-				return err
-			}
-			dest[i], err = GetVectorValue(&vectorInfo)
-			if err != nil {
-				return err
-			}
-
-		default:
-			return fmt.Errorf("unsupported column type %d", typ)
+	switch typ {
+	case C.DPI_ORACLE_TYPE_VARCHAR, C.DPI_ORACLE_TYPE_NVARCHAR,
+		C.DPI_ORACLE_TYPE_CHAR, C.DPI_ORACLE_TYPE_NCHAR,
+		C.DPI_ORACLE_TYPE_LONG_VARCHAR, C.DPI_ORACLE_TYPE_LONG_NVARCHAR,
+		C.DPI_ORACLE_TYPE_XMLTYPE:
+		//fmt.Printf("CHAR\n")
+		if isNull {
+			dest[i] = ""
+			return nil
+		}
+		//b := C.dpiData_getBytes(d)
+		b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
+		if b.length == 0 {
+			dest[i] = ""
+			return nil
+		}
+		if b.length < 10 {
+			//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+			bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
+			dest[i] = string(bb)
+		} else {
+			dest[i] = C.GoStringN(b.ptr, C.int(b.length))
 		}
 
-		//fmt.Printf("dest[%d]=%#v\n", i, dest[i])
-	}
-	r.bufferRowIndex++
-	r.fetched--
+	case C.DPI_ORACLE_TYPE_NUMBER:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		switch col.NativeType {
+		case C.DPI_NATIVE_TYPE_INT64:
+			//dest[i] = int64(C.dpiData_getInt64(d))
+			i64 := *((*int64)(unsafe.Pointer(&d.value)))
+			if naf {
+				dest[i] = float64(i64)
+			} else {
+				dest[i] = i64
+			}
+		case C.DPI_NATIVE_TYPE_UINT64:
+			//dest[i] = uint64(C.dpiData_getUint64(d))
+			u64 := *((*uint64)(unsafe.Pointer(&d.value)))
+			if naf {
+				dest[i] = float64(u64)
+			} else {
+				dest[i] = u64
+			}
+		case C.DPI_NATIVE_TYPE_FLOAT:
+			//dest[i] = float32(C.dpiData_getFloat(d))
+			//dest[i] = printFloat(float64(C.dpiData_getFloat(d)))
+			f64 := float64(*((*float32)(unsafe.Pointer(&d.value))))
+			if naf {
+				dest[i] = f64
+			} else {
+				dest[i] = printFloat(f64)
+			}
+		case C.DPI_NATIVE_TYPE_DOUBLE:
+			//dest[i] = float64(C.dpiData_getDouble(d))
+			//dest[i] = printFloat(float64(C.dpiData_getDouble(d)))
+			f64 := *((*float64)(unsafe.Pointer(&d.value)))
+			if naf {
+				dest[i] = f64
+			} else {
+				dest[i] = printFloat(f64)
+			}
+		case C.DPI_NATIVE_TYPE_BOOLEAN:
+			dest[i] = d.isNull != 0 && C.dpiData_getBool(d) != 0
+		default:
+			//b := C.dpiData_getBytes(d)
+			b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
+			//s := C.GoStringN(b.ptr, C.int(b.length))
+			//bb := ((*[1 << 30]byte)((unsafe.Pointer(b.ptr))))[:int(b.length):int(b.length)]
+			bb := unsafe.Slice((*byte)(unsafe.Pointer(b.ptr)), b.length)
 
-	if debugRowsNext && r.fetched < 2 {
-		fmt.Printf("bri=%d fetched=%d\n", r.bufferRowIndex, r.fetched)
-	}
-	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
-		logger.Debug("scanned", "row", r.bufferRowIndex, "dest", dest)
+			if nass {
+				dest[i] = string(bb)
+			} else if naf {
+				var err error
+				if dest[i], err = strconv.ParseFloat(string(bb), 64); err != nil {
+					return fmt.Errorf("parse %q as float64: %w", string(bb), err)
+				}
+			} else {
+				dest[i] = Number(bb)
+			}
+		}
+
+	case C.DPI_ORACLE_TYPE_ROWID, C.DPI_NATIVE_TYPE_ROWID:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		// ROWID as returned by OCIRowidToChar
+		//cRowid := C.dpiData_getRowid(d)
+		cRowid := *((**C.dpiRowid)(unsafe.Pointer(&d.value)))
+		var cBuf *C.char
+		var cLen C.uint32_t
+		if err := r.statement.checkExecNoLOT(func() C.int {
+			return C.dpiRowid_getStringValue(cRowid, &cBuf, &cLen)
+		}); err != nil {
+			return err
+		}
+		dest[i] = C.GoStringN(cBuf, C.int(cLen))
+
+	case C.DPI_ORACLE_TYPE_RAW, C.DPI_ORACLE_TYPE_LONG_RAW:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//b := C.dpiData_getBytes(d)
+		b := (*C.dpiBytes)(unsafe.Pointer(&d.value))
+		if b.length == 0 {
+			dest[i] = []byte{}
+			return nil
+		}
+		dest[i] = C.GoBytes(unsafe.Pointer(b.ptr), C.int(b.length))
+	case C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//dest[i] = float32(C.dpiData_getFloat(d))
+		dest[i] = *((*float32)(unsafe.Pointer(&d.value)))
+	case C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//dest[i] = float64(C.dpiData_getDouble(d))
+		dest[i] = *((*float64)(unsafe.Pointer(&d.value)))
+	case C.DPI_ORACLE_TYPE_NATIVE_INT, C.DPI_NATIVE_TYPE_INT64:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//dest[i] = int64(C.dpiData_getInt64(d))
+		dest[i] = *((*int64)(unsafe.Pointer(&d.value)))
+	case C.DPI_ORACLE_TYPE_NATIVE_UINT, C.DPI_NATIVE_TYPE_UINT64:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//dest[i] = uint64(C.dpiData_getUint64(d))
+		dest[i] = *((*uint64)(unsafe.Pointer(&d.value)))
+	case C.DPI_ORACLE_TYPE_DATE, C.DPI_ORACLE_TYPE_TIMESTAMP,
+		C.DPI_ORACLE_TYPE_TIMESTAMP_TZ, C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ,
+		C.DPI_NATIVE_TYPE_TIMESTAMP:
+
+		if isNull {
+			dest[i] = nullDate
+			return nil
+		}
+		//ts := C.dpiData_getTimestamp(d)
+		ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
+		tz := r.conn.Timezone()
+		if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
+			tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset,
+				nil, // just obey to what's included in the data
+			)
+		}
+		if tz == nil {
+			if logger != nil {
+				logger.Warn("DATE", "i", i, "tz", tz, "params", r.conn.params)
+			}
+			tz = time.Local
+		}
+		dest[i] = time.Date(
+			int(ts.year), time.Month(ts.month), int(ts.day),
+			int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
+			tz,
+		)
+		if logger != nil && logger.Enabled(context.Background(), slog.LevelDebug) {
+			logger.Debug("DATE", "i", i, "oraTyp", col.OracleType, "tz", fmt.Sprintf("%+v", tz), "ts", fmt.Sprintf("%+v", ts), "dest", dest[i])
+		}
+	case C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		var t time.Duration
+		dataGetIntervalDS(ctx, &t, d)
+		dest[i] = t
+	case C.DPI_ORACLE_TYPE_INTERVAL_YM, C.DPI_NATIVE_TYPE_INTERVAL_YM:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//ym := C.dpiData_getIntervalYM(d)
+		ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.value)))
+		dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
+
+	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
+		C.DPI_ORACLE_TYPE_BLOB,
+		C.DPI_ORACLE_TYPE_BFILE,
+		C.DPI_NATIVE_TYPE_LOB:
+		isClob := typ == C.DPI_ORACLE_TYPE_CLOB || typ == C.DPI_ORACLE_TYPE_NCLOB
+		if isNull {
+			if isClob && (r.ClobAsString() || !r.LobAsReader()) {
+				dest[i] = ""
+			} else {
+				dest[i] = nil
+			}
+			return nil
+		}
+		rdr := &dpiLobReader{
+			drv: r.drv, dpiLob: C.dpiData_getLOB(d),
+			IsClob: isClob,
+		}
+		if isClob && (r.ClobAsString() || !r.LobAsReader()) {
+			sb := stringBuilders.Get()
+			_, err := io.Copy(sb, rdr)
+			C.dpiLob_close(rdr.dpiLob)
+			if err != nil {
+				stringBuilders.Put(sb)
+				return err
+			}
+			dest[i] = sb.String()
+			stringBuilders.Put(sb)
+			return nil
+		}
+		dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}
+
+	case C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		st := &statement{
+			conn:             r.conn,
+			statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
+			stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
+		}
+		stmtAddCleanup(ctx, st, "rows.Next")
+		var colCount C.uint32_t
+		if err := r.statement.checkExecNoLOT(func() C.int {
+			return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &colCount)
+		}); err != nil {
+			if logger != nil {
+				logger.Error("Next.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+			}
+			//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
+			return fmt.Errorf("getNumQueryColumns: %w", err)
+		}
+		st.Lock()
+		r2, err := st.openRows(ctx, int(colCount))
+		st.Unlock()
+		if err != nil {
+			if logger != nil {
+				logger.Error("Next.openRows", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
+			}
+			st.Close()
+			return err
+		}
+		r2.fromData = true
+		stmtAddCleanup(ctx, st, "Next")
+		dest[i] = r2
+
+	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		//dest[i] = C.dpiData_getBool(d) == 1
+		dest[i] = *((*C.int)(unsafe.Pointer(&d.value))) == 1
+
+	case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		o, err := wrapObject(r.conn, col.ObjectType, C.dpiData_getObject(d))
+		if err != nil {
+			return err
+		}
+		dest[i] = o
+
+	case C.DPI_ORACLE_TYPE_JSON, C.DPI_NATIVE_TYPE_JSON:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		switch col.NativeType {
+		case C.DPI_NATIVE_TYPE_JSON:
+			dj := *((**C.dpiJson)(unsafe.Pointer(&(d.value))))
+			j := JSON{dpiJson: dj, stringOption: jsonStringOption}
+			if jsonAsString {
+				var err error
+				if dest[i], err = j.StringWithOption(
+					JSONOptNumberAsString, // Type of conversion for numbers but will respect stringOption for final result.
+				); err != nil {
+					return err
+				}
+			} else {
+				dest[i] = j
+			}
+		default:
+		}
+
+	case C.DPI_NATIVE_TYPE_JSON_OBJECT:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		dest[i] = JSONObject{dpiJsonObject: ((*C.dpiJsonObject)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
+	case C.DPI_NATIVE_TYPE_JSON_ARRAY:
+		if isNull {
+			dest[i] = nil
+			return nil
+		}
+		dest[i] = JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.value))), stringOption: jsonStringOption}
+	case C.DPI_ORACLE_TYPE_VECTOR, C.DPI_NATIVE_TYPE_VECTOR:
+		if isNull {
+			dest[i] = Vector{}
+			return nil
+		}
+		var (
+			vectorInfo C.dpiVectorInfo
+			err        error
+		)
+		if err = r.checkExec(func() C.int {
+			return C.dpiVector_getValue(C.dpiData_getVector(d),
+				&vectorInfo)
+		}); err != nil {
+			return err
+		}
+		dest[i], err = GetVectorValue(&vectorInfo)
+		if err != nil {
+			return err
+		}
+
+	default:
+		return fmt.Errorf("unsupported column type %d", typ)
 	}
 
+	//fmt.Printf("dest[%d]=%#v\n", i, dest[i])
 	return nil
 }
 
