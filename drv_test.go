@@ -6,8 +6,10 @@
 package godror
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"os/user"
 	"testing"
 )
 
@@ -63,6 +65,45 @@ func TestFromErrorInfo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStandaloneAttachNeedsLock(t *testing.T) {
+	u, err := user.Current()
+	if err != nil {
+		t.Skipf("process uid does not resolve: %v", err)
+	}
+	if _, err = user.LookupId(u.Uid); err != nil {
+		t.Skipf("process uid does not resolve: %v", err)
+	}
+	if standaloneAttachNeedsLock() {
+		t.Fatal("standalone connection creation is serialised although the process uid resolves")
+	}
+}
+
+func TestAcquireAttachSem(t *testing.T) {
+	release, err := acquireAttachSem(context.Background(), make(chan struct{}, 1), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+
+	sem := make(chan struct{}, 1)
+	release, err = acquireAttachSem(context.Background(), sem, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err = acquireAttachSem(ctx, sem, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v, wanted context.Canceled", err)
+	}
+
+	release()
+	if release, err = acquireAttachSem(context.Background(), sem, true); err != nil {
+		t.Fatal(err)
+	}
+	release()
 }
 
 func TestMarshalJSON(t *testing.T) {

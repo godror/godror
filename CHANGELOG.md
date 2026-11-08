@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 - Incremenet minimal version to Go 1.25.0
-- Serialize standalone connection creation (OCI limitation)
-- Fix leaking Correlatin and ExceptionQ in Enqueue
+- Serialize standalone connection creation only when the process uid cannot be resolved to a user name; waiting for that serialization honours the connect context (OCI limitation, #427)
+- Fix leaking Correlation and ExceptionQ in Enqueue
 - Fix missing frees for encoding and charset C allocation
+- Fix Object/ObjecType slice allocation (fixes TestNestedPlSqlObj)
+- Fix extra C.malloc in object creation.
 
 
 ## [v0.51.4]

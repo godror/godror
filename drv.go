@@ -302,6 +302,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os/user"
 	"runtime"
 	"strconv"
 	"strings"
@@ -669,13 +670,13 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 // provided, the connection is acquired from the pool; otherwise, a standalone
 // connection is created.
 // second return value: true = connection is new / false = connection is from pool
-func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, error) {
+func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*conn, bool, error) {
 	// initialize driver, if necessary
 	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
 		return nil, false, err
 	}
 
-	dc, isNew, cleanup, err := d.acquireConn(pool, P)
+	dc, isNew, cleanup, err := d.acquireConn(ctx, pool, P)
 	if err != nil {
 		return nil, false, err
 	}
@@ -767,7 +768,8 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 	return &c, isNew, nil
 }
 
-// standaloneAttachMu serialises the creation of standalone connections.
+// standaloneAttachSem serialises the creation of standalone connections when
+// the Oracle Client cannot resolve the process uid to a user name.
 // Oracle Client resolves the OS user name inside OCIServerAttach
 // (osncon/niqname/snigun); when getpwuid() fails for the process uid (no
 // /etc/passwd entry, common in containers running as a numeric USER) and
@@ -780,12 +782,55 @@ func (d *drv) createConn(pool *connPool, P commonAndConnParams) (*conn, bool, er
 // last. The real fix is a passwd entry for the uid; this lock keeps
 // standalone connections from triggering the client bug.
 //
-// The lock is process-wide because the buffer is: one slow or unreachable
-// standalone connect stalls every other standalone connect in the process
-// for the client's connect timeout.
-var standaloneAttachMu sync.Mutex
+// The lock is only taken when the lookup fails (see
+// standaloneAttachNeedsLock); taking it unconditionally serialises every
+// standalone connect in the process for the client's connect timeout (#427).
+// A channel is used instead of sync.Mutex so that a caller whose context is
+// cancelled does not have to wait for an in-flight connect.
+var standaloneAttachSem = make(chan struct{}, 1)
 
-func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, func(), error) {
+// standaloneAttachNeedsLock reports whether standalone connection creation
+// must be serialised because the Oracle Client cannot resolve the process uid
+// to a user name. The lookup is done once; any uncertainty (error, empty uid)
+// counts as "needs lock" so the protection is never lost.
+var standaloneAttachNeedsLock = sync.OnceValue(func() bool {
+	if runtime.GOOS == "windows" {
+		// The client bug is in the POSIX getpwuid() path.
+		return false
+	}
+	u, err := user.Current()
+	if err != nil || u.Uid == "" {
+		return true
+	}
+	// user.Current may synthesize a user without consulting the passwd
+	// database (e.g. with the osusergo build tag), so verify the uid.
+	_, err = user.LookupId(u.Uid)
+	return err != nil
+})
+
+// acquireStandaloneAttach waits for permission to create a standalone
+// connection, honouring ctx. The returned release function must be called
+// after dpiConn_create returns.
+func acquireStandaloneAttach(ctx context.Context) (func(), error) {
+	return acquireAttachSem(ctx, standaloneAttachSem, standaloneAttachNeedsLock())
+}
+
+func acquireAttachSem(ctx context.Context, sem chan struct{}, needed bool) (release func(), err error) {
+	if !needed {
+		return func() {}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, func(), error) {
 	logger := P.Logger
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
@@ -941,8 +986,14 @@ func (d *drv) acquireConn(pool *connPool, P commonAndConnParams) (*C.dpiConn, bo
 	// create ODPI-C connection
 	var dc *C.dpiConn
 	if pool == nil {
-		standaloneAttachMu.Lock()
-		defer standaloneAttachMu.Unlock()
+		release, err := acquireStandaloneAttach(ctx)
+		if err != nil {
+			if cleanup != nil {
+				cleanup()
+			}
+			return nil, false, nil, fmt.Errorf("waiting for standalone attach: %w", err)
+		}
+		defer release()
 	}
 	if err := d.checkExec(func() C.int {
 		if logger != nil {
@@ -1006,7 +1057,7 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 			return nil, err
 		}
 	}
-	conn, isNew, err := d.createConn(pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
+	conn, isNew, err := d.createConn(ctx, pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
 	if err != nil {
 		return conn, err
 	}
