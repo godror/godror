@@ -36,6 +36,16 @@ func TestQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	{
+		qry := "SELECT COUNT(0) FROM all_procedures WHERE owner = 'SYS' AND object_name = 'DBMS_AQADM' AND procedure_name = 'START_QUEUE'"
+		var n int32
+		if err := testDb.QueryRowContext(ctx, qry).Scan(&n); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		} else if n == 0 {
+			t.Skip("SYS.DBMS_AQADM is unaccessible")
+		}
+	}
+
 	t.Run("deqbymsgid", func(t *testing.T) {
 		const qName = "TEST_MSGID_Q"
 		const qTblName = qName + "_TBL"
@@ -253,10 +263,14 @@ func TestQueue(t *testing.T) {
 		SYS.DBMS_AQADM.start_queue(q);
 	END;`
 					if _, err := db.ExecContext(ctx, qry); err != nil {
-						err = fmt.Errorf("%s: %w", qry, err)
-						if strings.Contains(err.Error(), "PLS-00201: identifier 'SYS.DBMS_AQADM' must be declared") {
-							return err
+						var oe *godror.OraErr
+						if errors.As(err, &oe) &&
+							oe.Code() == 6550 &&
+							strings.Contains(oe.Message(), "PLS-00201:") &&
+							strings.Contains(oe.Message(), "'SYS.DBMS_AQADM'") {
+							t.Skip(err)
 						}
+						err = fmt.Errorf("%s: %w", qry, err)
 						t.Logf("%v", err)
 					}
 				}
