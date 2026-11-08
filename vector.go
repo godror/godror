@@ -85,6 +85,7 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 			//sparseIndices = (*C.uint32_t)(unsafe.Pointer(&(v.Indices[0])))
 		}
 		vectorInfo.numDimensions = C.uint32_t(v.Dimensions)
+		vectorInfo.isSparse = 1
 	} else {
 		// update numDimensions for Dense
 		if format == C.DPI_VECTOR_FORMAT_BINARY {
