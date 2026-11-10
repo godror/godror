@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
+- Implement driver.RowsColumnScanner on Go 1.27
+
+## [v0.51.6]
+### Added
 - Allow token callbacks during connection creation
 
 ### Changed
