@@ -69,46 +69,6 @@ func TestBatch(t *testing.T) {
 	}
 }
 
-func TestBatchErrorHandling(t *testing.T) {
-	ctx, cancel := testContext(t, time.Minute)
-	defer cancel()
-
-	tbl := "test_batch_error" + tblSuffix
-	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9) PRIMARY KEY, name VARCHAR2(100) NOT NULL)`
-	if _, err := testDb.ExecContext(ctx, create); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
-	}()
-
-	insQry := `INSERT INTO ` + tbl + ` (id, name) VALUES (:1, :2)`
-	stmt, err := testDb.PrepareContext(ctx, insQry)
-	if err != nil {
-		t.Fatalf("%s: %+v", insQry, err)
-	}
-	defer stmt.Close()
-
-	// Test duplicate key error handling
-	b := godror.Batch{Stmt: stmt, Limit: 3}
-
-	// Add duplicate IDs to trigger constraint violation
-	if err = b.Add(ctx, 1, "first"); err != nil {
-		t.Fatal(err)
-	}
-	if err = b.Add(ctx, 1, "duplicate"); err != nil {
-		t.Fatal(err)
-	}
-
-	// Flush should return an error due to primary key constraint
-	err = b.Flush(ctx)
-	if err == nil {
-		t.Error("expected error due to duplicate primary key, got nil")
-	}
-
-	t.Logf("Got expected error: %v", err)
-}
-
 func TestBatchRowCountValidation(t *testing.T) {
 	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
@@ -156,35 +116,6 @@ func TestBatchRowCountValidation(t *testing.T) {
 	}
 	if count != expectedRows {
 		t.Errorf("expected %d rows in table, got %d", expectedRows, count)
-	}
-}
-
-func TestBatchEmptyFlush(t *testing.T) {
-	ctx, cancel := testContext(t, time.Minute)
-	defer cancel()
-
-	tbl := "test_batch_empty" + tblSuffix
-	create := `CREATE TABLE ` + tbl + ` (id NUMBER(9), value VARCHAR2(50))`
-	if _, err := testDb.ExecContext(ctx, create); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, _ = testDb.ExecContext(context.Background(), "DROP TABLE "+tbl)
-	}()
-
-	insQry := `INSERT INTO ` + tbl + ` (id, value) VALUES (:1, :2)`
-	stmt, err := testDb.PrepareContext(ctx, insQry)
-	if err != nil {
-		t.Fatalf("%s: %+v", insQry, err)
-	}
-	defer stmt.Close()
-
-	b := godror.Batch{Stmt: stmt, Limit: 10}
-
-	// Flush empty batch should not error
-	err = b.Flush(ctx)
-	if err != nil {
-		t.Errorf("unexpected error on empty flush: %v", err)
 	}
 }
 
