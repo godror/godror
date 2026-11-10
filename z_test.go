@@ -181,8 +181,12 @@ func setUp() func() {
 	fmt.Printf("export GODROR_TEST_DSN=%q\n", P.String())
 	testDb.SetMaxOpenConns(P.PoolParams.MaxSessions)
 	fmt.Println("Standalone?",
-		P.StandaloneConnection.Valid && P.StandaloneConnection.Bool)
-	if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
+		P.StandaloneConnection.Valid && P.StandaloneConnection.Bool,
+		"level", Verbose,
+	)
+	if Verbose >= slog.LevelWarn {
+		// SKIP
+	} else if P.StandaloneConnection.Valid && P.StandaloneConnection.Bool {
 		testDb.SetMaxIdleConns(P.PoolParams.MaxSessions / 2)
 		testDb.SetConnMaxLifetime(10 * time.Minute)
 		go func() {
@@ -319,8 +323,12 @@ func setUp() func() {
 	}
 }
 
-func PrintConnStats() { statIter.Reset(&statStrategy, time.Now) }
-func StopConnStats()  { statCancel() }
+func PrintConnStats() {
+	if statIter != nil {
+		statIter.Reset(&statStrategy, time.Now)
+	}
+}
+func StopConnStats() { statCancel() }
 
 func testContext(t testing.TB, dur time.Duration) (context.Context, context.CancelFunc) {
 	ctx := context.Background()
