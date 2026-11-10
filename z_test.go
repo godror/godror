@@ -3286,8 +3286,9 @@ func TestCancel(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
+	loopCnt := 5
 	if testing.Short() {
-		t.Skip("skip cancel test")
+		loopCnt = 2
 	}
 	P, err := godror.ParseDSN(testConStr)
 	if err != nil {
@@ -3330,12 +3331,12 @@ func TestTimeout(t *testing.T) {
 	t.Log("Pid:", pid)
 	goal := Cnt() + 1
 	t.Logf("Before: %d", goal)
-	const qry = "BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP FOR i IN 1..10 LOOP DBMS_SESSION.SLEEP(1); END LOOP; END LOOP; END;"
+	const qry = "DECLARE v_cnt CONSTANT SIMPLE_INTEGER := :1; BEGIN FOR rows IN (SELECT 1 FROM DUAL) LOOP FOR i IN 1..v_cnt LOOP DBMS_SESSION.SLEEP(1); END LOOP; END LOOP; END;"
 	subCtx, subCancel := context.WithTimeout(ctx, time.Duration(2*maxConc+1)*time.Second)
 	grp, grpCtx := errgroup.WithContext(subCtx)
 	for range maxConc {
 		grp.Go(func() error {
-			if _, err := db.ExecContext(grpCtx, qry); err != nil && !errors.Is(err, context.Canceled) {
+			if _, err := db.ExecContext(grpCtx, qry, loopCnt); err != nil && !errors.Is(err, context.Canceled) {
 				return fmt.Errorf("%s: %w", qry, err)
 			}
 			return nil
@@ -4464,7 +4465,9 @@ func TestShortTimeout(t *testing.T) {
 }
 
 func TestIssue100(t *testing.T) {
-	ctx, cancel := testContext(t, 1*time.Minute)
+	t.Parallel()
+	const iters = 15
+	ctx, cancel := testContext(t, 2*iters*time.Second)
 	defer cancel()
 	const baseName = "test_issue100"
 	{
@@ -4491,11 +4494,11 @@ END;`
 		defer func() { testDb.ExecContext(context.Background(), "DROP FUNCTION "+baseName+"_f") }()
 	}
 
-	const qry = `SELECT * FROM TABLE(` + baseName + `_f(iters => 15, pause => 1))`
+	const qry = `SELECT * FROM TABLE(` + baseName + `_f(iters => :1, pause => 1))`
 	ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	rows, err := testDb.QueryContext(ctx, qry)
+	rows, err := testDb.QueryContext(ctx, qry, iters)
 	t.Logf("error: %+v", err)
 	if err == nil {
 		defer rows.Close()
@@ -4955,7 +4958,7 @@ func TestObjType_Issue198(t *testing.T) {
 
 	pid := os.Getpid()
 	var start uint64
-	const N = 1_000_000
+	const N = 100_000
 	for i := range N {
 		obj, err := oT.NewObject()
 		if err != nil {

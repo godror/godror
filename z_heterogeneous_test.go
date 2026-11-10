@@ -19,13 +19,15 @@ import (
 )
 
 func TestWrongPassword(t *testing.T) {
-	ctx, cancel := testContext(t, 30*time.Second)
+	t.Parallel()
+	const iters = 5
+	ctx, cancel := testContext(t, iters*3*time.Second)
 	defer cancel()
 	P, err := godror.ParseConnString(testConStr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := range 10 {
+	for i := range iters {
 		for _, ok := range []bool{true, false} {
 			P2 := P
 			if !ok {

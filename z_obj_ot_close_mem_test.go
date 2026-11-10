@@ -15,10 +15,11 @@ import (
 )
 
 func TestObjOpenClose(t *testing.T) {
+	dur := 15 * time.Second
 	if testing.Short() {
-		t.Skip("skip memory churn test")
+		dur = 5 * time.Second
 	}
-	ctx, cancel := testContext(t, 30*time.Second)
+	ctx, cancel := testContext(t, dur)
 	defer cancel()
 	defer tl.enableLogging(t)()
 	const sample = "test_pkg_sample_close"
@@ -133,13 +134,14 @@ func TestObjOpenClose(t *testing.T) {
 
 	var startMem uint64
 
-	const step = 100
+	const step = 1000
 
 	loopCnt := 0
 	printStats := func() {
 		runtime.GC()
 		runtime.ReadMemStats(&m)
-		t.Logf("Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n",
+		t.Logf("%d. Alloc: %.3f MiB, Heap: %.3f MiB, Sys: %.3f MiB, NumGC: %d\n",
+			loopCnt,
 			float64(m.Alloc)/1024/1024, float64(m.HeapInuse)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
 
 		rss, err := readMem(int32(pid))
