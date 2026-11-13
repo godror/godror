@@ -251,11 +251,20 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	return &Q, nil
 }
 
+var errQueueClosed = errors.New("queue is closed")
+
 // Close the queue.
 func (Q *Queue) Close() error {
 	if Q == nil {
 		return nil
 	}
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
+	return Q.closeLocked()
+}
+
+// closeLocked closes the queue. Q.mu must be held.
+func (Q *Queue) closeLocked() error {
 	err := Q.queueInnards.Close()
 	Q.cleanup.Stop()
 	return err
@@ -343,6 +352,12 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
+	if Q.dpiQueue == nil {
+		return 0, errQueueClosed
+	}
+
 	if num := len(messages); Q.tableName != "" && num > 1 {
 		logger := getLogger(context.TODO())
 		if err := func() error {
@@ -407,8 +422,6 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 		}
 	}
 
-	Q.mu.Lock()
-	defer Q.mu.Unlock()
 	if opts != nil {
 		Q.deqOptsTainted = true
 	}
@@ -431,6 +444,7 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 		props = make([]*C.dpiMsgProps, len(messages))
 	}
 	Q.props = props
+	clear(props)
 
 	var num C.uint
 	deqOne := len(props) == 1
@@ -447,10 +461,10 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 		var ec interface{ Code() int }
 		if errors.As(err, &ec) {
 			switch ec.Code() {
-			case 3156:
-				err = nil
+			case 3156: // ORA-03156: call timeout - nothing was dequeued, props were not filled
+				return 0, nil
 			case 24010: // 0RA-24010: Queue does not exist
-				Q.Close()
+				Q.closeLocked()
 				//case 25263: // ORA-25263: no message in queue with message ID
 				//return 0, nil
 			case 25226: // ORA-25226: dequeue failed, queue <owner>.<queue_name> is not enabled for dequeue
@@ -479,6 +493,7 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 			}
 		}
 		C.dpiMsgProps_release(p)
+		props[i] = nil
 		if deqOne && messages[i].IsZero() {
 			return 0, nil
 		}
@@ -526,6 +541,9 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 
 	Q.mu.Lock()
 	defer Q.mu.Unlock()
+	if Q.dpiQueue == nil {
+		return errQueueClosed
+	}
 	if opts != nil {
 		Q.enqOptsTainted = true
 	}
@@ -548,10 +566,12 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 		props = make([]*C.dpiMsgProps, len(messages))
 	}
 	Q.props = props
+	clear(props) // don't release stale handles from a previous call
 	defer func() {
-		for _, p := range props {
+		for i, p := range props {
 			if p != nil {
 				C.dpiMsgProps_release(p)
+				props[i] = nil
 			}
 		}
 	}()
@@ -576,7 +596,7 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 		if errors.As(err, &ec) {
 			switch ec.Code() {
 			case 24010: // 0RA-24010: Queue does not exist
-				Q.Close()
+				Q.closeLocked()
 			case 25207: // ORA-25207: enque failed, queue string.string is disabled from enqueuing
 				if startErr := Q.start(); startErr != nil {
 					err = fmt.Errorf("%w: %w", startErr, err)
@@ -774,7 +794,7 @@ func (M *Message) fromOra(c *conn, props *C.dpiMsgProps, objType *ObjectType) er
 			M.Object = &Object{dpiObject: obj, ObjectType: objType}
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func (M *Message) writeMsgID(value *C.char, length C.uint) {
