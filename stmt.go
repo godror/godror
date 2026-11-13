@@ -504,6 +504,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if err != nil {
 		return nil, err
 	}
+	// Reset the call timeout on every return path, so it does not stick to the
+	// connection and cut short a later call that has no (or a later) deadline.
+	defer cleanup()
 	var closed atomic.Bool
 	closeIfBadConn := func(err error) error {
 		cleanup()
@@ -768,6 +771,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err != nil {
 		return nil, err
 	}
+	// Reset the call timeout on every return path (see ExecContext).
+	defer cleanup()
 	closeIfBadConn := func(err error) error {
 		cleanup()
 		if err == nil {
