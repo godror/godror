@@ -1054,9 +1054,8 @@ func (c *conn) GetCurrentSchema(name string) (string, error) {
 	if err := c.checkExec(func() C.int { return C.dpiConn_getCurrentSchema(c.dpiConn, &cs, &length) }); err != nil {
 		return "", err
 	}
-	s := C.GoStringN(cs, C.int(length))
-	C.free(unsafe.Pointer(cs))
-	return s, nil
+	// The returned buffer is owned by OCI and must not be freed.
+	return C.GoStringN(cs, C.int(length)), nil
 }
 func (c *conn) SetCurrentSchema(name string) error {
 	cs := C.CString(name)
