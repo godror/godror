@@ -995,7 +995,7 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 			logger.Debug("dpiConn_create",
 				slog.String("dpiContext", fmt.Sprintf("%#v", d.dpiContext)),
 				slog.String("username", username), slog.Int("usernameLen", len(username)),
-				slog.String("password", password), slog.Int("passwordLen", len(password)),
+				slog.Int("passwordLen", len(password)),
 				slog.String("connectString", P.ConnectString), slog.Int("connectStringLen", len(P.ConnectString)),
 				slog.String("commonCreateParams", fmt.Sprintf("%#v", commonCreateParams)),
 				slog.String("connCreateParams", fmt.Sprintf("%#v", connCreateParams)),
@@ -1346,6 +1346,12 @@ func (d *drv) getPoolStats(p *connPool) (stats PoolStats, err error) {
 type commonAndConnParams struct {
 	dsn.CommonParams
 	dsn.ConnParams
+}
+
+// LogValue implements slog.LogValuer, so structured handlers (e.g. JSON)
+// don't serialize the Token and PrivateKey fields.
+func (P commonAndConnParams) LogValue() slog.Value {
+	return slog.StringValue(P.String())
 }
 
 func (P commonAndConnParams) String() string {

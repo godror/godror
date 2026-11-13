@@ -89,6 +89,14 @@ func (P CommonParams) String() string {
 	return P.CommonSimpleParams.String()
 }
 
+// LogValue implements slog.LogValuer, so structured handlers (e.g. JSON)
+// log the masked String form instead of serializing Password, Token and
+// PrivateKey.
+func (P CommonParams) LogValue() slog.Value { return slog.StringValue(P.String()) }
+
+// LogValue implements slog.LogValuer, see CommonParams.LogValue.
+func (P CommonSimpleParams) LogValue() slog.Value { return slog.StringValue(P.String()) }
+
 var cacheCPSMu sync.RWMutex
 var cacheCPS = make(map[CommonSimpleParams]string)
 
@@ -307,6 +315,9 @@ func (P ConnectionParams) String() string {
 	return P.string(true, false)
 }
 
+// LogValue implements slog.LogValuer, see CommonParams.LogValue.
+func (P ConnectionParams) LogValue() slog.Value { return slog.StringValue(P.String()) }
+
 // StringNoClass returns the string representation of ConnectionParams, without class info.
 // The password is replaced with a "***" string!
 func (P ConnectionParams) StringNoClass() string {
@@ -463,7 +474,13 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		// URL
 		u, err := url.Parse(dataSourceName)
 		if err != nil {
-			return P, fmt.Errorf("%s: %w", dataSourceName, err)
+			// Neither the DSN nor url.Error (which embeds it) may be printed:
+			// they contain the password.
+			var ue *url.Error
+			if errors.As(err, &ue) {
+				err = ue.Err
+			}
+			return P, fmt.Errorf("parse DSN as URL: %w", err)
 		}
 		if usr := u.User; usr != nil {
 			P.Username = usr.Username()
@@ -544,7 +561,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		}
 		// fmt.Printf("Parse q=%#v\n", q)
 		if err := d.Err(); err != nil {
-			return P, fmt.Errorf("parsing parameters %q: %w", paramsString, err)
+			return P, fmt.Errorf("parsing parameters (len=%d): %w", len(paramsString), err)
 		}
 	}
 	//fmt.Printf("cs0=%q\n", P.ConnectString)
