@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -63,7 +63,8 @@ int dpiJson__allocate(dpiConn *conn, void *handle, dpiJson **json,
 {
     dpiJson *tempJson;
 
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 21, 0, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 21, 0, 0,
+            error) < 0)
         return DPI_FAILURE;
     if (dpiGen__allocate(DPI_HTYPE_JSON, conn->env, (void**) &tempJson,
             error) < 0)

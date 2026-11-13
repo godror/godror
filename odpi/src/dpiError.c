@@ -228,11 +228,9 @@ int dpiError__setFromOCI(dpiError *error, int status, dpiConn *conn,
             case  3136: // inbound connection timed out
             case  3156: // OCI call timed out
             case 12161: // TNS:internal error: partial data received
-                callTimeout = 0;
-                if (conn->env->versionInfo->versionNum >= 18)
-                    dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-                            (void*) &callTimeout, 0, DPI_OCI_ATTR_CALL_TIMEOUT,
-                            NULL, error);
+                dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                        (void*) &callTimeout, 0, DPI_OCI_ATTR_CALL_TIMEOUT,
+                        NULL, error);
                 if (callTimeout > 0)
                     return dpiError__wrap(error, DPI_ERR_CALL_TIMEOUT,
                             callTimeout, error->buffer->code);

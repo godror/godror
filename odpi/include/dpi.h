@@ -68,10 +68,10 @@ extern "C" {
 #endif
 
 // define ODPI-C version information
-#define DPI_MAJOR_VERSION   6
-#define DPI_MINOR_VERSION   0
+#define DPI_MAJOR_VERSION   26
+#define DPI_MINOR_VERSION   1
 #define DPI_PATCH_LEVEL     0
-#define DPI_VERSION_SUFFIX
+#define DPI_VERSION_SUFFIX  "b1"
 
 #define DPI_STR_HELPER(x)       #x
 #define DPI_STR(x)              DPI_STR_HELPER(x)
@@ -617,6 +617,8 @@ struct dpiCommonCreateParams {
     int sodaMetadataCache;
     uint32_t stmtCacheSize;
     dpiAccessToken *accessToken;
+    const char *transactionPriority;
+    uint32_t transactionPriorityLength;
 };
 
 // structure used for creating connections
@@ -1131,6 +1133,10 @@ DPI_EXPORT int dpiConn_getStmtCacheSize(dpiConn *conn, uint32_t *cacheSize);
 DPI_EXPORT int dpiConn_getTransactionInProgress(dpiConn *conn,
         int *txnInProgress);
 
+// get transaction priority associated with the connection
+DPI_EXPORT int dpiConn_getTransactionPriority(dpiConn *conn, const char **value,
+        uint32_t *valueLength);
+
 // create a new dequeue options object and return it
 DPI_EXPORT int dpiConn_newDeqOptions(dpiConn *conn, dpiDeqOptions **options);
 
@@ -1210,6 +1216,10 @@ DPI_EXPORT int dpiConn_setDbOp(dpiConn *conn, const char *value,
 DPI_EXPORT int dpiConn_setEcontextId(dpiConn *conn, const char *value,
         uint32_t valueLength);
 
+// set end user security context on the session handle
+DPI_EXPORT int dpiConn_setEndUserSecurityContextFromOson(dpiConn *conn,
+        const void *oson, uint32_t osonLength);
+
 // set external name associated with the connection
 DPI_EXPORT int dpiConn_setExternalName(dpiConn *conn, const char *value,
         uint32_t valueLength);
@@ -1229,6 +1239,10 @@ DPI_EXPORT int dpiConn_setOciAttr(dpiConn *conn, uint32_t handleType,
 
 // set the statement cache size
 DPI_EXPORT int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize);
+
+// set transaction priority associated with the connection
+DPI_EXPORT int dpiConn_setTransactionPriority(dpiConn *conn, const char *value,
+        uint32_t valueLength);
 
 // shutdown the database
 DPI_EXPORT int dpiConn_shutdownDatabase(dpiConn *conn, dpiShutdownMode mode);

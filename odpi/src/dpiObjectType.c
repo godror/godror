@@ -118,12 +118,10 @@ static int dpiObjectType__describe(dpiObjectType *objType,
         return DPI_FAILURE;
 
     // determine the package name of the type
-    if (objType->env->versionInfo->versionNum > 11) {
-        if (dpiUtils__getAttrStringWithDup("get package name", param,
-                DPI_OCI_DTYPE_PARAM, DPI_OCI_ATTR_PACKAGE_NAME,
-                &objType->packageName, &objType->packageNameLength, error) < 0)
-            return DPI_FAILURE;
-    }
+    if (dpiUtils__getAttrStringWithDup("get package name", param,
+            DPI_OCI_DTYPE_PARAM, DPI_OCI_ATTR_PACKAGE_NAME,
+            &objType->packageName, &objType->packageNameLength, error) < 0)
+        return DPI_FAILURE;
 
     // determine the number of attributes
     if (dpiOci__attrGet(param, DPI_OCI_DTYPE_PARAM,

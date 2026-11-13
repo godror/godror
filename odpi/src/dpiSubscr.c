@@ -253,10 +253,10 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
     // with 19.4 client and database
     mode = DPI_OCI_DEFAULT;
     if (params->clientInitiated) {
-        if (dpiUtils__checkClientVersion(conn->env->versionInfo, 19, 4,
+        if (dpiUtils__checkClientVersion(conn->env->versionInfo, 19, 4, 0,
                 error) < 0)
             return DPI_FAILURE;
-        if (dpiUtils__checkDatabaseVersion(conn, 19, 4, error) < 0)
+        if (dpiUtils__checkDatabaseVersion(conn, 19, 4, 0, error) < 0)
             return DPI_FAILURE;
         mode = DPI_OCI_SECURE_NOTIFICATION;
     }

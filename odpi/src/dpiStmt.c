@@ -649,17 +649,14 @@ static int dpiStmt__execute(dpiStmt *stmt, uint32_t numIters,
             return DPI_FAILURE;
     }
 
-    // fetch SQL_ID, if applicable
-    if (dpiUtils__checkClientVersion(stmt->env->versionInfo, 12, 2,
-            NULL) == DPI_SUCCESS) {
-        if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &sqlId,
-                &sqlIdLength, DPI_OCI_ATTR_SQL_ID, "get SQL_ID", error) < 0)
-            return DPI_FAILURE;
-        if (sqlIdLength > sizeof(stmt->sqlId))
-            sqlIdLength = sizeof(stmt->sqlId);
-        memcpy(stmt->sqlId, sqlId, sqlIdLength);
-        stmt->sqlIdLength = sqlIdLength;
-    }
+    // fetch SQL_ID
+    if (dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, &sqlId,
+            &sqlIdLength, DPI_OCI_ATTR_SQL_ID, "get SQL_ID", error) < 0)
+        return DPI_FAILURE;
+    if (sqlIdLength > sizeof(stmt->sqlId))
+        sqlIdLength = sizeof(stmt->sqlId);
+    memcpy(stmt->sqlId, sqlId, sqlIdLength);
+    stmt->sqlIdLength = sqlIdLength;
 
     // for queries, disable prefetch for subsequent fetches in order to avoid
     // the overhead of copying from prefetch buffers to our own buffers
@@ -1087,11 +1084,11 @@ static int dpiStmt__reExecute(dpiStmt *stmt, uint32_t numIters,
             continue;
         var = bindVar->var;
         bindVar->var = NULL;
-        if (dpiStmt__bind(stmt, var, bindVar->pos, bindVar->name,
-                bindVar->nameLength, error) < 0) {
-            dpiGen__setRefCount(var, error, -1);
+        status = dpiStmt__bind(stmt, var, bindVar->pos, bindVar->name,
+                bindVar->nameLength, error);
+        dpiGen__setRefCount(var, error, -1);
+        if (status < 0)
             return DPI_FAILURE;
-        }
     }
 
     // now re-execute the statement
@@ -1583,9 +1580,6 @@ int dpiStmt_getImplicitResult(dpiStmt *stmt, dpiStmt **implicitResult)
     if (dpiStmt__check(stmt, __func__, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(stmt, implicitResult)
-    if (dpiUtils__checkClientVersion(stmt->env->versionInfo, 12, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     if (dpiOci__stmtGetNextResult(stmt, &handle, &error) < 0)
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     *implicitResult = NULL;
@@ -1837,9 +1831,6 @@ int dpiStmt_getRowCounts(dpiStmt *stmt, uint32_t *numRowCounts,
         return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(stmt, numRowCounts)
     DPI_CHECK_PTR_NOT_NULL(stmt, rowCounts)
-    if (dpiUtils__checkClientVersion(stmt->env->versionInfo, 12, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(stmt, DPI_FAILURE, &error);
     status = dpiOci__attrGet(stmt->handle, DPI_OCI_HTYPE_STMT, rowCounts,
             numRowCounts, DPI_OCI_ATTR_DML_ROW_COUNT_ARRAY, "get row counts",
             &error);

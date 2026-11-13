@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2016, 2022, Oracle and/or its affiliates.
+// Copyright (c) 2016, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -227,8 +227,8 @@ int dpiEnv__init(dpiEnv *env, const dpiContext *context,
 
     // enable SODA metadata cache, if applicable
     if (params->sodaMetadataCache) {
-        if (dpiUtils__checkClientVersionMulti(env->versionInfo, 19, 11, 21, 3,
-                error) < 0)
+        if (dpiUtils__checkClientVersionMulti(env->versionInfo, 19, 11, 0, 21,
+                3, 0, error) < 0)
             return DPI_FAILURE;
         temp = 1;
         if (dpiOci__attrSet(env->handle, DPI_OCI_HTYPE_ENV, &temp, 0,

@@ -340,8 +340,8 @@ int dpiContext_initCommonCreateParams(const dpiContext *context,
             &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(context, params)
-    dpiContext__initCommonCreateParams(context, params);
 
+    dpiContext__initCommonCreateParams(context, params);
     return dpiGen__endPublicFn(context, DPI_SUCCESS, &error);
 }
 

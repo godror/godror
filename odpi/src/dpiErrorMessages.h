@@ -68,6 +68,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1035: size of the transaction ID is %u and cannot exceed %u", // DPI_ERR_TRANS_ID_TOO_LARGE
     "DPI-1036: size of the branch ID is %u and cannot exceed %u", // DPI_ERR_BRANCH_ID_TOO_LARGE
     "DPI-1037: column at array position %u fetched with error %u", // DPI_ERR_COLUMN_FETCH
+    "DPI-1038: unused", // DPI_ERR_1038_UNUSED
     "DPI-1039: statement was already closed", // DPI_ERR_STMT_CLOSED
     "DPI-1040: LOB was already closed", // DPI_ERR_LOB_CLOSED
     "DPI-1041: invalid character set id %d", // DPI_ERR_INVALID_CHARSET_ID
@@ -77,14 +78,17 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1045: strings converted to numbers can only be up to 172 characters long", // DPI_ERR_NUMBER_STRING_TOO_LONG
     "DPI-1046: parameter %s cannot be a NULL pointer", // DPI_ERR_NULL_POINTER_PARAMETER
     "DPI-1047: Cannot locate a %s-bit Oracle Client library: \"%s\". See %s for help", // DPI_ERR_LOAD_LIBRARY
+    "DPI-1048: unused", // DPI_ERR_1048_UNUSED
     "DPI-1049: symbol %s not found in OCI library", // DPI_ERR_LOAD_SYMBOL
-    "DPI-1050: Oracle Client library is at version %d.%d but version %d.%d or higher is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD
+    "DPI-1050: Oracle Client library is at version %d.%d.%d but version %d.%d.%d or higher is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD
+    "DPI-1051: unused", // DPI_ERR_1051_UNUSED
     "DPI-1052: unable to get NLS environment variable", // DPI_ERR_NLS_ENV_VAR_GET,
     "DPI-1053: parameter %s cannot be a NULL pointer while corresponding length parameter is non-zero", // DPI_ERR_PTR_LENGTH_MISMATCH
+    "DPI-1054: unused", // DPI_ERR_1054_UNUSED
     "DPI-1055: value is not a number (NaN) and cannot be used in Oracle numbers", // DPI_ERR_NAN
     "DPI-1056: found object of type %.*s.%.*s when expecting object of type %.*s.%.*s", // DPI_ERR_WRONG_TYPE
     "DPI-1057: buffer size of %u is too large (max %u)", // DPI_ERR_BUFFER_SIZE_TOO_LARGE
-    "DPI-1058: edition not supported with connection class", // DPI_ERR_NO_EDITION_WITH_CONN_CLASS
+    "DPI-1058: unused", // DPI_ERR_1058_UNUSED
     "DPI-1059: bind variables are not supported in DDL statements", // DPI_ERR_NO_BIND_VARS_IN_DDL
     "DPI-1060: subscription was already closed", // DPI_ERR_SUBSCR_CLOSED
     "DPI-1061: edition is not supported when a new password is specified", // DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD
@@ -92,7 +96,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1063: modes DPI_MODE_EXEC_BATCH_ERRORS and DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS can only be used with insert, update, delete and merge statements", // DPI_ERR_EXEC_MODE_ONLY_FOR_DML
     "DPI-1064: array variables are not supported with dpiStmt_executeMany()", // DPI_ERR_ARRAY_VAR_NOT_SUPPORTED
     "DPI-1065: events mode is required to subscribe to events in the database", // DPI_ERR_EVENTS_MODE_REQUIRED
-    "DPI-1066: Oracle Database is at version %d.%d but version %d.%d or higher is needed", // DPI_ERR_ORACLE_DB_TOO_OLD
+    "DPI-1066: Oracle Database is at version %d.%d.%d but version %d.%d.%d or higher is needed", // DPI_ERR_ORACLE_DB_TOO_OLD
     "DPI-1067: call timeout of %u ms exceeded with ORA-%05d", // DPI_ERR_CALL_TIMEOUT
     "DPI-1068: SODA cursor was already closed", // DPI_ERR_SODA_CURSOR_CLOSED
     "DPI-1069: proxy user name must be enclosed in [] when using external authentication", // DPI_ERR_EXT_AUTH_INVALID_PROXY
@@ -105,7 +109,7 @@ static const char* const dpiErrorMessages[DPI_ERR_MAX - DPI_ERR_NO_ERR] = {
     "DPI-1076: JSON node type %d is not supported", // DPI_ERR_UNHANDLED_JSON_NODE_TYPE
     "DPI-1077: JSON scalar type %d is not supported", // DPI_ERR_UNHANDLED_JSON_SCALAR_TYPE
     "DPI-1078: native type %d with Oracle type %d is not supported by JSON", // DPI_ERR_UNHANDLED_CONVERSION_TO_JSON
-    "DPI-1079: Oracle Client library is at version %d.%d but either version %d.%d (or later DBRU) or version %d.%d (or higher) is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI
+    "DPI-1079: Oracle Client library is at version %d.%d.%d but either version %d.%d.%d (or later DBRU) or version %d.%d.%d (or higher) is needed", // DPI_ERR_ORACLE_CLIENT_TOO_OLD_MULTI
     "DPI-1080: connection was closed by ORA-%05d", // DPI_ERR_CONN_CLOSED
     "DPI-1081: invalid dpiAccessToken structure. The token must contain a value", // DPI_ERR_TOKEN_BASED_AUTH
     "DPI-1082: invalid connection pool configuration for token based authentication. Both homogeneous and externalAuth fields in the dpiPoolCreateParams structure must be set to 1", //DPI_ERR_POOL_TOKEN_BASED_AUTH

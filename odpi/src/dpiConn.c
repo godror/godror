@@ -33,13 +33,12 @@
 // forward declarations of internal functions only used in this file
 static int dpiConn__attachExternal(dpiConn *conn, void *externalHandle,
         dpiError *error);
-static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
-        uint32_t userNameLength, const char *password, uint32_t passwordLength,
-        const char *connectString, uint32_t connectStringLength,
+static int dpiConn__createStandalone(dpiConn *conn,
+        const dpiCredentials *credentials, const char *connectString,
+        uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         const dpiConnCreateParams *createParams, dpiError *error);
-static int dpiConn__get(dpiConn *conn, const char *userName,
-        uint32_t userNameLength, const char *password, uint32_t passwordLength,
+static int dpiConn__get(dpiConn *conn, const dpiCredentials *credentials,
         const char *connectString, uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiPool *pool, dpiError *error);
@@ -49,8 +48,7 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         const char *connectString, uint32_t connectStringLength,
         dpiConnCreateParams *params, void *authInfo, dpiError *error);
 static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
-        uint32_t handleType, const char *userName, uint32_t userNameLength,
-        const char *password, uint32_t passwordLength,
+        uint32_t handleType, const dpiCredentials *credentials,
         const dpiCommonCreateParams *commonParams,
         const dpiConnCreateParams *params, int *used, dpiError *error);
 static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
@@ -144,11 +142,9 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
     // session if any errors take place
     txnInProgress = 0;
     if (!conn->deadSession && !conn->externalHandle && conn->sessionHandle) {
-        txnInProgress = 1;
-        if (conn->env->versionInfo->versionNum >= 12)
-            dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
-                    &txnInProgress, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
-                    NULL, error);
+        dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+                &txnInProgress, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
+                NULL, error);
     }
     if (txnInProgress &&
             dpiOci__transRollback(conn, propagateErrors, error) < 0)
@@ -323,9 +319,7 @@ static int dpiConn__close(dpiConn *conn, uint32_t mode, const char *tag,
         // release session
         if (conn->deadSession)
             mode |= DPI_OCI_SESSRLS_DROPSESS;
-        else if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 2,
-                NULL) == DPI_SUCCESS && (mode & DPI_MODE_CONN_CLOSE_RETAG) &&
-                tag && tagLength > 0)
+        else if ((mode & DPI_MODE_CONN_CLOSE_RETAG) && tag && tagLength > 0)
             mode |= DPI_OCI_SESSRLS_MULTIPROPERTY_TAG;
         if (dpiOci__sessionRelease(conn, tag, tagLength, mode, propagateErrors,
                 error) < 0)
@@ -373,8 +367,7 @@ int dpiConn__commit(dpiConn *conn, dpiError *error)
 //   Perform internal initialization of the connection.
 //-----------------------------------------------------------------------------
 int dpiConn__create(dpiConn *conn, const dpiContext *context,
-        const char *userName, uint32_t userNameLength, const char *password,
-        uint32_t passwordLength, const char *connectString,
+        const dpiCredentials *credentials, const char *connectString,
         uint32_t connectStringLength, dpiPool *pool,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error)
@@ -431,13 +424,11 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
             createParams->connectionClassLength > 0) ||
             createParams->shardingKeyColumns ||
             createParams->superShardingKeyColumns) {
-        status = dpiConn__get(conn, userName, userNameLength, password,
-                passwordLength, connectString, connectStringLength,
-                commonParams, createParams, pool, error);
+        status = dpiConn__get(conn, credentials, connectString,
+                connectStringLength, commonParams, createParams, pool, error);
     } else {
-        status = dpiConn__createStandalone(conn, userName, userNameLength,
-                password, passwordLength, connectString, connectStringLength,
-                commonParams, createParams, error);
+        status = dpiConn__createStandalone(conn, credentials, connectString,
+                connectStringLength, commonParams, createParams, error);
     }
 
     // mark connection as no longer being created so that subsequent errors
@@ -453,9 +444,9 @@ int dpiConn__create(dpiConn *conn, const dpiContext *context,
 //   Create a standalone connection to the database using the parameters
 // specified.
 //-----------------------------------------------------------------------------
-static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
-        uint32_t userNameLength, const char *password, uint32_t passwordLength,
-        const char *connectString, uint32_t connectStringLength,
+static int dpiConn__createStandalone(dpiConn *conn,
+        const dpiCredentials *credentials, const char *connectString,
+        uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         const dpiConnCreateParams *createParams, dpiError *error)
 {
@@ -493,7 +484,8 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
 
     // driver name and edition are only relevant for standalone connections
     if (dpiUtils__setAttributesFromCommonCreateParams(conn->sessionHandle,
-            DPI_OCI_HTYPE_SESSION, commonParams, error) < 0)
+            DPI_OCI_HTYPE_SESSION, commonParams, conn->env->versionInfo,
+            error) < 0)
         return DPI_FAILURE;
 
     // set access token for token based authentication
@@ -505,14 +497,8 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
 
     // populate attributes on the session handle
     if (dpiConn__setAttributesFromCreateParams(conn, conn->sessionHandle,
-            DPI_OCI_HTYPE_SESSION, userName, userNameLength, password,
-            passwordLength, commonParams, createParams, &used, error) < 0)
-        return DPI_FAILURE;
-
-    // set the session handle on the service context handle
-    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-            conn->sessionHandle, 0, DPI_OCI_ATTR_SESSION, "set session handle",
-            error) < 0)
+            DPI_OCI_HTYPE_SESSION, credentials, commonParams, createParams,
+            &used, error) < 0)
         return DPI_FAILURE;
 
     // if a new password is specified, change it (this also creates the session
@@ -531,8 +517,17 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
             authMode |= DPI_OCI_CPW_SYSDGD;
         if (createParams->authMode & DPI_MODE_AUTH_SYSKMT)
             authMode |= DPI_OCI_CPW_SYSKMT;
-        return dpiOci__passwordChange(conn, userName, userNameLength, password,
-                passwordLength, createParams->newPassword,
+
+        // OCIPasswordChange() expects the session handle to be attached to the
+        // service context before it is called.
+        if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+                conn->sessionHandle, 0, DPI_OCI_ATTR_SESSION,
+                "set session handle", error) < 0)
+            return DPI_FAILURE;
+
+        return dpiOci__passwordChange(conn, credentials->userName,
+                credentials->userNameLength, credentials->password,
+                credentials->passwordLength, createParams->newPassword,
                 createParams->newPasswordLength, authMode, error);
     }
 
@@ -543,6 +538,12 @@ static int dpiConn__createStandalone(dpiConn *conn, const char *userName,
     if (dpiOci__sessionBegin(conn, credentialType, authMode, error) < 0)
         return DPI_FAILURE;
     if (dpiConn__getServerCharset(conn, error) < 0)
+        return DPI_FAILURE;
+
+    // set the session handle on the service context handle
+    if (dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            conn->sessionHandle, 0, DPI_OCI_ATTR_SESSION, "set session handle",
+            error) < 0)
         return DPI_FAILURE;
 
     // set the statement cache size
@@ -607,8 +608,7 @@ void dpiConn__free(dpiConn *conn, dpiError *error)
 // method uses the simplified OCI session creation protocol which is required
 // when using pools and session tagging.
 //-----------------------------------------------------------------------------
-static int dpiConn__get(dpiConn *conn, const char *userName,
-        uint32_t userNameLength, const char *password, uint32_t passwordLength,
+static int dpiConn__get(dpiConn *conn, const dpiCredentials *credentials,
         const char *connectString, uint32_t connectStringLength,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiPool *pool, dpiError *error)
@@ -618,31 +618,23 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
     uint32_t mode;
     int used = 0;
 
-    // clear pointers if length is 0
-    if (userNameLength == 0)
-        userName = NULL;
-    if (passwordLength == 0)
-        password = NULL;
-
     // set things up for the call to acquire a session
     if (pool) {
         dpiGen__setRefCount(pool, error, 1);
         conn->pool = pool;
         mode = DPI_OCI_SESSGET_SPOOL;
         externalAuth = pool->externalAuth;
-        if (userName && pool->homogeneous)
+        if (credentials->userName && pool->homogeneous)
             return dpiError__set(error, "check proxy", DPI_ERR_INVALID_PROXY);
 
         // if the userName is provided but no password is provided and external
         // authentication is not being used, proxy authentication is taking
         // place
-        if (userName && !password && !externalAuth)
+        if (credentials->userName && !credentials->password && !externalAuth)
             mode |= DPI_OCI_SESSGET_CREDPROXY;
         if (createParams->matchAnyTag)
             mode |= DPI_OCI_SESSGET_SPOOL_MATCHANY;
-        if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 2,
-                NULL) == DPI_SUCCESS && createParams->tag &&
-                createParams->tagLength > 0)
+        if (createParams->tag && createParams->tagLength > 0)
             mode |= DPI_OCI_SESSGET_MULTIPROPERTY_TAG;
     } else {
         mode = DPI_OCI_SESSGET_STMTCACHE;
@@ -660,8 +652,8 @@ static int dpiConn__get(dpiConn *conn, const char *userName,
 
     // set attributes for create parameters
     if (dpiConn__setAttributesFromCreateParams(conn, authInfo,
-            DPI_OCI_HTYPE_AUTHINFO, userName, userNameLength, password,
-            passwordLength, commonParams, createParams, &used, error) < 0) {
+            DPI_OCI_HTYPE_AUTHINFO, credentials, commonParams, createParams,
+            &used, error) < 0) {
         dpiOci__handleFree(authInfo, DPI_OCI_HTYPE_AUTHINFO);
         return DPI_FAILURE;
     }
@@ -794,32 +786,22 @@ static int dpiConn__getInfo(dpiConn *conn, dpiError *error)
     // determine max identifier length; this is only available with Oracle
     // Client 12.2 and higher; databases older than 12.2 are known to be 30;
     // databases newer than that cannot be determined so zero is used.
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 2,
-            NULL) == DPI_SUCCESS) {
-        if (dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
-                &conn->info->maxIdentifierLength, NULL,
-                DPI_OCI_ATTR_MAX_IDENTIFIER_LEN, "get max identifier length",
-                error) < 0)
-            return DPI_FAILURE;
-    } else if (conn->versionInfo.versionNum < 12 ||
-            (conn->versionInfo.versionNum == 12 &&
-            conn->versionInfo.releaseNum < 2)) {
-        conn->info->maxIdentifierLength = 30;
-    }
+    if (dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            &conn->info->maxIdentifierLength, NULL,
+            DPI_OCI_ATTR_MAX_IDENTIFIER_LEN, "get max identifier length",
+            error) < 0)
+        return DPI_FAILURE;
 
     // determine max open cursors
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 1,
-            NULL) == DPI_SUCCESS) {
-        if (dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
-                &conn->info->maxOpenCursors, NULL,
-                DPI_OCI_ATTR_MAX_OPEN_CURSORS, "get max open cursors",
-                error) < 0)
-            return DPI_FAILURE;
-    }
+    if (dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
+            &conn->info->maxOpenCursors, NULL,
+            DPI_OCI_ATTR_MAX_OPEN_CURSORS, "get max open cursors",
+            error) < 0)
+        return DPI_FAILURE;
 
     // determine the server type, if possible; it is determined last in order
     // to ensure that only completely cached information is returned
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 4,
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 4, 0,
             NULL) == DPI_SUCCESS) {
         if (dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &temp8,
                 NULL, DPI_OCI_ATTR_SERVER_TYPE, "get server type", error) < 0)
@@ -1056,15 +1038,13 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
         dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
                 &conn->pool->pingTimeout, 0, DPI_OCI_ATTR_RECEIVE_TIMEOUT,
                 NULL, error);
-        if (conn->env->versionInfo->versionNum >= 12) {
-            dpiOci__attrGet(conn->serverHandle,
-                    DPI_OCI_HTYPE_SERVER, &savedBreakOnTimeout, NULL,
-                    DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT, NULL, error);
-            breakOnTimeout = 0;
-            dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
-                    &breakOnTimeout, 0, DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT,
-                    NULL, error);
-        }
+        dpiOci__attrGet(conn->serverHandle,
+                DPI_OCI_HTYPE_SERVER, &savedBreakOnTimeout, NULL,
+                DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT, NULL, error);
+        breakOnTimeout = 0;
+        dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
+                &breakOnTimeout, 0, DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT,
+                NULL, error);
 
         // if ping is successful, the connection is valid and can be returned;
         // restore original network parameters
@@ -1072,10 +1052,9 @@ static int dpiConn__getSession(dpiConn *conn, uint32_t mode,
             dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
                     &savedTimeout, 0, DPI_OCI_ATTR_RECEIVE_TIMEOUT, NULL,
                     error);
-            if (conn->env->versionInfo->versionNum >= 12)
-                dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
-                        &savedBreakOnTimeout, 0,
-                        DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT, NULL, error);
+            dpiOci__attrSet(conn->serverHandle, DPI_OCI_HTYPE_SERVER,
+                    &savedBreakOnTimeout, 0,
+                    DPI_OCI_ATTR_BREAK_ON_NET_TIMEOUT, NULL, error);
             break;
         }
 
@@ -1194,8 +1173,7 @@ static int dpiConn__setAppContext(void *handle, uint32_t handleType,
 // create parameters specified.
 //-----------------------------------------------------------------------------
 static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
-        uint32_t handleType, const char *userName, uint32_t userNameLength,
-        const char *password, uint32_t passwordLength,
+        uint32_t handleType, const dpiCredentials *credentials,
         const dpiCommonCreateParams *commonParams,
         const dpiConnCreateParams *params, int *used, dpiError *error)
 {
@@ -1207,17 +1185,25 @@ static int dpiConn__setAttributesFromCreateParams(dpiConn *conn, void *handle,
         *used = 1;
 
     // set credentials
-    if (userName && userNameLength > 0) {
-        if (dpiOci__attrSet(handle, handleType, (void*) userName,
-                userNameLength, DPI_OCI_ATTR_USERNAME, "set user name",
-                error) < 0)
+    if (credentials->userName) {
+        if (dpiOci__attrSet(handle, handleType, (void*) credentials->userName,
+                credentials->userNameLength, DPI_OCI_ATTR_USERNAME,
+                "set user name", error) < 0)
             return DPI_FAILURE;
         *used = 1;
     }
-    if (password && passwordLength > 0) {
-        if (dpiOci__attrSet(handle, handleType, (void*) password,
-                passwordLength, DPI_OCI_ATTR_PASSWORD, "set password",
-                error) < 0)
+    if (credentials->password) {
+        if (dpiOci__attrSet(handle, handleType, (void*) credentials->password,
+                credentials->passwordLength, DPI_OCI_ATTR_PASSWORD,
+                "set password", error) < 0)
+            return DPI_FAILURE;
+        *used = 1;
+    }
+    if (credentials->proxyUserName) {
+        if (dpiOci__attrSet(handle, handleType,
+                (void*) credentials->proxyUserName,
+                credentials->proxyUserNameLength, DPI_OCI_ATTR_PROXY_CLIENT,
+                "set proxy client", error) < 0)
             return DPI_FAILURE;
         *used = 1;
     }
@@ -1325,11 +1311,6 @@ static int dpiConn__setShardingKey(dpiConn *conn, void **shardingKey,
         dpiError *error)
 {
     uint8_t i;
-
-    // this is only supported on 12.2 and higher clients
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 2,
-            error) < 0)
-        return DPI_FAILURE;
 
     // create sharding key descriptor, if necessary
     if (dpiOci__descriptorAlloc(conn->env->handle, shardingKey,
@@ -1544,7 +1525,8 @@ static int dpiConn__startSessionlessTransaction(dpiConn *conn,
     dpiOciXID *ociXid;
 
     // perform checks
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, 0,
+            error) < 0)
         return DPI_FAILURE;
 
     // set the transaction id on the transaction, unless a transaction not
@@ -1628,7 +1610,8 @@ int dpiConn__suspendSessionlessTransaction(dpiConn *conn, uint32_t flag,
 {
     void *transactionHandle;
 
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 6, 0,
+            error) < 0)
         return DPI_FAILURE;
 
     // associate a transaction handle with the connection if one is not already
@@ -1821,6 +1804,7 @@ int dpiConn_create(const dpiContext *context, const char *userName,
 {
     dpiCommonCreateParams localCommonParams;
     dpiConnCreateParams localCreateParams;
+    dpiCredentials credentials;
     dpiConn *tempConn;
     dpiError error;
     int status;
@@ -1844,41 +1828,16 @@ int dpiConn_create(const dpiContext *context, const char *userName,
         createParams = &localCreateParams;
     }
 
-    // password must not be specified if external authentication is desired
-    if (createParams->externalAuth && password && passwordLength > 0) {
-        dpiError__set(&error, "verify no password with external auth",
-                DPI_ERR_EXT_AUTH_WITH_CREDENTIALS);
+    // validate credentials
+    if (dpiUtils__checkCredentials(userName, userNameLength, password,
+            passwordLength, createParams->externalAuth, &credentials,
+            &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
-    }
 
-    // the username must be enclosed within [] if external authentication
-    // with proxy is desired
-    if (createParams->externalAuth && userName && userNameLength > 0 &&
-            (userName[0] != '[' || userName[userNameLength - 1] != ']')) {
-        dpiError__set(&error, "verify proxy user name with external auth",
-                DPI_ERR_EXT_AUTH_INVALID_PROXY);
-        return dpiGen__endPublicFn(context, DPI_FAILURE, &error );
-    }
-
-    if (commonParams->accessToken) {
-
-        // externalAuth must be set to true for token based authentication
-        if (!createParams->externalAuth)
-            return dpiError__set(&error, "check externalAuth value",
-                    DPI_ERR_STANDALONE_TOKEN_BASED_AUTH);
-
-        // cannot set username for token based authentication
-        if (userName && userNameLength > 0)
-            return dpiError__set(&error, "verify user in token based auth",
-                DPI_ERR_EXT_AUTH_WITH_CREDENTIALS);
-    }
-
-    // connectionClass and edition cannot be specified at the same time
-    if (createParams->connectionClass &&
-            createParams->connectionClassLength > 0 &&
-            commonParams->edition && commonParams->editionLength > 0) {
-        dpiError__set(&error, "check edition/conn class",
-                DPI_ERR_NO_EDITION_WITH_CONN_CLASS);
+    // externalAuth must be set to true for token based authentication
+    if (commonParams->accessToken && !createParams->externalAuth) {
+        dpiError__set(&error, "check externalAuth value",
+                DPI_ERR_STANDALONE_TOKEN_BASED_AUTH);
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     }
 
@@ -1899,18 +1858,17 @@ int dpiConn_create(const dpiContext *context, const char *userName,
             dpiError__set(&error, "check pool", DPI_ERR_NOT_CONNECTED);
             return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
         }
-        status = dpiPool__acquireConnection(createParams->pool, userName,
-                userNameLength, password, passwordLength, createParams, conn,
-                &error);
+        status = dpiPool__acquireConnection(createParams->pool, &credentials,
+                createParams, conn, &error);
         return dpiGen__endPublicFn(context, status, &error);
     }
 
     // create connection
     if (dpiGen__allocate(DPI_HTYPE_CONN, NULL, (void**) &tempConn, &error) < 0)
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
-    if (dpiConn__create(tempConn, context, userName, userNameLength,
-            password, passwordLength, connectString, connectStringLength,
-            NULL, commonParams, createParams, &error) < 0) {
+    if (dpiConn__create(tempConn, context, &credentials, connectString,
+            connectStringLength, NULL, commonParams, createParams,
+            &error) < 0) {
         dpiConn__free(tempConn, &error);
         return dpiGen__endPublicFn(context, DPI_FAILURE, &error);
     }
@@ -2002,7 +1960,7 @@ int dpiConn_enqObject(dpiConn *conn, const char *queueName,
 //-----------------------------------------------------------------------------
 // dpiConn_getCallTimeout() [PUBLIC]
 //   Return the call timeout (in milliseconds) used for round-trips to the
-// database. This is only valid in Oracle Client 18c and higher.
+// database.
 //-----------------------------------------------------------------------------
 int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value)
 {
@@ -2013,9 +1971,6 @@ int dpiConn_getCallTimeout(dpiConn *conn, uint32_t *value)
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, value)
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
 
     // get call timeout
     status = dpiOci__attrGet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
@@ -2214,9 +2169,6 @@ int dpiConn_getMaxOpenCursors(dpiConn *conn, uint32_t *maxOpenCursors)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     DPI_CHECK_PTR_NOT_NULL(conn, maxOpenCursors)
 
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 12, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__attrGet(conn->sessionHandle, DPI_OCI_HTYPE_SESSION,
             maxOpenCursors, NULL, DPI_OCI_ATTR_MAX_OPEN_CURSORS,
             "get max open cursors", &error);
@@ -2387,10 +2339,7 @@ int dpiConn_getSodaDb(dpiConn *conn, dpiSodaDb **db)
 
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 3,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiUtils__checkDatabaseVersion(conn, 18, 0, &error) < 0)
+    if (dpiUtils__checkDatabaseVersion(conn, 18, 0, 0, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiGen__allocate(DPI_HTYPE_SODA_DB, conn->env, (void**) db,
             &error) < 0)
@@ -2439,6 +2388,37 @@ int dpiConn_getTransactionInProgress(dpiConn *conn, int *value)
             &temp, NULL, DPI_OCI_ATTR_TRANSACTION_IN_PROGRESS,
             "get Transaction in progress", &error);
     *value = (temp == 0) ? 0: 1;
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+//-----------------------------------------------------------------------------
+// dpiConn_getTransactionPriority() [PUBLIC]
+//   Get transaction priority associated with the connection.
+//-----------------------------------------------------------------------------
+int dpiConn_getTransactionPriority(dpiConn *conn, const char **value,
+        uint32_t *valueLength)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_NOT_NULL(conn, value)
+    DPI_CHECK_PTR_NOT_NULL(conn, valueLength)
+
+    // transaction priority requires 23.26.2 for both the database and the
+    // client
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 26, 2,
+             &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkDatabaseVersion(conn, 23, 26, 2, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+
+    // get the value
+    status = dpiOci__attrGet(conn->sessionHandle,
+            DPI_OCI_HTYPE_SESSION, (void*) value, valueLength,
+            DPI_OCI_ATTR_TXN_PRIORITY, "get transaction priority", &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
 
@@ -2766,9 +2746,6 @@ int dpiConn_setCallTimeout(dpiConn *conn, uint32_t value)
     // validate parameters
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 18, 1,
-            &error) < 0)
-        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
 
     // set call timeout
     status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &value,
@@ -2833,6 +2810,33 @@ int dpiConn_setEcontextId(dpiConn *conn, const char *value,
 {
     return dpiConn__setAttributeText(conn, DPI_OCI_ATTR_ECONTEXT_ID, value,
             valueLength, __func__);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_setEndUserSecurityContextFromOson() [PUBLIC]
+//   Set the complete end user security context OSON payload on the OCI service
+// context handle.
+//-----------------------------------------------------------------------------
+int dpiConn_setEndUserSecurityContextFromOson(dpiConn *conn,
+        const void *oson, uint32_t osonLength)
+{
+    dpiError error;
+    int status;
+
+    if (dpiGen__startPublicFn(conn, DPI_HTYPE_CONN, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, oson)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 26, 4,
+            &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkDatabaseVersion(conn, 23, 26, 2, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+
+    status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, (void *) oson,
+            osonLength, DPI_OCI_ATTR_XS_AUTHZ_CTX,
+            "set end user security context", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
 }
 
 
@@ -2922,6 +2926,37 @@ int dpiConn_setStmtCacheSize(dpiConn *conn, uint32_t cacheSize)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX, &cacheSize, 0,
             DPI_OCI_ATTR_STMTCACHESIZE, "set stmt cache size", &error);
+    return dpiGen__endPublicFn(conn, status, &error);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiConn_setTransactionPriority() [PUBLIC]
+//   Set transaction priority associated with the connection.
+//-----------------------------------------------------------------------------
+int dpiConn_setTransactionPriority(dpiConn *conn, const char *value,
+        uint32_t valueLength)
+{
+    dpiError error;
+    int status;
+
+    // validate parameters
+    if (dpiConn__check(conn, __func__, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    DPI_CHECK_PTR_AND_LENGTH(conn, value)
+
+    // transaction priority requires 23.26.2 for both the database and the
+    // client
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 26, 2,
+             &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+    if (dpiUtils__checkDatabaseVersion(conn, 23, 26, 2, &error) < 0)
+        return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
+
+    // set the value
+    status = dpiOci__attrSet(conn->handle, DPI_OCI_HTYPE_SVCCTX,
+            (void*) value, valueLength, DPI_OCI_ATTR_TXN_PRIORITY,
+            "set transaction priority", &error);
     return dpiGen__endPublicFn(conn, status, &error);
 }
 

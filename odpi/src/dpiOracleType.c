@@ -590,8 +590,7 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
     }
 
     // determine if the data refers to a JSON column
-    if (handleType == DPI_OCI_HTYPE_DESCRIBE &&
-            conn->env->versionInfo->versionNum >= 19) {
+    if (handleType == DPI_OCI_HTYPE_DESCRIBE) {
         if (dpiOci__attrGet(handle, handleType, (void*) &isJson, 0,
                 DPI_OCI_ATTR_JSON_COL, "get is JSON column", error) < 0)
             return DPI_FAILURE;

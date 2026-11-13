@@ -40,7 +40,8 @@ int dpiVector__allocate(dpiConn *conn, dpiVector **vector, dpiError *error)
 {
     dpiVector *tempVector;
 
-    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 4, error) < 0)
+    if (dpiUtils__checkClientVersion(conn->env->versionInfo, 23, 4, 0,
+            error) < 0)
         return DPI_FAILURE;
     if (dpiGen__allocate(DPI_HTYPE_VECTOR, conn->env, (void**) &tempVector,
             error) < 0)

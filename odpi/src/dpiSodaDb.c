@@ -263,7 +263,8 @@ int dpiSodaDb_createJsonDocument(dpiSodaDb *db, const char *key,
     DPI_CHECK_PTR_NOT_NULL(db, doc)
 
     // only supported in Oracle Client 23ai+
-    if (dpiUtils__checkClientVersion(db->env->versionInfo, 23, 4, &error) < 0)
+    if (dpiUtils__checkClientVersion(db->env->versionInfo, 23, 4, 0,
+            &error) < 0)
         return dpiGen__endPublicFn(db, DPI_FAILURE, &error);
 
     // create document

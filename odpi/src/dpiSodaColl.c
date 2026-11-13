@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// Copyright (c) 2018, 2024, Oracle and/or its affiliates.
+// Copyright (c) 2018, 2026, Oracle and/or its affiliates.
 //
 // This software is dual-licensed to you under the Universal Permissive License
 // (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl and Apache License
@@ -321,8 +321,8 @@ int dpiSodaColl__listIndexes(dpiSodaColl *coll, uint32_t flags,
     int exists, status;
     char *ptr;
 
-    if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 13,
-            21, 3, error) < 0)
+    if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 13, 0,
+            21, 3, 0, error) < 0)
         return DPI_FAILURE;
     if (dpiOci__sodaIndexList(coll, flags, &listHandle, error) < 0)
         return DPI_FAILURE;
@@ -404,7 +404,7 @@ static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
 
     // set fetch array size, if applicable (only available in 19.5+ client)
     if (options->fetchArraySize > 0) {
-        if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 5,
+        if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 5, 0,
                 error) < 0)
             return DPI_FAILURE;
         if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
@@ -417,7 +417,7 @@ static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
     // set hint, if applicable (only available in 19.11+/21.3+ client)
     if (options->hintLength > 0) {
         if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, error) < 0)
+                0, 21, 3, 0, error) < 0)
             return DPI_FAILURE;
         if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
                 (void*) options->hint, options->hintLength,
@@ -428,7 +428,7 @@ static int dpiSodaColl__populateOperOptions(dpiSodaColl *coll,
     // set lock, if applicable (only available in 19.11+/21.3+ client)
     if (options->lock) {
         if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, error) < 0)
+                0, 21, 3, 0, error) < 0)
             return DPI_FAILURE;
         if (dpiOci__attrSet(handle, DPI_OCI_HTYPE_SODA_OPER_OPTIONS,
                 (void*) &options->lock, 0, DPI_OCI_ATTR_SODA_LOCK, "set lock",
@@ -852,16 +852,11 @@ int dpiSodaColl_insertManyWithOptions(dpiSodaColl *coll, uint32_t numDocs,
             return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
     }
 
-    // bulk insert is only supported with Oracle Client 18.5+
-    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 18, 5,
-            &error) < 0)
-        return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
-
     // if options specified and the newly created document is to be returned,
     // create the operation options handle
     if (insertedDocs && options) {
         if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
+                0, 21, 3, 0, &error) < 0)
             return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
         if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
                 &error) < 0)
@@ -922,7 +917,7 @@ int dpiSodaColl_insertOneWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
     // create the operation options handle
     if (insertedDoc && options) {
         if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
+                0, 21, 3, 0, &error) < 0)
             return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
         if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
                 &error) < 0)
@@ -1079,7 +1074,7 @@ int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
     // save is only supported with Oracle Client 19.9+
-    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 9,
+    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 19, 9, 0,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
@@ -1087,7 +1082,7 @@ int dpiSodaColl_saveWithOptions(dpiSodaColl *coll, dpiSodaDoc *doc,
     // create the operation options handle
     if (savedDoc && options) {
         if (dpiUtils__checkClientVersionMulti(coll->env->versionInfo, 19, 11,
-                21, 3, &error) < 0)
+                0, 21, 3, 0, &error) < 0)
             return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
         if (dpiSodaColl__createOperOptions(coll, options, &optionsHandle,
                 &error) < 0)
@@ -1115,7 +1110,7 @@ int dpiSodaColl_truncate(dpiSodaColl *coll)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 
     // truncate is only supported with Oracle Client 20+
-    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 20, 1,
+    if (dpiUtils__checkClientVersion(coll->env->versionInfo, 20, 1, 0,
             &error) < 0)
         return dpiGen__endPublicFn(coll, DPI_FAILURE, &error);
 

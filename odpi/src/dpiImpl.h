@@ -305,6 +305,7 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_CHDES_ROW_ROWID                412
 #define DPI_OCI_ATTR_CHDES_ROW_OPFLAGS              413
 #define DPI_OCI_ATTR_CHNF_REGHANDLE                 414
+#define DPI_OCI_ATTR_PROXY_CLIENT                   416
 #define DPI_OCI_ATTR_CQDES_OPERATION                422
 #define DPI_OCI_ATTR_CQDES_TABLE_CHANGES            423
 #define DPI_OCI_ATTR_CQDES_QUERYID                  424
@@ -375,6 +376,8 @@ extern unsigned long dpiDebugLevel;
 #define DPI_OCI_ATTR_VECTOR_DATA_FORMAT             696
 #define DPI_OCI_ATTR_VECTOR_PROPERTY                697
 #define DPI_OCI_ATTR_VECTOR_SPARSE_DIMENSION        717
+#define DPI_OCI_ATTR_TXN_PRIORITY                   748
+#define DPI_OCI_ATTR_XS_AUTHZ_CTX                   767
 
 // define OCI object type constants
 #define DPI_OCI_OTYPE_NAME                          1
@@ -636,6 +639,7 @@ typedef enum {
     DPI_ERR_TRANS_ID_TOO_LARGE,
     DPI_ERR_BRANCH_ID_TOO_LARGE,
     DPI_ERR_COLUMN_FETCH,
+    DPI_ERR_1038_UNUSED,
     DPI_ERR_STMT_CLOSED,
     DPI_ERR_LOB_CLOSED,
     DPI_ERR_INVALID_CHARSET_ID,
@@ -645,14 +649,17 @@ typedef enum {
     DPI_ERR_NUMBER_STRING_TOO_LONG,
     DPI_ERR_NULL_POINTER_PARAMETER,
     DPI_ERR_LOAD_LIBRARY,
+    DPI_ERR_1048_UNUSED,
     DPI_ERR_LOAD_SYMBOL,
     DPI_ERR_ORACLE_CLIENT_TOO_OLD,
+    DPI_ERR_1051_UNUSED,
     DPI_ERR_NLS_ENV_VAR_GET,
     DPI_ERR_PTR_LENGTH_MISMATCH,
+    DPI_ERR_1054_UNUSED,
     DPI_ERR_NAN,
     DPI_ERR_WRONG_TYPE,
     DPI_ERR_BUFFER_SIZE_TOO_LARGE,
-    DPI_ERR_NO_EDITION_WITH_CONN_CLASS,
+    DPI_ERR_1058_UNUSED,
     DPI_ERR_NO_BIND_VARS_IN_DDL,
     DPI_ERR_SUBSCR_CLOSED,
     DPI_ERR_NO_EDITION_WITH_NEW_PASSWORD,
@@ -1247,6 +1254,16 @@ typedef struct {
     void **msgIds;                      // array of OCI message ids
 } dpiQueueBuffer;
 
+// stores credentials used when creating standalone connections and pools
+typedef struct {
+    const char *userName;               // effective user name
+    uint32_t userNameLength;            // length of effective user name
+    const char *password;               // password
+    uint32_t passwordLength;            // length of password
+    const char *proxyUserName;          // parsed proxy user name
+    uint32_t proxyUserNameLength;       // length of parsed proxy user name
+} dpiCredentials;
+
 
 //-----------------------------------------------------------------------------
 // External implementation type definitions
@@ -1707,8 +1724,7 @@ int dpiOracleType__populateTypeInfo(dpiConn *conn, void *handle,
 //-----------------------------------------------------------------------------
 int dpiConn__checkConnected(dpiConn *conn, dpiError *error);
 int dpiConn__create(dpiConn *conn, const dpiContext *context,
-        const char *userName, uint32_t userNameLength, const char *password,
-        uint32_t passwordLength, const char *connectString,
+        const dpiCredentials *credentials, const char *connectString,
         uint32_t connectStringLength, dpiPool *pool,
         const dpiCommonCreateParams *commonParams,
         dpiConnCreateParams *createParams, dpiError *error);
@@ -1725,9 +1741,9 @@ int dpiConn__suspendSessionlessTransaction(dpiConn *conn, uint32_t flag,
 //-----------------------------------------------------------------------------
 // definition of internal dpiPool methods
 //-----------------------------------------------------------------------------
-int dpiPool__acquireConnection(dpiPool *pool, const char *userName,
-        uint32_t userNameLength, const char *password, uint32_t passwordLength,
-        dpiConnCreateParams *params, dpiConn **conn, dpiError *error);
+int dpiPool__acquireConnection(dpiPool *pool,
+        const dpiCredentials *credentials, dpiConnCreateParams *params,
+        dpiConn **conn, dpiError *error);
 void dpiPool__free(dpiPool *pool, dpiError *error);
 
 
@@ -2271,12 +2287,17 @@ int dpiStringList__addElement(dpiStringList *list, const char *value,
 int dpiUtils__allocateMemory(size_t numMembers, size_t memberSize,
         int clearMemory, const char *action, void **ptr, dpiError *error);
 int dpiUtils__checkClientVersion(dpiVersionInfo *versionInfo,
-        int minVersionNum, int minReleaseNum, dpiError *error);
+        int minVersionNum, int minReleaseNum, int minUpdateNum,
+        dpiError *error);
 int dpiUtils__checkClientVersionMulti(dpiVersionInfo *versionInfo,
-        int minVersionNum1, int minReleaseNum1, int minVersionNum2,
-        int minReleaseNum2, dpiError *error);
+        int minVersionNum1, int minReleaseNum1, int minUpdateNum1,
+        int minVersionNum2, int minReleaseNum2, int minUpdateNum2,
+        dpiError *error);
+int dpiUtils__checkCredentials(const char *userName, uint32_t userNameLength,
+        const char *password, uint32_t passwordLength, int externalAuth,
+        dpiCredentials *credentials, dpiError *error);
 int dpiUtils__checkDatabaseVersion(dpiConn *conn, int minVersionNum,
-        int minReleaseNum, dpiError *error);
+        int minReleaseNum, int minUpdateNum, dpiError *error);
 void dpiUtils__clearMemory(void *ptr, size_t length);
 int dpiUtils__ensureBuffer(size_t desiredSize, const char *action,
         void **ptr, size_t *currentSize, dpiError *error);
@@ -2298,7 +2319,7 @@ int dpiUtils__parseOracleNumber(void *oracleValue, int *isNegative,
         dpiError *error);
 int dpiUtils__setAttributesFromCommonCreateParams(void *handle,
         uint32_t handleType, const dpiCommonCreateParams *params,
-        dpiError *error);
+        dpiVersionInfo *versionInfo, dpiError *error);
 int dpiUtils__setAccessTokenAttributes(void *handle,
         dpiAccessToken *accessToken, dpiVersionInfo *versionInfo,
         dpiError *error);
