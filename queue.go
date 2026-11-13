@@ -207,10 +207,11 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 
 	if guardWithFinalizers.Load() {
 		if !logLingeringResourceStack.Load() {
+			// Pass a copy of the innards: a pointer into Q would keep Q reachable.
 			Q.cleanup = runtime.AddCleanup(
 				&Q,
-				func(Q *queueInnards) {
-					addr := fmt.Sprintf("%p", Q)
+				func(Q queueInnards) {
+					addr := fmt.Sprintf("%p", Q.dpiQueue)
 					if logger := getLogger(context.Background()); logger != nil {
 						logger.Error("queue of NewQueue is not Closed!", "queue", addr)
 					} else {
@@ -218,7 +219,7 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 					}
 					Q.Close()
 				},
-				&Q.queueInnards,
+				Q.queueInnards,
 			)
 		} else {
 			var a [4096]byte
