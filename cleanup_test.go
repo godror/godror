@@ -19,7 +19,7 @@ import (
 )
 
 // TestGuardCleanupRuns checks that with GuardWithFinalizers(true) the
-// runtime.AddCleanup guards on statement, Object, ObjectType and Queue
+// cleanup guards on statement, Object, ObjectType and Queue
 // can be registered and actually run when the resource is dropped without Close.
 //
 // A cleanup whose closure or arg keeps the tracked object reachable never runs
@@ -186,4 +186,3 @@ END;`); err != nil {
 		t.Errorf("cleanup release failed: %s", out)
 	}
 }
-

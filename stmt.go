@@ -345,7 +345,7 @@ var _ driver.NamedValueChecker = (*statement)(nil)
 
 type (
 	statement struct {
-		*statementInnards
+		statementInnards
 		ctx context.Context
 		*conn
 		query    string
@@ -364,7 +364,6 @@ type (
 		dpiStmt *C.dpiStmt
 		vars    []*C.dpiVar
 		tbc     []io.Closer
-		cleanup runtime.Cleanup
 	}
 	dataGetter func(ctx context.Context, v any, data []C.dpiData) error
 )
@@ -409,7 +408,6 @@ func (st *statement) closeNotLocking(ctx context.Context) error {
 }
 
 func (st *statementInnards) close(ctx context.Context) error {
-	st.cleanup.Stop()
 	if st.dpiStmt == nil {
 		return nil
 	}
@@ -2811,7 +2809,7 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 	}
 	st2 := &statement{
 		conn:             st.conn,
-		statementInnards: &statementInnards{dpiStmt: C.dpiData_getStmt(data)},
+		statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(data)},
 		stmtOptions:      st.stmtOptions, // inherit parent statement's options
 	}
 
@@ -3735,38 +3733,27 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 		return
 	}
 	logger := getLogger(ctx)
-	if !logLingeringResourceStack.Load() {
-		st.cleanup = runtime.AddCleanup(
-			st,
-			func(st *statementInnards) {
-				addr := fmt.Sprintf("%p", st)
-				if logger != nil {
-					logger.Error("statement is not closed", "stmt", addr, "tag", tag)
-				} else {
-					fmt.Printf("ERROR: statement %s of %s is not closed!\n", addr, tag)
-				}
-				st.close(ctx)
-			},
-			st.statementInnards,
-		)
-		return
-	}
 
 	// Store the current stack for printing later.
-	n := atomic.LoadUint32(&maxStackSize)
 	var stack []byte
-	for {
-		stack = make([]byte, n)
-		stack = stack[:runtime.Stack(stack, false)]
-		if len(stack) < cap(stack) {
-			break
+	if logLingeringResourceStack.Load() {
+		n := atomic.LoadUint32(&maxStackSize)
+		for {
+			stack = make([]byte, n)
+			stack = stack[:runtime.Stack(stack, false)]
+			if len(stack) < cap(stack) {
+				break
+			}
+			n *= 2
 		}
-		n *= 2
-	}
-	if atomic.LoadUint32(&maxStackSize) < n {
-		atomic.StoreUint32(&maxStackSize, n)
+		if atomic.LoadUint32(&maxStackSize) < n {
+			atomic.StoreUint32(&maxStackSize, n)
+		}
 	}
 
+	// A finalizer, not runtime.AddCleanup: the cleanup would need the
+	// embedded statementInnards, and a pointer to it keeps st reachable,
+	// so the cleanup would never run.
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
 			if logger != nil {
