@@ -500,8 +500,13 @@ func (p *connPool) Purge() {
 	dpiPool := p.dpiPool
 	p.dpiPool = nil
 	if dpiPool != nil {
-		UnRegisterTokenCallback(p.wrapTokenCallBackCtx)
-		C.dpiPool_close(dpiPool, C.DPI_MODE_POOL_CLOSE_FORCE)
+		// Close the pool before freeing the token callback context:
+		// a session acquisition in progress may be inside the callback.
+		// If the close fails, the context is leaked instead of freed.
+		if C.dpiPool_close(dpiPool, C.DPI_MODE_POOL_CLOSE_FORCE) == C.DPI_SUCCESS {
+			UnRegisterTokenCallback(p.wrapTokenCallBackCtx)
+			p.wrapTokenCallBackCtx = nil
+		}
 	}
 }
 
