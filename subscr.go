@@ -93,8 +93,14 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		return
 	}
 	subscriptionsMu.Lock()
-	subscr := subscriptions[*((*uint64)(ctx))]
+	var callback func(Event)
+	if subscr := subscriptions[*((*uint64)(ctx))]; subscr != nil {
+		callback = subscr.callback
+	}
 	subscriptionsMu.Unlock()
+	if callback == nil {
+		return
+	}
 
 	getRows := func(rws *C.dpiSubscrMessageRow, rwsNum C.uint32_t) []RowEvent {
 		if rwsNum == 0 {
@@ -157,7 +163,7 @@ func CallbackSubscr(ctx unsafe.Pointer, message *C.dpiSubscrMessage) {
 		Tables:  getTables(message.tables, message.numTables),
 		Queries: getQueries(message.queries, message.numQueries),
 	}
-	subscr.callback(evt)
+	callback(evt)
 }
 
 // Event for a subscription.
@@ -255,6 +261,9 @@ func (c *conn) NewSubscription(name string, cb func(Event), options ...Subscript
 		return C.dpiConn_subscribe(c.dpiConn, params, (**C.dpiSubscr)(unsafe.Pointer(&dpiSubscr)))
 	}); err != nil {
 		C.free(unsafe.Pointer(dpiSubscr))
+		subscriptionsMu.Lock()
+		delete(subscriptions, subscr.ID)
+		subscriptionsMu.Unlock()
 		C.free(params.callbackContext)
 		err = fmt.Errorf("newSubscription: %w", err)
 		if strings.Contains(errors.Unwrap(err).Error(), "DPI-1065:") {
@@ -303,19 +312,27 @@ func (s *Subscription) Register(qry string, params ...any) error {
 //
 // This code is EXPERIMENTAL yet!
 func (s *Subscription) Close() error {
+	dpiSubscr, conn, subscrID := s.dpiSubscr, s.conn, s.subscrID
+	// Unsubscribe first: ODPI-C holds the subscription's mutex while it runs
+	// the callback, and dpiConn_unsubscribe takes that mutex, so once it
+	// returns no callback is running or will run with subscrID as context.
+	unsubscribed := dpiSubscr == nil
+	if dpiSubscr != nil && conn != nil && conn.dpiConn != nil {
+		if err := conn.checkExec(func() C.int { return C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) }); err != nil {
+			return fmt.Errorf("close: %w", err)
+		}
+		unsubscribed = true
+	}
 	subscriptionsMu.Lock()
 	delete(subscriptions, s.ID)
+	s.callback = nil
 	subscriptionsMu.Unlock()
-	dpiSubscr, conn, subscrID := s.dpiSubscr, s.conn, s.subscrID
-	s.dpiSubscr, s.conn, s.callback, s.subscrID = nil, nil, nil, nil
-	if subscrID != nil {
+	s.dpiSubscr, s.conn, s.subscrID = nil, nil, nil
+	// If the subscription could not be unregistered, the C context may still
+	// be passed to a callback, so it is not freed (CallbackSubscr finds no
+	// registry entry for it and returns).
+	if subscrID != nil && unsubscribed {
 		C.free(unsafe.Pointer(subscrID))
-	}
-	if dpiSubscr == nil || conn == nil || conn.dpiConn == nil {
-		return nil
-	}
-	if err := conn.checkExec(func() C.int { return C.dpiConn_unsubscribe(conn.dpiConn, dpiSubscr) }); err != nil {
-		return fmt.Errorf("close: %w", err)
 	}
 	return nil
 }
