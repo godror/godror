@@ -90,12 +90,6 @@ func UnRegisterTokenCallback(ptr unsafe.Pointer) {
 	}
 	ctx := (*C.godrorHwrap)(ptr)
 	h := cgo.Handle(ctx.handle)
-	if ctx.token != nil {
-		C.free(unsafe.Pointer(ctx.token))
-	}
-	if ctx.privateKey != nil {
-		C.free(unsafe.Pointer(ctx.privateKey))
-	}
 	h.Delete()
-	C.free(ptr)
+	C.godrorUnwrapHandle(ptr)
 }
