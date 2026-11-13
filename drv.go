@@ -514,7 +514,14 @@ func (p *connPool) Close() error {
 	dpiPool := p.dpiPool
 	p.dpiPool = nil
 	if dpiPool != nil {
+		// The token callback context can only be freed once the ODPI-C pool
+		// is gone, which is when this is the last reference to it.
+		last := dpiPool.refCount <= 1
 		C.dpiPool_release(dpiPool)
+		if last {
+			UnRegisterTokenCallback(p.wrapTokenCallBackCtx)
+			p.wrapTokenCallBackCtx = nil
+		}
 	}
 	return nil
 }
