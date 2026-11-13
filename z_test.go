@@ -5685,7 +5685,7 @@ func TestGetCurrentSchema(t *testing.T) {
 func TestBoolSlice(t *testing.T) {
 	ctx, cancel := testContext(t, 30*time.Second)
 	defer cancel()
-	const tbl = "test_bool_slice_t"
+	tbl := "test_bool_slice" + tblSuffix
 	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
 	qry := "CREATE TABLE " + tbl + " (F_id NUMBER(3), F_bool BOOLEAN)"
 	if _, err := testDb.ExecContext(ctx, qry); err != nil {
