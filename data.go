@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"runtime"
 	"strconv"
 	"time"
 	"unsafe"
@@ -27,11 +28,20 @@ import (
 
 // Data holds the data to/from Oracle.
 type Data struct {
-	ObjectType    *ObjectType
+	ObjectType *ObjectType
+	// keepAlive holds Go memory that dpiData.value points to.
+	// The GC can't see pointers stored in the C union, so without this
+	// the memory could be freed while ODPI-C still reads or writes it.
+	keepAlive []byte
+	// varRef keeps the dpiVar whose buffers dpiData points to (NewData).
+	varRef        *dataVarRef
 	dpiData       C.dpiData
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
 }
+
+// dataVarRef releases its dpiVar when no Data refers to it anymore.
+type dataVarRef struct{ dpiVar *C.dpiVar }
 
 const (
 	NativeTypeInt64      = C.DPI_NATIVE_TYPE_INT64
@@ -116,6 +126,7 @@ func (d *Data) SetBytes(b []byte) {
 		return
 	}
 	d.NativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+	d.keepAlive = b
 	C.dpiData_setBytes(&d.dpiData, (*C.char)(unsafe.Pointer(&b[0])), C.uint32_t(len(b)))
 }
 
@@ -582,11 +593,14 @@ func (c *conn) NewData(baseType any, sliceLen, bufSize int) ([]*Data, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer C.dpiVar_release(v)
+	// The Data entries point into v's buffers, so v must live as long as
+	// any of them: release it only when none of them is reachable.
+	ref := &dataVarRef{dpiVar: v}
+	runtime.AddCleanup(ref, func(v *C.dpiVar) { C.dpiVar_release(v) }, v)
 
 	data := make([]*Data, sliceLen)
 	for i := 0; i < sliceLen; i++ {
-		data[i] = &Data{dpiData: dpiData[i], NativeTypeNum: vi.NatTyp}
+		data[i] = &Data{dpiData: dpiData[i], NativeTypeNum: vi.NatTyp, varRef: ref}
 	}
 
 	return data, nil
@@ -685,6 +699,8 @@ func (d *Data) reset(null bool) {
 	d.NativeTypeNum = 0
 	d.ObjectType = nil
 	d.implicitObj = false
+	d.keepAlive = nil
+	d.varRef = nil
 	d.dpiData.isNull = C.int(b2i(null))
 }
 
@@ -708,7 +724,10 @@ func (d *Data) prepare(oracleTypeNum C.uint) {
 	// If the native type is DPI_NATIVE_TYPE_BYTES and the Oracle type of the attribute is DPI_ORACLE_TYPE_NUMBER, a buffer must be supplied in the value.asBytes.ptr attribute and the maximum length of that buffer must be supplied in the value.asBytes.length attribute before calling this function. For all other conversions, the buffer is supplied by the library and remains valid as long as a reference to the object is held.
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES &&
 		oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
-		var a [39]byte
+		// ODPI-C writes the number text into this buffer later, and GetBytes
+		// reads it from there, so it must outlive this call: keep it in d.
+		a := make([]byte, 39)
+		d.keepAlive = a
 		C.dpiData_setBytes(&d.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(len(a)))
 	}
 }
