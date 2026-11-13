@@ -59,9 +59,10 @@ static void dpiSubscr__callback(dpiSubscr *subscr, UNUSED void *handle,
         return;
     }
 
-    // if the subscription is no longer registered, nothing further to do
+    // if the subscription is no longer registered, or is being unregistered,
+    // nothing further to do (see dpiSubscr__unregister())
     dpiMutex__acquire(subscr->mutex);
-    if (!subscr->registered) {
+    if (!subscr->registered || subscr->unregistering) {
         dpiMutex__release(subscr->mutex);
         dpiGen__endPublicFn(subscr, DPI_SUCCESS, &error);
         return;
@@ -285,10 +286,10 @@ int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
 //-----------------------------------------------------------------------------
 void dpiSubscr__free(dpiSubscr *subscr, dpiError *error)
 {
+    if (subscr->handle && subscr->conn)
+        dpiSubscr__unregister(subscr, subscr->conn, error);
     dpiMutex__acquire(subscr->mutex);
     if (subscr->handle) {
-        if (subscr->registered)
-            dpiOci__subscriptionUnRegister(subscr->conn, subscr, error);
         dpiOci__handleFree(subscr->handle, DPI_OCI_HTYPE_SUBSCRIPTION);
         subscr->handle = NULL;
     }
@@ -299,6 +300,39 @@ void dpiSubscr__free(dpiSubscr *subscr, dpiError *error)
     dpiMutex__release(subscr->mutex);
     dpiMutex__destroy(subscr->mutex);
     dpiUtils__freeMemory(subscr);
+}
+
+
+//-----------------------------------------------------------------------------
+// dpiSubscr__unregister() [INTERNAL]
+//   Unregister the subscription, if it is registered. The mutex is acquired
+// first, which waits for a callback in progress to complete. It is released
+// while OCISubscriptionUnRegister() is called: for client initiated
+// subscriptions OCI waits there for its notification thread to terminate, and
+// that thread may be delivering another notification and waiting for the
+// mutex. Notifications delivered meanwhile are discarded by
+// dpiSubscr__callback() without calling the user callback. The mutex is then
+// acquired again before the subscription is marked as unregistered, so once
+// this function returns successfully no user callback is in progress and none
+// will be called. If unregistering fails, the subscription remains
+// registered, but notifications discarded during the attempt are lost.
+//-----------------------------------------------------------------------------
+int dpiSubscr__unregister(dpiSubscr *subscr, dpiConn *conn, dpiError *error)
+{
+    int status = DPI_SUCCESS;
+
+    dpiMutex__acquire(subscr->mutex);
+    if (subscr->registered && !subscr->unregistering) {
+        subscr->unregistering = 1;
+        dpiMutex__release(subscr->mutex);
+        status = dpiOci__subscriptionUnRegister(conn, subscr, error);
+        dpiMutex__acquire(subscr->mutex);
+        subscr->unregistering = 0;
+        if (status == DPI_SUCCESS)
+            subscr->registered = 0;
+    }
+    dpiMutex__release(subscr->mutex);
+    return status;
 }
 
 

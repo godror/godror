@@ -1489,6 +1489,7 @@ struct dpiSubscr {
     void *callbackContext;              // context pointer for callback
     int clientInitiated;                // client initiated?
     int registered;                     // registered with database?
+    int unregistering;                  // unregistration in progress?
 };
 
 // represents the available options for dequeueing messages when using advanced
@@ -1850,6 +1851,7 @@ void dpiRowid__free(dpiRowid *rowid, dpiError *error);
 // definition of internal dpiSubscr methods
 //-----------------------------------------------------------------------------
 void dpiSubscr__free(dpiSubscr *subscr, dpiError *error);
+int dpiSubscr__unregister(dpiSubscr *subscr, dpiConn *conn, dpiError *error);
 int dpiSubscr__create(dpiSubscr *subscr, dpiConn *conn,
         dpiSubscrCreateParams *params, dpiError *error);
 
