@@ -476,6 +476,9 @@ type DirectLob struct {
 	drv            *drv
 	dpiLob         *C.dpiLob
 	opened, isClob bool
+	// owned is true when dpiLob was created by us (NewTempLob),
+	// so Close must release it even if it was never opened.
+	owned bool
 }
 
 var _ = io.ReaderAt((*DirectLob)(nil))
@@ -487,7 +490,7 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 	if isClob {
 		typ = C.DPI_ORACLE_TYPE_CLOB
 	}
-	lob := DirectLob{drv: c.drv, isClob: isClob}
+	lob := DirectLob{drv: c.drv, isClob: isClob, owned: true}
 	if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) }); err != nil {
 		return nil, fmt.Errorf("newTempLob: %w", err)
 	}
@@ -496,11 +499,11 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 
 // Close the Lob.
 func (dl *DirectLob) Close() error {
-	if !dl.opened {
+	if dl == nil || dl.dpiLob == nil || !(dl.opened || dl.owned) {
 		return nil
 	}
 	lob := dl.dpiLob
-	dl.opened, dl.dpiLob = false, nil
+	dl.opened, dl.owned, dl.dpiLob = false, false, nil
 	return closeLob(dl.drv, lob)
 }
 
