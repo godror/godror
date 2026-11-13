@@ -70,6 +70,11 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 	default:
 		return fmt.Errorf("SetVectorValue Unsupported type: %T in Vector Values", v.Values)
 	}
+	if (v.IsSparse || numSparseValues > 0) && numSparseValues != numDims {
+		// The number of values passed to ODPI-C is taken from len(Indices),
+		// so a mismatch would read past the end of Values.
+		return fmt.Errorf("SetVectorValue: sparse vector has %d indices but %d values", numSparseValues, numDims)
+	}
 	C.setVectorInfoDimensions(&vectorInfo, valuesPtr) //update values
 
 	// update sparse indices and numDimensions
