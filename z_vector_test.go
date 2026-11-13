@@ -466,3 +466,33 @@ func TestVectorPointerCases(t *testing.T) {
 		compareSparseVector(t, id, sparse2, sparseVec2)
 	}
 }
+
+func TestVectorSparseLengthMismatch(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+
+	tbl := "test_vector_sparse_len" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	_, err := testDb.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (id NUMBER(6), v Vector(8, float32, SPARSE))")
+	skipIfNoVectorSupport(t, err)
+	defer testDb.Exec("DROP TABLE " + tbl)
+
+	qry := "INSERT INTO " + tbl + " (id, v) VALUES (:1, :2)"
+	for _, v := range []godror.Vector{
+		{Values: []float32{1.5}, Indices: []uint32{0, 3, 7}, Dimensions: 8, IsSparse: true},
+		{Values: []float32{}, Indices: []uint32{1, 2}, Dimensions: 8, IsSparse: true},
+		{Values: []float32{1, 2, 3}, Indices: []uint32{1}, Dimensions: 8, IsSparse: true},
+	} {
+		if _, err := testDb.ExecContext(ctx, qry, 1, v); err == nil {
+			t.Errorf("%d indices, %v values: wanted error, got nil", len(v.Indices), v.Values)
+		} else {
+			t.Log(err)
+		}
+	}
+	// A consistent sparse vector still works.
+	ok := godror.Vector{Values: []float32{1.5, -2}, Indices: []uint32{0, 7}, Dimensions: 8, IsSparse: true}
+	if _, err := testDb.ExecContext(ctx, qry, 2, ok); err != nil {
+		t.Fatal(err)
+	}
+}
