@@ -487,6 +487,7 @@ func TestVectorSparseLengthMismatch(t *testing.T) {
 		if _, err := testDb.ExecContext(ctx, qry, 1, v); err == nil {
 			t.Errorf("%d indices, %v values: wanted error, got nil", len(v.Indices), v.Values)
 		} else {
+			skipIfNoVectorSupport(t, err)
 			t.Log(err)
 		}
 	}
