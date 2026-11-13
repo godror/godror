@@ -1728,6 +1728,7 @@ func dataSetBool(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) er
 	}
 	if bb, ok := vv.([]bool); ok {
 		for i, v := range bb {
+			b = 0
 			if v {
 				b = 1
 			}
