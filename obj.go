@@ -1192,11 +1192,13 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	O := &Object{ObjectType: t, dpiObject: obj}
 
 	if warnMissingObjectClose && guardWithFinalizers.Load() {
+		// The cleanup must not reference O, or O never becomes unreachable.
+		d := t.drv
 		O.cleanup = runtime.AddCleanup(
 			O,
 			func(dpiObject *C.dpiObject) {
 				fmt.Printf("WARN Object %p is not closed\n", dpiObject)
-				if err := O.drv.checkExec(func() C.int {
+				if err := d.checkExec(func() C.int {
 					return C.dpiObject_release(dpiObject)
 				}); err != nil {
 					fmt.Printf("error on close object: %+v", err)
@@ -1392,13 +1394,14 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		cache[t.FullName()] = t
 	}
 	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
+		// Pass a copy of the innards: a pointer into t would keep t reachable.
 		t.cleanup = runtime.AddCleanup(
 			t,
-			func(t *objectTypeInnards) {
-				fmt.Printf("WARN ObjectType %p is not closed\n", t)
-				t.Close()
+			func(inn objectTypeInnards) {
+				fmt.Printf("WARN ObjectType %p is not closed\n", inn.dpiObjectType)
+				inn.Close()
 			},
-			&t.objectTypeInnards,
+			t.objectTypeInnards,
 		)
 	}
 	return nil
