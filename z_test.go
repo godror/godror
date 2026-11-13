@@ -5359,16 +5359,16 @@ func TestSelectAlterSessionIssue297(t *testing.T) {
 			if err != nil {
 				return fmt.Errorf("%s: %w", qry, err)
 			}
-			qry = "select sysdate from dual"
-			rows, err := conn.QueryContext(ctx, qry)
+			const selQry = "select sysdate from dual"
+			rows, err := conn.QueryContext(ctx, selQry)
 			if err != nil {
-				return fmt.Errorf("%s: %w", qry, err)
+				return fmt.Errorf("%s: %w", selQry, err)
 			}
 			defer rows.Close()
 			for rows.Next() {
 				var a1 string
 				if err := rows.Scan(&a1); err != nil {
-					return fmt.Errorf("scan %s: %w", qry, err)
+					return fmt.Errorf("scan %s: %w", selQry, err)
 				}
 				t.Log(a1)
 			}
