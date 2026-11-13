@@ -138,3 +138,33 @@ func TestTokenAuthStandAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestTokenWithoutPrivateKey connects with a token but no private key.
+// The dpiAccessToken struct used to be malloc'ed, leaving privateKey as
+// garbage that ODPI-C then used (and godror free'd).
+// Run with MALLOC_PERTURB_=165 to make the garbage deterministic.
+func TestTokenWithoutPrivateKey(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.Username = ""
+	P.Password.Reset()
+	P.Token = "not-a-real-token"
+	P.PrivateKey = ""
+	P.StandaloneConnection = godror.Bool(true)
+	P.ExternalAuth = godror.Bool(true)
+	db1, err := sql.Open("godror", P.StringWithPassword())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db1.Close()
+	// The token is invalid, so an error is expected - but no crash.
+	if err := db1.PingContext(ctx); err == nil {
+		t.Log("ping with a fake token succeeded?")
+	} else {
+		t.Log(err)
+	}
+}
