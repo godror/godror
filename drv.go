@@ -648,7 +648,7 @@ func (d *drv) initCommonCreateParams(P *C.dpiCommonCreateParams, enableEvents bo
 
 	// Token Based Authentication.
 	if token != "" {
-		t := (*C.dpiAccessToken)(C.malloc(C.sizeof_dpiAccessToken))
+		t := (*C.dpiAccessToken)(C.calloc(1, C.sizeof_dpiAccessToken))
 		t.token = C.CString(token)
 		t.tokenLength = C.uint32_t(len(token))
 		if privateKey != "" {
