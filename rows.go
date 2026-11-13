@@ -658,7 +658,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		}
 		st := &statement{
 			conn:             r.conn,
-			statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
+			statementInnards: &statementInnards{dpiStmt: C.dpiData_getStmt(d)},
 			stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
 		}
 		stmtAddCleanup(ctx, st, "rows.Next")
@@ -856,7 +856,7 @@ func (r *rows) NextResultSet() error {
 	}
 	st := &statement{
 		conn:             r.conn,
-		statementInnards: statementInnards{dpiStmt: r.nextRs},
+		statementInnards: &statementInnards{dpiStmt: r.nextRs},
 		stmtOptions:      r.statement.stmtOptions,
 	}
 	stmtAddCleanup(ctx, st, "rows.NextResultSet")
