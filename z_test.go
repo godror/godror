@@ -5681,3 +5681,44 @@ func TestGetCurrentSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBoolSlice(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	const tbl = "test_bool_slice_t"
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl)
+	qry := "CREATE TABLE " + tbl + " (F_id NUMBER(3), F_bool BOOLEAN)"
+	if _, err := testDb.ExecContext(ctx, qry); err != nil {
+		t.Skipf("%s: %v (native BOOLEAN needs Oracle 23+)", qry, err)
+	}
+	defer func() { testDb.ExecContext(context.Background(), "DROP TABLE "+tbl) }()
+
+	want := []bool{true, false, true, false, false}
+	ids := make([]int, len(want))
+	for i := range ids {
+		ids[i] = i
+	}
+	qry = "INSERT INTO " + tbl + " (F_id, F_bool) VALUES (:1, :2)"
+	if _, err := testDb.ExecContext(ctx, qry, ids, want); err != nil {
+		t.Fatal(fmt.Errorf("%s: %w", qry, err))
+	}
+	rows, err := testDb.QueryContext(ctx, "SELECT F_bool FROM "+tbl+" ORDER BY F_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []bool
+	for rows.Next() {
+		var b bool
+		if err = rows.Scan(&b); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, b)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("wanted %v got %v", want, got)
+	}
+}
