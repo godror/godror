@@ -345,7 +345,7 @@ var _ driver.NamedValueChecker = (*statement)(nil)
 
 type (
 	statement struct {
-		statementInnards
+		*statementInnards
 		ctx context.Context
 		*conn
 		query    string
@@ -2811,7 +2811,7 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 	}
 	st2 := &statement{
 		conn:             st.conn,
-		statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(data)},
+		statementInnards: &statementInnards{dpiStmt: C.dpiData_getStmt(data)},
 		stmtOptions:      st.stmtOptions, // inherit parent statement's options
 	}
 
@@ -3747,7 +3747,7 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 				}
 				st.close(ctx)
 			},
-			&st.statementInnards,
+			st.statementInnards,
 		)
 		return
 	}

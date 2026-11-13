@@ -357,7 +357,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		if logger != nil {
 			logger.Debug("PrepareContext", "shortcut", query)
 		}
-		return &statement{conn: c, query: query}, nil
+		return &statement{statementInnards: &statementInnards{}, conn: c, query: query}, nil
 	}
 
 	c.mu.RLock()
@@ -373,7 +373,7 @@ func (c *conn) prepareContextNotLocked(ctx context.Context, query string) (drive
 	defer func() {
 		C.free(unsafe.Pointer(cSQL))
 	}()
-	st := &statement{conn: c, query: query}
+	st := &statement{statementInnards: &statementInnards{}, conn: c, query: query}
 	err := c.checkExec(func() C.int {
 		return C.dpiConn_prepareStmt(c.dpiConn, 0, cSQL, C.uint32_t(len(query)), nil, 0,
 			(**C.dpiStmt)(unsafe.Pointer(&st.dpiStmt)))
