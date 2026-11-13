@@ -5639,3 +5639,45 @@ func TestNilPointeValuer(t *testing.T) {
 	}
 
 }
+
+func TestGetCurrentSchema(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var want string
+	if err = conn.QueryRowContext(ctx, "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL").Scan(&want); err != nil {
+		t.Fatal(err)
+	}
+	type schemaGetter interface {
+		GetCurrentSchema(string) (string, error)
+		SetCurrentSchema(string) error
+	}
+	if err = conn.Raw(func(dc any) error {
+		sg, ok := dc.(schemaGetter)
+		if !ok {
+			t.Skipf("%T has no GetCurrentSchema", dc)
+		}
+		// OCI only reports a schema set on this connection.
+		if err := sg.SetCurrentSchema(want); err != nil {
+			return err
+		}
+		// The buffer returned by OCI must not be freed by us;
+		// calling it repeatedly used to corrupt the heap.
+		for i := 0; i < 1000; i++ {
+			got, err := sg.GetCurrentSchema("")
+			if err != nil {
+				return err
+			}
+			if got != want {
+				return fmt.Errorf("%d. got %q, wanted %q", i, got, want)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
