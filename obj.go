@@ -265,6 +265,16 @@ func (O *Object) Close() error {
 		logger.Debug("Object.Close", "object", fmt.Sprintf("%p", O.dpiObject))
 	}
 
+	// An object got from a collection element or an object attribute
+	// points into its parent's memory: clearing it would clear the parent.
+	if O.dpiObject.dependsOnObj == nil {
+		O.clear(logger)
+	}
+	return O.release()
+}
+
+// clear closes the sub-objects, trims the collection and resets all attributes.
+func (O *Object) clear(logger *slog.Logger) {
 	// Close sub-objects first
 	data := scratch.Get()
 	defer scratch.Put(data)
@@ -288,7 +298,8 @@ func (O *Object) Close() error {
 				logger.Debug("ObjectCollection.Close close item", "idx", curr, "object", fmt.Sprintf("%p", obj))
 			}
 			// fmt.Printf("Close obj=%p\n", obj.dpiObject)
-			if err = obj.Close(); err != nil && logger != nil && false {
+			obj.clear(logger)
+			if err = obj.release(); err != nil && logger != nil && false {
 				logger.Error("close sub-object", "idx", curr, "error", err)
 			}
 		}
@@ -313,13 +324,18 @@ func (O *Object) Close() error {
 				logger.Debug("Object.Close close sub-object", "attribute", a.Name, "object", fmt.Sprintf("%p", obj))
 			}
 
-			return obj.Close()
+			obj.clear(logger)
+			return obj.release()
 		}(); err != nil && logger != nil && false {
 			logger.Error("Close sub-object", "name", a.Name, "error", err)
 		}
 	}
 	// Reset all attributes
 	O.resetAttributes(true)
+}
+
+// release releases the reference to the dpiObject.
+func (O *Object) release() error {
 	O.cleanup.Stop()
 
 	dpiObject := O.dpiObject
