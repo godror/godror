@@ -1909,7 +1909,9 @@ func (c *conn) dataSetTime(ctx context.Context, dv *C.dpiVar, data []C.dpiData, 
 		if data[i].isNull == 1 {
 			continue
 		}
-		dataSetTime(ctx, &data[i], t, tz)
+		if err := dataSetTime(ctx, &data[i], t, tz); err != nil {
+			return err
+		}
 	}
 	return nil
 }
