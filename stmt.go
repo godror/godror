@@ -2843,6 +2843,8 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 		}
 		return nil
 	}
+	// openRows sizes the define variables to FetchArraySize.
+	C.dpiStmt_setFetchArraySize(st2.dpiStmt, C.uint32_t(st2.FetchArraySize()))
 	r2, err := st2.openRows(ctx, int(n))
 	if err != nil {
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
