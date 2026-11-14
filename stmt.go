@@ -1138,8 +1138,9 @@ func (st *statement) bindVars(
 			rArgs[i] = rv.Elem()
 		}
 		// https://github.com/godror/godror/issues/378
+		// Decide by type, not by value: a nil []byte is a NULL, not an empty batch.
 		var isByteSlice bool
-		if rv.IsValid() && !rv.IsZero() {
+		if rv.IsValid() {
 			t := rv.Type()
 			for t.Kind() == reflect.Pointer {
 				t = t.Elem()
