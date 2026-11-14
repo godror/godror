@@ -309,6 +309,28 @@ func TestStandalone(t *testing.T) {
 	}
 }
 
+func TestShardingKeyRoundTrip(t *testing.T) {
+	a, err := Parse(`user=scott password=tiger connectString=dbhost:1521/orclpdb1 standaloneConnection=1 shardingKey=gold shardingKey="silver lining" superShardingKey=42`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []any{"gold", "silver lining"}; !cmp.Equal(a.ShardingKey, want) {
+		t.Fatalf("parsed shardingKey=%#v, wanted %#v", a.ShardingKey, want)
+	}
+	for _, s := range []string{a.String(), a.StringWithPassword()} {
+		b, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(a.ShardingKey, b.ShardingKey); diff != "" {
+			t.Errorf("shardingKey lost in %q: %s", s, diff)
+		}
+		if diff := cmp.Diff(a.SuperShardingKey, b.SuperShardingKey); diff != "" {
+			t.Errorf("superShardingKey lost in %q: %s", s, diff)
+		}
+	}
+}
+
 func ExampleAppendLogfmt() {
 	var buf strings.Builder
 	AppendLogfmt(&buf, "user", "scott")
