@@ -34,7 +34,11 @@ type Data struct {
 	// the memory could be freed while ODPI-C still reads or writes it.
 	keepAlive []byte
 	// varRef keeps the dpiVar whose buffers dpiData points to (NewData).
-	varRef        *dataVarRef
+	varRef *dataVarRef
+	// ownedLob is the LOB reference that ODPI-C handed over with an object
+	// attribute or collection element. reset (or closing the connection)
+	// releases it.
+	ownedLob      *dataLob
 	dpiData       C.dpiData
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
@@ -235,11 +239,23 @@ func (d *Data) SetIntervalYM(ym IntervalYM) {
 }
 
 // GetLob gets data as Lob.
+//
+// The returned Lob holds its own reference to the LOB, see Lob.
 func (d *Data) GetLob() *Lob {
 	if d.IsNull() {
 		return nil
 	}
-	return &Lob{Reader: &dpiLobReader{dpiLob: C.dpiData_getLOB(&d.dpiData)}}
+	var lob *C.dpiLob
+	if d.ownedLob != nil {
+		// nil if the connection has been closed
+		lob = d.ownedLob.get()
+	} else {
+		lob = C.dpiData_getLOB(&d.dpiData)
+	}
+	if lob == nil || C.dpiLob_addRef(lob) == C.DPI_FAILURE {
+		return nil
+	}
+	return &Lob{Reader: newLobReader(nil, lob, false)}
 }
 
 // SetLob sets Lob to the data.
@@ -702,7 +718,19 @@ func (d *Data) reset(null bool) {
 	d.implicitObj = false
 	d.keepAlive = nil
 	d.varRef = nil
+	if d.ownedLob != nil {
+		d.ownedLob.release()
+		d.ownedLob = nil
+	}
 	d.dpiData.isNull = C.int(b2i(null))
+}
+
+// takeLob records that the LOB in d (if any) was handed over by ODPI-C,
+// so d must release it.
+func (d *Data) takeLob() {
+	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_LOB && d.dpiData.isNull == 0 {
+		d.ownedLob = newDataLob(C.dpiData_getLOB(&d.dpiData))
+	}
 }
 
 func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiData) }

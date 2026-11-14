@@ -2887,7 +2887,11 @@ func (c *conn) dataGetLOBC(ctx context.Context, L *Lob, data *C.dpiData) {
 	if lob == nil {
 		return
 	}
-	L.Reader = &dpiLobReader{drv: c.drv, dpiLob: lob, IsClob: L.IsClob}
+	// The variable keeps its own reference, the reader takes another one.
+	if C.dpiLob_addRef(lob) == C.DPI_FAILURE {
+		return
+	}
+	L.Reader = newLobReader(c.drv, lob, L.IsClob)
 }
 
 func (c *conn) dataSetLOB(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {

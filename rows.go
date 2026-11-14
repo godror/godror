@@ -633,14 +633,17 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			}
 			return nil
 		}
-		rdr := &dpiLobReader{
-			drv: r.drv, dpiLob: C.dpiData_getLOB(d),
-			IsClob: isClob,
+		// The define variable frees its LOBs on the next fetch,
+		// so the reader takes its own reference.
+		lob := C.dpiData_getLOB(d)
+		if C.dpiLob_addRef(lob) == C.DPI_FAILURE {
+			return fmt.Errorf("addRef LOB: %w", r.getError())
 		}
+		rdr := newLobReader(r.drv, lob, isClob)
 		if isClob && (r.ClobAsString() || !r.LobAsReader()) {
 			sb := stringBuilders.Get()
 			_, err := io.Copy(sb, rdr)
-			C.dpiLob_close(rdr.dpiLob)
+			rdr.closeLob()
 			if err != nil {
 				stringBuilders.Put(sb)
 				return err

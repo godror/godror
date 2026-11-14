@@ -24,6 +24,12 @@ import (
 )
 
 // Lob is for reading/writing a LOB.
+//
+// A Lob returned by the driver (with LobAsReader, as an OUT parameter or by
+// Data.GetLob) holds its own reference to the LOB, so it stays readable after
+// the rows are closed or have fetched further, until its connection is closed.
+// The reference is released when the Lob is read to EOF, when its Reader is
+// closed, or when the connection is closed; reading it after that returns an error.
 type Lob struct {
 	io.Reader
 	IsClob bool
@@ -36,6 +42,8 @@ var _ = (io.ReaderAt)((*Lob)(nil))
 // return a DirectLob for reading/writing the lob directly.
 //
 // After this, the Lob is unusable!
+// The DirectLob takes over the Lob's reference, which its Close
+// (or closing the connection) releases.
 func (lob *Lob) Hijack() (*DirectLob, error) {
 	if lob == nil || lob.Reader == nil {
 		return nil, errors.New("lob is nil")
@@ -45,7 +53,119 @@ func (lob *Lob) Hijack() (*DirectLob, error) {
 		return nil, fmt.Errorf("Lob.Reader is %T, not *dpiLobReader", lob.Reader)
 	}
 	lob.Reader = nil
-	return &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob}, nil
+	// The reader's reference moves to the DirectLob.
+	lr.mu.Lock()
+	dl := &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob, owned: lr.dpiLob != nil}
+	lr.dpiLob = nil
+	lr.mu.Unlock()
+	if dl.dpiLob != nil {
+		untrackLob(lr, dl.dpiLob)
+		trackLob(dl, dl.dpiLob)
+	}
+	return dl, nil
+}
+
+// lobHolder is a Go value that holds its own reference to a dpiLob.
+type lobHolder interface {
+	// dropLob releases the reference when the LOB's connection is closed.
+	dropLob()
+}
+
+// connLobs tracks the LOB references held by Go values, by connection.
+//
+// Every dpiLob holds a reference to its dpiConn, so a LOB that is never
+// read to EOF or closed would keep a pooled session from being returned
+// to the pool. conn.closeNotLocking calls releaseConnLobs to drop them.
+var connLobs struct {
+	m map[*C.dpiConn]map[lobHolder]struct{}
+	sync.Mutex
+}
+
+// trackLob records that h holds a reference to lob.
+func trackLob(h lobHolder, lob *C.dpiLob) {
+	if lob == nil || lob.conn == nil {
+		return
+	}
+	connLobs.Lock()
+	if connLobs.m == nil {
+		connLobs.m = make(map[*C.dpiConn]map[lobHolder]struct{})
+	}
+	s := connLobs.m[lob.conn]
+	if s == nil {
+		s = make(map[lobHolder]struct{})
+		connLobs.m[lob.conn] = s
+	}
+	s[h] = struct{}{}
+	connLobs.Unlock()
+}
+
+// untrackLob forgets h, which is about to release its reference to lob.
+func untrackLob(h lobHolder, lob *C.dpiLob) {
+	if lob == nil || lob.conn == nil {
+		return
+	}
+	connLobs.Lock()
+	if s := connLobs.m[lob.conn]; s != nil {
+		delete(s, h)
+		if len(s) == 0 {
+			delete(connLobs.m, lob.conn)
+		}
+	}
+	connLobs.Unlock()
+}
+
+// releaseConnLobs releases the LOB references still held on dpiConn.
+func releaseConnLobs(dpiConn *C.dpiConn) {
+	connLobs.Lock()
+	s := connLobs.m[dpiConn]
+	delete(connLobs.m, dpiConn)
+	connLobs.Unlock()
+	for h := range s {
+		h.dropLob()
+	}
+}
+
+// errLobConnClosed is returned when reading a LOB whose connection is closed.
+var errLobConnClosed = errors.New("the LOB's connection is closed")
+
+// dataLob is the LOB reference that ODPI-C hands over with an object
+// attribute or collection element. The Data that holds it releases it.
+type dataLob struct {
+	lob *C.dpiLob
+	mu  sync.Mutex
+}
+
+func newDataLob(lob *C.dpiLob) *dataLob {
+	dl := &dataLob{lob: lob}
+	trackLob(dl, lob)
+	return dl
+}
+
+// get returns the LOB, or nil if its connection has been closed.
+func (dl *dataLob) get() *C.dpiLob {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+	return dl.lob
+}
+
+func (dl *dataLob) release() {
+	dl.mu.Lock()
+	lob := dl.lob
+	dl.lob = nil
+	dl.mu.Unlock()
+	if lob != nil {
+		untrackLob(dl, lob)
+		C.dpiLob_release(lob)
+	}
+}
+
+func (dl *dataLob) dropLob() {
+	dl.mu.Lock()
+	if dl.lob != nil {
+		C.dpiLob_release(dl.lob)
+		dl.lob = nil
+	}
+	dl.mu.Unlock()
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
@@ -119,6 +239,26 @@ type dpiLobReader struct {
 	bufR, bufW          int
 	finished            bool
 	IsClob              bool
+	// connClosed is set when the connection was closed before the reader
+	// released its reference.
+	connClosed bool
+}
+
+// newLobReader returns a reader that owns the given reference to lob.
+func newLobReader(d *drv, lob *C.dpiLob, isClob bool) *dpiLobReader {
+	dlr := &dpiLobReader{drv: d, dpiLob: lob, IsClob: isClob}
+	trackLob(dlr, lob)
+	return dlr
+}
+
+func (dlr *dpiLobReader) dropLob() {
+	dlr.mu.Lock()
+	if dlr.dpiLob != nil {
+		C.dpiLob_release(dlr.dpiLob)
+		dlr.dpiLob = nil
+		dlr.connClosed = true
+	}
+	dlr.mu.Unlock()
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
@@ -164,6 +304,9 @@ func (dlr *dpiLobReader) ChunkSize() int {
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
+	if dlr.connClosed {
+		return 0, errLobConnClosed
+	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Debug("Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
@@ -230,6 +373,9 @@ func (dlr *dpiLobReader) Size() (int64, error) {
 	return int64(size), err
 }
 func (dlr *dpiLobReader) getSize() error {
+	if dlr.connClosed {
+		return errLobConnClosed
+	}
 	if dlr.sizePlusOne != 0 {
 		return nil
 	}
@@ -239,8 +385,7 @@ func (dlr *dpiLobReader) getSize() error {
 		return C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne)
 	}); err != nil {
 		err = fmt.Errorf("getSize: %w", err)
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.closeLob()
 	}
 	runtime.UnlockOSThread()
 	dlr.sizePlusOne++
@@ -320,8 +465,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 			}
 		}
 		if err != nil {
-			C.dpiLob_close(dlr.dpiLob)
-			dlr.dpiLob = nil
+			dlr.closeLob()
 			if dlr.finished = codeErr != nil && codeErr.Code() == 1403; dlr.finished {
 				dlr.offset += n
 				return int(n), io.EOF
@@ -359,8 +503,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	}
 	var err error
 	if amount != 0 && n == 0 || !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.closeLob()
 		dlr.finished = true
 		err = io.EOF
 	}
@@ -378,6 +521,9 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
+	if dlr.connClosed {
+		return 0, errLobConnClosed
+	}
 	if dlr.IsClob {
 		return 0, ErrCLOB
 	}
@@ -390,12 +536,32 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	return int(n), err
 }
+
+// closeLob closes the LOB early (at EOF or on error) and drops the reader's
+// reference to it. dlr.mu must be held.
+func (dlr *dpiLobReader) closeLob() {
+	if dlr.dpiLob == nil {
+		return
+	}
+	untrackLob(dlr, dlr.dpiLob)
+	C.dpiLob_close(dlr.dpiLob)
+	C.dpiLob_release(dlr.dpiLob)
+	dlr.dpiLob = nil
+}
+
+// Close releases the reader's reference to the LOB.
 func (dlr *dpiLobReader) Close() error {
-	if dlr == nil || dlr.dpiLob == nil {
+	if dlr == nil {
 		return nil
 	}
+	dlr.mu.Lock()
 	lob := dlr.dpiLob
 	dlr.dpiLob = nil
+	dlr.mu.Unlock()
+	if lob == nil {
+		return nil
+	}
+	untrackLob(dlr, lob)
 	return closeLob(dlr, lob)
 }
 
@@ -532,6 +698,16 @@ type DirectLob struct {
 	// owned is true when dpiLob was created by us (NewTempLob),
 	// so Close must release it even if it was never opened.
 	owned bool
+	mu    sync.Mutex
+}
+
+func (dl *DirectLob) dropLob() {
+	dl.mu.Lock()
+	if dl.dpiLob != nil {
+		C.dpiLob_release(dl.dpiLob)
+		dl.opened, dl.owned, dl.dpiLob = false, false, nil
+	}
+	dl.mu.Unlock()
 }
 
 var _ = io.ReaderAt((*DirectLob)(nil))
@@ -547,16 +723,24 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 	if err := c.checkExec(func() C.int { return C.dpiConn_newTempLob(c.dpiConn, typ, &lob.dpiLob) }); err != nil {
 		return nil, fmt.Errorf("newTempLob: %w", err)
 	}
+	trackLob(&lob, lob.dpiLob)
 	return &lob, nil
 }
 
 // Close the Lob.
 func (dl *DirectLob) Close() error {
-	if dl == nil || dl.dpiLob == nil || !(dl.opened || dl.owned) {
+	if dl == nil {
+		return nil
+	}
+	dl.mu.Lock()
+	if dl.dpiLob == nil || !(dl.opened || dl.owned) {
+		dl.mu.Unlock()
 		return nil
 	}
 	lob := dl.dpiLob
 	dl.opened, dl.owned, dl.dpiLob = false, false, nil
+	dl.mu.Unlock()
+	untrackLob(dl, lob)
 	return closeLob(dl.drv, lob)
 }
 
