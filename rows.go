@@ -683,6 +683,8 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
 			return fmt.Errorf("getNumQueryColumns: %w", err)
 		}
+		// openRows sizes the define variables to FetchArraySize.
+		C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 		st.Lock()
 		r2, err := st.openRows(ctx, int(colCount))
 		st.Unlock()
@@ -906,6 +908,8 @@ func (r *rows) NextResultSet() error {
 	}
 	// From here on, st owns the reference to the implicit result.
 	r.nextRs = nil
+	// openRows sizes the define variables to FetchArraySize.
+	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	// keep the original statement for the succeeding NextResultSet calls.
 	st.Lock()
 	nr, err := st.openRows(ctx, int(n))
