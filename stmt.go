@@ -683,21 +683,24 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			continue
 		}
 		i := i
+		// Do not store the returned data in st.data[i]: that is the var's
+		// own buffer, which bindVars reuses on the next execution.
+		data := st.data[i]
 		if st.dpiStmtInfo.isReturning == 1 {
 			var n C.uint32_t
-			data := &st.data[i][0]
-			if err := st.checkExec(func() C.int { return C.dpiVar_getReturnedData(st.vars[i], 0, &n, &data) }); err != nil {
+			var p *C.dpiData
+			if err := st.checkExec(func() C.int { return C.dpiVar_getReturnedData(st.vars[i], 0, &n, &p) }); err != nil {
 				return nil, closeIfBadConn(fmt.Errorf("%d.getReturnedData: %w", i, err))
 			}
 			if n == 0 {
-				st.data[i] = st.data[i][:0]
+				data = data[:0]
 			} else {
-				st.data[i] = unsafe.Slice(data, n)
+				data = unsafe.Slice(p, n)
 			}
 		}
 		dest := st.dests[i]
 		if !st.isSlice[i] {
-			if err := get(ctx, dest, st.data[i]); err != nil {
+			if err := get(ctx, dest, data); err != nil {
 				if logger != nil {
 					logger.Error("get", "i", i, "error", err)
 				}
@@ -716,7 +719,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			return nil, closeIfBadConn(fmt.Errorf("%d.getNumElementsInArray: %w", i, err))
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
-		if err := get(ctx, dest, st.data[i][:n]); err != nil {
+		if err := get(ctx, dest, data[:n]); err != nil {
 			if logger != nil {
 				logger.Error("get", "i", i, "n", n, "error", err)
 			}
