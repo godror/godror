@@ -431,8 +431,9 @@ func (j JSONScalar) GetValue() (val any, err error) {
 		val = getJSONScalarNumber(d, j.stringOption)
 	} else if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_VARCHAR {
 		val, err = getJSONScalarString(d)
+	} else if val, err = d.getValue(); err != nil {
+		return nil, err
 	} else {
-		val = d.Get()
 		if j.dpiJsonNode.oracleTypeNum == C.DPI_ORACLE_TYPE_JSON_OBJECT {
 			jobj := val.(JSONObject)
 			jobj.stringOption = j.stringOption
@@ -537,8 +538,10 @@ func (j JSONArray) GetValue() (nodes []any, err error) {
 				}
 			} else if elts[i].oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
 				nodes = append(nodes, getJSONScalarNumber(d, j.stringOption))
+			} else if v, err := d.getValue(); err != nil {
+				return nil, err
 			} else {
-				nodes = append(nodes, d.Get())
+				nodes = append(nodes, v)
 			}
 		}
 	}
@@ -601,8 +604,10 @@ func (j JSONObject) GetValue() (m map[string]any, err error) {
 			}
 		} else if f.Value.oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
 			m[f.Name] = getJSONScalarNumber(d, j.stringOption)
+		} else if v, err := d.getValue(); err != nil {
+			return nil, err
 		} else {
-			m[f.Name] = d.Get()
+			m[f.Name] = v
 		}
 	}
 	return m, nil

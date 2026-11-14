@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -185,17 +186,37 @@ func (d *Data) SetInt64(i int64) {
 }
 
 // GetIntervalDS gets duration as interval date-seconds from data.
+//
+// An interval that does not fit in time.Duration (about 292 years)
+// gives the largest or smallest Duration.
 func (d *Data) GetIntervalDS() time.Duration {
+	dur, _ := d.getIntervalDS()
+	return dur
+}
+
+// getIntervalDS is GetIntervalDS that also returns the overflow error.
+func (d *Data) getIntervalDS() (time.Duration, error) {
 	if d.IsNull() {
-		return 0
+		return 0, nil
 	}
-	//ds := C.dpiData_getIntervalDS(&d.dpiData)
-	ds := *((*C.dpiIntervalDS)(unsafe.Pointer(&d.dpiData.value)))
-	return time.Duration(ds.days)*24*time.Hour +
-		time.Duration(ds.hours)*time.Hour +
-		time.Duration(ds.minutes)*time.Minute +
-		time.Duration(ds.seconds)*time.Second +
-		time.Duration(ds.fseconds)
+	var dur time.Duration
+	if err := dataGetIntervalDS(context.Background(), &dur, &d.dpiData); err != nil {
+		//ds := C.dpiData_getIntervalDS(&d.dpiData)
+		if ds := *((*C.dpiIntervalDS)(unsafe.Pointer(&d.dpiData.value))); ds.days < 0 {
+			return math.MinInt64, err
+		}
+		return math.MaxInt64, err
+	}
+	return dur, nil
+}
+
+// getValue is Get that returns an error for an INTERVAL DAY TO SECOND
+// that does not fit in time.Duration.
+func (d *Data) getValue() (any, error) {
+	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_INTERVAL_DS {
+		return d.getIntervalDS()
+	}
+	return d.Get(), nil
 }
 
 // SetIntervalDS sets the duration as interval date-seconds to data.
