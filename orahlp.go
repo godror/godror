@@ -613,15 +613,14 @@ func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	return c.(*conn), nil
 }
 
-// Raw executes f on the given *sql.DB or *sql.Conn.
-func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
+// Raw executes f on the given *sql.DB, *sql.Conn or *sql.Tx.
+func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) (err error) {
 	sf := func(driverConn any) error { return f(driverConn.(Conn)) }
 	if rawer, ok := ex.(interface {
 		Raw(func(any) error) error
 	}); ok {
 		return rawer.Raw(sf)
 	}
-	var err error
 	if conner, ok := ex.(interface {
 		Conn(context.Context) (*sql.Conn, error)
 	}); ok {
@@ -649,11 +648,12 @@ func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) error {
 		ex = tx
 	}
 
-	var cx *conn
-	if cx, err = getConn(ctx, ex); err != nil {
+	// The connection belongs to ex (for example a *sql.Tx),
+	// database/sql will release it, so don't close it here.
+	cx, err := getConn(ctx, ex)
+	if err != nil {
 		return err
 	}
-	defer cx.Close()
 	return f(cx)
 }
 
