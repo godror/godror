@@ -45,7 +45,10 @@ func (lob *Lob) Hijack() (*DirectLob, error) {
 		return nil, fmt.Errorf("Lob.Reader is %T, not *dpiLobReader", lob.Reader)
 	}
 	lob.Reader = nil
-	return &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob}, nil
+	// The reader's reference moves to the DirectLob.
+	dl := &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob, owned: lr.dpiLob != nil}
+	lr.dpiLob = nil
+	return dl, nil
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
@@ -239,8 +242,7 @@ func (dlr *dpiLobReader) getSize() error {
 		return C.dpiLob_getSize(dlr.dpiLob, &dlr.sizePlusOne)
 	}); err != nil {
 		err = fmt.Errorf("getSize: %w", err)
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.closeLob()
 	}
 	runtime.UnlockOSThread()
 	dlr.sizePlusOne++
@@ -320,8 +322,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 			}
 		}
 		if err != nil {
-			C.dpiLob_close(dlr.dpiLob)
-			dlr.dpiLob = nil
+			dlr.closeLob()
 			if dlr.finished = codeErr != nil && codeErr.Code() == 1403; dlr.finished {
 				dlr.offset += n
 				return int(n), io.EOF
@@ -359,8 +360,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	}
 	var err error
 	if amount != 0 && n == 0 || !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
-		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.closeLob()
 		dlr.finished = true
 		err = io.EOF
 	}
@@ -390,6 +390,19 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	return int(n), err
 }
+
+// closeLob closes the LOB early (at EOF or on error) and drops the reader's
+// reference to it.
+func (dlr *dpiLobReader) closeLob() {
+	if dlr.dpiLob == nil {
+		return
+	}
+	C.dpiLob_close(dlr.dpiLob)
+	C.dpiLob_release(dlr.dpiLob)
+	dlr.dpiLob = nil
+}
+
+// Close releases the reader's reference to the LOB.
 func (dlr *dpiLobReader) Close() error {
 	if dlr == nil || dlr.dpiLob == nil {
 		return nil
