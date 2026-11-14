@@ -683,7 +683,7 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 		return nil, false, err
 	}
 
-	dc, isNew, cleanup, err := d.acquireConn(ctx, pool, P)
+	dc, isNew, err := d.acquireConn(ctx, pool, P)
 	if err != nil {
 		return nil, false, err
 	}
@@ -731,9 +731,6 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 	cancel()
 	if err != nil {
 		_ = c.closeNotLocking()
-		if cleanup != nil {
-			cleanup()
-		}
 		return nil, false, fmt.Errorf("init: %w", err)
 	}
 
@@ -743,9 +740,6 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 
 	if !logLingeringResourceStack.Load() {
 		runtime.SetFinalizer(&c, func(c *conn) {
-			if cleanup != nil {
-				cleanup()
-			}
 			if c != nil && c.dpiConn != nil {
 				if logger := getLogger(context.Background()); logger != nil {
 					logger.Error("conn of createConn is not Closed!", "conn", fmt.Sprintf("%p", c))
@@ -759,9 +753,6 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 		var a [4096]byte
 		stack := a[:runtime.Stack(a[:], false)]
 		runtime.SetFinalizer(&c, func(c *conn) {
-			if cleanup != nil {
-				cleanup()
-			}
 			if c != nil && c.dpiConn != nil {
 				if logger := getLogger(context.Background()); logger != nil {
 					logger.Error("conn of createConn is not Closed!", "conn", fmt.Sprintf("%p", c), "stack", string(stack))
@@ -837,7 +828,7 @@ func acquireAttachSem(ctx context.Context, sem chan struct{}, needed bool) (rele
 	}
 }
 
-func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, func(), error) {
+func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
 	logger := P.Logger
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
@@ -867,7 +858,7 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 			P.EnableEvents, P.StmtCacheSize,
 			P.Charset, P.Token, P.PrivateKey,
 		); err != nil {
-			return nil, false, nil, err
+			return nil, false, err
 		}
 	}
 
@@ -876,7 +867,7 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 	if err := d.checkExec(func() C.int {
 		return C.dpiContext_initConnCreateParams(d.dpiContext, &connCreateParams)
 	}); err != nil {
-		return nil, false, nil, fmt.Errorf("initConnCreateParams: %w", err)
+		return nil, false, fmt.Errorf("initConnCreateParams: %w", err)
 	}
 
 	// assign connection class
@@ -921,7 +912,6 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 		connCreateParams.authMode |= C.DPI_MODE_AUTH_PRELIM
 	}
 
-	var cleanup func()
 	// assign sharding keys, if applicable
 	if len(P.ShardingKey) > 0 {
 		var tempData C.dpiData
@@ -952,19 +942,19 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 				for _, f := range tbd {
 					f()
 				}
-				return nil, false, nil, errors.New("unsupported data type for sharding")
+				return nil, false, errors.New("unsupported data type for sharding")
 			}
 			columns[i].value = tempData.value
 		}
 		connCreateParams.shardingKeyColumns = &columns[0]
 		connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
-		if len(tbd) != 0 {
-			cleanup = func() {
-				for _, f := range tbd {
-					f()
-				}
+		// OCI copies the values while dpiConn_create builds the sharding key
+		// (ODPI-C passes NUMBER values from its own stack), so free them on return.
+		defer func() {
+			for _, f := range tbd {
+				f()
 			}
-		}
+		}()
 	}
 
 	// if a pool was provided, assign the pool
@@ -995,10 +985,7 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 	if pool == nil {
 		release, err := acquireStandaloneAttach(ctx)
 		if err != nil {
-			if cleanup != nil {
-				cleanup()
-			}
-			return nil, false, nil, fmt.Errorf("waiting for standalone attach: %w", err)
+			return nil, false, fmt.Errorf("waiting for standalone attach: %w", err)
 		}
 		defer release()
 	}
@@ -1025,26 +1012,23 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 			&connCreateParams, &dc,
 		)
 	}); err != nil {
-		if cleanup != nil {
-			cleanup()
-		}
 		if pool != nil {
 			if connCreateParams.numShardingKeyColumns != 0 {
 				var ec interface{ Code() int }
 				if errors.As(err, &ec) && ec.Code() == 24459 { //  https://github.com/godror/godror/issues/379#issuecomment-3107438057
-					return nil, false, nil, fmt.Errorf("sharding=%+v for pooled connection failed: %w", P.ShardingKey, err)
+					return nil, false, fmt.Errorf("sharding=%+v for pooled connection failed: %w", P.ShardingKey, err)
 				}
 			}
 			stats, _ := d.getPoolStats(pool)
-			return nil, false, nil, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
+			return nil, false, fmt.Errorf("pool=%p stats=%s params=%+v: %w",
 				pool.dpiPool, stats, connCreateParams, err)
 		}
-		return nil, false, nil, fmt.Errorf("user=%q standalone params=%+v: %w",
+		return nil, false, fmt.Errorf("user=%q standalone params=%+v: %w",
 			username, connCreateParams, err)
 	}
 	//use the information from ODPI driver if new connection has been created or it is only pooled
 	isNew := connCreateParams.outNewSession == 1
-	return dc, isNew, cleanup, nil
+	return dc, isNew, nil
 }
 
 // createConnFromParams creates a driver connection given pool parameters and connection
