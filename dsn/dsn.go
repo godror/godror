@@ -390,6 +390,12 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	if P.AdminRole != "" {
 		q.Add("adminRole", P.AdminRole.String())
 	}
+	for _, v := range P.ShardingKey {
+		q.Add("shardingKey", fmt.Sprintf("%v", v))
+	}
+	for _, v := range P.SuperShardingKey {
+		q.Add("superShardingKey", fmt.Sprintf("%v", v))
+	}
 	if P.StandaloneConnection.Valid {
 		q.Add("standaloneConnection", b2s(P.StandaloneConnection.Bool))
 	}
