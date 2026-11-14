@@ -35,7 +35,10 @@ type Data struct {
 	// the memory could be freed while ODPI-C still reads or writes it.
 	keepAlive []byte
 	// varRef keeps the dpiVar whose buffers dpiData points to (NewData).
-	varRef        *dataVarRef
+	varRef *dataVarRef
+	// err is the error of the last SetTime. The Object and ObjectCollection
+	// setters return it instead of writing the (NULL) value.
+	err           error
 	dpiData       C.dpiData
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
@@ -351,12 +354,11 @@ func (d *Data) GetTimeIn(serverTZ *time.Location) time.Time {
 
 // SetTime sets Time to data.
 //
-// It panics with ErrBadDate if the year is out of Oracle's range;
-// use Set to get an error instead.
+// If the year is out of Oracle's range, the data is set to NULL, and
+// Object.SetAttribute, ObjectCollection.AppendData and SetItem return
+// ErrBadDate for it. Use Set to get the error right away.
 func (d *Data) SetTime(t time.Time) {
-	if err := d.setTime(t); err != nil {
-		panic(err)
-	}
+	d.err = d.setTime(t)
 }
 
 func (d *Data) setTime(t time.Time) error {
@@ -509,6 +511,7 @@ func (d *Data) Set(v any) error {
 	if v == nil {
 		return fmt.Errorf("%s: %w", "nil type", ErrNotSupported)
 	}
+	d.err = nil
 	switch x := v.(type) {
 	case int8:
 		d.SetInt64(int64(x))
@@ -741,6 +744,7 @@ func (d *Data) reset(null bool) {
 	d.implicitObj = false
 	d.keepAlive = nil
 	d.varRef = nil
+	d.err = nil
 	d.dpiData.isNull = C.int(b2i(null))
 }
 
