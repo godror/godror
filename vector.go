@@ -23,9 +23,14 @@ void* getVectorInfoDimensions(dpiVectorInfo *info) {
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 )
+
+// ErrSparseVectorLength is returned when a sparse Vector has a different
+// number of Indices and Values.
+var ErrSparseVectorLength = errors.New("sparse vector: number of indices and values differ")
 
 // Vector holds the embedding VECTOR column starting from 23ai.
 type Vector struct {
@@ -73,7 +78,7 @@ func SetVectorValue(c *conn, v *Vector, data *C.dpiData) error {
 	if (v.IsSparse || numSparseValues > 0) && numSparseValues != numDims {
 		// The number of values passed to ODPI-C is taken from len(Indices),
 		// so a mismatch would read past the end of Values.
-		return fmt.Errorf("SetVectorValue: sparse vector has %d indices but %d values", numSparseValues, numDims)
+		return fmt.Errorf("SetVectorValue: %w: %d indices, %d values", ErrSparseVectorLength, numSparseValues, numDims)
 	}
 	C.setVectorInfoDimensions(&vectorInfo, valuesPtr) //update values
 
