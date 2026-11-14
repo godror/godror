@@ -1109,20 +1109,30 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 		return nil, err
 	}
 
+	// The key holds hashes of the secrets, never the secrets themselves.
+	secretHash := func(s string) []byte {
+		if s == "" {
+			return nil
+		}
+		h := sha256.Sum256([]byte(s))
+		return h[:]
+	}
 	var usernameKey string
-	var passwordHash [sha256.Size]byte
+	var passwordHash []byte
 	if !(P.Heterogeneous.Valid && P.Heterogeneous.Bool) &&
 		!(P.ExternalAuth.Valid && P.ExternalAuth.Bool) {
 		// skip username being part of key in heterogeneous pools
 		usernameKey = P.Username
-		passwordHash = sha256.Sum256([]byte(P.Password.Secret())) // See issue #245
+		passwordHash = secretHash(P.Password.Secret()) // See issue #245
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%t\t%s\t%d\t%s",
-		usernameKey, passwordHash[:4], P.ConnectString, P.MinSessions, P.MaxSessions,
+	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%t\t%s\t%d\t%s\t%s\t%d\t%x\t%x\t%t",
+		usernameKey, passwordHash, P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous.Bool, P.EnableEvents, P.ExternalAuth.Bool, P.NoWait.Bool,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
+		P.Charset, P.StmtCacheSize,
+		secretHash(P.Token), secretHash(P.PrivateKey), P.TokenCB != nil,
 	)
 	logger := P.Logger
 	if logger != nil {
