@@ -914,47 +914,22 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 
 	// assign sharding keys, if applicable
 	if len(P.ShardingKey) > 0 {
-		var tempData C.dpiData
-		mem := C.malloc(C.sizeof_dpiShardingKeyColumn *
-			C.size_t(len(P.ShardingKey)))
-		defer C.free(mem)
-		columns := (*[(math.MaxInt32 - 1) / C.sizeof_dpiShardingKeyColumn]C.dpiShardingKeyColumn)(mem)
-		tbd := make([]func(), 0, len(P.ShardingKey))
-		for i, value := range P.ShardingKey {
-			switch value := value.(type) {
-			case int:
-				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
-				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
-				dpiDataSetInt64(&tempData, C.int64_t(value))
-			case string:
-				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
-				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-				cs := C.CString(value)
-				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
-				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
-			case []byte:
-				columns[i].oracleTypeNum = C.DPI_ORACLE_TYPE_RAW
-				columns[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
-				cs := (*C.char)(C.CBytes(value))
-				tbd = append(tbd, func() { C.free(unsafe.Pointer(cs)) })
-				C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
-			default:
-				for _, f := range tbd {
-					f()
-				}
-				return nil, false, errors.New("unsupported data type for sharding")
-			}
-			columns[i].value = tempData.value
+		columns, free, err := newShardingKeyColumns(P.ShardingKey)
+		if err != nil {
+			return nil, false, err
 		}
-		connCreateParams.shardingKeyColumns = &columns[0]
+		defer free()
+		connCreateParams.shardingKeyColumns = columns
 		connCreateParams.numShardingKeyColumns = C.uint8_t(len(P.ShardingKey))
-		// OCI copies the values while dpiConn_create builds the sharding key
-		// (ODPI-C passes NUMBER values from its own stack), so free them on return.
-		defer func() {
-			for _, f := range tbd {
-				f()
-			}
-		}()
+	}
+	if len(P.SuperShardingKey) > 0 {
+		columns, free, err := newShardingKeyColumns(P.SuperShardingKey)
+		if err != nil {
+			return nil, false, err
+		}
+		defer free()
+		connCreateParams.superShardingKeyColumns = columns
+		connCreateParams.numSuperShardingKeyColumns = C.uint8_t(len(P.SuperShardingKey))
 	}
 
 	// if a pool was provided, assign the pool
@@ -1029,6 +1004,49 @@ func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnPa
 	//use the information from ODPI driver if new connection has been created or it is only pooled
 	isNew := connCreateParams.outNewSession == 1
 	return dc, isNew, nil
+}
+
+// newShardingKeyColumns returns the C columns of a (super) sharding key.
+//
+// OCI copies the values while dpiConn_create builds the sharding key
+// (ODPI-C passes NUMBER values from its own stack), so call free
+// when dpiConn_create has returned.
+func newShardingKeyColumns(values []any) (columns *C.dpiShardingKeyColumn, free func(), err error) {
+	var tempData C.dpiData
+	mem := C.malloc(C.sizeof_dpiShardingKeyColumn * C.size_t(len(values)))
+	cols := (*[(math.MaxInt32 - 1) / C.sizeof_dpiShardingKeyColumn]C.dpiShardingKeyColumn)(mem)
+	tbd := make([]unsafe.Pointer, 1, 1+len(values))
+	tbd[0] = mem
+	free = func() {
+		for _, p := range tbd {
+			C.free(p)
+		}
+	}
+	for i, value := range values {
+		switch value := value.(type) {
+		case int:
+			cols[i].oracleTypeNum = C.DPI_ORACLE_TYPE_NUMBER
+			cols[i].nativeTypeNum = C.DPI_NATIVE_TYPE_INT64
+			dpiDataSetInt64(&tempData, C.int64_t(value))
+		case string:
+			cols[i].oracleTypeNum = C.DPI_ORACLE_TYPE_VARCHAR
+			cols[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			cs := C.CString(value)
+			tbd = append(tbd, unsafe.Pointer(cs))
+			C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
+		case []byte:
+			cols[i].oracleTypeNum = C.DPI_ORACLE_TYPE_RAW
+			cols[i].nativeTypeNum = C.DPI_NATIVE_TYPE_BYTES
+			cs := (*C.char)(C.CBytes(value))
+			tbd = append(tbd, unsafe.Pointer(cs))
+			C.dpiData_setBytes(&tempData, cs, C.uint32_t(len(value)))
+		default:
+			free()
+			return nil, nil, errors.New("unsupported data type for sharding")
+		}
+		cols[i].value = tempData.value
+	}
+	return &cols[0], free, nil
 }
 
 // createConnFromParams creates a driver connection given pool parameters and connection
