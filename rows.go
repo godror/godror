@@ -609,7 +609,9 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			return nil
 		}
 		var t time.Duration
-		dataGetIntervalDS(ctx, &t, d)
+		if err := dataGetIntervalDS(ctx, &t, d); err != nil {
+			return err
+		}
 		dest[i] = t
 	case C.DPI_ORACLE_TYPE_INTERVAL_YM, C.DPI_NATIVE_TYPE_INTERVAL_YM:
 		if isNull {
