@@ -364,13 +364,14 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 	h, m, s := t.Clock()
 	ns := t.Nanosecond()
 	// DST transition creates a gap and both times may be correct.
-	if (h == 1 || h == 23) && m == 0 && s == 0 && ns == 0 &&
-		tz != nil && tz != time.UTC {
-		zs, ze := t.ZoneBounds()
-		if zs.Equal(t) || ze.Equal(t) {
-			h = 0
-		}
-		// fmt.Printf("bounds: %s - %s (%s -> h=%d)\n", zs, ze, t, h)
+	// When DST starts at midnight, time.Date normalizes the missing local
+	// 00:00 (e.g. an Oracle DATE read back) to 01:00 of the new zone:
+	// bind that as 00:00. Other times at 01:00, such as DST ending at
+	// 02:00 -> 01:00, are real instants and must be kept.
+	if h == 1 && m == 0 && s == 0 && ns == 0 &&
+		tz != nil && tz != time.UTC &&
+		time.Date(t.Year(), M, D, 0, 0, 0, 0, tz).Equal(t) {
+		h = 0
 	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("setTimestamp", "time", t.Format(time.RFC3339), "utc", t.UTC(), "tz", tzOff,
