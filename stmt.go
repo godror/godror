@@ -3753,6 +3753,9 @@ func stmtAddCleanup(ctx context.Context, st *statement, tag string) {
 	// A finalizer, not runtime.AddCleanup: the cleanup would need the
 	// embedded statementInnards, and a pointer to it keeps st reachable,
 	// so the cleanup would never run.
+	// Callers may guard the same statement again (rows.Next, NextResultSet):
+	// replace the finalizer, as SetFinalizer throws if one is already set.
+	runtime.SetFinalizer(st, nil)
 	runtime.SetFinalizer(st, func(st *statement) {
 		if st != nil && st.dpiStmt != nil {
 			if logger != nil {
