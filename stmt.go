@@ -542,6 +542,18 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if st.DeleteFromCache() {
 		C.dpiStmt_deleteFromCache(st.dpiStmt)
 	}
+
+	// Empty input slices are an empty batch: there is nothing to execute.
+	// With PlSQLArrays an empty slice is an empty PL/SQL table, and an empty
+	// out slice (RETURNING INTO) only collects rows, so those still execute.
+	if !st.PlSQLArrays() && st.arrLen == 0 {
+		for i, a := range args {
+			if out, isOut := a.Value.(sql.Out); st.isSlice[i] && (!isOut || out.In) {
+				return driver.RowsAffected(0), nil
+			}
+		}
+	}
+
 	// execute
 	var f func() C.int
 	many := !st.PlSQLArrays() && st.arrLen > 0
