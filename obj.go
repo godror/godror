@@ -101,6 +101,9 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 		}
 		// name = try
 	}
+	if data.err != nil {
+		return fmt.Errorf("set %s[%s]: %w", O, name, data.err)
+	}
 	// ctx := context.TODO()
 	// logger := getLogger(ctx)
 	// if logger != nil {
@@ -835,6 +838,9 @@ func (O ObjectCollection) AppendData(data *Data) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
 	}
+	if data.err != nil {
+		return fmt.Errorf("append: %w", data.err)
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_appendElement(O.dpiObject, data.NativeTypeNum, &data.dpiData)
 	}); err != nil {
@@ -931,6 +937,9 @@ func (O ObjectCollection) Get(i int) (any, error) {
 func (O ObjectCollection) SetItem(i int, data *Data) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
+	}
+	if data.err != nil {
+		return fmt.Errorf("set(%d): %w", i, data.err)
 	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_setElementValueByIndex(O.dpiObject, C.int32_t(i), data.NativeTypeNum, &data.dpiData)
