@@ -1241,6 +1241,14 @@ func (st *statement) bindVars(
 			if err := info.set(ctx, dv, data[:1], value); err != nil {
 				return fmt.Errorf("set(data[%d][%d], %#v (%T)): %w", i, 0, value, value, err)
 			}
+			// In executeMany mode the var has doManyCount elements, and every
+			// row must get the scalar. dpiVar_copyData also copies the
+			// buffers/references for bytes, LOB, object etc. types.
+			for j := 1; j < n; j++ {
+				if err := st.checkExecNoLOT(func() C.int { return C.dpiVar_copyData(dv, C.uint32_t(j), dv, 0) }); err != nil {
+					return fmt.Errorf("copyData(data[%d][%d]): %w", i, j, err)
+				}
+			}
 			continue
 		}
 
