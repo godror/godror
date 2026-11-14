@@ -1297,17 +1297,42 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 	}); err != nil {
 		return nil, err
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	// objectType belongs to the statement, so reuse the cached ObjectType
+	// of the same type, or take a reference for a new one: it goes into
+	// the cache, and the cache releases it when the connection is closed.
+	var info C.dpiObjectTypeInfo
+	if err := c.checkExec(func() C.int {
+		return C.dpiObjectType_getInfo(objectType, &info)
+	}); err != nil {
+		_ = C.dpiObject_release(object)
+		return nil, fmt.Errorf("wrapObject getInfo: %w", err)
+	}
+	name := (&ObjectType{
+		Schema:      C.GoStringN(info.schema, C.int(info.schemaLength)),
+		PackageName: C.GoStringN(info.packageName, C.int(info.packageNameLength)),
+		Name:        C.GoStringN(info.name, C.int(info.nameLength)),
+	}).FullName()
+	if t := c.objTypes[name]; t != nil && t.drv != nil && t.NativeTypeNum != 0 &&
+		t.dpiObjectType != nil && t.dpiObjectType.tdo == objectType.tdo {
+		return &Object{ObjectType: t, dpiObject: object}, nil
+	}
+	if err := c.checkExec(func() C.int {
+		return C.dpiObjectType_addRef(objectType)
+	}); err != nil {
+		_ = C.dpiObject_release(object)
+		return nil, err
+	}
 	o := &Object{
 		ObjectType: &ObjectType{objectTypeInnards: objectTypeInnards{
 			dpiObjectType: objectType, drv: c.drv,
 		}},
 		dpiObject: object,
 	}
-	c.mu.RLock()
-	err := o.ObjectType.init(c.objTypes)
-	c.mu.RUnlock()
-	if err != nil {
+	if err := o.ObjectType.init(c.objTypes); err != nil {
 		_ = o.Close()
+		_ = o.ObjectType.Close()
 		return nil, err
 	}
 	return o, nil
