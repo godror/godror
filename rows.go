@@ -844,7 +844,7 @@ func (r *rows) getImplicitResult() {
 	if err := st.checkExec(func() C.int { return C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) }); err != nil {
 		r.nextRsErr = fmt.Errorf("getImplicitResult: %w", err)
 	}
-	C.dpiStmt_addRef(r.nextRs)
+	// r.nextRs holds the reference dpiStmt_getImplicitResult returned.
 }
 func (r *rows) HasNextResultSet() bool {
 	if r == nil {
@@ -897,6 +897,8 @@ func (r *rows) NextResultSet() error {
 		//C.dpiStmt_release(st.dpiStmt)  // don't bork all rows access
 		return err
 	}
+	// From here on, st owns the reference to the implicit result.
+	r.nextRs = nil
 	// keep the original statement for the succeeding NextResultSet calls.
 	st.Lock()
 	nr, err := st.openRows(ctx, int(n))
@@ -908,8 +910,12 @@ func (r *rows) NextResultSet() error {
 		st.Close()
 		return err
 	}
+	// openRows took its own reference, which nr.Close releases (with st.Close).
+	C.dpiStmt_release(st.dpiStmt)
 	stmtAddCleanup(ctx, st, "NextResultSet")
 	nr.origSt = orig
+	// Release the current result set (its define variables and statement).
+	_ = r.Close()
 	*r = *nr
 	return nil
 }

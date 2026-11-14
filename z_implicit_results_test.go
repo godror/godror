@@ -76,3 +76,25 @@ func TestImplicitResultsStandardLoop(t *testing.T) {
 		t.Errorf("got %q, wanted [1 A]", got)
 	}
 }
+
+// TestImplicitResultsNoCursorLeak runs a block returning implicit results
+// many times on one session, which must not run out of open cursors.
+func TestImplicitResultsNoCursorLeak(t *testing.T) {
+	ctx, cancel := testContext(t, 2*time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	for i := 0; i < 1000; i++ {
+		got, err := readImplicitResults(ctx, conn)
+		skipNoImplicitResults(t, err)
+		if err != nil {
+			t.Fatalf("%d: %+v", i, err)
+		}
+		if fmt.Sprint(got) != "[1 A]" {
+			t.Fatalf("%d: got %q, wanted [1 A]", i, got)
+		}
+	}
+}
