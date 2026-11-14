@@ -1064,27 +1064,9 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 			return nil, err
 		}
 	}
-	conn, isNew, err := d.createConn(ctx, pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
-	if err != nil {
-		return conn, err
-	}
-
-	if P.CommonParams.InitOnNewConn && !isNew {
-		return conn, nil
-	}
-
-	onInit := conn.getOnInit()
-	if onInit == nil {
-		return conn, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, nvlD(conn.params.WaitTimeout, time.Minute))
-	err = onInit(ctx, conn)
-	cancel()
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("init: %w", err)
-	}
-	return conn, nil
+	// createConn runs OnInit (respecting InitOnNewConn) in conn.init.
+	conn, _, err := d.createConn(ctx, pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
+	return conn, err
 }
 
 // getPool get the pool to use given the set of pool parameters provided.
