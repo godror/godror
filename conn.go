@@ -240,6 +240,9 @@ func (c *conn) closeNotLocking() error {
 		return nil
 	}
 	c.dpiConn = nil
+	// Release the LOB references that Go values still hold:
+	// each holds a reference to dpiConn.
+	releaseConnLobs(dpiConn)
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
