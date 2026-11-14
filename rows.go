@@ -384,7 +384,11 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 			logger.Debug("fetched", "bri", r.bufferRowIndex, "fetched", r.fetched, "moreRows", moreRows, "len(data)", len(r.data), "cols", len(r.columns))
 		}
 		if r.fetched == 0 {
+			// Keep what HasNextResultSet and NextResultSet need.
+			orig, nextRs := r.implicitResultsStmt(), r.nextRs
+			r.nextRs = nil
 			_ = r.Close()
+			r.origSt, r.nextRs = orig, nextRs
 			r.err = io.EOF
 			return r.err
 		}
@@ -814,6 +818,19 @@ func (dr *directRow) Next(dest []driver.Value) error {
 	return nil
 }
 
+// implicitResultsStmt returns the statement whose implicit results these
+// rows iterate, if it is still needed after the current result set is closed.
+func (r *rows) implicitResultsStmt() *statement {
+	st := r.origSt
+	if st == nil {
+		st = r.statement
+	}
+	if st == nil || st.dpiStmt == nil || !(r.nextRs != nil || st.dpiStmtInfo.isPLSQL == 1) {
+		return nil
+	}
+	return st
+}
+
 func (r *rows) getImplicitResult() {
 	if r == nil || r.nextRsErr != nil {
 		return
@@ -824,22 +841,30 @@ func (r *rows) getImplicitResult() {
 		st = r.statement
 		r.origSt = st
 	}
-	if err := r.checkExec(func() C.int { return C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) }); err != nil {
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getImplicitResult(st.dpiStmt, &r.nextRs) }); err != nil {
 		r.nextRsErr = fmt.Errorf("getImplicitResult: %w", err)
 	}
 	C.dpiStmt_addRef(r.nextRs)
 }
 func (r *rows) HasNextResultSet() bool {
-	if r == nil || r.statement == nil || r.conn == nil {
+	if r == nil {
+		return false
+	}
+	// After EOF, r.statement is nil, but r.origSt is kept.
+	st := r.origSt
+	if st == nil {
+		st = r.statement
+	}
+	if st == nil || st.dpiStmt == nil || st.conn == nil {
 		return false
 	}
 	if r.nextRs != nil {
 		return true
 	}
-	if cv := r.conn.drv.clientVersion; !(cv.Version > 12 || cv.Version == 12 && cv.Release >= 1) {
+	if cv := st.conn.drv.clientVersion; !(cv.Version > 12 || cv.Version == 12 && cv.Release >= 1) {
 		return false
 	}
-	if sv, err := r.conn.ServerVersion(); !(err == nil &&
+	if sv, err := st.conn.ServerVersion(); !(err == nil &&
 		(sv.Version > 12 || sv.Version == 12 && sv.Release >= 1)) {
 		return false
 	}
@@ -854,16 +879,17 @@ func (r *rows) NextResultSet() error {
 		}
 		return fmt.Errorf("getImplicitResult: %w", io.EOF)
 	}
+	orig := r.origSt // set by HasNextResultSet
 	st := &statement{
-		conn:             r.conn,
+		conn:             orig.conn,
 		statementInnards: statementInnards{dpiStmt: r.nextRs},
-		stmtOptions:      r.statement.stmtOptions,
+		stmtOptions:      orig.stmtOptions,
 	}
 	stmtAddCleanup(ctx, st, "rows.NextResultSet")
 
 	var n C.uint32_t
 	logger := getLogger(context.TODO())
-	if err := r.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getNumQueryColumns(st.dpiStmt, &n) }); err != nil {
 		err = fmt.Errorf("getNumQueryColumns: %+v: %w", err, io.EOF)
 		if logger != nil {
 			logger.Error("NextResultSet.getNumQueryColumns", "st", fmt.Sprintf("%p", st.dpiStmt), "error", err)
@@ -883,10 +909,7 @@ func (r *rows) NextResultSet() error {
 		return err
 	}
 	stmtAddCleanup(ctx, st, "NextResultSet")
-	nr.origSt = r.origSt
-	if nr.origSt == nil {
-		nr.origSt = r.statement
-	}
+	nr.origSt = orig
 	*r = *nr
 	return nil
 }
