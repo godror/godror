@@ -282,7 +282,7 @@ func (bs BufSizes) Print(w io.Writer, prefix, indent string) {
 		fmt.Fprintf(w, "%s(SEND_BUF_SIZE=%d)", prefix, bs.SendBufSize)
 	}
 }
-func (bs BufSizes) IsZero() bool { return bs.RecvBufSize > 0 && bs.SendBufSize > 0 }
+func (bs BufSizes) IsZero() bool { return bs.RecvBufSize == 0 && bs.SendBufSize == 0 }
 func (bs *BufSizes) Parse(ss []Statement) error {
 	for _, s := range ss {
 		switch s.Name {
@@ -310,10 +310,10 @@ func (lo ListOptions) Print(w io.Writer, prefix, indent string) {
 		io.WriteString(w, prefix+"(FAILOVER=on)")
 	}
 	if lo.LoadBalance {
-		io.WriteString(w, prefix+"(LOAD_BALANE=on)")
+		io.WriteString(w, prefix+"(LOAD_BALANCE=on)")
 	}
 	if lo.SourceRoute {
-		io.WriteString(w, prefix+"(SOURE_ROUTE=on)")
+		io.WriteString(w, prefix+"(SOURCE_ROUTE=on)")
 	}
 }
 func (lo ListOptions) IsZero() bool { return !lo.Failover && !lo.LoadBalance && !lo.SourceRoute }
@@ -324,9 +324,9 @@ func (lo *ListOptions) Parse(ss []Statement) error {
 		switch s.Name {
 		case "FAILOVER":
 			lo.Failover = s2b(s.Value)
-		case "LOAD_BALANE":
+		case "LOAD_BALANCE":
 			lo.LoadBalance = s2b(s.Value)
-		case "SourceRoute":
+		case "SOURCE_ROUTE":
 			lo.SourceRoute = s2b(s.Value)
 		}
 	}
