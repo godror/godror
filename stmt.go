@@ -1925,7 +1925,7 @@ func (c *conn) dataGetIntervalDS(ctx context.Context, v any, data []C.dpiData) e
 			*x = 0
 			return nil
 		}
-		dataGetIntervalDS(ctx, x, &data[0])
+		return dataGetIntervalDS(ctx, x, &data[0])
 
 	case *[]time.Duration:
 		n := len(data)
@@ -1934,24 +1934,38 @@ func (c *conn) dataGetIntervalDS(ctx context.Context, v any, data []C.dpiData) e
 		} else {
 			*x = make([]time.Duration, n)
 		}
+		var firstErr error
 		for i := range data {
-			dataGetIntervalDS(ctx, &((*x)[i]), &data[i])
+			if err := dataGetIntervalDS(ctx, &((*x)[i]), &data[i]); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("%d. %w", i, err)
+			}
 		}
+		return firstErr
 	}
 	return nil
 }
 
-func dataGetIntervalDS(ctx context.Context, t *time.Duration, d *C.dpiData) {
+func dataGetIntervalDS(ctx context.Context, t *time.Duration, d *C.dpiData) error {
 	//ds := C.dpiData_getIntervalDS(d)
 	ds := *((*C.dpiIntervalDS)(unsafe.Pointer(&d.value)))
-	*t = time.Duration(ds.days)*24*time.Hour +
-		time.Duration(ds.hours)*time.Hour +
+	// All fields have the same sign; only the days can overflow.
+	const maxDays = int64(1<<63-1) / int64(24*time.Hour)
+	days := int64(ds.days)
+	rest := time.Duration(ds.hours)*time.Hour +
 		time.Duration(ds.minutes)*time.Minute +
 		time.Duration(ds.seconds)*time.Second +
 		time.Duration(ds.fseconds)
+	dur := time.Duration(days) * 24 * time.Hour
+	sum := dur + rest
+	if days > maxDays || days < -maxDays || rest > 0 && sum < dur || rest < 0 && sum > dur {
+		*t = 0
+		return fmt.Errorf("INTERVAL DAY TO SECOND of %d days does not fit in time.Duration", ds.days)
+	}
+	*t = sum
 	if logger := getLogger(ctx); logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("dataGetIntervalDS", "d", *d, "t", *t)
 	}
+	return nil
 }
 
 func (c *conn) dataSetIntervalDS(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {

@@ -609,7 +609,9 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			return nil
 		}
 		var t time.Duration
-		dataGetIntervalDS(ctx, &t, d)
+		if err := dataGetIntervalDS(ctx, &t, d); err != nil {
+			return err
+		}
 		dest[i] = t
 	case C.DPI_ORACLE_TYPE_INTERVAL_YM, C.DPI_NATIVE_TYPE_INTERVAL_YM:
 		if isNull {
@@ -618,7 +620,12 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		}
 		//ym := C.dpiData_getIntervalYM(d)
 		ym := *((*C.dpiIntervalYM)(unsafe.Pointer(&d.value)))
-		dest[i] = strconv.Itoa(int(ym.years)) + "-" + strconv.Itoa(int(ym.months))
+		// Both fields carry the sign: '-1-2' is years=-1, months=-2.
+		years, months, sign := int(ym.years), int(ym.months), ""
+		if years < 0 || months < 0 {
+			years, months, sign = -years, -months, "-"
+		}
+		dest[i] = sign + strconv.Itoa(years) + "-" + strconv.Itoa(months)
 
 	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
 		C.DPI_ORACLE_TYPE_BLOB,
