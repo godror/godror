@@ -1957,6 +1957,8 @@ func TestRanaOraIssue244(t *testing.T) {
 	stmt.Close()
 	tx.Commit()
 
+	waitReadOnlyReadable(ctx, t, tableName)
+
 	qry = `SELECT fund_account, money_type FROM ` + tableName + ` WHERE business_flag = :1 AND fund_code = :2 AND fund_account = :3` //nolint:gas
 	grp, grpCtx := errgroup.WithContext(ctx)
 	for i := 0; i < max; i++ {
@@ -5293,6 +5295,7 @@ func TestLevelSerializable(t *testing.T) {
 		}
 	}
 	defer testDb.Exec(dropQry)
+	waitReadOnlyReadable(ctx, t, tbl)
 	txRO, err := testDb.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)

@@ -52,7 +52,6 @@ type conn struct {
 	drv                 *drv
 	dpiConn             *C.dpiConn
 	currentTT           atomic.Value
-	tranParams          tranParams
 	poolKey             string
 	Edition, DomainName string
 	DBName, ServiceName string
@@ -281,63 +280,50 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, err
 	}
 
-	const (
-		trRO = "SET TRANSACTION READ ONLY"
-		trRW = "SET TRANSACTION READ WRITE"
-		trLC = "ALTER SESSION SET ISOLATION_LEVEL=READ COMMIT" + "TED" // against misspell check
-		trLS = "ALTER SESSION SET ISOLATION_LEVEL=SERIALIZABLE"
-	)
-
-	var todo tranParams
-	if opts.ReadOnly {
-		todo.RW = trRO
-	} else {
-		todo.RW = trRW
-	}
+	// SET TRANSACTION must be the first statement of the transaction,
+	// and it takes either READ ONLY or ISOLATION LEVEL, not both.
+	// A read-only transaction is transaction-level consistent anyway.
+	var qry string
 	switch level := sql.IsolationLevel(opts.Isolation); level {
 	case sql.LevelDefault:
 	case sql.LevelReadCommitted:
-		todo.Level = trLC
+		qry = "SET TRANSACTION ISOLATION LEVEL READ COMMIT" + "TED" // against misspell check
 	case sql.LevelSerializable:
-		todo.Level = trLS
+		qry = "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"
 	default:
 		return nil, fmt.Errorf("isolation level is not supported: %s", sql.IsolationLevel(opts.Isolation))
 	}
-
-	if todo != c.tranParams {
-		for _, qry := range []string{todo.RW, todo.Level} {
-			if qry == "" {
-				continue
-			}
-			st, err := c.PrepareContext(ctx, qry)
-			if err == nil {
-				_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
-				st.Close()
-			}
-			if err != nil {
-				return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
-			}
-		}
-		c.tranParams = todo
+	if opts.ReadOnly {
+		qry = "SET TRANSACTION READ ONLY"
 	}
 
-	c.mu.RLock()
-	inTran := c.inTransaction
-	c.mu.RUnlock()
-	if inTran {
+	c.mu.Lock()
+	if c.inTransaction {
+		c.mu.Unlock()
 		return nil, errors.New("already in transaction")
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Set inTransaction before SET TRANSACTION, so that it does not run
+	// with DPI_MODE_EXEC_COMMIT_ON_SUCCESS, which would end the transaction at once.
 	c.inTransaction = true
 	if tt, ok := ctx.Value(traceTagCtxKey{}).(TraceTag); ok {
 		_ = c.setTraceTag(tt)
 	}
-	return c, nil
-}
+	c.mu.Unlock()
 
-type tranParams struct {
-	RW, Level string
+	if qry != "" {
+		st, err := c.PrepareContext(ctx, qry)
+		if err == nil {
+			_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+			st.Close()
+		}
+		if err != nil {
+			c.mu.Lock()
+			c.inTransaction = false
+			c.mu.Unlock()
+			return nil, maybeBadConn(fmt.Errorf("%s: %w", qry, err), c)
+		}
+	}
+	return c, nil
 }
 
 // PrepareContext returns a prepared statement, bound to this connection.
@@ -399,7 +385,6 @@ func (c *conn) endTran(isCommit bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.inTransaction = false
-	c.tranParams = tranParams{}
 
 	var err error
 	//msg := "Commit"
