@@ -52,3 +52,23 @@ func TestIntervalDSOverflow(t *testing.T) {
 		}
 	})
 }
+
+// TestIntervalYMString checks the string form of INTERVAL YEAR TO MONTH.
+func TestIntervalYMString(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	for _, tc := range []struct{ expr, want string }{
+		{"INTERVAL '1-2' YEAR TO MONTH", "1-2"},
+		{"INTERVAL '-1-2' YEAR TO MONTH", "-1-2"},
+		{"INTERVAL '-0-2' YEAR TO MONTH", "-0-2"},
+		{"INTERVAL '-3-0' YEAR TO MONTH", "-3-0"},
+		{"INTERVAL '0-0' YEAR TO MONTH", "0-0"},
+	} {
+		var s string
+		if err := testDb.QueryRowContext(ctx, "SELECT "+tc.expr+" FROM DUAL").Scan(&s); err != nil {
+			t.Errorf("%s: %+v", tc.expr, err)
+		} else if s != tc.want {
+			t.Errorf("%s: got %q, wanted %q", tc.expr, s, tc.want)
+		}
+	}
+}
