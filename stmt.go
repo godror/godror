@@ -2945,6 +2945,9 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	lw := &dpiLobWriter{dpiLob: lob, drv: c.drv, isClob: L.IsClob}
 	defer lw.Close() // Do NOT close before dpiVar_setFromLob !
 	written, err := io.CopyBuffer(lw, L, make([]byte, int(chunkSize)))
+	if err == nil {
+		err = lw.flush()
+	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("setLOB", "written", written, "tempLob", fmt.Sprintf("%p", lob), "chunkSize", chunkSize, "error", err)
 	}

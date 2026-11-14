@@ -401,17 +401,70 @@ func (dlr *dpiLobReader) Close() error {
 
 type dpiLobWriter struct {
 	*drv
-	dpiLob *C.dpiLob
-	offset C.uint64_t
-	opened bool
-	isClob bool
+	dpiLob  *C.dpiLob
+	offset  C.uint64_t
+	opened  bool
+	isClob  bool
+	tail    [utf8.UTFMax - 1]byte // CLOB: incomplete UTF-8 sequence at the end of the last Write
+	tailLen int
+	buf     []byte
 }
 
+// Write writes p at the end of the LOB.
+//
+// For CLOBs, the offset is in characters (UTF-16 code units, as Oracle stores
+// CLOBs in UTF-16), so only whole UTF-8 sequences are written,
+// and an incomplete one at the end of p is kept for the next Write (or flush).
 func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	if !dlw.isClob {
+		return dlw.write(p, C.uint64_t(len(p)))
+	}
+	buf := p
+	if dlw.tailLen != 0 {
+		buf = append(append(dlw.buf[:0], dlw.tail[:dlw.tailLen]...), p...)
+		dlw.buf = buf
+	}
+	// Find the start of the last, incomplete UTF-8 sequence.
+	end := len(buf)
+	for i := len(buf) - 1; i >= 0 && i >= len(buf)-(utf8.UTFMax-1); i-- {
+		if utf8.RuneStart(buf[i]) {
+			if !utf8.FullRune(buf[i:]) {
+				end = i
+			}
+			break
+		}
+	}
+	var chars C.uint64_t
+	for i := 0; i < end; {
+		r, size := utf8.DecodeRune(buf[i:end])
+		i += size
+		chars += C.uint64_t(utf16.RuneLen(r))
+	}
+	if end != 0 {
+		if _, err := dlw.write(buf[:end], chars); err != nil {
+			return 0, err
+		}
+	}
+	dlw.tailLen = copy(dlw.tail[:], buf[end:])
+	return len(p), nil
+}
 
+// flush writes the remaining incomplete UTF-8 sequence of a CLOB, if any.
+func (dlw *dpiLobWriter) flush() error {
+	if dlw.tailLen == 0 {
+		return nil
+	}
+	n := dlw.tailLen
+	dlw.tailLen = 0
+	_, err := dlw.write(dlw.tail[:n], C.uint64_t(n))
+	return err
+}
+
+// write p at the offset, then advance the offset by length.
+func (dlw *dpiLobWriter) write(p []byte, length C.uint64_t) (int, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -434,7 +487,7 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 		_ = closeLob(dlw, lob)
 		return 0, err
 	}
-	dlw.offset += n
+	dlw.offset += length
 
 	return int(n), nil
 }
