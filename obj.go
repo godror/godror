@@ -117,7 +117,7 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 
 	// FromJSON
 	if !data.IsNull() && data.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_DATE {
-		if t, err := time.Parse(time.RFC3339, string(data.GetBytes())); err == nil {
+		if t, err := time.Parse(time.RFC3339, string(data.getBytesUnsafe())); err == nil {
 			data.Set(t)
 		}
 	}
@@ -1503,7 +1503,7 @@ BEGIN
 END;`
 	} else if false && // cannot set ROWID: https://github.com/oracle/odpi/issues/187
 		data.NativeTypeNum == 3004 && strings.Contains(err.Error(), "DPI-1014:") {
-		val = string(data.GetBytes())
+		val = string(data.getBytesUnsafe())
 		qry = `DECLARE
   v_obj %s := :1;
   --v_rowid CONSTANT VARCHAR2(128) := :2;
@@ -1682,7 +1682,7 @@ func SliceScan[E any](ss *[]E, v any) error {
 		case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			rv.SetUint(data.GetUint64())
 		case reflect.String:
-			rv.SetString(string(data.GetBytes()))
+			rv.SetString(string(data.getBytesUnsafe()))
 		default:
 			if data.IsObject() {
 				sub := data.GetObject()
