@@ -1535,22 +1535,19 @@ func (O ObjectCollection) Items() iter.Seq2[*Data, error] {
 	}
 }
 
+// Indexes iterates over the indexes of the existing elements of the collection,
+// from First through Next. An empty collection yields nothing.
 func (O ObjectCollection) Indexes() iter.Seq2[int, error] {
-	i, err := O.First()
 	return func(yield func(i int, err error) bool) {
-		if err != nil {
-			yield(i, err)
-			return
-		}
-		i, err = O.Next(i)
-		if err != nil {
-			if !errors.Is(err, ErrNotExist) {
-				yield(i, err)
+		i, err := O.First()
+		for err == nil {
+			if !yield(i, nil) {
+				return
 			}
-			return
+			i, err = O.Next(i)
 		}
-		if !yield(i, err) {
-			return
+		if !errors.Is(err, ErrNotExist) {
+			yield(i, err)
 		}
 	}
 }
