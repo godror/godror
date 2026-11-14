@@ -454,35 +454,45 @@ func (d *drv) Close() error {
 	if d == nil {
 		return nil
 	}
+	// Wait for a pool creation in progress, which uses d.dpiContext.
+	d.poolMu.Lock()
+	defer d.poolMu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	dpiCtx, pools := d.dpiContext, d.pools
 	d.dpiContext, d.pools, d.timezones = nil, nil, nil
-	done := make(chan error, 1)
+	purged := make(chan struct{})
 	go func() {
 		for _, pool := range pools {
 			pool.Purge()
 		}
-		done <- nil
+		close(purged)
 	}()
 	select {
-	case <-done:
-	case <-time.After(baseWaitTimeout):
+	case <-purged:
+	case <-time.After(driverCloseTimeout):
+		// The pools may still use the context, so leave it allocated.
+		return fmt.Errorf("Driver.Close: purging pools: %w", context.DeadlineExceeded)
 	}
 
+	done := make(chan error, 1)
 	go func() {
+		var err error
 		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
-			done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
+			err = fmt.Errorf("error destroying dpiContext %p", dpiCtx)
 		}
-		close(done)
+		done <- err
 	}()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(baseWaitTimeout):
+	case <-time.After(driverCloseTimeout):
 		return fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
 	}
 }
+
+// driverCloseTimeout limits each wait in drv.Close; a variable for tests.
+var driverCloseTimeout = baseWaitTimeout
 
 type locationWithOffSecs struct {
 	*time.Location
