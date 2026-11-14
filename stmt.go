@@ -567,36 +567,23 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
 	}
+	breakConn := st.conn
 	for i := 0; i < 3; i++ {
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
 		}
 		done := make(chan struct{})
-		if !st.conn.params.NoBreakOnContextCancel {
-			// Forcefully BREAK execution on context cancelation
-			go func() {
-				select {
-				case <-done:
-				case <-ctx.Done():
-					select {
-					case <-done:
-					default:
-						if logger != nil {
-							logger.Warn("BREAK dpiStmt_execute")
-						}
-						st.conn.Break()
-					}
-				}
-			}()
-		}
-		if err = func() error {
+		wait := breakOnCancel(ctx, breakConn, done, logger)
+		err = func() error {
 			defer close(done)
 			if st.warningAsError {
 				return st.checkExecWithWarning(f)
 			} else {
 				return st.checkExec(f)
 			}
-		}(); err == nil {
+		}()
+		wait()
+		if err == nil {
 			break
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -825,36 +812,20 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	// execute
 	var colCount C.uint32_t
 	f := func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, &colCount) }
-	// Capture the connection: the BREAK goroutine below may outlive this call
-	// by a moment, racing a concurrent statement Close that nils st.conn.
 	breakConn := st.conn
 	for i := 0; i < 3; i++ {
 		done := make(chan struct{})
-		if !breakConn.params.NoBreakOnContextCancel {
-			// Forcefully BREAK execution on context cancelation
-			go func() {
-				select {
-				case <-done:
-				case <-ctx.Done():
-					select {
-					case <-done:
-					default:
-						if logger != nil {
-							logger.Warn("BREAK dpiStmt_execute")
-						}
-						breakConn.Break()
-					}
-				}
-			}()
-		}
-		if err = func() error {
+		wait := breakOnCancel(ctx, breakConn, done, logger)
+		err = func() error {
 			defer close(done)
 			if st.warningAsError {
 				return st.checkExecWithWarning(f)
 			} else {
 				return st.checkExec(f)
 			}
-		}(); err == nil {
+		}()
+		wait()
+		if err == nil {
 			break
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -891,6 +862,40 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 
 	rows, err := st.openRows(ctx, int(colCount))
 	return rows, closeIfBadConn(err)
+}
+
+// breakOnCancel starts a goroutine that BREAKs the execution on c
+// when ctx is canceled before done is closed, unless NoBreakOnContextCancel is set.
+//
+// The caller must hold c.mu (so c.dpiConn stays valid), close done when the
+// execution returns, then call the returned wait before returning:
+// wait returns only after the goroutine finished, so the BREAK cannot hit
+// the next call on the connection, nor race with closing it.
+func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *slog.Logger) (wait func()) {
+	if c.params.NoBreakOnContextCancel {
+		return func() {}
+	}
+	// Do not lock c.mu in the goroutine: the caller already holds it, and
+	// waits for this goroutine.
+	dpiConn := c.dpiConn
+	finished := make(chan struct{})
+	// Forcefully BREAK execution on context cancelation
+	go func() {
+		defer close(finished)
+		select {
+		case <-done:
+		case <-ctx.Done():
+			select {
+			case <-done:
+			default:
+				if logger != nil {
+					logger.Warn("BREAK dpiStmt_execute")
+				}
+				_ = c.breakDpiConn(dpiConn)
+			}
+		}
+	}()
+	return func() { <-finished }
 }
 
 // NumInput returns the number of placeholder parameters.

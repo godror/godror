@@ -148,18 +148,24 @@ func (c *conn) Break() error {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.breakDpiConn(c.dpiConn)
+}
+
+// breakDpiConn sends a BREAK on dpiConn, without locking c.mu.
+// The caller must make sure that dpiConn is not released meanwhile.
+func (c *conn) breakDpiConn(dpiConn *C.dpiConn) error {
 	logger := getLogger(context.TODO())
 	if logger != nil {
-		logger.Debug("Break", "dpiConn", c.dpiConn)
+		logger.Debug("Break", "dpiConn", dpiConn)
 	}
-	if c.dpiConn == nil {
+	if dpiConn == nil {
 		return nil
 	}
-	if err := c.checkExec(func() C.int { return C.dpiConn_breakExecution(c.dpiConn) }); err != nil {
+	if err := c.checkExec(func() C.int { return C.dpiConn_breakExecution(dpiConn) }); err != nil {
 		if logger != nil {
 			logger.Error("Break", "error", err)
 		}
-		// Only classify the error here: Break holds c.mu.RLock, and
+		// Only classify the error here: c.mu is read-locked, and
 		// maybeBadConn with a non-nil conn would release the connection
 		// under the read lock while another goroutine may be inside an
 		// ODPI call on it. The owner of the statement closes the
