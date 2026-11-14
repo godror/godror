@@ -329,16 +329,29 @@ func (d *Data) GetTimeIn(serverTZ *time.Location) time.Time {
 }
 
 // SetTime sets Time to data.
+//
+// It panics with ErrBadDate if the year is out of Oracle's range;
+// use Set to get an error instead.
 func (d *Data) SetTime(t time.Time) {
-	d.reset(t.IsZero())
-	if d.dpiData.isNull == 1 {
-		return
+	if err := d.setTime(t); err != nil {
+		panic(err)
 	}
-	d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
-	dataSetTime(context.Background(), &d.dpiData, t, nil)
 }
 
-func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *time.Location) {
+func (d *Data) setTime(t time.Time) error {
+	d.reset(t.IsZero())
+	if d.dpiData.isNull == 1 {
+		return nil
+	}
+	d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
+	if err := dataSetTime(context.Background(), &d.dpiData, t, nil); err != nil {
+		d.dpiData.isNull = 1
+		return err
+	}
+	return nil
+}
+
+func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *time.Location) error {
 	logger := getLogger(ctx)
 	tz, tzOff := connTZ, 0
 	if tz == nil {
@@ -359,7 +372,7 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 		Y--
 	}
 	if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841
-		panic(fmt.Errorf("%v: %w", t, ErrBadDate))
+		return fmt.Errorf("%v: %w", t, ErrBadDate)
 	}
 	h, m, s := t.Clock()
 	ns := t.Nanosecond()
@@ -385,6 +398,7 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 		hour: C.uint8_t(h), minute: C.uint8_t(m), second: C.uint8_t(s), fsecond: C.uint32_t(ns),
 		tzHourOffset: C.int8_t(tzOff / 3600), tzMinuteOffset: C.int8_t((tzOff % 3600) / 60),
 	}
+	return nil
 }
 
 func dpiDataSetInt64(d *C.dpiData, v C.int64_t) {
@@ -522,11 +536,15 @@ func (d *Data) Set(v any) error {
 	case []byte:
 		d.SetBytes(x)
 	case time.Time:
-		d.SetTime(x)
+		if err := d.setTime(x); err != nil {
+			return err
+		}
 	case NullTime:
 		d.NativeTypeNum = C.DPI_NATIVE_TYPE_TIMESTAMP
 		if d.dpiData.isNull = C.int(b2i(!x.Valid)); x.Valid {
-			d.SetTime(x.Time)
+			if err := d.setTime(x.Time); err != nil {
+				return err
+			}
 		}
 	case time.Duration:
 		d.SetIntervalDS(x)
