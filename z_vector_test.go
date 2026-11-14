@@ -8,6 +8,7 @@ package godror_test
 import (
 	crand "crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"reflect"
@@ -486,9 +487,11 @@ func TestVectorSparseLengthMismatch(t *testing.T) {
 	} {
 		if _, err := testDb.ExecContext(ctx, qry, 1, v); err == nil {
 			t.Errorf("%d indices, %v values: wanted error, got nil", len(v.Indices), v.Values)
+		} else if errors.Is(err, godror.ErrSparseVectorLength) {
+			// The expected error, from SetVectorValue.
+			t.Log(err)
 		} else {
 			skipIfNoVectorSupport(t, err)
-			t.Log(err)
 		}
 	}
 	// A consistent sparse vector still works.
