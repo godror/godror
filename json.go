@@ -326,6 +326,7 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 //	map[string]any, for JSON object type
 //	[]any, for JSON arrays
 //	godror.Number or float64 based on options for NUMBER
+//	float64 for BINARY_DOUBLE, float32 for BINARY_FLOAT
 //	bool , for boolean
 //	byte[], for RAW
 //	time.Duration, for INTERVAL DAY TO SECOND
@@ -417,6 +418,7 @@ type JSONScalar struct {
 //	map[string]any, for JSON object type
 //	[]any, for JSON arrays
 //	godror.Number or float64 based on options for NUMBER
+//	float64 for BINARY_DOUBLE, float32 for BINARY_FLOAT
 //	bool , for JSON boolean
 //	byte[], for JSON RAW
 //	time.Duration, for INTERVAL DAY TO SECOND
@@ -448,6 +450,8 @@ func (j JSONScalar) GetValue() (val any, err error) {
 
 // getJSONScalarNumber returns DB NUMBER as godror.Number for option,
 // JSONOptNumberAsString and float64 for option, JSONOptDefault.
+// BINARY_DOUBLE is returned as float64 and BINARY_FLOAT as float32,
+// regardless of the option.
 func getJSONScalarNumber(d Data, opts JSONOption) (val any) {
 	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
@@ -459,7 +463,9 @@ func getJSONScalarNumber(d Data, opts JSONOption) (val any) {
 		}
 		val = Number(b.([]byte))
 	} else {
-		val = b.(float64)
+		// DPI_NATIVE_TYPE_DOUBLE (float64), or DPI_NATIVE_TYPE_FLOAT (float32)
+		// for a BINARY_FLOAT.
+		val = b
 	}
 	return
 }
