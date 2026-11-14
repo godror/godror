@@ -11,6 +11,7 @@ package godror
 */
 import "C"
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -105,8 +106,22 @@ func (d *Data) SetBool(b bool) {
 	C.dpiData_setBool(&d.dpiData, i)
 }
 
-// GetBytes returns the []byte from the data.
+// GetBytes returns a copy of the []byte from the data.
+//
+// The bytes are copied, because the C memory they come from may be
+// reused or freed (for example by the next GetAttribute or Object.Close).
 func (d *Data) GetBytes() []byte {
+	b := d.getBytesUnsafe()
+	if b == nil {
+		return nil
+	}
+	return bytes.Clone(b)
+}
+
+// getBytesUnsafe returns the []byte from the data without copying.
+// The result is only valid until the underlying C memory changes,
+// so callers must copy it (for example by converting to string) right away.
+func (d *Data) getBytesUnsafe() []byte {
 	if d.IsNull() {
 		return nil
 	}

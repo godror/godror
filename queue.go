@@ -917,8 +917,7 @@ func (D *DeqOptions) fromOra(d *drv, opts *C.dpiDeqOptions) error {
 	D.MsgID = nil
 	if OK(C.dpiDeqOptions_getMsgId(opts, &value, &length), "getMsgId") {
 		if length != 0 {
-			//D.MsgID = ((*[1 << 30]byte)(unsafe.Pointer(value)))[:int(length):int(length)]
-			D.MsgID = ([]byte)(unsafe.Slice((*byte)(unsafe.Pointer(value)), length))
+			D.MsgID = C.GoBytes(unsafe.Pointer(value), C.int(length))
 		}
 	}
 	var nav C.dpiDeqNavigation
