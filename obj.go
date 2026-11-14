@@ -118,7 +118,9 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	// FromJSON
 	if !data.IsNull() && data.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES && attr.OracleTypeNum == C.DPI_ORACLE_TYPE_DATE {
 		if t, err := time.Parse(time.RFC3339, string(data.GetBytes())); err == nil {
-			data.Set(t)
+			if err := data.Set(t); err != nil {
+				return fmt.Errorf("set %s[%s]: %w", O, name, err)
+			}
 		}
 	}
 	if err := O.drv.checkExec(func() C.int {
@@ -1605,8 +1607,8 @@ func SliceWriteObject[E any](o *Object, ss []E) error {
 				return err
 			}
 			continue
-		} else {
-			data.Set(v)
+		} else if err := data.Set(v); err != nil {
+			return err
 		}
 		if err := coll.AppendData(data); err != nil {
 			return err
