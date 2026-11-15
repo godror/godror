@@ -1471,6 +1471,10 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		info.set = dataSetBytes
 		if info.isOut {
 			info.bufSize = 32767
+			// An IN OUT value must fit into the variable, too.
+			if b, ok := v.([]byte); ok && info.isIn && len(b) > info.bufSize {
+				info.bufSize = len(b)
+			}
 			*get = dataGetBytes
 		} else {
 			switch v := v.(type) {
@@ -1509,6 +1513,10 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		info.set = dataSetBytes
 		if info.isOut {
 			info.bufSize = 32767
+			// An IN OUT value must fit into the variable, too.
+			if s, ok := v.(string); ok && info.isIn && len(s) > info.bufSize {
+				info.bufSize = len(s)
+			}
 			*get = dataGetBytes
 		} else {
 			switch v := v.(type) {
