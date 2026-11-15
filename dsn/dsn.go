@@ -497,8 +497,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		//fmt.Printf("URL=%s cs=%q host=%q port=%q path=%q\n", u, P.ConnectString, u.Host, u.Port(), u.Path)
 		q = u.Query()
 	} else if strings.IndexByte(dataSourceName, '\n') >= 0 || // multi-line, or
-		strings.Contains(dataSourceName, "connectString=") { // contains connectString
-		// This should be a proper logfmt-encoded parameter string, with connectString
+		strings.Contains(dataSourceName, "connectString=") || // contains connectString, or
+		startsWithParam(dataSourceName) { // starts with a parameter
+		// This should be a proper logfmt-encoded parameter string
 		paramsString, dataSourceName = dataSourceName, ""
 	} else {
 		// Not URL, not logfmt-ed - an old styled DSN
@@ -739,6 +740,35 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	// fmt.Printf("cs2=%q\n", P)
 
 	return P, nil
+}
+
+// paramNames are the parameter names that Parse knows.
+var paramNames = []string{
+	"connectString", "user", "password", "newPassword", "token", "privateKey",
+	"connectionClass", "adminRole", "sysdba", "sysoper", "sysasm", "prelim",
+	"standaloneConnection", "heterogeneousPool", "externalAuth", "noWait",
+	"poolMinSessions", "poolMaxSessions", "poolMaxSessionsPerShard",
+	"poolIncrement", "sessionIncrement",
+	"poolSessionTimeout", "poolWaitTimeout", "poolSessionMaxLifetime", "pingInterval",
+	"timezone", "noTimezoneCheck", "perSessionTimezone", "charset", "stmtCacheSize",
+	"enableEvents", "alterSession", "onInit", "initOnNewConnection",
+	"noBreakOnContextCancel", "shardingKey", "superShardingKey",
+	"configDir", "libDir",
+}
+
+// startsWithParam reports whether s starts with a known parameter name and an
+// equal sign, as a logfmt-encoded parameter string does.
+func startsWithParam(s string) bool {
+	name, _, ok := strings.Cut(s, "=")
+	if !ok {
+		return false
+	}
+	for _, k := range paramNames {
+		if name == k {
+			return true
+		}
+	}
+	return false
 }
 
 // Password is printed obfuscated with String, use Secret to reveal the secret.
