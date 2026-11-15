@@ -610,6 +610,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			continue
 		}
+		if isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+			// A cached object type may have been replaced in the database:
+			// return the error, and do not let the connection be reused.
+			st.conn.staleObjTypes.Store(true)
+		}
 		if st.noRetry || !isInvalidErr(err) {
 			break
 		}
@@ -854,6 +859,11 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 				return nil, closeIfBadConn(err)
 			}
 			continue
+		}
+		if isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+			// A cached object type may have been replaced in the database:
+			// return the error, and do not let the connection be reused.
+			st.conn.staleObjTypes.Store(true)
 		}
 		if st.noRetry || !isInvalidErr(err) {
 			break
@@ -3912,6 +3922,12 @@ func isInvalidObjectErr(err error) bool {
 	}
 	// ORA-21700: "object does not exist or is marked for deletion"
 	return cdr.Code() == 21700
+}
+
+func isInvalidDatatypeErr(err error) bool {
+	var cdr interface{ Code() int }
+	// ORA-00902: "invalid datatype"
+	return err != nil && errors.As(err, &cdr) && cdr.Code() == 902
 }
 
 var maxStackSize uint32 = 2048
