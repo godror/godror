@@ -1598,7 +1598,12 @@ func timeZoneFor(hourOffset, minuteOffset C.int8_t, local *time.Location) *time.
 		}
 	}
 	if tz == nil {
-		tz = time.FixedZone(key[:5], off)
+		// The name is the offset as Oracle prints it: +05:30, -03:30, -00:30.
+		sign, abs := '+', off
+		if off < 0 {
+			sign, abs = '-', -off
+		}
+		tz = time.FixedZone(fmt.Sprintf("%c%02d:%02d", sign, abs/3600, (abs%3600)/60), off)
 	}
 	timezones[key] = tz
 	return tz
