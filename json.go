@@ -622,13 +622,70 @@ func (j JSONObject) GetValue() (m map[string]any, err error) {
 // GetInto takes pointer to struct and populates the fields.
 // The struct name fields are matched with DB JSON keynames but
 // not the struct json tags.
+//
+// A field gets the value as Data.Get returns it if it can hold that,
+// otherwise the value as GetValue returns it (string, float64,
+// map[string]any, []any), converted to the field's type for string, []byte
+// and numeric fields. JSON null sets the field to its zero value.
+// Keys without a settable field of the same name, and values that
+// do not fit their field are skipped.
 func (j JSONObject) GetInto(v any) {
 	rv := reflect.ValueOf(v).Elem()
 	for _, f := range jsonObjectFields(j.dpiJsonObject) {
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
+		field := rv.FieldByName(f.Name)
+		if !field.IsValid() || !field.CanSet() {
+			continue
+		}
 		var d Data
 		jsonNodeToData(&d, f.Value)
-		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
-		rv.FieldByName(f.Name).Set(reflect.ValueOf(d.Get()))
+		raw := d.Get()
+		if raw == nil {
+			field.SetZero()
+			continue
+		}
+		if x := reflect.ValueOf(raw); x.Type().AssignableTo(field.Type()) {
+			field.Set(x)
+			continue
+		}
+		val, err := JSONScalar{dpiJsonNode: f.Value, stringOption: j.stringOption}.GetValue()
+		if err != nil || val == nil {
+			continue
+		}
+		setJSONField(field, reflect.ValueOf(val))
+	}
+}
+
+// setJSONField sets field to x if it fits, converting between
+// string kinds and []byte, and between numeric kinds if that loses nothing.
+func setJSONField(field, x reflect.Value) {
+	ft := field.Type()
+	switch {
+	case x.Type().AssignableTo(ft):
+		field.Set(x)
+	case x.Kind() == reflect.String:
+		if ft.Kind() == reflect.String ||
+			ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Uint8 {
+			field.Set(x.Convert(ft))
+		}
+	case x.CanFloat():
+		f := x.Float()
+		switch ft.Kind() {
+		case reflect.Float32, reflect.Float64:
+			field.SetFloat(f)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if -(1<<63) <= f && f < 1<<63 {
+				if i := int64(f); float64(i) == f && !field.OverflowInt(i) {
+					field.SetInt(i)
+				}
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if 0 <= f && f < 1<<64 {
+				if u := uint64(f); float64(u) == f && !field.OverflowUint(u) {
+					field.SetUint(u)
+				}
+			}
+		}
 	}
 }
 
