@@ -53,6 +53,8 @@ type (
 		cleanup                        runtime.Cleanup
 		mu                             sync.Mutex
 		deqOptsTainted, enqOptsTainted bool
+		// ODPI-C has no getter for the delivery mode, so remember what was set.
+		deqDeliveryMode, enqDeliveryMode DeliveryMode
 	}
 
 	queueInnards struct {
@@ -327,6 +329,7 @@ func (Q *Queue) EnqOptions() (EnqOptions, error) {
 		return E, fmt.Errorf("getEnqOptions: %w", err)
 	}
 	err := E.fromOra(Q.conn.drv, opts)
+	E.DeliveryMode = Q.enqDeliveryMode
 	return E, err
 }
 
@@ -338,6 +341,7 @@ func (Q *Queue) DeqOptions() (DeqOptions, error) {
 		return D, fmt.Errorf("getDeqOptions: %w", err)
 	}
 	err := D.fromOra(Q.conn.drv, opts)
+	D.DeliveryMode = Q.deqDeliveryMode
 	return D, err
 }
 
@@ -880,7 +884,11 @@ func (Q *Queue) SetEnqOptions(E EnqOptions) error {
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) }); err != nil {
 		return fmt.Errorf("getEnqOptions: %w", err)
 	}
-	return E.toOra(Q.conn.drv, opts)
+	if err := E.toOra(Q.conn.drv, opts); err != nil {
+		return err
+	}
+	Q.enqDeliveryMode = E.DeliveryMode
+	return nil
 }
 
 func (DeqOptions) qOption() {}
@@ -1009,7 +1017,11 @@ func (Q *Queue) SetDeqOptions(D DeqOptions) error {
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) }); err != nil {
 		return fmt.Errorf("getDeqOptions: %w", err)
 	}
-	return D.toOra(Q.conn.drv, opts)
+	if err := D.toOra(Q.conn.drv, opts); err != nil {
+		return err
+	}
+	Q.deqDeliveryMode = D.DeliveryMode
+	return nil
 }
 
 // SetDeqCorrelation is a convenience function setting the Correlation DeqOption
