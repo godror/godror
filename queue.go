@@ -299,6 +299,11 @@ func (Q *queueInnards) Close() error {
 
 // Purge the expired messages from the queue.
 func (Q *Queue) PurgeExpired(ctx context.Context) error {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
+	if Q.dpiQueue == nil {
+		return errQueueClosed
+	}
 	if Q.tableName == "" {
 		return nil
 	}
