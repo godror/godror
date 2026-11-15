@@ -1434,9 +1434,7 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 			}
 		}
 		t.Attributes = map[string]ObjectAttribute{}
-		if cache != nil {
-			cache[t.FullName()] = t
-		}
+		t.addToCache(cache)
 		return nil
 	}
 
@@ -1470,13 +1468,15 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		}
 		if sub.dpiObjectType != nil {
 			C.dpiObjectType_addRef(sub.dpiObjectType)
+			// The cache closes the ObjectTypes it has. It does not have sub
+			// if it already had another ObjectType under that name (a second
+			// attribute of the same type, for example): t must close that.
+			objAttr.ownsType = cache == nil || cache[sub.FullName()] != sub
 		}
 		//fmt.Printf("%d=%q. typ=%+v sub=%+v\n", i, objAttr.Name, typ, sub)
 		t.Attributes[objAttr.Name] = objAttr
 	}
-	if cache != nil {
-		cache[t.FullName()] = t
-	}
+	t.addToCache(cache)
 	if closeObjectWithFinalizer && guardWithFinalizers.Load() {
 		// Pass a copy of the innards: a pointer into t would keep t reachable.
 		t.cleanup = runtime.AddCleanup(
@@ -1489,6 +1489,20 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		)
 	}
 	return nil
+}
+
+// addToCache stores t in the cache under its full name, unless the cache
+// has a usable ObjectType of the same type: nothing would close the replaced one.
+func (t *ObjectType) addToCache(cache map[string]*ObjectType) {
+	if cache == nil {
+		return
+	}
+	name := t.FullName()
+	if old := cache[name]; old != nil && old != t && old.drv != nil && old.NativeTypeNum != 0 &&
+		old.dpiObjectType != nil && t.dpiObjectType != nil && old.dpiObjectType.tdo == t.dpiObjectType.tdo {
+		return
+	}
+	cache[name] = t
 }
 
 func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*ObjectType) error {
@@ -1529,6 +1543,8 @@ type ObjectAttribute struct {
 	dpiObjectAttr *C.dpiObjectAttr
 	Name          string
 	Sequence      uint32
+	// ownsType is true if closing the attribute must close its ObjectType, too.
+	ownsType bool
 }
 
 // Close the ObjectAttribute.
@@ -1543,6 +1559,9 @@ func (A ObjectAttribute) Close() error {
 		return C.dpiObjectAttr_release(A.dpiObjectAttr)
 	}); err != nil {
 		return err
+	}
+	if A.ownsType {
+		return A.ObjectType.Close()
 	}
 	return nil
 }
