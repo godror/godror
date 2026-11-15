@@ -773,7 +773,7 @@ func (d *Data) GetJSONArray() JSONArray {
 
 // numberAsTextChars is the size of the buffer for a NUMBER returned as text,
 // the same as ODPI-C's DPI_NUMBER_AS_TEXT_CHARS.
-const numberAsTextChars = 173
+const numberAsTextChars = C.DPI_NUMBER_AS_TEXT_CHARS // 173
 
 // Prepare buffer for NUMBER OracleTypeNum.
 func (d *Data) prepare(oracleTypeNum C.uint) {

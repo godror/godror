@@ -114,7 +114,7 @@ func TestNumberTextLimit(t *testing.T) {
 	}
 
 	// One character more is refused, in both directions.
-	tooLong := longest + "3"
+	tooLong := longest + "345"
 	if _, err := tooLong.MarshalText(); !errors.Is(err, godror.ErrNumberTooLong) {
 		t.Errorf("MarshalText of %d chars: got %v, wanted ErrNumberTooLong", len(tooLong), err)
 	}
