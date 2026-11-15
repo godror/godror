@@ -202,7 +202,7 @@ func (r *rows) timestamp(d *C.dpiData) time.Time {
 		tz = time.Local
 	}
 	return time.Date(
-		int(ts.year), time.Month(ts.month), int(ts.day),
+		goYear(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 		tz,
 	)

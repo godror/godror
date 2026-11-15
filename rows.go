@@ -600,7 +600,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			tz = time.Local
 		}
 		dest[i] = time.Date(
-			int(ts.year), time.Month(ts.month), int(ts.day),
+			goYear(ts.year), time.Month(ts.month), int(ts.day),
 			int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 			tz,
 		)
