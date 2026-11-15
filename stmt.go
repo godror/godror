@@ -3382,7 +3382,7 @@ func (c *conn) dataSetJSONString(ctx context.Context, dv *C.dpiVar, data []C.dpi
 	case []JSONString:
 		for i := range js {
 			if len(js[i].Value) == 0 {
-				data[0].isNull = 1
+				data[i].isNull = 1
 				continue
 			}
 			data[i].isNull = 0
