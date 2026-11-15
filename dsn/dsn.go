@@ -356,16 +356,8 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 			q.Add("newPassword", P.NewPassword.String())
 		}
 	}
-	s = ""
 	if tz := P.Timezone; tz != nil {
-		if tz == time.Local {
-			s = "local"
-		} else {
-			s = tz.String()
-		}
-	}
-	if s != "" {
-		q.Add("timezone", s)
+		q.Add("timezone", timezoneString(tz))
 	}
 	if P.NoTZCheck {
 		q.Add("noTimezoneCheck", "1")
@@ -414,15 +406,10 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	if P.IsPrelim {
 		q.Add("prelim", "1")
 	}
-	if P.WaitTimeout != 0 {
-		q.Add("poolWaitTimeout", P.WaitTimeout.String())
-	}
-	if P.MaxLifeTime != 0 {
-		q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
-	}
-	if P.SessionTimeout != 0 {
-		q.Add("poolSessionTimeout", P.SessionTimeout.String())
-	}
+	// Print the zero, too: Parse sets the default for a missing one.
+	q.Add("poolWaitTimeout", P.WaitTimeout.String())
+	q.Add("poolSessionMaxLifetime", P.MaxLifeTime.String())
+	q.Add("poolSessionTimeout", P.SessionTimeout.String())
 	if P.PingInterval != 0 {
 		q.Add("pingInterval", P.PingInterval.String())
 	}
@@ -655,6 +642,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 			} else {
 				P.Timezone = time.FixedZone(tz, off)
 			}
+		} else if ptz, locErr := time.LoadLocation(tz); locErr == nil {
+			// a name without a slash, such as Japan or EST5EDT
+			P.Timezone = ptz
 		} else {
 			return P, fmt.Errorf("%s: %w", tz, err)
 		}
@@ -1044,11 +1034,50 @@ func ParseTZ(s string) (int, error) {
 	if err != nil {
 		return tz, fmt.Errorf("%s: %w", s, err)
 	}
-	if i64 < 0 {
+	if i64 < 0 || strings.HasPrefix(s, "-") { // -00:30
 		tz = -tz
 	}
 	tz += int(i64 * 3600)
 	return tz, nil
+}
+
+// timezoneString returns the timezone parameter for tz, that Parse reads back.
+//
+// That is the name of the location, if Parse finds the same zone under that
+// name, and the current offset as +HH:MM otherwise (a time.FixedZone).
+func timezoneString(tz *time.Location) string {
+	if tz == time.Local {
+		return "local"
+	}
+	name := tz.String()
+	if strings.Contains(name, "/") {
+		return name
+	}
+	now := time.Now()
+	_, off := now.In(tz).Zone()
+	if o, err := ParseTZ(name); err == nil && o == off {
+		return name
+	}
+	if loc, err := time.LoadLocation(name); err == nil && name != "" {
+		same := true
+		for _, t := range []time.Time{
+			now,
+			time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.UTC),
+			time.Date(now.Year(), 7, 1, 0, 0, 0, 0, time.UTC),
+		} {
+			_, a := t.In(tz).Zone()
+			_, b := t.In(loc).Zone()
+			same = same && a == b
+		}
+		if same {
+			return name
+		}
+	}
+	sign := '+'
+	if off < 0 {
+		sign, off = '-', -off
+	}
+	return fmt.Sprintf("%c%02d:%02d", sign, off/3600, off%3600/60)
 }
 
 // AppendLogfmt appends the key=val logfmt-formatted.
