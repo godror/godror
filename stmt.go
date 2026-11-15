@@ -3436,7 +3436,8 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 			reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 			reflect.Uint32, reflect.Uint64, reflect.Float32,
-			reflect.Float64:
+			reflect.Float64,
+			reflect.Struct: // time.Time; allocdpiJSONNode rejects the others
 			data[0].isNull = 0
 			var dpijsonnode *C.dpiJsonNode
 			err = allocdpiJSONNode(x.Value, &dpijsonnode)
@@ -3461,7 +3462,8 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 				reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 				reflect.Uint32, reflect.Uint64, reflect.Float32,
-				reflect.Float64:
+				reflect.Float64,
+				reflect.Struct: // time.Time; allocdpiJSONNode rejects the others
 				var dpijsonnode *C.dpiJsonNode
 				err = allocdpiJSONNode(x[i].Value, &dpijsonnode)
 				if err != nil {
