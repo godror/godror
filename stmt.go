@@ -3411,6 +3411,7 @@ func (c *conn) dataGetVectorValue(ctx context.Context, v any,
 
 func (c *conn) setSingleVector(v *Vector, d *C.dpiData) error {
 	if v == nil || v.Values == nil {
+		d.isNull = 1
 		return nil
 	}
 	d.isNull = 0
