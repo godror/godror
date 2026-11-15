@@ -805,6 +805,9 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if !st.inTransaction {
 		mode |= C.DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 	}
+	if st.DeleteFromCache() {
+		C.dpiStmt_deleteFromCache(st.dpiStmt)
+	}
 	// set Prefetch Parameters before execute
 	C.dpiStmt_setFetchArraySize(st.dpiStmt, C.uint32_t(st.FetchArraySize()))
 	C.dpiStmt_setPrefetchRows(st.dpiStmt, C.uint32_t(st.PrefetchCount()))
