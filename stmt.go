@@ -678,16 +678,29 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		// Do not store the returned data in st.data[i]: that is the var's
 		// own buffer, which bindVars reuses on the next execution.
 		data := st.data[i]
-		if st.dpiStmtInfo.isReturning == 1 {
-			var n C.uint32_t
-			var p *C.dpiData
-			if err := st.checkExec(func() C.int { return C.dpiVar_getReturnedData(st.vars[i], 0, &n, &p) }); err != nil {
-				return nil, closeIfBadConn(fmt.Errorf("%d.getReturnedData: %w", i, err))
+		returning := st.dpiStmtInfo.isReturning == 1
+		if returning {
+			// Each row of a batch has its own returned rows: a slice gets all of them.
+			iters := 1
+			if many && st.isSlice[i] {
+				iters = st.arrLen
 			}
-			if n == 0 {
-				data = data[:0]
-			} else {
-				data = unsafe.Slice(p, n)
+			data = data[:0]
+			for pos := 0; pos < iters; pos++ {
+				var n C.uint32_t
+				var p *C.dpiData
+				if err := st.checkExec(func() C.int { return C.dpiVar_getReturnedData(st.vars[i], C.uint32_t(pos), &n, &p) }); err != nil {
+					return nil, closeIfBadConn(fmt.Errorf("%d.getReturnedData: %w", i, err))
+				}
+				if n == 0 {
+					continue
+				}
+				if iters == 1 {
+					data = unsafe.Slice(p, n)
+				} else {
+					// append copies, so this does not touch the var's buffer.
+					data = append(data[:len(data):len(data)], unsafe.Slice(p, n)...)
+				}
 			}
 		}
 		dest := st.dests[i]
@@ -704,7 +717,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			continue
 		}
 		var n C.uint32_t = 1
-		if err := st.checkExec(func() C.int { return C.dpiVar_getNumElementsInArray(st.vars[i], &n) }); err != nil {
+		if returning {
+			n = C.uint32_t(len(data))
+		} else if err := st.checkExec(func() C.int { return C.dpiVar_getNumElementsInArray(st.vars[i], &n) }); err != nil {
 			if logger != nil {
 				logger.Error("getNumElementsInArray", "i", i, "error", err)
 			}
@@ -1159,7 +1174,10 @@ func (st *statement) bindVars(
 		}
 		if !isByteSlice {
 			st.isSlice[i] = rArgs[i].Kind() == reflect.Slice
-			if !st.PlSQLArrays() && st.isSlice[i] {
+			// The in slices give the batch length. The out slice of a
+			// RETURNING INTO only receives rows, whatever it holds now.
+			onlyReceives := info.isOut && !info.isIn && st.dpiStmtInfo.isReturning == 1
+			if !st.PlSQLArrays() && st.isSlice[i] && !onlyReceives {
 				n := rArgs[i].Len()
 				if minArrLen == -1 || n < minArrLen {
 					minArrLen = n
