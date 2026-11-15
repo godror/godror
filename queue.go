@@ -358,6 +358,9 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 	if Q.dpiQueue == nil {
 		return 0, errQueueClosed
 	}
+	if len(messages) == 0 {
+		return 0, nil
+	}
 
 	if num := len(messages); Q.tableName != "" && num > 1 {
 		logger := getLogger(context.TODO())
@@ -545,6 +548,9 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 	if Q.dpiQueue == nil {
 		return errQueueClosed
 	}
+	if len(messages) == 0 {
+		return nil
+	}
 	if opts != nil {
 		Q.enqOptsTainted = true
 	}
@@ -701,7 +707,13 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 	OK(C.dpiMsgProps_setPriority(props, C.int(M.Priority)), "setPriority")
 
 	if M.Object == nil {
-		OK(C.dpiMsgProps_setPayloadBytes(props, (*C.char)(unsafe.Pointer(&M.Raw[0])), C.uint(len(M.Raw))), "setPayloadBytes")
+		// An empty payload is valid, but there is no &M.Raw[0] to pass then.
+		var a [1]byte
+		raw := &a[0]
+		if len(M.Raw) != 0 {
+			raw = &M.Raw[0]
+		}
+		OK(C.dpiMsgProps_setPayloadBytes(props, (*C.char)(unsafe.Pointer(raw)), C.uint(len(M.Raw))), "setPayloadBytes")
 	} else {
 		OK(C.dpiMsgProps_setPayloadObject(props, M.Object.dpiObject), "setPayloadObject")
 	}
