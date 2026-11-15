@@ -1876,7 +1876,7 @@ func (c *conn) dataGetTimeC(ctx context.Context, t *time.Time, data *C.dpiData) 
 	//ts := C.dpiData_getTimestamp(data)
 	ts := *((*C.dpiTimestamp)(unsafe.Pointer(&data.value)))
 	*t = time.Date(
-		int(ts.year), time.Month(ts.month), int(ts.day),
+		goYear(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, c.Timezone()),
 	)

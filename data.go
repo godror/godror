@@ -346,10 +346,22 @@ func (d *Data) GetTimeIn(serverTZ *time.Location) time.Time {
 	//ts := C.dpiData_getTimestamp(&d.dpiData)
 	ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.dpiData.value)))
 	return time.Date(
-		int(ts.year), time.Month(ts.month), int(ts.day),
+		goYear(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
 		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, serverTZ),
 	)
+}
+
+// goYear returns the Go year for the year of a dpiTimestamp.
+//
+// Oracle has no year 0: year -1 (1 BC) is followed by year 1,
+// but Go has astronomical year numbering, where year 0 is 1 BC.
+// This is the inverse of what dataSetTime does.
+func goYear(y C.int16_t) int {
+	if y < 0 {
+		return int(y) + 1
+	}
+	return int(y)
 }
 
 // SetTime sets Time to data.
