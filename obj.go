@@ -385,18 +385,28 @@ func (O *Object) AsMap(recursive bool) (map[string]any, error) {
 			continue
 		}
 		if sub, ok := d.(*Object); ok && sub != nil && sub.ObjectType != nil {
+			// The converted value replaces sub in the map, so nobody else
+			// can close it.
 			var err error
 			if sub.ObjectType.CollectionOf == nil {
-				if m[a], err = sub.AsMap(recursive); err != nil {
+				m[a], err = sub.AsMap(recursive)
+				sub.Close()
+				if err != nil {
 					return m, fmt.Errorf("%q.AsMap: %w", a, err)
 				}
 				continue
 			}
 			if sub.ObjectType.CollectionOf.Attributes == nil {
-				if m[a], err = sub.Collection().AsSlice(nil); err != nil {
+				m[a], err = sub.Collection().AsSlice(nil)
+				sub.Close()
+				if err != nil {
 					return m, fmt.Errorf("%q.AsSlice: %w", a, err)
 				}
-			} else if m[a], err = sub.Collection().AsMapSlice(recursive); err != nil {
+				continue
+			}
+			m[a], err = sub.Collection().AsMapSlice(recursive)
+			sub.Close()
+			if err != nil {
 				return m, fmt.Errorf("%q.AsMapSlice: %w", a, err)
 			}
 		}
@@ -439,7 +449,10 @@ func (O *Object) ToJSON(w io.Writer) error {
 		fmt.Fprintf(bw, "%q:", a)
 		d := data.Get()
 		if data.IsObject() {
-			if err := d.(*Object).ToJSON(bw); err != nil {
+			sub := d.(*Object)
+			err := sub.ToJSON(bw)
+			sub.Close()
+			if err != nil {
 				return fmt.Errorf("%q: %w", a, err)
 			}
 			continue
@@ -494,6 +507,7 @@ func (O ObjectCollection) AsMapSlice(recursive bool) ([]map[string]any, error) {
 			m = append(m, nil)
 		} else if o, ok := v.(*Object); ok {
 			r, err := o.AsMap(recursive)
+			o.Close()
 			if err != nil {
 				return m, fmt.Errorf("[%d](%v).AsMap: %w", curr, v, err)
 			}
@@ -828,7 +842,9 @@ func (O ObjectCollection) ToJSON(w io.Writer) error {
 				return err
 			}
 		} else if o, ok := v.(*Object); ok {
-			if err = o.ToJSON(bw); err != nil {
+			err = o.ToJSON(bw)
+			o.Close()
+			if err != nil {
 				return err
 			}
 		}
