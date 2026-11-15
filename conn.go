@@ -240,11 +240,15 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
-	c.currentTT.Store(TraceTag{})
 	dpiConn := c.dpiConn
 	if dpiConn == nil {
+		c.currentTT.Store(TraceTag{})
 		return nil
 	}
+	// Clear what this connection has set, so that the next user of the
+	// pooled session does not inherit it. This needs no round trip:
+	// OCI sends the attributes with the next call on the session.
+	_ = c.setTraceTag(TraceTag{})
 	c.dpiConn = nil
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
