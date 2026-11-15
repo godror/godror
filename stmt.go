@@ -3080,6 +3080,9 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		return dataSetNull(ctx, dv, data, nil)
 	}
 	objs := []*Object{{}}
+	// created is true if the objects were created here, from an ObjectWriter:
+	// only those are closed after the exec, the others belong to the caller.
+	var created bool
 	switch v := vv.(type) {
 	case Object:
 		objs[0] = &v
@@ -3099,6 +3102,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		objs = v
 
 	case ObjectWriter:
+		created = true
 		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
@@ -3114,6 +3118,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		objs[0] = o
 
 	case []ObjectWriter:
+		created = true
 		var ot *ObjectType
 		for _, ut := range v {
 			if ot == nil {
@@ -3133,6 +3138,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		}
 
 	case ObjectCollectionWriter:
+		created = true
 		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
@@ -3178,7 +3184,9 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		}
 		// Cannot close it before use (exec)
 		// obj.Close()
-		stmt.tbc = append(stmt.tbc, obj)
+		if created {
+			stmt.tbc = append(stmt.tbc, obj)
+		}
 	}
 	return nil
 }
