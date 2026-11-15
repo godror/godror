@@ -289,6 +289,7 @@ package godror
 import "C"
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -736,7 +737,7 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 			c.params.Username = pool.params.Username
 		}
 	}
-	initCtx, cancel := context.WithTimeout(ctx, nvlD(c.params.WaitTimeout, time.Minute))
+	initCtx, cancel := context.WithTimeout(ctx, cmp.Or(c.params.WaitTimeout, time.Minute))
 	err = c.init(initCtx, isNew)
 	cancel()
 	if err != nil {
@@ -1772,13 +1773,6 @@ func mkExecMany(qrys []string) func(context.Context, driver.ConnPrepareContext) 
 		}
 		return nil
 	}
-}
-
-func nvlD(a, b time.Duration) time.Duration {
-	if a == 0 {
-		return b
-	}
-	return a
 }
 
 var logLingeringResourceStack atomic.Bool
