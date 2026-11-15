@@ -424,6 +424,14 @@ type varInfo struct {
 }
 
 func (vi varInfo) canHold(other varInfo) bool {
+	// ODPI-C allocates the statement of a REF CURSOR variable only when the
+	// variable is created, and the driver.Rows returned to the caller uses
+	// that statement (with its own reference). Executing into the same
+	// variable again would open the new cursor on the statement of the
+	// previous one, which keeps its query metadata, defines and fetch state.
+	if other.IsOut && other.NatTyp == C.DPI_NATIVE_TYPE_STMT {
+		return false
+	}
 	return vi.BufSize >= other.BufSize &&
 		vi.ObjectType == other.ObjectType &&
 		(vi.SliceLen == other.SliceLen || !other.IsOut && vi.SliceLen > other.SliceLen) &&
