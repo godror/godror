@@ -254,6 +254,10 @@ type JSONOption uint8
 const (
 	JSONOptDefault        = JSONOption(C.DPI_JSON_OPT_DEFAULT)          // 0x00
 	JSONOptNumberAsString = JSONOption(C.DPI_JSON_OPT_NUMBER_AS_STRING) // 0x01
+
+	// jsonOptNumberAsLiteral is for producing JSON text: a NUMBER becomes
+	// a json.Number, which is marshaled as the number itself, digit for digit.
+	jsonOptNumberAsLiteral = JSONOption(0x80)
 )
 
 // JSON holds the JSON data to/from Oracle.
@@ -267,7 +271,12 @@ func (j JSON) StringWithOption(opts JSONOption) (string, error) {
 	jScalar, err := j.GetJSONScalar(opts)
 	if err != nil {
 		return "", err
-	} else if jScalarVal, err := jScalar.GetValue(); err != nil {
+	}
+	if opts == JSONOptNumberAsString && jScalar.stringOption == JSONOptDefault {
+		// ODPI-C gives the numbers as text: do not round them to float64.
+		jScalar.stringOption = jsonOptNumberAsLiteral
+	}
+	if jScalarVal, err := jScalar.GetValue(); err != nil {
 		return "", err
 	} else if data, err := json.Marshal(jScalarVal); err != nil {
 		return "", err
@@ -462,6 +471,9 @@ func (j JSONScalar) GetValue() (val any, err error) {
 func getJSONScalarNumber(d Data, opts JSONOption) (val any) {
 	b := d.Get()
 	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_BYTES {
+		if opts == jsonOptNumberAsLiteral {
+			return json.Number(b.([]byte))
+		}
 		if opts == JSONOptDefault {
 			var err error
 			if val, err = strconv.ParseFloat(string(b.([]byte)), 64); err == nil {
