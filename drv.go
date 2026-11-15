@@ -740,6 +740,11 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 	err = c.init(initCtx, isNew)
 	cancel()
 	if err != nil {
+		if pool != nil {
+			// Do not put the session back into the pool: it would be
+			// handed out later as a not new session, without its init.
+			C.dpiConn_close(c.dpiConn, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+		}
 		_ = c.closeNotLocking()
 		return nil, false, fmt.Errorf("init: %w", err)
 	}
