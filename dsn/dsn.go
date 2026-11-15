@@ -552,12 +552,6 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 					P.Username = value
 				case "password":
 					P.Password.Set(value)
-				case "charset":
-					P.Charset = value
-				case "token":
-					P.Token = value
-				case "privateKey":
-					P.PrivateKey = value
 				case "alterSession", "onInit", "shardingKey", "superShardingKey":
 					q.Add(key, value)
 				default:
@@ -741,6 +735,9 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 	P.ShardingKey = strToIntf(q["shardingKey"])
 	P.SuperShardingKey = strToIntf(q["superShardingKey"])
 
+	P.Charset = q.Get("charset")
+	P.Token = q.Get("token")
+	P.PrivateKey = q.Get("privateKey")
 	P.NewPassword.Set(q.Get("newPassword"))
 	P.ConfigDir = q.Get("configDir")
 	P.LibDir = q.Get("libDir")
