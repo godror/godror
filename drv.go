@@ -1230,6 +1230,19 @@ func (d *drv) createPool(P commonAndPoolParams) (*connPool, error) {
 		poolCreateParams.maxLifetimeSession = C.uint32_t(P.MaxLifeTime / time.Second)
 	}
 
+	// assign the maximum number of sessions per shard
+	if P.MaxSessionsPerShard > 0 {
+		poolCreateParams.maxSessionsPerShard = C.uint32_t(P.MaxSessionsPerShard)
+	}
+
+	// assign ping interval (number of seconds a session can be idle in the
+	// pool before it is pinged when acquired); negative disables the ping
+	if P.PingInterval > 0 {
+		poolCreateParams.pingInterval = C.int(P.PingInterval / time.Second)
+	} else if P.PingInterval < 0 {
+		poolCreateParams.pingInterval = -1
+	}
+
 	// assign external authentication flag
 	poolCreateParams.externalAuth = C.int(b2i(
 		P.ExternalAuth.Valid && P.ExternalAuth.Bool ||

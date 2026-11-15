@@ -696,6 +696,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		{&P.WaitTimeout, "poolWaitTimeout"},
 		{&P.MaxLifeTime, "poolSessionMaxLifetime"},
 		{&P.PingInterval, "pingInterval"},
+		{&P.PingInterval, "poolPingInterval"},
 	} {
 		s := q.Get(task.Key)
 		if s == "" {
