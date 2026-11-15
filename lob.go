@@ -452,15 +452,14 @@ func (dlw *dpiLobWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// flush writes the remaining incomplete UTF-8 sequence of a CLOB, if any.
+// flush drops the remaining incomplete UTF-8 sequence of a CLOB, if any.
+//
+// The data ended in the middle of a character. Such a tail is no character,
+// so it cannot be written alone (OCILobWrite2 crashes on it); Oracle drops it
+// from a string bind, too.
 func (dlw *dpiLobWriter) flush() error {
-	if dlw.tailLen == 0 {
-		return nil
-	}
-	n := dlw.tailLen
 	dlw.tailLen = 0
-	_, err := dlw.write(dlw.tail[:n], C.uint64_t(n))
-	return err
+	return nil
 }
 
 // write p at the offset, then advance the offset by length.
