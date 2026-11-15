@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -433,7 +434,7 @@ func (Q *Queue) DequeueWithOptions(messages []Message, opts *DeqOptions) (int, e
 		} else {
 			D = *opts
 		}
-		if err := Q.SetDeqOptions(D); err != nil {
+		if err := Q.setDeqOptions(D); err != nil {
 			return 0, err
 		}
 	}
@@ -555,7 +556,7 @@ func (Q *Queue) EnqueueWithOptions(messages []Message, opts *EnqOptions) error {
 		} else {
 			E = *opts
 		}
-		if err := Q.SetEnqOptions(E); err != nil {
+		if err := Q.setEnqOptions(E); err != nil {
 			return err
 		}
 	}
@@ -874,8 +875,22 @@ func (E EnqOptions) toOra(d *drv, opts *C.dpiEnqOptions) error {
 	return firstErr
 }
 
-// SetEnqOptions sets all the enqueue options
+// SetEnqOptions sets all the enqueue options.
+//
+// These are the options that Enqueue uses, and that are in effect again
+// after an EnqueueWithOptions call with its own options.
 func (Q *Queue) SetEnqOptions(E EnqOptions) error {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
+	if err := Q.setEnqOptions(E); err != nil {
+		return err
+	}
+	Q.defEnqOpts, Q.enqOptsTainted = E, false
+	return nil
+}
+
+// setEnqOptions sets the enqueue options, without changing the queue's defaults.
+func (Q *Queue) setEnqOptions(E EnqOptions) error {
 	var opts *C.dpiEnqOptions
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) }); err != nil {
 		return fmt.Errorf("getEnqOptions: %w", err)
@@ -1003,8 +1018,23 @@ func (D DeqOptions) toOra(d *drv, opts *C.dpiDeqOptions) error {
 	return firstErr
 }
 
-// SetDeqOptions sets all the dequeue options
+// SetDeqOptions sets all the dequeue options.
+//
+// These are the options that Dequeue uses, and that are in effect again
+// after a DequeueWithOptions call with its own options.
 func (Q *Queue) SetDeqOptions(D DeqOptions) error {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
+	if err := Q.setDeqOptions(D); err != nil {
+		return err
+	}
+	D.MsgID = slices.Clone(D.MsgID)
+	Q.defDeqOpts, Q.deqOptsTainted = D, false
+	return nil
+}
+
+// setDeqOptions sets the dequeue options, without changing the queue's defaults.
+func (Q *Queue) setDeqOptions(D DeqOptions) error {
 	var opts *C.dpiDeqOptions
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) }); err != nil {
 		return fmt.Errorf("getDeqOptions: %w", err)
@@ -1014,6 +1044,8 @@ func (Q *Queue) SetDeqOptions(D DeqOptions) error {
 
 // SetDeqCorrelation is a convenience function setting the Correlation DeqOption
 func (Q *Queue) SetDeqCorrelation(correlation string) error {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
 	var opts *C.dpiDeqOptions
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) }); err != nil {
 		return fmt.Errorf("getDeqOptions: %w", err)
@@ -1024,6 +1056,7 @@ func (Q *Queue) SetDeqCorrelation(correlation string) error {
 	if err != nil {
 		return fmt.Errorf("setCorrelation: %w", err)
 	}
+	Q.defDeqOpts.Correlation = correlation
 	return nil
 }
 
