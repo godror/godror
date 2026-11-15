@@ -63,6 +63,12 @@ type conn struct {
 	inTransaction       bool
 	released            bool
 	tzValid             bool
+
+	// staleObjTypes is set when a statement fails with ORA-00902 while
+	// object types are cached: one of them may have been replaced in the
+	// database. IsValid reports false then, so database/sql discards
+	// the connection, and with it the cache.
+	staleObjTypes atomic.Bool
 }
 
 func (c *conn) getError() error {
@@ -977,7 +983,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 // A pooled connection keeps its session so it stays reusable; the session
 // returns to the OCI pool only when the connection is closed.
 func (c *conn) IsValid() bool {
-	if c == nil {
+	if c == nil || c.staleObjTypes.Load() {
 		return false
 	}
 	c.mu.RLock()
