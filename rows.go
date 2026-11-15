@@ -705,7 +705,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			return nil
 		}
 		//dest[i] = C.dpiData_getBool(d) == 1
-		dest[i] = *((*C.int)(unsafe.Pointer(&d.value))) == 1
+		dest[i] = *((*C.int)(unsafe.Pointer(&d.value))) != 0
 
 	case C.DPI_ORACLE_TYPE_OBJECT: //Default type used for named type columns in the database. Data is transferred to/from Oracle in Oracle's internal format.
 		if isNull {
