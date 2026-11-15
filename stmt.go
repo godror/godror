@@ -3295,6 +3295,20 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 	return nil
 }
 
+// setOutObject stores obj, the object of an OUT bind, in the destination,
+// and releases what the destination has held.
+func (c *conn) setOutObject(out, obj *Object) error {
+	if obj.dpiObject == out.dpiObject {
+		// The destination already holds this very object (an IN OUT bind, or
+		// a statement executed again), and it has been changed in place:
+		// only drop the reference that GetObject has just taken.
+		return c.checkExec(func() C.int { return C.dpiObject_release(obj.dpiObject) })
+	}
+	err := out.Close()
+	*out = *obj
+	return err
+}
+
 func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error {
 	logger := getLogger(ctx)
 	switch out := v.(type) {
@@ -3310,12 +3324,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 		obj := d.GetObject()
 		if obj == nil {
+			err := out.Object.Close()
 			*out = ObjectCollection{}
-		} else {
-			// copy the underlying object
-			obj2 := *obj
-			*out = ObjectCollection{Object: &obj2}
+			return err
 		}
+		return c.setOutObject(out.Object, obj)
 
 	case *Object:
 		ot := out.ObjectType
@@ -3329,10 +3342,11 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 		}
 		obj := d.GetObject()
 		if obj == nil {
+			err := out.Close()
 			*out = Object{ObjectType: d.ObjectType}
-		} else {
-			*out = *obj
+			return err
 		}
+		return c.setOutObject(out, obj)
 
 	case ObjectScanner:
 		ot, err := c.GetObjectType(out.ObjectTypeName())
@@ -3360,8 +3374,6 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 	default:
 		return fmt.Errorf("dataGetObject not implemented for type %T (maybe you need to implement the Scan method)", v)
 	}
-
-	return nil
 }
 
 func (c *conn) dataGetJSON(ctx context.Context, v any, data []C.dpiData) error {
