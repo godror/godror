@@ -317,7 +317,7 @@ func DescribeQuery(ctx context.Context, db Execer, qry string) ([]QueryColumn, e
 		}
 		defer stmt.Close()
 		st := stmt.(*statement)
-		describeOnly(&st.stmtOptions)
+		describeOnly(&st.argOptions)
 		dR, err := st.QueryContext(ctx, nil)
 		if err != nil {
 			return err

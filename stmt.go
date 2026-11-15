@@ -355,7 +355,11 @@ type (
 		dests    []any
 		data     [][]C.dpiData
 		varInfos []varInfo
+		// stmtOptions are the options of the current (last) execution.
 		stmtOptions
+		// argOptions collects the Options given as arguments
+		// for the next execution.
+		argOptions  stmtOptions
 		arrLen      int
 		dpiStmtInfo C.dpiStmtInfo
 		sync.Mutex
@@ -483,6 +487,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, driver.ErrBadConn
 	}
 	st.ctx = ctx
+	st.takeArgOptions()
 
 	if st.dpiStmt == nil && st.query == getConnection {
 		*(args[0].Value.(sql.Out).Dest.(*any)) = st.conn
@@ -749,6 +754,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return nil, err
 	}
 	st.ctx = ctx
+	st.takeArgOptions()
 
 	// fmt.Printf("%p.queryContextNotLocked stmtOptions=%p\n", st, &st.stmtOptions)
 
@@ -3643,12 +3649,21 @@ func (st *statement) CheckNamedValue(nv *driver.NamedValue) error {
 	// fmt.Printf("CheckNamedValue(%p.%p)\n", st, &st.stmtOptions)
 	if apply, ok := nv.Value.(Option); ok {
 		if apply != nil {
-			apply(&st.stmtOptions)
+			// Collect the options for the coming execution only:
+			// they must not change the rows of the previous execution,
+			// nor stay in effect for the executions after the coming one.
+			apply(&st.argOptions)
 			// fmt.Printf("CheckNamedValue(%#v): %#v\n", nv, st.stmtOptions)
 		}
 		return driver.ErrRemoveArgument
 	}
 	return nil
+}
+
+// takeArgOptions makes the Options given as arguments of this execution
+// the statement's options, replacing the options of the previous execution.
+func (st *statement) takeArgOptions() {
+	st.stmtOptions, st.argOptions = st.argOptions, stmtOptions{}
 }
 
 // ColumnConverter may be optionally implemented by Stmt
