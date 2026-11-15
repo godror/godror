@@ -17,7 +17,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/godror/godror/slog"
@@ -620,15 +619,11 @@ func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }
 
-var getConnMu sync.Mutex
-
 // getConn will acquire a separate connection to the same DB as what ex is connected to.
 func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	if ex == nil {
 		return nil, fmt.Errorf("nil ex")
 	}
-	getConnMu.Lock()
-	defer getConnMu.Unlock()
 	var c any
 	if _, err := ex.ExecContext(ctx, getConnection, sql.Out{Dest: &c}); err != nil {
 		return nil, fmt.Errorf("getConnection: %w", err)
