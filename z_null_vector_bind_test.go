@@ -44,6 +44,7 @@ func TestVectorNullAfterValue(t *testing.T) {
 		{[]int{9, 10}, []*godror.Vector{&val, nil}},
 	} {
 		if _, err = stmt.ExecContext(ctx, args[0], args[1]); err != nil {
+			skipIfNoVectorSupport(t, err)
 			t.Fatalf("%v: %+v", args[0], err)
 		}
 	}
