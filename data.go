@@ -763,6 +763,10 @@ func (d *Data) GetJSONArray() JSONArray {
 	return JSONArray{dpiJsonArray: ((*C.dpiJsonArray)(unsafe.Pointer(&d.dpiData.value)))}
 }
 
+// numberAsTextChars is the size of the buffer for a NUMBER returned as text,
+// the same as ODPI-C's DPI_NUMBER_AS_TEXT_CHARS.
+const numberAsTextChars = 173
+
 // Prepare buffer for NUMBER OracleTypeNum.
 func (d *Data) prepare(oracleTypeNum C.uint) {
 	// If the native type is DPI_NATIVE_TYPE_BYTES and the Oracle type of the attribute is DPI_ORACLE_TYPE_NUMBER, a buffer must be supplied in the value.asBytes.ptr attribute and the maximum length of that buffer must be supplied in the value.asBytes.length attribute before calling this function. For all other conversions, the buffer is supplied by the library and remains valid as long as a reference to the object is held.
@@ -770,7 +774,10 @@ func (d *Data) prepare(oracleTypeNum C.uint) {
 		oracleTypeNum == C.DPI_ORACLE_TYPE_NUMBER {
 		// ODPI-C writes the number text into this buffer later, and GetBytes
 		// reads it from there, so it must outlive this call: keep it in d.
-		a := make([]byte, 39)
+		// The text can be much longer than the 38-40 digits of the number:
+		// 1e125 has 126 characters, 1e-130 has 132. ODPI-C uses 173 bytes
+		// for the same purpose (DPI_NUMBER_AS_TEXT_CHARS).
+		a := make([]byte, numberAsTextChars)
 		d.keepAlive = a
 		C.dpiData_setBytes(&d.dpiData, (*C.char)(unsafe.Pointer(&a[0])), C.uint32_t(len(a)))
 	}
