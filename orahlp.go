@@ -237,16 +237,13 @@ func (n *Number) Scan(v any) error {
 
 // MarshalText marshals a Number to text.
 func (n Number) MarshalText() ([]byte, error) {
-	if len(n) > 40 {
-		return nil, nil
-	}
 	return []byte(n), nil
 }
 
 // UnmarshalText parses text into a Number.
 func (n *Number) UnmarshalText(p []byte) error {
 	*n = ""
-	if len(p) == 0 || len(p) > 40 {
+	if len(p) == 0 {
 		return nil
 	}
 	var dotNum int
@@ -267,16 +264,13 @@ func (n *Number) UnmarshalText(p []byte) error {
 
 // MarshalJSON marshals a Number into a JSON string.
 func (n Number) MarshalJSON() ([]byte, error) {
-	if len(n) > 40 {
-		return []byte("null"), nil
-	}
 	return append(append(append(make([]byte, 0, 1+len(n)+1), '"'), []byte(n)...), '"'), nil
 }
 
 // UnmarshalJSON parses a JSON string into the Number.
 func (n *Number) UnmarshalJSON(p []byte) error {
 	*n = Number("")
-	if len(p) == 0 || len(p) > 40 {
+	if len(p) == 0 {
 		return nil
 	}
 	if len(p) > 2 && p[0] == '"' && p[len(p)-1] == '"' {
