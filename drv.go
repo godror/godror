@@ -736,8 +736,8 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 			c.params.Username = pool.params.Username
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), nvlD(c.params.WaitTimeout, time.Minute))
-	err = c.init(ctx, isNew)
+	initCtx, cancel := context.WithTimeout(ctx, nvlD(c.params.WaitTimeout, time.Minute))
+	err = c.init(initCtx, isNew)
 	cancel()
 	if err != nil {
 		_ = c.closeNotLocking()
