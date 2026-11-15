@@ -3053,7 +3053,12 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 
 	// For small reads it is faster to set it as byte slice
 	var a [1 << 20]byte
-	n, _ := io.ReadAtLeast(L.Reader, a[:], cap(a)>>1)
+	n, err := io.ReadAtLeast(L.Reader, a[:], cap(a)>>1)
+	// io.EOF and io.ErrUnexpectedEOF mean that the Reader ended before
+	// cap(a)/2 bytes; anything else is a real read error.
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("read LOB data (after %d bytes): %w", n, err)
+	}
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("ReadAtLeast", "wanted", cap(a)>>1, "n", n, "isClob", L.IsClob)
 	}
