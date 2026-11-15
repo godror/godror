@@ -335,10 +335,12 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	if !dlr.IsClob {
 		dlr.offset += n
 	} else {
-		// trim last erroneous encodings
+		// Trim the last erroneous encodings: an invalid or incomplete
+		// sequence is decoded as RuneError with size 1.
+		// A properly encoded U+FFFD (size 3) is data, and must be kept.
 		for {
 			r, size := utf8.DecodeLastRune(p[:n])
-			if size == 0 || r != utf8.RuneError {
+			if r != utf8.RuneError || size != 1 {
 				break
 			}
 			if logger != nil {
