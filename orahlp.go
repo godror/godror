@@ -17,6 +17,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/godror/godror/slog"
@@ -720,6 +721,8 @@ func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) (err err
 type ConnPool struct {
 	get      func(context.Context) (*sql.Conn, error)
 	freeList chan *PooledConn
+	// mu protects get and freeList, and the sends on freeList
+	mu sync.Mutex
 }
 
 // NewConnPool returns a connection pool that acquires new connections from the given pool (an *sql.DB for example).
@@ -744,25 +747,56 @@ func (p *ConnPool) Conn(ctx context.Context) (*PooledConn, error) {
 	if p == nil {
 		return nil, fmt.Errorf("nil ConnPool")
 	}
+	p.mu.Lock()
+	get := p.get
+	var pc *PooledConn
 	select {
-	case c := <-p.freeList:
-		return c, nil
+	case pc = <-p.freeList:
 	default:
 	}
-	c, err := p.get(ctx)
+	p.mu.Unlock()
+	if pc != nil {
+		return pc, nil
+	}
+	if get == nil {
+		return nil, fmt.Errorf("ConnPool is closed: %w", sql.ErrConnDone)
+	}
+	c, err := get(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return &PooledConn{Conn: c, pool: p}, nil
 }
 
+// put the connection into the pool, if it is open and has room.
+func (p *ConnPool) put(c *sql.Conn) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.freeList == nil {
+		return false
+	}
+	select {
+	// A new wrapper each time: the caller may still hold the old one.
+	case p.freeList <- &PooledConn{Conn: c, pool: p}:
+		return true
+	default:
+		return false
+	}
+}
+
 // Close releases all the pooled resources.
 func (p *ConnPool) Close() error {
-	if p == nil || p.freeList == nil {
+	if p == nil {
 		return nil
 	}
+	p.mu.Lock()
 	freeList := p.freeList
 	p.get, p.freeList = nil, nil
+	p.mu.Unlock()
+	if freeList == nil {
+		return nil
+	}
+	// Nothing sends on it any more: put has seen the nil under the lock.
 	close(freeList)
 	var firstErr error
 	for c := range freeList {
@@ -786,15 +820,12 @@ func (c *PooledConn) Close() error {
 	if c == nil || c.Conn == nil {
 		return nil
 	}
-	if c.pool != nil && c.pool.freeList != nil {
-		select {
-		case c.pool.freeList <- c:
-			return nil
-		default:
-		}
-	}
-	conn := c.Conn
+	// This wrapper is done: a second Close must not return the connection again.
+	conn, pool := c.Conn, c.pool
 	c.Conn, c.pool = nil, nil
+	if pool != nil && pool.put(conn) {
+		return nil
+	}
 	return conn.Close()
 }
 
