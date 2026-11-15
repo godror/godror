@@ -1412,10 +1412,10 @@ func (t *ObjectType) init(cache map[string]*ObjectType) error {
 		if t.CollectionOf, err = objectTypeFromDataTypeInfo(t.drv, info.elementTypeInfo, cache); err != nil {
 			return err
 		}
-		if t.CollectionOf.Name == "" {
-			t.CollectionOf.Schema = t.Schema
-			t.CollectionOf.Name = t.Name
-		}
+		// if t.CollectionOf.Name == "" {
+		// 	t.CollectionOf.Schema = t.Schema
+		// 	t.CollectionOf.Name = t.Name
+		// }
 		if t.CollectionOf.dpiObjectType != nil {
 			C.dpiObjectType_addRef(t.CollectionOf.dpiObjectType)
 		}

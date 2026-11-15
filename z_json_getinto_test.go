@@ -40,7 +40,7 @@ func TestJSONObjectGetInto(t *testing.T) {
 		`"Tags":["a",2,false,null,{"k":"v"},[]],` +
 		`"Anything":true,"hidden":"x","Extra":"no such field"}`
 	nick := "to be cleared"
-	got := person{Nick: &nick, Tiny: 7}
+	got := person{Nick: &nick, Tiny: 7, hidden: ""}
 	want := person{
 		Name: "Mary", Raw: []byte("bytes"), Age: 25, Score: 4.5, Active: true,
 		Tiny: 7, // 1000 does not fit, so it is left alone
