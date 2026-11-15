@@ -397,6 +397,12 @@ func dataSetTime(ctx context.Context, dpiData *C.dpiData, t time.Time, connTZ *t
 	if -4713 > Y || Y == 0 || 9999 < Y { // Against ORA-01841
 		return fmt.Errorf("%v: %w", t, ErrBadDate)
 	}
+	// Oracle's calendar goes from 1582-10-04 straight to 1582-10-15.
+	// Bound as TIMESTAMP such a day is refused (ORA-01847),
+	// but as DATE it is stored as an invalid date, without an error.
+	if Y == 1582 && M == time.October && 5 <= D && D <= 14 {
+		return fmt.Errorf("%v: 1582-10-05 to 1582-10-14 do not exist in Oracle's calendar: %w", t, ErrBadDate)
+	}
 	h, m, s := t.Clock()
 	ns := t.Nanosecond()
 	// DST transition creates a gap and both times may be correct.
