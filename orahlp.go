@@ -409,7 +409,7 @@ func MapToSlice(qry string, metParam func(string) any) (string, []any) {
 	arr := make([]any, 0, 16)
 	var buf bytes.Buffer
 	state, p, last := 0, 0, 0
-	var prev rune
+	var prev, qEnd rune
 
 	Add := func(i int) {
 		state = 0
@@ -431,12 +431,46 @@ func MapToSlice(qry string, metParam func(string) any) (string, []any) {
 			}
 		case 3:
 			if prev == '*' && r == '/' {
-				state = 0
+				// The slash that closes the comment cannot open the next one.
+				state, prev = 0, 0
+				continue
 			}
 		case 4:
 			if r == '\'' {
 				state = 0
 			}
+		case 5: // "quoted identifier"
+			if r == '"' {
+				state = 0
+			}
+		case 6: // q'[: r is the opening delimiter
+			switch qEnd = r; r {
+			case '[':
+				qEnd = ']'
+			case '{':
+				qEnd = '}'
+			case '(':
+				qEnd = ')'
+			case '<':
+				qEnd = '>'
+			}
+			state, prev = 7, 0
+			continue
+		case 7: // q'[...]': ends with the closing delimiter and an apostrophe
+			if prev == qEnd && r == '\'' {
+				state = 0
+			}
+		case 1:
+			if 'A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' ||
+				(i-p > 1 && ('0' <= r && r <= '9' || r == '$' || r == '_' || r == '#')) {
+				break
+			}
+			Add(i)
+			if r == ':' {
+				break
+			}
+			// r may start a comment, a literal or a quoted identifier
+			fallthrough
 		case 0:
 			switch r {
 			case '-':
@@ -445,21 +479,22 @@ func MapToSlice(qry string, metParam func(string) any) (string, []any) {
 				}
 			case '*':
 				if prev == '/' {
-					state = 3
+					// The star that opens the comment cannot close it.
+					state, prev = 3, 0
+					continue
 				}
 			case '\'':
 				state = 4
+				if isQQuote(qry[:i]) {
+					state = 6
+				}
+			case '"':
+				state = 5
 			case ':':
 				state = 1
 				p = i
 				// An identifier consists of a letter optionally followed by more letters, numerals, dollar signs, underscores, and number signs.
 				// http://docs.oracle.com/cd/B19306_01/appdev.102/b14261/fundamentals.htm#sthref309
-			}
-		case 1:
-			if !('A' <= r && r <= 'Z' || 'a' <= r && r <= 'z' ||
-				(i-p > 1 && ('0' <= r && r <= '9' || r == '$' || r == '_' || r == '#'))) {
-
-				Add(i)
 			}
 		}
 		prev = r
@@ -471,6 +506,25 @@ func MapToSlice(qry string, metParam func(string) any) (string, []any) {
 		buf.WriteString(qry[last:])
 	}
 	return buf.String(), arr
+}
+
+// isQQuote reports whether the apostrophe following s starts
+// an alternative quoted literal: q'[...]' or nq'[...]'.
+func isQQuote(s string) bool {
+	n := len(s) - 1
+	if n < 0 || s[n] != 'q' && s[n] != 'Q' {
+		return false
+	}
+	if n > 0 && (s[n-1] == 'n' || s[n-1] == 'N') {
+		n--
+	}
+	if n == 0 {
+		return true
+	}
+	// q must not be the end of a longer word
+	c := s[n-1]
+	return !('A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' || '0' <= c && c <= '9' ||
+		c == '$' || c == '_' || c == '#' || c >= 0x80)
 }
 
 // EnableDbmsOutput enables DBMS_OUTPUT buffering on the given connection.
