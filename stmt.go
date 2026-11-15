@@ -1237,6 +1237,16 @@ func (st *statement) bindVars(
 		if value, err = st.bindVarTypeSwitch(ctx, info, &(st.gets[i]), value); err != nil {
 			return fmt.Errorf("%d. arg: %w", i+1, err)
 		}
+		// When the server cannot convert an OUT value to a native integer
+		// (0.5, 1e30, or -1 for an unsigned), the execute fails with
+		// ORA-01455 and its cursor stays open on the server, till the
+		// session ends. Bound as NUMBER, as int64 is, ODPI-C converts
+		// the value on the client, and that error leaves nothing behind.
+		// Only a PL/SQL array of PLS_INTEGER needs the native type.
+		if info.isOut && !(st.PlSQLArrays() && st.isSlice[i]) &&
+			(info.typ == C.DPI_ORACLE_TYPE_NATIVE_INT || info.typ == C.DPI_ORACLE_TYPE_NATIVE_UINT) {
+			info.typ = C.DPI_ORACLE_TYPE_NUMBER
+		}
 
 		var rv reflect.Value
 		if st.isSlice[i] {
