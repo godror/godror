@@ -1669,17 +1669,21 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 
 			case reflect.Float32:
 				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_FLOAT, C.DPI_NATIVE_TYPE_FLOAT
-				info.set = dataSetNumber
-				if info.isOut {
-					*get = dataGetNumber
+				if !nilPtr {
+					info.set = dataSetNumber
+					if info.isOut {
+						*get = dataGetNumber
+					}
 				}
 				return value, nil
 
 			case reflect.Float64:
 				info.typ, info.natTyp = C.DPI_ORACLE_TYPE_NATIVE_DOUBLE, C.DPI_NATIVE_TYPE_DOUBLE
-				info.set = dataSetNumber
-				if info.isOut {
-					*get = dataGetNumber
+				if !nilPtr {
+					info.set = dataSetNumber
+					if info.isOut {
+						*get = dataGetNumber
+					}
 				}
 				return value, nil
 			}
@@ -1691,7 +1695,11 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			return value, fmt.Errorf("bindVarTypeSwitch(%T): %w", value, errUnknownType)
 		}
 		oval := value
-		if !nilPtr {
+		if nilPtr {
+			// A nil pointer is NULL, as in database/sql:
+			// do not bind what Value returns for the zero value.
+			value = ""
+		} else {
 			var err error
 			if value, err = vlr.Value(); err != nil {
 				return value, fmt.Errorf("arg.Value(): %w", err)
