@@ -363,6 +363,9 @@ type (
 		arrLen      int
 		dpiStmtInfo C.dpiStmtInfo
 		sync.Mutex
+		// execSeq is the number of executions of the statement,
+		// for the rows to see that they are not of the last one.
+		execSeq uint64
 	}
 	statementInnards struct {
 		dpiStmt *C.dpiStmt
@@ -587,6 +590,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			_ = closeIfBadConn(rbErr)
 		}
 	}
+	// From here on the statement has the cursor of this execution.
+	st.execSeq++
 	breakConn := st.conn
 	// retypedTypes is true after the cached object types were dropped once.
 	var retypedTypes bool
@@ -868,6 +873,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	// execute
 	var colCount C.uint32_t
 	f := func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, &colCount) }
+	// From here on the statement has the cursor of this execution.
+	st.execSeq++
 	breakConn := st.conn
 	// retypedTypes is true after the cached object types were dropped once.
 	var retypedTypes bool
@@ -3762,6 +3769,9 @@ func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dp
 var (
 	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
+	// ErrStmtReexecuted is returned by the rows of a statement that
+	// has been executed again before all its rows have been read.
+	ErrStmtReexecuted = errors.New("the statement has been executed again, its previous rows are lost")
 	// ErrBadDate is returned when the date is not assignable to Oracle DATE type
 	ErrBadDate = errors.New("date out of range (year must be between -4713 and 9999, and must not be 0)")
 )
@@ -3833,6 +3843,7 @@ func (st *statement) openRows(ctx context.Context, colCount int) (*rows, error) 
 
 	r := rows{
 		statement: st,
+		execSeq:   st.execSeq,
 		columns:   make([]Column, colCount),
 		vars:      make([]*C.dpiVar, colCount),
 		data:      make([][]C.dpiData, colCount),
