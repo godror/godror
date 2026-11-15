@@ -1644,7 +1644,7 @@ func (d *drv) OpenConnector(name string) (driver.Connector, error) {
 		return nil, err
 	}
 
-	return NewConnector(P), nil
+	return d.NewConnector(P), nil
 }
 
 // Connect returns a connection to the database.
