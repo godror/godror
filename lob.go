@@ -23,7 +23,20 @@ import (
 	"unsafe"
 )
 
+// ErrLOBClosed is returned when a Lob is used after it has been closed.
+//
+// A Lob returned from a row is closed by the next Next or Close of the rows,
+// and a Lob returned as an OUT parameter is closed when its statement
+// is executed again or closed.
+var ErrLOBClosed = errors.New("LOB is closed")
+
 // Lob is for reading/writing a LOB.
+//
+// A Lob that the database returned is valid only for a limited time:
+// when it is a column of a row (see LobAsReader), till the next Next or Close of the rows
+// (so it must be read before sql.Row.Scan returns - use Query, not QueryRow);
+// when it is an OUT parameter, till the statement is executed again or closed.
+// After that, it returns ErrLOBClosed.
 type Lob struct {
 	io.Reader
 	IsClob bool
@@ -36,6 +49,9 @@ var _ = (io.ReaderAt)((*Lob)(nil))
 // return a DirectLob for reading/writing the lob directly.
 //
 // After this, the Lob is unusable!
+//
+// The DirectLob is valid only as long as the Lob would have been (see Lob):
+// it is closed at that point, if it has not been closed before.
 func (lob *Lob) Hijack() (*DirectLob, error) {
 	if lob == nil || lob.Reader == nil {
 		return nil, errors.New("lob is nil")
@@ -44,8 +60,19 @@ func (lob *Lob) Hijack() (*DirectLob, error) {
 	if !ok {
 		return nil, fmt.Errorf("Lob.Reader is %T, not *dpiLobReader", lob.Reader)
 	}
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	if lr.closed {
+		return nil, ErrLOBClosed
+	}
 	lob.Reader = nil
-	return &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob}, nil
+	dl := &DirectLob{drv: lr.drv, dpiLob: lr.dpiLob, owned: lr.owned}
+	if lr.owned {
+		// The reference moves to the DirectLob,
+		// which is closed with the reader, at the latest.
+		lr.dpiLob, lr.owned, lr.hijacked = nil, false, dl
+	}
+	return dl, nil
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
@@ -119,6 +146,55 @@ type dpiLobReader struct {
 	bufR, bufW          int
 	finished            bool
 	IsClob              bool
+	// owned is true when the reader holds its own reference to dpiLob.
+	owned bool
+	// closed is set by Close and release: the LOB must not be used anymore.
+	closed bool
+	// hijacked is the DirectLob that took over the reader's reference.
+	hijacked *DirectLob
+}
+
+// addRef takes a reference to the LOB for the reader, as the variable
+// that holds the LOB frees it at the next fetch or when it is released.
+func (dlr *dpiLobReader) addRef() error {
+	if C.dpiLob_addRef(dlr.dpiLob) == C.DPI_FAILURE {
+		return fmt.Errorf("addRef LOB: %w", dlr.getError())
+	}
+	dlr.owned = true
+	return nil
+}
+
+// release closes the reader (and the DirectLob hijacked from it)
+// without a round trip: every later use returns ErrLOBClosed.
+func (dlr *dpiLobReader) release() {
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	dlr.closed = true
+	if dlr.hijacked != nil {
+		_ = dlr.hijacked.Close()
+		dlr.hijacked = nil
+	}
+	dlr.dropLob()
+}
+
+// rewind reports whether the reader is open and reads lob;
+// if so, the next Read starts at the beginning of the LOB.
+func (dlr *dpiLobReader) rewind(lob *C.dpiLob) bool {
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	if dlr.closed || dlr.dpiLob != lob {
+		return false
+	}
+	dlr.offset, dlr.sizePlusOne, dlr.bufR, dlr.bufW, dlr.finished = 0, 0, 0, 0, false
+	return true
+}
+
+// dropLob forgets the LOB, releasing the reader's reference, if it has one.
+func (dlr *dpiLobReader) dropLob() {
+	if dlr.owned && dlr.dpiLob != nil {
+		C.dpiLob_release(dlr.dpiLob)
+	}
+	dlr.dpiLob, dlr.owned = nil, false
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.
@@ -164,6 +240,9 @@ func (dlr *dpiLobReader) ChunkSize() int {
 func (dlr *dpiLobReader) Read(p []byte) (int, error) {
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
+	if dlr.closed {
+		return 0, ErrLOBClosed
+	}
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Debug("Read", "bufR", dlr.bufR, "bufW", dlr.bufW, "buf", cap(dlr.buf))
@@ -220,6 +299,10 @@ var ErrCLOB = errors.New("CLOB is not supported")
 // (works only for BLOBs), as Oracle reports CLOB size in runes, not in bytes!
 func (dlr *dpiLobReader) Size() (int64, error) {
 	dlr.mu.Lock()
+	if dlr.closed {
+		dlr.mu.Unlock()
+		return 0, ErrLOBClosed
+	}
 	err := dlr.getSize()
 	size := dlr.sizePlusOne - 1
 	isClob := dlr.IsClob
@@ -240,7 +323,7 @@ func (dlr *dpiLobReader) getSize() error {
 	}); err != nil {
 		err = fmt.Errorf("getSize: %w", err)
 		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.dropLob()
 	}
 	runtime.UnlockOSThread()
 	dlr.sizePlusOne++
@@ -321,7 +404,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 		}
 		if err != nil {
 			C.dpiLob_close(dlr.dpiLob)
-			dlr.dpiLob = nil
+			dlr.dropLob()
 			if dlr.finished = codeErr != nil && codeErr.Code() == 1403; dlr.finished {
 				dlr.offset += n
 				return int(n), io.EOF
@@ -362,7 +445,7 @@ func (dlr *dpiLobReader) read(p []byte) (int, error) {
 	var err error
 	if amount != 0 && n == 0 || !dlr.IsClob && dlr.offset+1 >= dlr.sizePlusOne {
 		C.dpiLob_close(dlr.dpiLob)
-		dlr.dpiLob = nil
+		dlr.dropLob()
 		dlr.finished = true
 		err = io.EOF
 	}
@@ -380,6 +463,9 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	dlr.mu.Lock()
 	defer dlr.mu.Unlock()
+	if dlr.closed {
+		return 0, ErrLOBClosed
+	}
 	if dlr.IsClob {
 		return 0, ErrCLOB
 	}
@@ -393,11 +479,17 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	return int(n), err
 }
 func (dlr *dpiLobReader) Close() error {
-	if dlr == nil || dlr.dpiLob == nil {
+	if dlr == nil {
+		return nil
+	}
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	dlr.closed = true
+	if dlr.dpiLob == nil {
 		return nil
 	}
 	lob := dlr.dpiLob
-	dlr.dpiLob = nil
+	dlr.dpiLob, dlr.owned = nil, false
 	return closeLob(dlr, lob)
 }
 

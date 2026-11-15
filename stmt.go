@@ -383,6 +383,9 @@ type (
 		dpiStmt *C.dpiStmt
 		vars    []*C.dpiVar
 		tbc     []io.Closer
+		// outLobs are the readers of the OUT LOBs of the last execution,
+		// closed by the next execution and by Close.
+		outLobs []*dpiLobReader
 	}
 	dataGetter func(ctx context.Context, v any, data []C.dpiData) error
 )
@@ -438,6 +441,7 @@ func (st *statementInnards) close(ctx context.Context) error {
 			logger.Debug("closeNotLocking", "stack", string(stack))
 		}
 	}
+	st.closeOutLobs()
 	vars, tbc, dpiStmt := st.vars, st.tbc, st.dpiStmt
 	st.vars, st.tbc, st.dpiStmt = nil, nil, nil
 	for _, v := range vars[:cap(vars)] {
@@ -452,6 +456,16 @@ func (st *statementInnards) close(ctx context.Context) error {
 		C.dpiStmt_release(dpiStmt)
 	}
 	return nil
+}
+
+// closeOutLobs closes the readers of the OUT LOBs of the last execution:
+// their LOBs belong to the bind variables, which are reused or released.
+func (st *statementInnards) closeOutLobs() {
+	for i, rdr := range st.outLobs {
+		rdr.release()
+		st.outLobs[i] = nil
+	}
+	st.outLobs = st.outLobs[:0]
 }
 
 // Exec executes a query that doesn't return rows, such
@@ -744,6 +758,7 @@ func (st *statement) getOutVars(ctx context.Context, many bool, logger *slog.Log
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("get/set", "gets", st.gets, "dests", st.dests)
 	}
+	st.closeOutLobs()
 	for i, get := range st.gets {
 		if get == nil {
 			continue
@@ -3122,14 +3137,13 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 	return nil
 }
 
-func (c *conn) dataGetLOB(ctx context.Context, v any, data []C.dpiData) error {
+func (st *statement) dataGetLOB(ctx context.Context, v any, data []C.dpiData) error {
 	if L, ok := v.(*Lob); ok {
 		if len(data) == 0 || data[0].isNull == 1 {
 			*L = Lob{}
 			return nil
 		}
-		c.dataGetLOBC(ctx, L, &data[0])
-		return nil
+		return st.dataGetLOBC(ctx, L, &data[0])
 	}
 	slice := v.(*[]Lob)
 	n := len(data)
@@ -3139,20 +3153,34 @@ func (c *conn) dataGetLOB(ctx context.Context, v any, data []C.dpiData) error {
 		*slice = make([]Lob, n)
 	}
 	for i := range data {
-		c.dataGetLOBC(ctx, &((*slice)[i]), &data[i])
+		if err := st.dataGetLOBC(ctx, &((*slice)[i]), &data[i]); err != nil {
+			return err
+		}
 	}
 	return nil
 }
-func (c *conn) dataGetLOBC(ctx context.Context, L *Lob, data *C.dpiData) {
-	L.Reader = nil
-	if data.isNull == 1 {
-		return
+func (st *statement) dataGetLOBC(ctx context.Context, L *Lob, data *C.dpiData) error {
+	var lob *C.dpiLob
+	if data.isNull == 0 {
+		lob = C.dpiData_getLOB(data)
 	}
-	lob := C.dpiData_getLOB(data)
 	if lob == nil {
-		return
+		L.Reader = nil
+		return nil
 	}
-	L.Reader = &dpiLobReader{drv: c.drv, dpiLob: lob, IsClob: L.IsClob}
+	// IN OUT, and the variable still holds the LOB that was bound:
+	// the Lob keeps the lifetime it had, only the reading starts anew.
+	if r, ok := L.Reader.(*dpiLobReader); ok && r.rewind(lob) {
+		return nil
+	}
+	rdr := &dpiLobReader{drv: st.drv, dpiLob: lob, IsClob: L.IsClob}
+	if err := rdr.addRef(); err != nil {
+		return err
+	}
+	// The Lob is valid till the next execution or Close of the statement.
+	st.outLobs = append(st.outLobs, rdr)
+	L.Reader = rdr
+	return nil
 }
 
 func (c *conn) dataSetLOB(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
@@ -3186,6 +3214,11 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	}
 	data[i].isNull = 0
 	if r, ok := L.Reader.(*dpiLobReader); ok {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.closed {
+			return ErrLOBClosed
+		}
 		if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil {
 			return fmt.Errorf("dpiVar_setFromLob(%p): %w", r.dpiLob, err)
 		}
