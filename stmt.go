@@ -3306,10 +3306,11 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 	}
 	switch x := vv.(type) {
 	case JSONValue:
+		// A nil Value has the Invalid kind, and is written as JSON null.
 		v := reflect.ValueOf(x.Value)
-		t := v.Type()
-		switch t.Kind() {
-		case reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
+		switch v.Kind() {
+		case reflect.Invalid,
+			reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
 			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 			reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 			reflect.Uint32, reflect.Uint64, reflect.Float32,
@@ -3325,16 +3326,16 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 				return fmt.Errorf("dataSetJSONValue %w", err)
 			}
 		default:
-			return fmt.Errorf("dataSetJSONValue Unsupported JSON doc type %#v: ", t.Name())
+			return fmt.Errorf("dataSetJSONValue Unsupported JSON doc type %#v: ", v.Type().Name())
 		}
 	case []JSONValue:
 		for i := range x {
 			data[i].isNull = 0
 
 			v := reflect.ValueOf(x[i].Value)
-			t := v.Type()
-			switch t.Kind() {
-			case reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
+			switch v.Kind() {
+			case reflect.Invalid,
+				reflect.Map, reflect.String, reflect.Slice, reflect.Bool,
 				reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
 				reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
 				reflect.Uint32, reflect.Uint64, reflect.Float32,
@@ -3349,7 +3350,7 @@ func (c *conn) dataSetJSONValue(ctx context.Context, dv *C.dpiVar, data []C.dpiD
 					return fmt.Errorf("dataSetJSONValue[%d] %w", i, err)
 				}
 			default:
-				return fmt.Errorf("dataSetJSONValue Unsupported JSON doc[%d] type %#v: ", i, t.Name())
+				return fmt.Errorf("dataSetJSONValue Unsupported JSON doc[%d] type %#v: ", i, v.Type().Name())
 			}
 		}
 	default:

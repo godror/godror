@@ -110,6 +110,11 @@ void godror_dpiJson_setBool(dpiJsonNode *topNode, dpiData *data) {
     topNode->value->asBoolean = data->value.asBoolean;
 }
 
+void godror_dpiJson_setNull(dpiJsonNode *topNode) {
+    topNode->oracleTypeNum = DPI_ORACLE_TYPE_NONE;
+    topNode->nativeTypeNum = DPI_NATIVE_TYPE_NULL;
+}
+
 void godror_dpiJson_setString(dpiJsonNode *topNode, dpiData *data) {
     uint32_t size = data->value.asBytes.length;
     topNode->oracleTypeNum = DPI_ORACLE_TYPE_VARCHAR;
@@ -398,6 +403,7 @@ type JSONString struct {
 // for  bool; DB native type boolean is used.
 // for  map[string]any; DB type JSON Object is used.
 // for  []any; DB native type JSON Array is used.
+// for  nil; JSON null is used (not SQL NULL: bind a plain nil for that).
 
 type JSONValue struct {
 	Value any
@@ -651,6 +657,9 @@ func jsonObjectFields(obj *C.dpiJsonObject) []jsonField {
 // Caller has to explicitly free using godror_dpiJsonfreeMem
 func populateJSONNode(jsonnode *C.dpiJsonNode, in any) error {
 	switch x := in.(type) {
+	case nil:
+		// JSON null
+		C.godror_dpiJson_setNull(jsonnode)
 	case []any:
 		arr, _ := in.([]any)
 		C.godror_dpiJsonArray_initialize((**C.dpiJsonNode)(unsafe.Pointer(&jsonnode)), C.uint32_t(len(arr)))
