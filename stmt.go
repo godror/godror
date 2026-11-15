@@ -2040,6 +2040,28 @@ func (c *conn) dataSetIntervalDS(ctx context.Context, dv *C.dpiVar, data []C.dpi
 	return nil
 }
 
+// dataGetInt returns the int64 in data as T,
+// or an error wrapping strconv.ErrRange if it does not fit.
+func dataGetInt[T ~int | ~int8 | ~int16 | ~int32](data *C.dpiData) (T, error) {
+	v := *((*int64)(unsafe.Pointer(&data.value)))
+	x := T(v)
+	if int64(x) != v {
+		return 0, fmt.Errorf("%d does not fit into %T: %w", v, x, strconv.ErrRange)
+	}
+	return x, nil
+}
+
+// dataGetUint returns the uint64 in data as T,
+// or an error wrapping strconv.ErrRange if it does not fit.
+func dataGetUint[T ~uint | ~uint8 | ~uint16 | ~uint32](data *C.dpiData) (T, error) {
+	v := *((*uint64)(unsafe.Pointer(&data.value)))
+	x := T(v)
+	if uint64(x) != v {
+		return 0, fmt.Errorf("%d does not fit into %T: %w", v, x, strconv.ErrRange)
+	}
+	return x, nil
+}
+
 func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *int:
@@ -2047,7 +2069,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = int(C.dpiData_getInt64(&data[0]))
-			*x = int(*((*int64)(unsafe.Pointer(&data[0].value))))
+			var err error
+			if *x, err = dataGetInt[int](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]int:
 		*x = (*x)[:0]
@@ -2056,7 +2081,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, int(C.dpiData_getInt64(&data[i])))
-				*x = append(*x, int(*((*int64)(unsafe.Pointer(&data[i].value)))))
+				n, err := dataGetInt[int](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *int8:
@@ -2064,7 +2093,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = int8(C.dpiData_getInt64(&data[0]))
-			*x = *((*int8)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetInt[int8](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]int8:
 		*x = (*x)[:0]
@@ -2073,7 +2105,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, int8(C.dpiData_getInt64(&data[i])))
-				*x = append(*x, *((*int8)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetInt[int8](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *int16:
@@ -2081,7 +2117,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = int16(C.dpiData_getInt64(&data[0]))
-			*x = *((*int16)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetInt[int16](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]int16:
 		*x = (*x)[:0]
@@ -2090,7 +2129,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, int16(C.dpiData_getInt64(&data[i])))
-				*x = append(*x, *((*int16)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetInt[int16](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *int32:
@@ -2098,7 +2141,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = int32(C.dpiData_getInt64(&data[0]))
-			*x = *((*int32)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetInt[int32](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]int32:
 		*x = (*x)[:0]
@@ -2107,7 +2153,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, int32(C.dpiData_getInt64(&data[i])))
-				*x = append(*x, *((*int32)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetInt[int32](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *int64:
@@ -2132,7 +2182,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			x.Valid = false
 		} else {
 			//x.Valid, x.Int32 = true, int32(C.dpiData_getInt64(&data[0]))
-			x.Valid, x.Int32 = true, *((*int32)(unsafe.Pointer(&data[0].value)))
+			n, err := dataGetInt[int32](&data[0])
+			if err != nil {
+				return err
+			}
+			x.Valid, x.Int32 = true, n
 		}
 	case *[]sql.NullInt32:
 		*x = (*x)[:0]
@@ -2140,9 +2194,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			if data[i].isNull == 1 {
 				*x = append(*x, sql.NullInt32{Valid: false})
 			} else {
-				*x = append(*x, sql.NullInt32{Valid: true,
-					//Int32: int32(C.dpiData_getInt64(&data[i]))})
-					Int32: *((*int32)(unsafe.Pointer(&data[i].value)))})
+				n, err := dataGetInt[int32](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, sql.NullInt32{Valid: true, Int32: n})
 			}
 		}
 	case *sql.NullInt64:
@@ -2187,7 +2243,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = uint(C.dpiData_getUint64(&data[0]))
-			*x = uint(*((*uint64)(unsafe.Pointer(&data[0].value))))
+			var err error
+			if *x, err = dataGetUint[uint](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]uint:
 		*x = (*x)[:0]
@@ -2196,7 +2255,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, uint(C.dpiData_getUint64(&data[i])))
-				*x = append(*x, uint(*((*uint64)(unsafe.Pointer(&data[i].value)))))
+				n, err := dataGetUint[uint](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *[]uint8:
@@ -2206,7 +2269,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, uint8(C.dpiData_getUint64(&data[i])))
-				*x = append(*x, *((*uint8)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetUint[uint8](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *uint8:
@@ -2214,7 +2281,10 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = uint8(C.dpiData_getUint64(&data[0]))
-			*x = *((*uint8)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetUint[uint8](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]uint16:
 		*x = (*x)[:0]
@@ -2223,7 +2293,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, uint16(C.dpiData_getUint64(&data[i])))
-				*x = append(*x, *((*uint16)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetUint[uint16](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *uint16:
@@ -2231,14 +2305,20 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 			*x = 0
 		} else {
 			//*x = uint16(C.dpiData_getUint64(&data[0]))
-			*x = *((*uint16)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetUint[uint16](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *uint32:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = 0
 		} else {
 			//*x = uint32(C.dpiData_getUint64(&data[0]))
-			*x = *((*uint32)(unsafe.Pointer(&data[0].value)))
+			var err error
+			if *x, err = dataGetUint[uint32](&data[0]); err != nil {
+				return err
+			}
 		}
 	case *[]uint32:
 		*x = (*x)[:0]
@@ -2247,7 +2327,11 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 				*x = append(*x, 0)
 			} else {
 				//*x = append(*x, uint32(C.dpiData_getUint64(&data[i])))
-				*x = append(*x, *((*uint32)(unsafe.Pointer(&data[i].value))))
+				n, err := dataGetUint[uint32](&data[i])
+				if err != nil {
+					return err
+				}
+				*x = append(*x, n)
 			}
 		}
 	case *uint64:
