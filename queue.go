@@ -683,7 +683,16 @@ func (M *Message) toOra(d *drv, props *C.dpiMsgProps) error {
 		C.free(unsafe.Pointer(value))
 	}
 
-	OK(C.dpiMsgProps_setExpiration(props, C.int(M.Expiration/time.Second)), "setExpiration")
+	// For Oracle, 0 means "expire immediately" and -1 means "never expire".
+	// The zero Expiration means it was not set, so the message must not expire;
+	// a positive sub-second Expiration must not be truncated to 0.
+	expiration := C.int(M.Expiration / time.Second)
+	if M.Expiration == 0 {
+		expiration = -1
+	} else if 0 < M.Expiration && M.Expiration < time.Second {
+		expiration = 1
+	}
+	OK(C.dpiMsgProps_setExpiration(props, expiration), "setExpiration")
 
 	if M.OriginalMsgID != zeroMsgID {
 		OK(C.dpiMsgProps_setOriginalMsgId(props, (*C.char)(unsafe.Pointer(&M.OriginalMsgID[0])), MsgIDLength), "setMsgOriginalId")
