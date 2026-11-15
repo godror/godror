@@ -267,13 +267,14 @@ func (n Number) MarshalJSON() ([]byte, error) {
 	return append(append(append(make([]byte, 0, 1+len(n)+1), '"'), []byte(n)...), '"'), nil
 }
 
-// UnmarshalJSON parses a JSON string into the Number.
+// UnmarshalJSON parses a JSON string or number into the Number.
+// The empty string ("") and null result in the empty Number, which is the NULL.
 func (n *Number) UnmarshalJSON(p []byte) error {
 	*n = Number("")
-	if len(p) == 0 {
+	if len(p) == 0 || string(p) == "null" {
 		return nil
 	}
-	if len(p) > 2 && p[0] == '"' && p[len(p)-1] == '"' {
+	if len(p) >= 2 && p[0] == '"' && p[len(p)-1] == '"' {
 		p = p[1 : len(p)-1]
 	}
 	return n.UnmarshalText(p)
