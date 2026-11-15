@@ -1828,7 +1828,8 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 			var t time.Time
 			c.dataGetTimeC(ctx, &t, &data[i])
 			if t.IsZero() {
-				(*x)[i].Reset()
+				// NULL; the element may be nil, so it cannot be Reset.
+				(*x)[i] = nil
 			} else {
 				if (*x)[i] == nil {
 					(*x)[i] = timestamppb.New(t)
