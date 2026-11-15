@@ -8,6 +8,7 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -121,7 +122,8 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 	END ` + sample + `;`,
 			}
 			for _, ddl := range qry {
-				_, err := db.ExecContext(ctx, ddl)
+				res, err := db.ExecContext(ctx, ddl)
+				t.Logf("DDL step=%d %q -> %v %v\n", step, ddl[:min(40, len(ddl))], res, err)
 				if err != nil {
 					return err
 				}
@@ -148,6 +150,7 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 				"DROP TYPE pair",
 			} {
 				if _, err := db.Exec(qry); err != nil {
+					fmt.Printf("DROP step=%d %q -> %v\n", step, qry, err)
 					t.Logf("%s: %+v", qry, err)
 				}
 			}
@@ -155,6 +158,14 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 
 		if err := createTypes(ctx, testDb); err != nil {
 			t.Fatal(err)
+		}
+		for _, n := range []string{"PAIR", "PAIR_LIST", "POBJ", "POBJ_T"} {
+			var cnt int
+			if err := testDb.QueryRowContext(ctx, "select count(*) from all_types where owner = user and type_name = :1", n).Scan(&cnt); err != nil {
+				t.Logf("count %s: %v", n, err)
+			} else {
+				t.Logf("count %s = %d", n, cnt)
+			}
 		}
 		defer dropTypes(testDb)
 

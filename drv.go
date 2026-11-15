@@ -709,6 +709,8 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 		poolKey:  poolKey,
 		objTypes: make(map[string]*ObjectType),
 	}
+	c.stmtCache = newStmtCache(stmtCacheMax(c.params.StmtCacheSize))
+
 	logger := P.Logger
 	var cs *C.char
 	var length C.uint

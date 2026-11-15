@@ -1654,40 +1654,84 @@ type (
 	}
 )
 
+// collectionLen trims the collection to at most n elements, and returns the
+// resulting number of elements.
+func collectionLen(coll ObjectCollection, n int) (int, error) {
+	cur, err := coll.Len()
+	if err != nil {
+		return 0, err
+	}
+	if cur > n {
+		if err := coll.Trim(n); err != nil {
+			return 0, err
+		}
+		cur = n
+	}
+	return cur, nil
+}
+
+// writeObjectElement writes the i-th element of coll with f, reusing the
+// existing element object if there is one, instead of creating a new one.
+// cur is the number of elements the collection has.
+//
+// Reusing the elements is important when the statement (and its bind
+// variables) is executed again: creating the objects on every execution
+// leaks Oracle Client memory (see TestPlSqlNestedObj).
+func writeObjectElement(coll ObjectCollection, i, cur int, data *Data, f func(*Object) error) error {
+	var obj *Object
+	if i < cur {
+		if err := coll.GetItem(data, i); err == nil && !data.IsNull() && data.IsObject() {
+			obj = data.GetObject()
+		}
+	}
+	created := obj == nil
+	if created {
+		var err error
+		if obj, err = coll.CollectionOf.NewObject(); err != nil {
+			return err
+		}
+	}
+	err := f(obj)
+	if created && err == nil {
+		data.SetObject(obj)
+		if i < cur {
+			err = coll.SetItem(i, data)
+		} else {
+			err = coll.AppendData(data)
+		}
+	}
+	if cerr := obj.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 // SliceWriteObject helps implementing an ObjectWriter for a slice.
 func SliceWriteObject[E any](o *Object, ss []E) error {
 	coll := o.Collection()
-	if err := coll.Trim(0); err != nil {
+	cur, err := collectionLen(coll, len(ss))
+	if err != nil {
 		return err
 	}
 	data := scratch.Get()
 	defer scratch.Put(data)
-	var ot *ObjectType
-	for _, v := range ss {
+	for i, v := range ss {
 		if ow, ok := any(v).(ObjectWriter); ok {
-			if ot == nil {
-				ot = o.ObjectType.CollectionOf
-			}
-			sub, err := ot.NewObject()
-			if err != nil {
-				return err
-			}
-			if err := ow.WriteObject(sub); err != nil {
-				sub.Close()
-				return err
-			}
-			data.SetObject(sub)
-			err = coll.AppendData(data)
-			sub.Close()
-			if err != nil {
-				return err
+			if err := writeObjectElement(coll, i, cur, data, ow.WriteObject); err != nil {
+				return fmt.Errorf("write %T[%d]: %w", v, i, err)
 			}
 			continue
-		} else if err := data.Set(v); err != nil {
+		}
+		if err := data.Set(v); err != nil {
 			return err
 		}
-		if err := coll.AppendData(data); err != nil {
-			return err
+		if i < cur {
+			err = coll.SetItem(i, data)
+		} else {
+			err = coll.AppendData(data)
+		}
+		if err != nil {
+			return fmt.Errorf("set %T[%d]: %w", v, i, err)
 		}
 	}
 	return nil
@@ -1987,34 +2031,45 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 		rv, rvt = rv.Elem(), rvt.Elem()
 	}
 	if rv.IsZero() {
-		return nil
+		// A zero value is an object with all attributes NULL. Reset the
+		// object, so a reused one does not keep the previous values.
+		return o.ResetAttributes()
 	}
 	switch rvt.Kind() {
 	case reflect.Slice:
 		coll := o.Collection()
+		cur, err := collectionLen(coll, rv.Len())
+		if err != nil {
+			return err
+		}
 		if !o.CollectionOf.IsObject() {
+			data := scratch.Get()
+			defer scratch.Put(data)
 			for i, n := 0, rv.Len(); i < n; i++ {
-				if err := coll.Append(rv.Index(i).Interface()); err != nil {
-					coll.Close()
+				if err := data.Set(rv.Index(i).Interface()); err != nil {
+					return fmt.Errorf("set %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
+				}
+				if i < cur {
+					if err := coll.SetItem(i, data); err != nil {
+						return fmt.Errorf("set %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
+					}
+				} else if err := coll.AppendData(data); err != nil {
 					return fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
 				}
 			}
 		} else {
+			data := scratch.Get()
+			defer scratch.Put(data)
 			for i, n := 0, rv.Len(); i < n; i++ {
-				sub, err := o.CollectionOf.NewObject()
-				if err != nil {
-					coll.Close()
-					return fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
+				rv := rv.Index(i)
+				var f func(*Object) error
+				if ow, ok := rv.Interface().(ObjectWriter); ok {
+					f = ow.WriteObject
+				} else {
+					f = func(sub *Object) error { return structWriteObject(sub, rv) }
 				}
-				if err := structWriteObject(sub, rv.Index(i)); err != nil {
-					coll.Close()
+				if err := writeObjectElement(coll, i, cur, data, f); err != nil {
 					return fmt.Errorf("%d. dataSetObjectStructObj: %w", i, err)
-				}
-				err = coll.AppendObject(sub)
-				sub.Close()
-				if err != nil {
-					coll.Close()
-					return err
 				}
 			}
 		}
@@ -2048,18 +2103,34 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 					if err := ad.Set(rf.Interface()); err != nil {
 						return fmt.Errorf("set %q with %T: %w", nm, rv.Interface(), err)
 					}
-				} else {
-					ot := attr.ObjectType
-					sub, err := ot.NewObject()
-					if err != nil {
-						return err
-					}
-					if err = structWriteObject(sub, rf); err != nil {
-						return err
-					}
-					ad.SetObject(sub)
-					defer sub.Close()
+					return o.SetAttribute(nm, ad)
 				}
+				// Reuse the attribute object, if there is one: creating a
+				// new one on every execution leaks Oracle Client memory
+				// (see TestPlSqlNestedObj).
+				if err := o.GetAttribute(ad, nm); err != nil {
+					return err
+				}
+				if !ad.IsNull() && ad.IsObject() {
+					if sub := ad.GetObject(); sub != nil {
+						err := structWriteObject(sub, rf)
+						if cerr := sub.Close(); err == nil {
+							err = cerr
+						}
+						return err
+					}
+				}
+				ot := attr.ObjectType
+				sub, err := ot.NewObject()
+				if err != nil {
+					return err
+				}
+				if err = structWriteObject(sub, rf); err != nil {
+					sub.Close()
+					return err
+				}
+				ad.SetObject(sub)
+				defer sub.Close()
 				if err := o.SetAttribute(nm, ad); err != nil {
 					return fmt.Errorf("SetAttribute(%q): %w", nm, err)
 				}

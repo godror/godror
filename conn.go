@@ -58,6 +58,7 @@ type conn struct {
 	Server              VersionInfo
 	params              dsn.ConnectionParams
 	mu                  sync.RWMutex
+	stmtCache           stmtCache
 	objTypes            map[string]*ObjectType
 	tzOffSecs           int
 	inTransaction       bool
@@ -222,7 +223,10 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 // and is called in place of any ColumnConverter. CheckNamedValue must do type
 // validation and conversion as appropriate for the driver.
 func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
-	return driver.ErrSkip
+	// Keep the argument as is: bindVarTypeSwitch handles the types (which
+	// the default converter would mangle, and which includes sql.Out), and
+	// conn.ExecContext applies the Option values to the statement.
+	return nil
 }
 
 // Close invalidates and potentially stops any current
@@ -246,6 +250,10 @@ func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
 	}
+	// The cached statements belong to this connection: close them before
+	// releasing the connection, so their variables and statement handles are
+	// released in order.
+	c.stmtCache.Close()
 	dpiConn := c.dpiConn
 	if dpiConn == nil {
 		c.currentTT.Store(TraceTag{})

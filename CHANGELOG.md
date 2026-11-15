@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Implement driver.ExecerContext with a per-connection LRU statement cache:
+  repeated Exec calls with the same query reuse the prepared statement.
+
+### Fixed
+- Repeated Exec calls with an OUT object collection bind no longer grow the
+  client-side memory of the Oracle Client (TestPlSqlNestedObj).
 
 ## [v0.52.0]
 ### Added

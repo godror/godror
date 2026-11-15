@@ -583,6 +583,8 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 	breakConn := st.conn
+	// retypedTypes is true after the cached object types were dropped once.
+	var retypedTypes bool
 	for i := 0; i < 3; i++ {
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
@@ -604,7 +606,16 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		if !st.noRetry && isInvalidObjectErr(err) {
+		// A cached object type may have been replaced in the database (a
+		// DROP/CREATE of the type): forget the cached types, and bind the
+		// variables again with the new ones. ORA-21700 is a vanished object,
+		// ORA-00902 is a bind variable of a replaced type (when the statement
+		// is reused, prepared before the type was replaced).
+		retryTypes := isInvalidObjectErr(err)
+		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+			retryTypes, retypedTypes = true, true
+		}
+		if !st.noRetry && retryTypes {
 			for _, v := range st.conn.objTypes {
 				_ = v.Close()
 			}
@@ -852,6 +863,8 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	var colCount C.uint32_t
 	f := func() C.int { return C.dpiStmt_execute(st.dpiStmt, mode, &colCount) }
 	breakConn := st.conn
+	// retypedTypes is true after the cached object types were dropped once.
+	var retypedTypes bool
 	for i := 0; i < 3; i++ {
 		done := make(chan struct{})
 		wait := breakOnCancel(ctx, breakConn, done, logger)
@@ -870,7 +883,16 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		if !st.noRetry && isInvalidObjectErr(err) {
+		// A cached object type may have been replaced in the database (a
+		// DROP/CREATE of the type): forget the cached types, and bind the
+		// variables again with the new ones. ORA-21700 is a vanished object,
+		// ORA-00902 is a bind variable of a replaced type (when the statement
+		// is reused, prepared before the type was replaced).
+		retryTypes := isInvalidObjectErr(err)
+		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+			retryTypes, retypedTypes = true, true
+		}
+		if !st.noRetry && retryTypes {
 			for _, v := range st.conn.objTypes {
 				_ = v.Close()
 			}
@@ -3244,6 +3266,40 @@ func SliceToObjCollWriter[E ObjectWriter, T interface {
 		}}
 }
 
+// bindableObject returns the object of the variable at data[pos] to be written
+// as the IN value, if it is not NULL, or a new object of type ot.
+//
+// Reusing the object is important when the statement (and its bind variables)
+// is executed again: creating and releasing a new object tree on every
+// execution leaks Oracle Client memory (see TestPlSqlNestedObj).
+func (stmt *statement) bindableObject(ot *ObjectType, data []C.dpiData, pos int) (*Object, bool, error) {
+	if pos < len(data) && data[pos].isNull == 0 && C.dpiData_getObject(&data[pos]) != nil {
+		// The object belongs to the bind variable: do not take a reference
+		// for it, and do not close it.
+		d := Data{
+			ObjectType:    ot,
+			dpiData:       data[pos],
+			NativeTypeNum: ot.NativeTypeNum,
+			implicitObj:   true,
+		}
+		if o := d.GetObject(); o != nil {
+			return o, true, nil
+		}
+	}
+	o, err := ot.NewObject()
+	return o, false, err
+}
+
+// closeCreated closes the objects among objs that were created by
+// dataSetObject (created[i]), and leaves the ones owned by the caller alone.
+func closeCreated(objs []*Object, created []bool) {
+	for i, o := range objs {
+		if o != nil && i < len(created) && created[i] {
+			_ = o.Close()
+		}
+	}
+}
+
 func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) error {
 	//fmt.Printf("\ndataSetObject(dv=%+v, data=%+v, vv=%+v)\n", dv, data, vv)
 	if len(data) == 0 {
@@ -3253,9 +3309,10 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		return dataSetNull(ctx, dv, data, nil)
 	}
 	objs := []*Object{{}}
-	// created is true if the objects were created here, from an ObjectWriter:
-	// only those are closed after the exec, the others belong to the caller.
-	var created bool
+	// created[i] is true if objs[i] was created here (from a writer):
+	// only those are closed after the exec, the others belong to the caller
+	// (or to the bind variable).
+	var created []bool
 	switch v := vv.(type) {
 	case Object:
 		objs[0] = &v
@@ -3275,70 +3332,75 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		objs = v
 
 	case ObjectWriter:
-		created = true
+		created = make([]bool, 1)
 		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
-		o, err := ot.NewObject()
+		o, reused, err := stmt.bindableObject(ot, data, 0)
 		if err != nil {
 			return err
 		}
-		if err := v.WriteObject(o); err != nil {
+		created[0] = !reused
+		if err = v.WriteObject(o); err != nil {
+			closeCreated([]*Object{o}, created)
 			return err
 		}
 		// fmt.Printf("ObjectWriter v=%#v o=%v\n", v, o)
 		objs[0] = o
 
 	case []ObjectWriter:
-		created = true
-		var ot *ObjectType
-		for _, ut := range v {
-			if ot == nil {
-				var err error
-				if ot, err = stmt.conn.GetObjectType(ut.ObjectTypeName()); err != nil {
-					return err
-				}
-			}
-			o, err := ot.NewObject()
+		created = make([]bool, len(v))
+		for i, ut := range v {
+			ot, err := stmt.conn.GetObjectType(ut.ObjectTypeName())
 			if err != nil {
+				closeCreated(objs, created)
 				return err
 			}
-			if err := ut.WriteObject(o); err != nil {
+			o, reused, err := stmt.bindableObject(ot, data, i)
+			if err != nil {
+				closeCreated(objs, created)
 				return err
 			}
+			created[i] = !reused
 			objs = append(objs, o)
+			if err = ut.WriteObject(o); err != nil {
+				closeCreated(objs, created)
+				return err
+			}
 		}
 
 	case ObjectCollectionWriter:
-		created = true
+		created = make([]bool, 1)
 		ot, err := stmt.conn.GetObjectType(v.ObjectTypeName())
 		if err != nil {
 			return err
 		}
-		o, err := ot.NewObject()
+		o, reused, err := stmt.bindableObject(ot, data, 0)
 		if err != nil {
 			return err
 		}
-		coll := ObjectCollection{o}
+		created[0] = !reused
 		objs[0] = o
-		ot = nil
+		coll := o.Collection()
+		cur, err := coll.Len()
+		if err != nil {
+			closeCreated(objs, created)
+			return err
+		}
+		data := scratch.Get()
+		defer scratch.Put(data)
+		n := 0
 		for item := range v.Iter() {
-			if ot == nil {
-				if ot, err = stmt.conn.GetObjectType(item.ObjectTypeName()); err != nil {
-					return err
-				}
-			}
-			if o, err = ot.NewObject(); err != nil {
+			if err = writeObjectElement(coll, n, cur, data, item.WriteObject); err != nil {
+				closeCreated(objs, created)
 				return err
 			}
-			if err = item.WriteObject(o); err != nil {
-				o.Close()
-				return err
-			}
-			err = coll.Append(o)
-			o.Close()
-			if err != nil {
+			n++
+		}
+		if n < cur {
+			if err = coll.Trim(n); err != nil {
+				closeCreated(objs, created)
 				return err
 			}
 		}
@@ -3357,7 +3419,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		}
 		// Cannot close it before use (exec)
 		// obj.Close()
-		if created {
+		if i < len(created) && created[i] {
 			stmt.tbc = append(stmt.tbc, obj)
 		}
 	}
@@ -3437,7 +3499,14 @@ func (c *conn) dataGetObject(ctx context.Context, v any, data []C.dpiData) error
 			logger.Debug("dataGetObjectScanner", "typ", "ObjectScanner", "v", fmt.Sprintf("%T", v), "d", d, "obj", obj)
 		}
 		err = out.Scan(obj)
-		obj.Close()
+		// Do not Close obj: that would clear (trim and reset) the object,
+		// which belongs to the bind variable. When the statement is executed
+		// again (IN OUT bind, cached statement), the same object is reused,
+		// see bindableObject. Only the reference taken by GetObject is
+		// dropped here.
+		if obj != nil {
+			_ = obj.release()
+		}
 		return err
 
 	default:
