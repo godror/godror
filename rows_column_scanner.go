@@ -34,6 +34,8 @@ func (r *rows) NextRow() error {
 	if r.scratch == nil {
 		r.logger = getLogger(context.Background())
 	}
+	// The LOBs of a row are valid only till the next row (or Close).
+	r.closeLobs()
 	if err := r.fetch(context.Background(), r.logger); err != nil {
 		return err
 	}

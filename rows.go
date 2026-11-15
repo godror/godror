@@ -57,7 +57,9 @@ type rows struct {
 	options        rowOptions
 	scratch        []driver.Value
 	callsC         []bool
-	logger         *slog.Logger
+	// lobs are the LOB readers of the current row, closed by Next and Close.
+	lobs   []*dpiLobReader
+	logger *slog.Logger
 }
 
 // Columns returns the names of the columns. The number of
@@ -77,6 +79,7 @@ func (r *rows) Close() error {
 	if r == nil {
 		return nil
 	}
+	r.closeLobs()
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
@@ -311,6 +314,8 @@ func (r *rows) Next(dest []driver.Value) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	// The LOBs of a row are valid only till the next Next (or Close).
+	r.closeLobs()
 	if err := r.fetch(ctx, logger); err != nil {
 		return err
 	}
@@ -332,6 +337,18 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 
 	return nil
+}
+
+// closeLobs closes the LOB readers handed out for the current row.
+//
+// The define variable owns the LOBs, and frees them at the next fetch and
+// when the statement is closed, so a row's Lob cannot outlive its row.
+func (r *rows) closeLobs() {
+	for i, rdr := range r.lobs {
+		rdr.release()
+		r.lobs[i] = nil
+	}
+	r.lobs = r.lobs[:0]
 }
 
 func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
@@ -660,6 +677,10 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			stringBuilders.Put(sb)
 			return nil
 		}
+		if err := rdr.addRef(); err != nil {
+			return err
+		}
+		r.lobs = append(r.lobs, rdr)
 		dest[i] = &Lob{Reader: rdr, IsClob: rdr.IsClob}
 
 	case C.DPI_ORACLE_TYPE_STMT, C.DPI_NATIVE_TYPE_STMT:

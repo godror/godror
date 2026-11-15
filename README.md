@@ -143,10 +143,10 @@ Now it's reversed, and the default is string, to get a Lob reader, give the `Lob
 Watch out, Oracle will error out if the CLOB is too large, and you have to use `godror.Lob` in such cases!
 
 If you return Lob as a reader, watch out with `sql.QueryRow`, `sql.QueryRowContext` !
-They close the statement right after you `Scan` from the returned `*Row`, the returned `Lob` will be invalid, producing
-`getSize: ORA-00000: DPI-1002: invalid dpiLob handle`.
+They close the rows right after you `Scan` from the returned `*Row`, and a `Lob` of a row is valid
+only till the next `rows.Next` or `rows.Close` call: after that it returns `godror.ErrLOBClosed`.
 
-So, use a separate `Stmt` or `sql.QueryContext`.
+So, use `sql.QueryContext`, and read the `Lob` before the next `rows.Next`.
 
 For writing a LOB, the LOB locator returned from the database is valid only till the `Stmt` is valid!
 So `Prepare` the statement for the retrieval, then `Exec`, and only `Close` the stmt iff you've finished with your LOB!
