@@ -1734,9 +1734,11 @@ func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) erro
 			buf.WriteByte(' ')
 			buf.WriteString(kv[0])
 			buf.WriteByte('=')
-			if strings.EqualFold(kv[0], "CURRENT_SCHEMA") {
+			switch strings.ToUpper(kv[0]) {
+			case "CURRENT_SCHEMA", "EDITION", "CONTAINER":
+				// these take an identifier, not a string
 				buf.WriteString(kv[1])
-			} else {
+			default:
 				buf.WriteByte('\'')
 				buf.WriteString(strings.Replace(kv[1], "'", "''", -1))
 				buf.WriteByte('\'')
