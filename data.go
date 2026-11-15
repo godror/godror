@@ -20,7 +20,6 @@ import (
 	"io"
 	"math"
 	"reflect"
-	"runtime"
 	"strconv"
 	"time"
 	"unsafe"
@@ -35,8 +34,6 @@ type Data struct {
 	// The GC can't see pointers stored in the C union, so without this
 	// the memory could be freed while ODPI-C still reads or writes it.
 	keepAlive []byte
-	// varRef keeps the dpiVar whose buffers dpiData points to (NewData).
-	varRef *dataVarRef
 	// err is the error of the last SetTime. The Object and ObjectCollection
 	// setters return it instead of writing the (NULL) value.
 	err           error
@@ -44,9 +41,6 @@ type Data struct {
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
 }
-
-// dataVarRef releases its dpiVar when no Data refers to it anymore.
-type dataVarRef struct{ dpiVar *C.dpiVar }
 
 const (
 	NativeTypeInt64      = C.DPI_NATIVE_TYPE_INT64
@@ -647,18 +641,18 @@ func (c *conn) NewData(baseType any, sliceLen, bufSize int) ([]*Data, error) {
 		return nil, err
 	}
 
-	v, dpiData, err := c.newVar(vi)
+	// The variable is created only to check the parameters. The Data
+	// entries start as NULL and must not point into its buffers,
+	// which are freed here.
+	v, _, err := c.newVar(vi)
 	if err != nil {
 		return nil, err
 	}
-	// The Data entries point into v's buffers, so v must live as long as
-	// any of them: release it only when none of them is reachable.
-	ref := &dataVarRef{dpiVar: v}
-	runtime.AddCleanup(ref, func(v *C.dpiVar) { C.dpiVar_release(v) }, v)
+	C.dpiVar_release(v)
 
 	data := make([]*Data, sliceLen)
 	for i := 0; i < sliceLen; i++ {
-		data[i] = &Data{dpiData: dpiData[i], NativeTypeNum: vi.NatTyp, varRef: ref}
+		data[i] = &Data{dpiData: C.dpiData{isNull: 1}, NativeTypeNum: vi.NatTyp}
 	}
 
 	return data, nil
@@ -758,7 +752,6 @@ func (d *Data) reset(null bool) {
 	d.ObjectType = nil
 	d.implicitObj = false
 	d.keepAlive = nil
-	d.varRef = nil
 	d.err = nil
 	d.dpiData.isNull = C.int(b2i(null))
 }
