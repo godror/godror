@@ -2863,8 +2863,12 @@ func dataSetBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) e
 func (st *statement) dataGetBoolBytes(ctx context.Context, v any, data []C.dpiData) error {
 	switch x := v.(type) {
 	case *bool:
-		if len(data) == 0 || data[0].isNull == 1 {
+		if len(data) == 0 {
 			*x = false
+			return nil
+		}
+		if data[0].isNull == 1 { // NULL is the empty string
+			*x = st.stmtOptions.boolString.FromString("")
 			return nil
 		}
 		*x = st.stmtOptions.boolString.FromString(string(dpiData_getBytes(&data[0])))
@@ -2873,7 +2877,7 @@ func (st *statement) dataGetBoolBytes(ctx context.Context, v any, data []C.dpiDa
 		*x = (*x)[:0]
 		for i := range data {
 			if data[i].isNull == 1 {
-				*x = append(*x, false)
+				*x = append(*x, st.stmtOptions.boolString.FromString(""))
 				continue
 			}
 			*x = append(*x, st.stmtOptions.boolString.FromString(string(dpiData_getBytes(&data[i]))))
@@ -2906,20 +2910,21 @@ func (st *statement) dataSetBoolBytes(ctx context.Context, dv *C.dpiVar, data []
 	if vv == nil {
 		return dataSetNull(ctx, dv, data, nil)
 	}
-	var p *C.char
+	set := func(i int, x bool) {
+		s := []byte(st.stmtOptions.boolString.ToString(x))
+		// The empty string is NULL in Oracle.
+		if data[i].isNull = 0; len(s) == 0 {
+			data[i].isNull = 1
+			return
+		}
+		C.dpiVar_setFromBytes(dv, C.uint32_t(i), (*C.char)(unsafe.Pointer(&s[0])), C.uint32_t(len(s)))
+	}
 	switch slice := vv.(type) {
 	case bool:
-		i, x := 0, slice
-		data[i].isNull = 0
-		s := []byte(st.stmtOptions.boolString.ToString(x))
-		p = (*C.char)(unsafe.Pointer(&s[0]))
-		C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(s)))
+		set(0, slice)
 	case []bool:
 		for i, x := range slice {
-			data[i].isNull = 0
-			s := []byte(st.stmtOptions.boolString.ToString(x))
-			p = (*C.char)(unsafe.Pointer(&s[0]))
-			C.dpiVar_setFromBytes(dv, C.uint32_t(i), p, C.uint32_t(len(s)))
+			set(i, x)
 		}
 
 	default:
