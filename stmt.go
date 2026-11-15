@@ -724,6 +724,23 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 
+	if err := st.getOutVars(ctx, many, logger); err != nil {
+		return nil, closeIfBadConn(err)
+	}
+	var count C.uint64_t
+	if err := st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }); err != nil {
+		if logger != nil {
+			logger.Error("getRowCount", "error", err)
+		}
+		return nil, batchErrors
+	}
+
+	return driver.RowsAffected(count), batchErrors
+}
+
+// getOutVars copies the values of the out variables into their destinations
+// after an execution. many is true after an executeMany.
+func (st *statement) getOutVars(ctx context.Context, many bool, logger *slog.Logger) error {
 	if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("get/set", "gets", st.gets, "dests", st.dests)
 	}
@@ -747,7 +764,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				var n C.uint32_t
 				var p *C.dpiData
 				if err := st.checkExec(func() C.int { return C.dpiVar_getReturnedData(st.vars[i], C.uint32_t(pos), &n, &p) }); err != nil {
-					return nil, closeIfBadConn(fmt.Errorf("%d.getReturnedData: %w", i, err))
+					return fmt.Errorf("%d.getReturnedData: %w", i, err)
 				}
 				if n == 0 {
 					continue
@@ -766,7 +783,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				if logger != nil {
 					logger.Error("get", "i", i, "error", err)
 				}
-				return nil, closeIfBadConn(fmt.Errorf("%d. get[%d]: %w", i, 0, err))
+				return fmt.Errorf("%d. get[%d]: %w", i, 0, err)
 			}
 			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("get-not-slice", "i", i, "dest", dest)
@@ -780,25 +797,17 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if logger != nil {
 				logger.Error("getNumElementsInArray", "i", i, "error", err)
 			}
-			return nil, closeIfBadConn(fmt.Errorf("%d.getNumElementsInArray: %w", i, err))
+			return fmt.Errorf("%d.getNumElementsInArray: %w", i, err)
 		}
 		//fmt.Printf("i=%d dest=%T %#v\n", i, dest, dest)
 		if err := get(ctx, dest, data[:n]); err != nil {
 			if logger != nil {
 				logger.Error("get", "i", i, "n", n, "error", err)
 			}
-			return nil, closeIfBadConn(fmt.Errorf("%d. get: %w", i, err))
+			return fmt.Errorf("%d. get: %w", i, err)
 		}
 	}
-	var count C.uint64_t
-	if err := st.checkExec(func() C.int { return C.dpiStmt_getRowCount(st.dpiStmt, &count) }); err != nil {
-		if logger != nil {
-			logger.Error("getRowCount", "error", err)
-		}
-		return nil, batchErrors
-	}
-
-	return driver.RowsAffected(count), batchErrors
+	return nil
 }
 
 // QueryContext executes a query that may return rows, such as a SELECT.
@@ -962,6 +971,11 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute: %w", err))
 	}
 	executed = true
+
+	// A PL/SQL block with implicit results can have out parameters, too.
+	if err = st.getOutVars(ctx, false, logger); err != nil {
+		return nil, closeIfBadConn(err)
+	}
 
 	rows, err := st.openRows(ctx, int(colCount))
 	return rows, closeIfBadConn(err)
