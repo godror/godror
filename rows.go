@@ -71,6 +71,7 @@ type rows struct {
 	data           [][]C.dpiData
 	columns        []Column
 	vars           []*C.dpiVar
+	execSeq        uint64
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
 	fromData       bool
@@ -392,6 +393,13 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 		maxRows := C.uint32_t(r.statement.FetchArraySize())
 		r.closeJSONs()
 		r.statement.Lock()
+		if r.statement.execSeq != r.execSeq {
+			// The statement has been executed again: it has the rows and
+			// the defined variables of that execution, not ours.
+			r.statement.Unlock()
+			r.err = ErrStmtReexecuted
+			return r.err
+		}
 		if debugRowsNext {
 			fmt.Printf("fetching max=%d\n", maxRows)
 			start = time.Now()
