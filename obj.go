@@ -67,6 +67,10 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	if O.dpiObject == nil {
 		return nil
 	}
+	if attr.OracleTypeNum == 0 {
+		// ODPI-C does not support the type of this attribute (REF for example).
+		return fmt.Errorf("get %s[%s]: %w", O.Name, name, ErrNotSupported)
+	}
 	// the maximum length of that buffer must be supplied
 	// in the value.asBytes.length attribute before calling this function.
 	data.prepare(attr.OracleTypeNum)
@@ -106,6 +110,10 @@ func (O *Object) SetAttribute(name string, data *Data) error {
 	// if logger != nil {
 	// 	logger = logger.With("object", O.Name, "name", name)
 	// }
+	if attr.OracleTypeNum == 0 {
+		// ODPI-C does not support the type of this attribute (REF for example).
+		return fmt.Errorf("set %s[%s]: %w", O, name, ErrNotSupported)
+	}
 	if data.NativeTypeNum == 0 {
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
@@ -166,6 +174,10 @@ func (O *Object) resetAttributes(skipErrors bool) error {
 	defer scratch.Put(data)
 	var errs []error
 	for _, attr := range O.Attributes {
+		if attr.OracleTypeNum == 0 {
+			// not supported by ODPI-C (REF for example), cannot be set
+			continue
+		}
 		data.reset(true)
 		data.NativeTypeNum = attr.NativeTypeNum
 		data.ObjectType = attr.ObjectType
@@ -921,6 +933,10 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	if exists == 0 {
 		return ErrNotExist
 	}
+	if O.CollectionOf.OracleTypeNum == 0 {
+		// ODPI-C does not support the type of the elements (REF for example).
+		return fmt.Errorf("get(%d): %w", idx, ErrNotSupported)
+	}
 	data.reset(false)
 	data.ObjectType = O.CollectionOf
 	data.NativeTypeNum = O.CollectionOf.NativeTypeNum
@@ -1476,9 +1492,6 @@ func (t *ObjectType) fromDataTypeInfo(typ C.dpiDataTypeInfo, cache map[string]*O
 func objectTypeFromDataTypeInfo(d *drv, typ C.dpiDataTypeInfo, cache map[string]*ObjectType) (*ObjectType, error) {
 	if d == nil {
 		panic("drv is nil")
-	}
-	if typ.oracleTypeNum == 0 {
-		panic("typ is nil")
 	}
 	t := &ObjectType{objectTypeInnards: objectTypeInnards{drv: d}}
 	err := t.fromDataTypeInfo(typ, cache)
