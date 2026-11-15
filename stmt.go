@@ -3616,11 +3616,16 @@ func (c *conn) dataGetVectorValue(ctx context.Context, v any,
 	)
 	switch out := v.(type) {
 	case *Vector:
+		if len(data) == 0 || data[0].isNull == 1 {
+			// NULL: the same empty Vector that a query returns.
+			*out = Vector{}
+			return nil
+		}
 		if err = c.checkExec(func() C.int {
 			return C.dpiVector_getValue(C.dpiData_getVector(&(data[0])),
 				&vectorInfo)
 		}); err != nil {
-			return fmt.Errorf("dataSetVectorValue %w", err)
+			return fmt.Errorf("dataGetVectorValue %w", err)
 		}
 		*out, err = GetVectorValue(&vectorInfo)
 	default:
