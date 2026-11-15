@@ -235,8 +235,32 @@ func (n *Number) Scan(v any) error {
 	return nil
 }
 
+// numberMaxTextLen is the length of the longest text of an Oracle NUMBER
+// in plain decimal notation (without exponent), which is what a Number holds.
+//
+// A NUMBER is at most 20 base-100 digits (40 decimal digits)
+// with a base-100 exponent between -65 and 62. So
+//
+//   - the longest integer is 40 digits followed by 86 zeros: 126 characters
+//     (the values are below 1e126);
+//   - the smallest value is 1e-130, where the first base-100 digit is on
+//     the 129-130th decimal places, and the 20th on the 167-168th:
+//     "0." and 168 digits is 170 characters;
+//   - plus the sign: 171.
+//
+// A NUMBER(p,s) column (p <= 38, -84 <= s <= 127) is shorter than this:
+// at most "-0." and 127 digits, or 38 digits, 84 zeros and the sign.
+const numberMaxTextLen = 1 + 2 + 2*(65+19)
+
+// ErrNumberTooLong is returned for a Number that is longer than
+// the longest text of an Oracle NUMBER (171 characters).
+var ErrNumberTooLong = errors.New("number is too long")
+
 // MarshalText marshals a Number to text.
 func (n Number) MarshalText() ([]byte, error) {
+	if len(n) > numberMaxTextLen {
+		return nil, fmt.Errorf("%d characters, max %d: %w", len(n), numberMaxTextLen, ErrNumberTooLong)
+	}
 	return []byte(n), nil
 }
 
@@ -245,6 +269,9 @@ func (n *Number) UnmarshalText(p []byte) error {
 	*n = ""
 	if len(p) == 0 {
 		return nil
+	}
+	if len(p) > numberMaxTextLen {
+		return fmt.Errorf("%d characters, max %d: %w", len(p), numberMaxTextLen, ErrNumberTooLong)
 	}
 	var dotNum int
 	for i, c := range p {
@@ -264,6 +291,9 @@ func (n *Number) UnmarshalText(p []byte) error {
 
 // MarshalJSON marshals a Number into a JSON string.
 func (n Number) MarshalJSON() ([]byte, error) {
+	if len(n) > numberMaxTextLen {
+		return nil, fmt.Errorf("%d characters, max %d: %w", len(n), numberMaxTextLen, ErrNumberTooLong)
+	}
 	return append(append(append(make([]byte, 0, 1+len(n)+1), '"'), []byte(n)...), '"'), nil
 }
 
