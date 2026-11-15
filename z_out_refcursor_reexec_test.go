@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	godror "github.com/godror/godror"
 )
 
 // TestOutRefCursorPreparedReexec executes a prepared statement with an OUT
@@ -110,4 +112,35 @@ END;`)
 		}
 	}
 	check("last", 70, exec(70))
+}
+
+// TestOutRefCursorOpenError checks that when the rows of an OUT REF CURSOR
+// cannot be opened (here the fetch array is too big), the statement of the
+// bind variable is not released: without the fix this is a use after free,
+// which -asan reports.
+func TestOutRefCursorOpenError(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	const qry = "BEGIN OPEN :1 FOR SELECT level AS a FROM DUAL CONNECT BY level <= 3; END;"
+	for i := 0; i < 3; i++ {
+		var rc driver.Rows
+		if _, err := conn.ExecContext(ctx, qry, sql.Out{Dest: &rc}, godror.FetchArraySize(1<<30)); err == nil {
+			rc.Close()
+			t.Error("wanted an error for a too big fetch array size")
+		}
+	}
+	var rc driver.Rows
+	if _, err := conn.ExecContext(ctx, qry, sql.Out{Dest: &rc}); err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	dest := make([]driver.Value, 1)
+	if err := rc.Next(dest); err != nil {
+		t.Error(err)
+	}
 }

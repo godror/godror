@@ -2994,7 +2994,9 @@ func (st *statement) dataGetStmtC(ctx context.Context, row *driver.Rows, data *C
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Error("dataGetStmtC.openRows", "st", fmt.Sprintf("%p", st2.dpiStmt), "error", err)
 		}
-		st2.Close()
+		// Do not Close st2: the statement belongs to the bind variable,
+		// only openRows takes a reference, as its very last step.
+		st2.dpiStmt = nil
 		return err
 	}
 	stmtAddCleanup(ctx, st2, "dataGetStmtC")
