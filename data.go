@@ -95,7 +95,7 @@ func (d *Data) SetNull() {
 // GetBool returns the bool data.
 func (d *Data) GetBool() bool {
 	//return !d.IsNull() && C.dpiData_getBool(&d.dpiData) == 1
-	return !d.IsNull() && *((*C.int)(unsafe.Pointer(&d.dpiData.value))) == 1
+	return !d.IsNull() && *((*C.int)(unsafe.Pointer(&d.dpiData.value))) != 0
 }
 
 // SetBool sets the data as bool.

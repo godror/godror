@@ -1741,7 +1741,7 @@ func dataGetBool(ctx context.Context, v any, data []C.dpiData) error {
 			return nil
 		}
 		//*b = C.dpiData_getBool(&data[0]) == 1
-		*b = *((*C.int)(unsafe.Pointer(&data[0].value))) == 1
+		*b = *((*C.int)(unsafe.Pointer(&data[0].value))) != 0
 		return nil
 	}
 	slice := v.(*[]bool)
@@ -1756,7 +1756,7 @@ func dataGetBool(ctx context.Context, v any, data []C.dpiData) error {
 			continue
 		}
 		//(*slice)[i] = C.dpiData_getBool(&data[i]) == 1
-		(*slice)[i] = *((*C.int)(unsafe.Pointer(&data[i].value))) == 1
+		(*slice)[i] = *((*C.int)(unsafe.Pointer(&data[i].value))) != 0
 	}
 	return nil
 }
