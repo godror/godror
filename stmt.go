@@ -523,15 +523,24 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	// connection and cut short a later call that has no (or a later) deadline.
 	defer cleanup()
 	var closed atomic.Bool
+	// database/sql runs the statement again on driver.ErrBadConn, so that
+	// may only be returned when the server has not executed the statement:
+	// before the execute call, or when that fails with an error that proves
+	// this (see isNotSentErr). Otherwise the bad connection is still closed
+	// (and so discarded, see IsValid), but the real error is returned.
+	var sent, executed bool
 	closeIfBadConn := func(err error) error {
 		cleanup()
 		if err == nil {
 			return nil
 		}
 		c := st.conn
-		if err = maybeBadConn(err, c); err == driver.ErrBadConn {
+		if maybeBadConn(err, c) == driver.ErrBadConn {
 			closed.Store(true)
 			_ = st.closeNotLocking(ctx)
+			if !sent || !executed && isNotSentErr(err) {
+				return driver.ErrBadConn
+			}
 		}
 		return err
 	}
@@ -602,6 +611,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	breakConn := st.conn
 	// retypedTypes is true after the cached object types were dropped once.
 	var retypedTypes bool
+	sent = true
 	for i := 0; i < 3; i++ {
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 			logger.Debug("dpiStmt_execute", "st", fmt.Sprintf("%p", st.dpiStmt), "many", many, "mode", mode, "len", st.arrLen)
@@ -662,10 +672,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	if err != nil && (!many || !st.PartialBatch() || closeIfBadConn(err) == driver.ErrBadConn) {
+	if err != nil && (!many || !st.PartialBatch() || closeIfBadConn(err) != nil && closed.Load()) {
 		rollbackBatch()
 		return nil, err
 	}
+	executed = true
 
 	var batchErrors error
 	if many {
@@ -838,14 +849,19 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	}
 	// Reset the call timeout on every return path (see ExecContext).
 	defer cleanup()
+	// See ExecContext: driver.ErrBadConn only if the statement has not been executed.
+	var sent, executed bool
 	closeIfBadConn := func(err error) error {
 		cleanup()
 		if err == nil {
 			return nil
 		}
 		c := st.conn
-		if err = maybeBadConn(err, c); err == driver.ErrBadConn {
+		if maybeBadConn(err, c) == driver.ErrBadConn {
 			_ = st.closeNotLocking(ctx)
+			if !sent || !executed && isNotSentErr(err) {
+				return driver.ErrBadConn
+			}
 		}
 		return err
 	}
@@ -883,6 +899,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	breakConn := st.conn
 	// retypedTypes is true after the cached object types were dropped once.
 	var retypedTypes bool
+	sent = true
 	for i := 0; i < 3; i++ {
 		done := make(chan struct{})
 		wait := breakOnCancel(ctx, breakConn, done, logger)
@@ -943,6 +960,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	if err != nil {
 		return nil, closeIfBadConn(fmt.Errorf("dpiStmt_execute: %w", err))
 	}
+	executed = true
 
 	rows, err := st.openRows(ctx, int(colCount))
 	return rows, closeIfBadConn(err)
@@ -4078,6 +4096,35 @@ func isInvalidDatatypeErr(err error) bool {
 	var cdr interface{ Code() int }
 	// ORA-00902: "invalid datatype"
 	return err != nil && errors.As(err, &cdr) && cdr.Code() == 902
+}
+
+// isNotSentErr reports whether the bad connection error of an execute call
+// proves that the server has not executed the statement,
+// so it is safe to execute it again on another connection.
+//
+// Errors of a connection lost during the call (ORA-03113, ORA-03135, ...)
+// or of a session killed (ORA-00028) are not such: the statement may have been executed.
+func isNotSentErr(err error) bool {
+	if errors.Is(err, driver.ErrBadConn) {
+		// the driver's own checks, before calling ODPI-C
+		return true
+	}
+	var cd interface{ Code() int }
+	if !errors.As(err, &cd) {
+		return false
+	}
+	switch cd.Code() {
+	case 0:
+		// DPI-1002 (invalid handle) and DPI-1010 (not connected) are
+		// raised by ODPI-C's checks, before it calls OCI.
+		errS := err.Error()
+		return strings.Contains(errS, " DPI-1002: ") || strings.Contains(errS, " DPI-1010: ")
+	case 1012, // not logged on: the call arrived without a session
+		2396, // exceeded maximum idle time: the session was ended while idle
+		3114: // not connected to ORACLE: there was nothing to send the call on
+		return true
+	}
+	return false
 }
 
 var maxStackSize uint32 = 2048
