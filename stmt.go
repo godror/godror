@@ -567,6 +567,21 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 		f = func() C.int { return C.dpiStmt_executeMany(st.dpiStmt, mode, C.uint32_t(st.arrLen)) }
 	}
+	// A failed executeMany leaves the rows of the iterations before the
+	// failing one in the session, uncommitted. Outside of a transaction
+	// nobody would roll them back, and the next statement on the connection
+	// would commit them.
+	rollbackBatch := func() {
+		if !many || st.inTransaction || st.PartialBatch() {
+			return
+		}
+		if rbErr := st.checkExec(func() C.int { return C.dpiConn_rollback(st.conn.dpiConn) }); rbErr != nil {
+			if logger != nil {
+				logger.Error("rollback failed batch", "error", rbErr)
+			}
+			_ = closeIfBadConn(rbErr)
+		}
+	}
 	breakConn := st.conn
 	for i := 0; i < 3; i++ {
 		if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -615,6 +630,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		}
 	}
 	if err != nil && (!many || !st.PartialBatch() || closeIfBadConn(err) == driver.ErrBadConn) {
+		rollbackBatch()
 		return nil, err
 	}
 
