@@ -518,16 +518,14 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		P.Username, passw, dataSourceName = parseUserPassw(dataSourceName)
 		P.Password.Set(passw)
 		//fmt.Printf("dsn=%q\n", dataSourceName)
-		uSid := strings.ToUpper(dataSourceName)
-		//fmt.Printf("dataSourceName=%q SID=%q\n", dataSourceName, uSid)
-		if strings.Contains(uSid, " AS ") {
-			for _, role := range adminRoles {
-				s := role.String()
-				if dsn, ok := strings.CutSuffix(uSid, " AS "+s); ok {
-					P.AdminRole = role
-					dataSourceName = dataSourceName[:len(dsn)]
-					break
-				}
+		// Compare the end of the original string: upper-casing may change
+		// the byte length, so its offsets cannot be used here.
+		for _, role := range adminRoles {
+			suffix := " AS " + role.String()
+			if n := len(dataSourceName) - len(suffix); n >= 0 && strings.EqualFold(dataSourceName[n:], suffix) {
+				P.AdminRole = role
+				dataSourceName = dataSourceName[:n]
+				break
 			}
 		}
 		P.ConnectString = dataSourceName
@@ -961,6 +959,18 @@ func splitQuoted(s string, sep rune) []string {
 	}
 }
 
+// indexFold returns the index of the first instance of the ASCII substr in s,
+// ignoring case, or -1. Unlike an index into strings.ToUpper(s),
+// the result is an offset into s itself.
+func indexFold(s, substr string) int {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(substr)], substr) {
+			return i
+		}
+	}
+	return -1
+}
+
 // parseUserPassw splits of the username/password@ from the connectString.
 func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	if i := strings.Index(dataSourceName, "://"); i >= 0 &&
@@ -973,7 +983,7 @@ func parseUserPassw(dataSourceName string) (user, passw, connectString string) {
 	ups := splitQuoted(dataSourceName, '@')
 	var extra string
 	if len(ups) == 1 { // user/pass, no '@'
-		if i := strings.Index(strings.ToUpper(ups[0]), " AS SYS"); i >= 0 {
+		if i := indexFold(ups[0], " AS SYS"); i >= 0 {
 			ups[0], extra = ups[0][:i], ups[0][i:]
 		}
 	}
