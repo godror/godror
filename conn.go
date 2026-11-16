@@ -65,6 +65,10 @@ type conn struct {
 	released            bool
 	tzValid             bool
 
+	// forgottenObjTypes are the object types that were in objTypes when
+	// forgetObjTypes has emptied it. objTypesMu protects it.
+	forgottenObjTypes []*ObjectType
+
 	// staleObjTypes is set when a statement fails with ORA-00902 while
 	// object types are cached: one of them may have been replaced in the
 	// database. IsValid reports false then, so database/sql discards
@@ -74,6 +78,22 @@ type conn struct {
 	// objTypesMu protects objTypes: it is read and written by callers that
 	// hold only the read lock of mu. Lock it after mu.
 	objTypesMu sync.Mutex
+}
+
+// forgetObjTypes empties the cache of the object types, because one of them
+// has been replaced or dropped in the database.
+//
+// The types are not closed here: the caller may hold some of them (from
+// GetObjectType), and objects of them. They are closed with the connection,
+// which is not reused after this (see staleObjTypes).
+func (c *conn) forgetObjTypes() {
+	c.objTypesMu.Lock()
+	defer c.objTypesMu.Unlock()
+	for _, v := range c.objTypes {
+		c.forgottenObjTypes = append(c.forgottenObjTypes, v)
+	}
+	clear(c.objTypes)
+	c.staleObjTypes.Store(true)
 }
 
 func (c *conn) getError() error {
@@ -257,7 +277,8 @@ func (c *conn) hasObjTypes() bool {
 	return len(c.objTypes) != 0
 }
 
-// clearObjTypes closes and forgets the cached object types.
+// clearObjTypes closes and forgets the cached object types, and closes the
+// ones that forgetObjTypes has set aside.
 func (c *conn) clearObjTypes() {
 	c.objTypesMu.Lock()
 	defer c.objTypesMu.Unlock()
@@ -265,6 +286,10 @@ func (c *conn) clearObjTypes() {
 		_ = v.Close()
 	}
 	clear(c.objTypes)
+	for _, v := range c.forgottenObjTypes {
+		_ = v.Close()
+	}
+	c.forgottenObjTypes = nil
 }
 
 func (c *conn) closeNotLocking() error {

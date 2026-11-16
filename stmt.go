@@ -644,11 +644,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		// ORA-00902 is a bind variable of a replaced type (when the statement
 		// is reused, prepared before the type was replaced).
 		retryTypes := isInvalidObjectErr(err)
-		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
+		if !retryTypes && !retypedTypes && st.isStaleObjTypeErr(err) {
 			retryTypes, retypedTypes = true, true
 		}
 		if !st.noRetry && retryTypes {
-			st.conn.clearObjTypes()
+			st.conn.forgetObjTypes()
 			for j, v := range st.vars {
 				if v != nil {
 					C.dpiVar_release(v)
@@ -937,11 +937,11 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		// ORA-00902 is a bind variable of a replaced type (when the statement
 		// is reused, prepared before the type was replaced).
 		retryTypes := isInvalidObjectErr(err)
-		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
+		if !retryTypes && !retypedTypes && st.isStaleObjTypeErr(err) {
 			retryTypes, retypedTypes = true, true
 		}
 		if !st.noRetry && retryTypes {
-			st.conn.clearObjTypes()
+			st.conn.forgetObjTypes()
 			for j, v := range st.vars {
 				if v != nil {
 					C.dpiVar_release(v)
@@ -4143,6 +4143,32 @@ func isInvalidObjectErr(err error) bool {
 	}
 	// ORA-21700: "object does not exist or is marked for deletion"
 	return cdr.Code() == 21700
+}
+
+// isStaleObjTypeErr reports whether err can be the ORA-00902 of a bind
+// variable whose object type has been replaced in the database.
+//
+// The server raises that before it executes anything, so the statement can be
+// executed again. An ORA-00902 that the statement itself has raised must not
+// be: the statement may have done (and committed) something before it. So
+//
+//   - the statement must have an object bind,
+//   - the error must have no position in the statement (as the unknown type
+//     in a DDL has),
+//   - nor a PL/SQL backtrace (ORA-06512), which it has when it is raised
+//     while the block runs.
+func (st *statement) isStaleObjTypeErr(err error) bool {
+	var oe *OraErr
+	if !errors.As(err, &oe) || oe.Code() != 902 || oe.Offset() != 0 ||
+		strings.Contains(oe.Message(), "ORA-06512") {
+		return false
+	}
+	for i, v := range st.vars {
+		if v != nil && i < len(st.varInfos) && st.varInfos[i].ObjectType != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func isInvalidDatatypeErr(err error) bool {
