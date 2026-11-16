@@ -60,23 +60,45 @@ func (c *Cache[K, V]) Get(key K) (V, bool) {
 // Put inserts or updates a key-value pair.
 // An update marks the existing entry visited without changing its position.
 // Inserting a new key into a full cache evicts one entry using SIEVE.
-func (c *Cache[K, V]) Put(key K, value V) {
+//
+// Put returns the value that left the cache (the replaced or the evicted
+// one), and whether there was one, for the caller to release it.
+func (c *Cache[K, V]) Put(key K, value V) (old V, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if elem, ok := c.entries[key]; ok {
 		e := elem.Value.(*entry[K, V])
-		e.value = value
+		old, e.value = e.value, value
 		e.visited = true
-		return
+		return old, true
 	}
 
 	if len(c.entries) == c.capacity {
-		c.evict()
+		old, ok = c.evict(), true
 	}
 
 	elem := c.order.PushFront(&entry[K, V]{key: key, value: value})
 	c.entries[key] = elem
+	return old, ok
+}
+
+// Delete removes key from the cache, and returns its value and whether it
+// was found.
+func (c *Cache[K, V]) Delete(key K) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	elem, ok := c.entries[key]
+	if !ok {
+		var zero V
+		return zero, false
+	}
+	if c.hand == elem {
+		c.hand = elem.Prev()
+	}
+	delete(c.entries, key)
+	return c.order.Remove(elem).(*entry[K, V]).value, true
 }
 
 // Len returns the current number of cached entries.
@@ -86,9 +108,10 @@ func (c *Cache[K, V]) Len() int {
 	return len(c.entries)
 }
 
-// evict removes the next unvisited entry, giving visited entries a second
-// chance. The caller must hold c.mu and the cache must not be empty.
-func (c *Cache[K, V]) evict() {
+// evict removes the next unvisited entry and returns its value, giving visited
+// entries a second chance. The caller must hold c.mu and the cache must not be
+// empty.
+func (c *Cache[K, V]) evict() V {
 	candidate := c.hand
 	if candidate == nil {
 		candidate = c.order.Back()
@@ -102,7 +125,7 @@ func (c *Cache[K, V]) evict() {
 			c.hand = candidate.Prev()
 			delete(c.entries, e.key)
 			c.order.Remove(candidate)
-			return
+			return e.value
 		}
 		e.visited = false
 		candidate = candidate.Prev()
