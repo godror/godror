@@ -8,6 +8,27 @@ package godror
 /*
 #include "dpiImpl.h"
 
+// godror_sessionTZOffset returns the time zone offset of a fetched
+// TIMESTAMP WITH LOCAL TIME ZONE value in the session's time zone.
+//
+// ODPI-C calls OCIDateTimeGetTimeZoneOffset with the environment handle,
+// which gives the offset of the client's OS time zone, though the value is
+// in the session time zone. With the session handle OCI uses the session's.
+static int godror_sessionTZOffset(dpiVar *var, uint32_t pos, int8_t *tzHourOffset, int8_t *tzMinuteOffset) {
+	dpiError error;
+	void *handle;
+	int status;
+
+	if (dpiGen__startPublicFn(var, DPI_HTYPE_VAR, __func__, &error) < 0)
+		return dpiGen__endPublicFn(var, DPI_FAILURE, &error);
+	handle = var->conn->sessionHandle;
+	if (!handle)
+		handle = var->env->handle;
+	status = dpiOci__dateTimeGetTimeZoneOffset(handle, var->buffer.data.asTimestamp[pos],
+			tzHourOffset, tzMinuteOffset, &error);
+	return dpiGen__endPublicFn(var, status, &error);
+}
+
 //int dpiData_getRowidStringValue(dpiData *data, const char **value, uint32_t *valueLength) {
 //	return dpiRowid_getStringValue(data->value.asRowid, value, valueLength);
 //}
@@ -588,6 +609,14 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		//ts := C.dpiData_getTimestamp(d)
 		ts := *((*C.dpiTimestamp)(unsafe.Pointer(&d.value)))
 		tz := r.conn.Timezone()
+		if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
+			// The wall clock is in the session time zone, get its offset, too.
+			if err := r.statement.checkExecNoLOT(func() C.int {
+				return C.godror_sessionTZOffset(r.vars[i], row, &ts.tzHourOffset, &ts.tzMinuteOffset)
+			}); err != nil {
+				return fmt.Errorf("time zone offset of column %d: %w", i, err)
+			}
+		}
 		if col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ || col.OracleType == C.DPI_ORACLE_TYPE_TIMESTAMP_LTZ {
 			tz = timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset,
 				nil, // just obey to what's included in the data
