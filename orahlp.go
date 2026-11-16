@@ -651,12 +651,20 @@ func Timezone(ctx context.Context, ex Execer) (loc *time.Location, err error) {
 }
 
 // DriverConn will return the connection of ex.
-// For connection pools (*sql.DB) this may be a new connection.
+//
+// Give it a single connection: an *sql.Conn or an *sql.Tx, and use the
+// returned Conn only till that is closed (committed, rolled back).
+//
+// A connection pool (*sql.DB) does not reserve the connection: the returned
+// Conn is back in the pool when DriverConn returns, and the pool may give it
+// to others, or close it, while the caller uses it.
+// For an *sql.DB, use Raw, or DriverConn on a db.Conn.
 func DriverConn(ctx context.Context, ex Execer) (Conn, error) {
 	return getConn(ctx, ex)
 }
 
-// getConn will acquire a separate connection to the same DB as what ex is connected to.
+// getConn returns the driver connection that ex has executed on.
+// It does not reserve it: for a pool, it is free for others when getConn returns.
 func getConn(ctx context.Context, ex Execer) (*conn, error) {
 	if ex == nil {
 		return nil, fmt.Errorf("nil ex")
