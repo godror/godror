@@ -105,7 +105,15 @@ func (r *rows) Close() error {
 		return nil
 	}
 	r.closeJSONs()
-	r.closeLobs()
+	if st := r.statement; st != nil && st.dpiStmt != nil && !r.fromData && st.dpiStmt.refCount >= 2 {
+		// The statement stays open (a prepared statement): the Lobs of the
+		// last row remain valid till it is executed again or closed.
+		st.outLobs = append(st.outLobs, r.lobs...)
+		clear(r.lobs)
+		r.lobs = r.lobs[:0]
+	} else {
+		r.closeLobs()
+	}
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
@@ -378,7 +386,7 @@ func (r *rows) Next(dest []driver.Value) error {
 // closeLobs closes the LOB readers handed out for the current row.
 //
 // The define variable owns the LOBs, and frees them at the next fetch and
-// when the statement is closed, so a row's Lob cannot outlive its row.
+// when the statement is closed or executed again.
 func (r *rows) closeLobs() {
 	for i, rdr := range r.lobs {
 		rdr.release()

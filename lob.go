@@ -25,18 +25,23 @@ import (
 
 // ErrLOBClosed is returned when a Lob is used after it has been closed.
 //
-// A Lob returned from a row is closed by the next Next or Close of the rows,
-// and a Lob returned as an OUT parameter is closed when its statement
+// A Lob returned from a row is closed by the next Next of the rows,
+// and when its statement is executed again or closed;
+// a Lob returned as an OUT parameter is closed when its statement
 // is executed again or closed.
 var ErrLOBClosed = errors.New("LOB is closed")
 
 // Lob is for reading/writing a LOB.
 //
 // A Lob that the database returned is valid only for a limited time:
-// when it is a column of a row (see LobAsReader), till the next Next or Close of the rows
-// (so it must be read before sql.Row.Scan returns - use Query, not QueryRow);
+// when it is a column of a row (see LobAsReader), till the next Next of the rows,
+// and till the statement is executed again or closed;
 // when it is an OUT parameter, till the statement is executed again or closed.
 // After that, it returns ErrLOBClosed.
+//
+// Closing the rows closes the statement, too, unless it is a prepared one (sql.Stmt).
+// So the Lob that sql.Row.Scan returned is usable only with a prepared statement,
+// which is kept open till the Lob has been read.
 type Lob struct {
 	io.Reader
 	IsClob bool
