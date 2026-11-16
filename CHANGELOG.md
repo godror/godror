@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implement driver.ExecerContext with a per-connection LRU statement cache:
   repeated Exec calls with the same query reuse the prepared statement.
 
+### Changed
+- DATE and TIMESTAMP (without time zone) values are written and read in the
+  session's time zone (SESSIONTIMEZONE) instead of the database OS' time zone
+  (SYSTIMESTAMP's), as the server itself converts them (#495). This changes the
+  values when the two differ: set `timezone` in the connection string to the
+  database OS' time zone to get the old behaviour. The session time zone is
+  read after onInit/alterSession. See doc/timezone.md.
+
 ### Fixed
 - Repeated Exec calls with an OUT object collection bind no longer grow the
   client-side memory of the Oracle Client (TestPlSqlNestedObj).

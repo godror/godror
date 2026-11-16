@@ -53,7 +53,9 @@ func TestCalculateTZ(t *testing.T) {
 		{dbTZ: "", dbOSTZ: "", off: 1800, err: io.EOF},
 		{dbTZ: "", dbOSTZ: "+00:30", off: +Hour / 2},
 		{dbTZ: "+02:00", dbOSTZ: "+02:00", off: +2 * Hour},
-		{dbTZ: "+00:00", dbOSTZ: "-07:00", off: -7 * Hour},
+		{dbTZ: "+00:00", dbOSTZ: "-07:00", off: 0},
+		{dbTZ: "-07:00", dbOSTZ: "+00:00", off: -7 * Hour},
+		{dbTZ: "Japan", dbOSTZ: "+00:00", off: 9 * Hour},
 	} {
 		prefix := fmt.Sprintf("%q/%q", tC.dbTZ, tC.dbOSTZ)
 		_, off, err := calculateTZ(tC.dbTZ, tC.dbOSTZ, false, nil)

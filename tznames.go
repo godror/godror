@@ -96,7 +96,8 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 			}
 		}
 	}
-	if (dbTZ == "+00:00" || dbTZ == "UTC") && (dbOSTZ == "+00:00" || dbOSTZ == "UTC") {
+	// The session time zone decides, the DB's OS time zone is just a fallback.
+	if dbTZ == "+00:00" || dbTZ == "UTC" {
 		return time.UTC, 0, nil
 	}
 	if logger != nil {
@@ -107,8 +108,8 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 	var off int
 	now := time.Now()
 	_, localOff := now.Local().Zone()
-	// If it's a name, try to use it.
-	if dbTZ != "" && strings.Contains(dbTZ, "/") {
+	// If it's a name (Europe/Budapest, Japan), try to use it.
+	if dbTZ != "" && dbTZ[0] != '+' && dbTZ[0] != '-' {
 		var err error
 		if tz, err = findProperTZName(dbTZ); err == nil {
 			_, off = now.In(tz).Zone()
@@ -117,18 +118,18 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 		if logger != nil {
 			logger.Error("LoadLocation", "tz", dbTZ, "error", err)
 		}
+		if dbOSTZ != "" { // unknown name
+			dbTZ = dbOSTZ
+		}
 	}
 	// If not, use the numbers.
 	var err error
-	if dbOSTZ != "" {
-		if off, err = dsn.ParseTZ(dbOSTZ); err != nil {
-			return tz, off, fmt.Errorf("ParseTZ(%q): %w", dbOSTZ, err)
-		}
-	} else if off, err = dsn.ParseTZ(dbTZ); err != nil {
+	if off, err = dsn.ParseTZ(dbTZ); err != nil {
 		return tz, off, fmt.Errorf("ParseTZ(%q): %w", dbTZ, err)
 	}
-	// This is dangerous, but I just cannot get whether the DB time zone
-	// setting has DST or not - {SESSION,DB}TIMEZONE returns just a fixed offset.
+	// This is dangerous, but I just cannot get whether the session time zone
+	// has DST or not - without ORA_SDTZ or ALTER SESSION, SESSIONTIMEZONE is
+	// just the current offset of the client's time zone.
 	//
 	// So if the given offset is the same as with the Local time zone,
 	// then keep the local.
@@ -139,7 +140,7 @@ func calculateTZ(dbTZ, dbOSTZ string, noTZCheck bool, logger *slog.Logger) (*tim
 	if off == 0 {
 		tz = time.UTC
 	} else {
-		if tz = time.FixedZone(dbOSTZ, off); tz == nil {
+		if tz = time.FixedZone(dbTZ, off); tz == nil {
 			tz = time.UTC
 		}
 	}
