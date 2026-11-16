@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   values when the two differ: set `timezone` in the connection string to the
   database OS' time zone to get the old behaviour. The session time zone is
   read after onInit/alterSession. See doc/timezone.md.
+- The "discrepancy between SESSIONTIMEZONE and SYSTIMESTAMP" warning is not
+  printed anymore (the `noTimezoneCheck` connection parameter has no effect).
 
 ### Fixed
 - Repeated Exec calls with an OUT object collection bind no longer grow the
