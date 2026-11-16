@@ -1162,6 +1162,8 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 	if c.dpiConn == nil {
 		return nil, driver.ErrBadConn
 	}
+	c.objTypesMu.Lock()
+	defer c.objTypesMu.Unlock()
 
 	var nameU string
 	if !strings.Contains(name, "\"") {
@@ -1205,7 +1207,10 @@ func (c *conn) GetObjectType(name string) (*ObjectType, error) {
 		if err != nil {
 			if strings.Contains(err.Error(), "DPI-1062: unexpected OCI return value 1041 in function dpiConn_getObjectType") {
 				err = fmt.Errorf("getObjectType(%q) conn=%p: %+v: %w", name, c.dpiConn, err, driver.ErrBadConn)
+				// closeNotLocking locks objTypesMu.
+				c.objTypesMu.Unlock()
 				_ = c.closeNotLocking()
+				c.objTypesMu.Lock()
 				return nil, err
 			}
 			return nil, fmt.Errorf("getObjectType(%q) conn=%p: %w", name, c.dpiConn, err)
@@ -1340,6 +1345,8 @@ func wrapObject(c *conn, objectType *C.dpiObjectType, object *C.dpiObject) (*Obj
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	c.objTypesMu.Lock()
+	defer c.objTypesMu.Unlock()
 	// objectType belongs to the statement, so reuse the cached ObjectType
 	// of the same type, or take a reference for a new one: it goes into
 	// the cache, and the cache releases it when the connection is closed.
