@@ -513,18 +513,18 @@ func (c *conn) init(ctx context.Context, isNew bool) error {
 		logger.Debug("init connection", "params", c.params)
 	}
 
-	if err := c.initTZ(); err != nil {
-		return err
+	if !c.params.CommonParams.InitOnNewConn || isNew {
+		if onInit := c.getOnInit(); onInit != nil {
+			if c.params.Timezone == nil {
+				c.params.Timezone = time.Local // not known yet
+			}
+			if err := onInit(ctx, c); err != nil {
+				return err
+			}
+		}
 	}
-
-	if c.params.CommonParams.InitOnNewConn && !isNew {
-		return nil
-	}
-
-	if onInit := c.getOnInit(); onInit != nil {
-		return onInit(ctx, c)
-	}
-	return nil
+	// After onInit, as that may set the session time zone.
+	return c.initTZ()
 }
 
 func (c *conn) initTZ() error {
@@ -548,6 +548,10 @@ func (c *conn) initTZ() error {
 		key = time.Local.String() + "\t" + c.params.ConnectString
 		if c.params.Timezone != nil {
 			key += "\t" + c.params.Timezone.String()
+		}
+		// These may set the session time zone.
+		if P := &c.params.CommonParams; len(P.AlterSession) != 0 || len(P.OnInitStmts) != 0 {
+			key += fmt.Sprintf("\t%q\t%q", P.AlterSession, P.OnInitStmts)
 		}
 		var ok bool
 		c.drv.mu.RLock()
@@ -574,7 +578,8 @@ func (c *conn) initTZ() error {
 		return nil
 	}
 	//fmt.Printf("initTZ BEG key=%q drv=%p timezones=%v\n", key, c.drv, c.drv.timezones)
-	// {SESSION,DB}TIMEZONE is useless, false, and misdirecting!
+	// The session time zone is used for DATE and TIMESTAMP, as the server does.
+	// SYSDATE and SYSTIMESTAMP are in the DB's OS time zone, which may differ:
 	// https://stackoverflow.com/questions/52531137/sysdate-and-dbtimezone-different-in-oracle-database
 	// https://stackoverflow.com/questions/29271224/how-to-handle-day-light-saving-in-oracle-database/29272926#29272926
 	const qry = "SELECT SESSIONTIMEZONE as dbTZ, NVL(TO_CHAR(SYSTIMESTAMP, 'tzr'), TO_CHAR(SYSTIMESTAMP, 'TZH:TZM')) AS dbOSTZ FROM DUAL"
