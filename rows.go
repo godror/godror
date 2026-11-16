@@ -975,7 +975,8 @@ func (r *rows) NextResultSet() error {
 		if r.nextRsErr != nil {
 			return r.nextRsErr
 		}
-		return fmt.Errorf("getImplicitResult: %w", io.EOF)
+		// database/sql compares with ==, so do not wrap it.
+		return io.EOF
 	}
 	orig := r.origSt // set by HasNextResultSet
 	st := &statement{
