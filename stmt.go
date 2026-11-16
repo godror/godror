@@ -2711,10 +2711,11 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 			x := reflect.ValueOf(new(uint64)).Elem()
 			x.SetUint(rv.Uint())
 			return dataSetNumber(ctx, dv, data, x.Interface())
-		case reflect.Float32, reflect.Float64:
-			x := reflect.ValueOf(new(float64)).Elem()
-			x.SetFloat(rv.Float())
-			return dataSetNumber(ctx, dv, data, x.Interface())
+		case reflect.Float32:
+			// The variable is a NATIVE_FLOAT: it must get a float, not a double.
+			return dataSetNumber(ctx, dv, data, float32(rv.Float()))
+		case reflect.Float64:
+			return dataSetNumber(ctx, dv, data, rv.Float())
 		}
 
 		return fmt.Errorf("unknown number slice [%T] %#v", vv, vv)
