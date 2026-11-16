@@ -156,3 +156,82 @@ func TestExecCacheSize(t *testing.T) {
 		})
 	}
 }
+
+// A DDL must run every time, even when its text is the same as before.
+func TestExecCacheRepeatedDDL(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	tbl := "test_exec_cache_ddl" + tblSuffix
+	proc := "test_exec_cache_ddl_p" + tblSuffix
+	cleanup := func() {
+		_, _ = testDb.Exec("DROP TABLE " + tbl + " PURGE")
+		_, _ = testDb.Exec("DROP PROCEDURE " + proc)
+	}
+	cleanup()
+	defer cleanup()
+	count := func() (n int, err error) {
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(0) FROM "+tbl).Scan(&n)
+		return n, err
+	}
+	exec := func(qry string) {
+		t.Helper()
+		if _, err := conn.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+	for i := range 3 {
+		// Leading white space and comment, and lower case.
+		exec(" /* " + t.Name() + " */ create table " + tbl + " (id NUMBER(6))")
+		for j := range 2 {
+			exec("INSERT INTO " + tbl + " (id) VALUES (1)")
+			exec("TRUNCATE TABLE " + tbl)
+			if n, err := count(); err != nil {
+				t.Fatal(err)
+			} else if n != 0 {
+				t.Errorf("%d/%d. %d rows after TRUNCATE", i, j, n)
+			}
+		}
+		for j := range 2 {
+			exec("ALTER TABLE " + tbl + " ADD (c VARCHAR2(10))")
+			exec("COMMENT ON COLUMN " + tbl + ".c IS 'c'")
+			exec("INSERT INTO " + tbl + " (id, c) VALUES (1, 'a')")
+			exec("ALTER TABLE " + tbl + " DROP COLUMN c")
+			var oraErr *godror.OraErr
+			if _, err := conn.ExecContext(ctx, "COMMENT ON COLUMN "+tbl+".c IS 'c'"); !errors.As(err, &oraErr) || oraErr.Code() != 904 {
+				t.Errorf("%d/%d. COMMENT on the dropped column: got %+v, wanted ORA-00904", i, j, err)
+			}
+		}
+		exec("DROP TABLE " + tbl + " PURGE")
+		var oraErr *godror.OraErr
+		if _, err := count(); !errors.As(err, &oraErr) || oraErr.Code() != 942 {
+			t.Errorf("%d. the table is still there after DROP TABLE (%+v)", i, err)
+		}
+	}
+
+	// A CREATE with PL/SQL body, repeated.
+	for i := range 3 {
+		exec("CREATE OR REPLACE PROCEDURE " + proc + "(p OUT NUMBER) IS BEGIN p := " + fmt.Sprint(i) + "; END;")
+		for range 2 {
+			var got int
+			if _, err := conn.ExecContext(ctx, "BEGIN "+proc+"(:1); END;", sql.Out{Dest: &got}); err != nil {
+				t.Fatal(err)
+			} else if got != i {
+				t.Errorf("procedure version %d returned %d", i, got)
+			}
+		}
+	}
+	for i := range 2 {
+		exec("CREATE OR REPLACE PROCEDURE " + proc + " IS BEGIN NULL; END;")
+		exec("DROP PROCEDURE " + proc)
+		var oraErr *godror.OraErr
+		if _, err := conn.ExecContext(ctx, "DROP PROCEDURE "+proc); !errors.As(err, &oraErr) || oraErr.Code() != 4043 {
+			t.Errorf("%d. second DROP PROCEDURE: got %+v, wanted ORA-04043", i, err)
+		}
+	}
+}

@@ -8,7 +8,6 @@ package godror
 import (
 	"context"
 	"database/sql/driver"
-	"strings"
 
 	"github.com/godror/godror/internal/sieve"
 )
@@ -111,15 +110,6 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return st.(driver.StmtExecContext).ExecContext(ctx, args)
 	}
 
-	if len(query) > 6 && strings.EqualFold(query[:6], "create") {
-		sts, err := c.PrepareContext(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		st := sts.(*statement)
-		defer st.Close()
-		return st.ExecContext(ctx, st.applyOptions(args))
-	}
 	st := c.stmtCache.take(query)
 	if st == nil {
 		sts, err := c.PrepareContext(ctx, query)
@@ -134,10 +124,15 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	// statement's one, which strips them for prepared statements.
 	args = st.applyOptions(args)
 
+	// Keep only DML and PL/SQL: executing the statement handle of a DDL again
+	// does nothing, without an error. ODPI-C knows only CREATE, ALTER and DROP
+	// as DDL, the others (TRUNCATE, GRANT, COMMENT...) have no type at all.
+	reusable := st.dpiStmtInfo.isDML != 0 || st.dpiStmtInfo.isPLSQL != 0
+
 	res, err := st.ExecContext(ctx, args)
-	if err != nil || st.DeleteFromCache() || st.conn == nil || st.dpiStmt == nil {
-		// Do not keep the statement of a failed call: it may be in an
-		// unknown state, and it holds the bind buffers (and the
+	if err != nil || !reusable || st.DeleteFromCache() || st.conn == nil || st.dpiStmt == nil {
+		// Do not keep the statement of a failed call either: it may be
+		// in an unknown state, and it holds the bind buffers (and the
 		// caller's OUT destinations).
 		_ = st.Close()
 		return res, err
