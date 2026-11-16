@@ -3964,6 +3964,9 @@ func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dp
 var (
 	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
+	// ErrCursorClosed is returned by the rows of a nested cursor (a CURSOR() column)
+	// when used after its parent rows have moved to the next row.
+	ErrCursorClosed = errors.New("the nested cursor is closed: its parent rows have moved on")
 	// ErrStmtReexecuted is returned by the rows of a statement that
 	// has been executed again before all its rows have been read.
 	ErrStmtReexecuted = errors.New("the statement has been executed again, its previous rows are lost")

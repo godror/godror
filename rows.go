@@ -85,6 +85,8 @@ type rows struct {
 	jsons []*jsonRow
 	// lobs are the LOB readers of the current row, closed by Next and Close.
 	lobs []*dpiLobReader
+	// children are the nested cursors of the current row, closed by Next.
+	children []*rows
 }
 
 // Columns returns the names of the columns. The number of
@@ -363,6 +365,8 @@ func (r *rows) Next(dest []driver.Value) error {
 
 	// The LOBs of a row are valid only till the next Next (or Close).
 	r.closeLobs()
+	// The nested cursors of a row are valid only till the next Next.
+	r.closeChildren()
 	if err := r.fetch(ctx, logger); err != nil {
 		return err
 	}
@@ -396,6 +400,19 @@ func (r *rows) closeLobs() {
 		r.lobs[i] = nil
 	}
 	r.lobs = r.lobs[:0]
+}
+
+// closeChildren closes the nested cursors handed out for the current row,
+// that the caller has not closed: each holds a cursor open on the server.
+func (r *rows) closeChildren() {
+	for i, child := range r.children {
+		if child.err == nil {
+			child.err = ErrCursorClosed
+		}
+		_ = child.Close()
+		r.children[i] = nil
+	}
+	r.children = r.children[:0]
 }
 
 func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
@@ -804,6 +821,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		}
 		r2.fromData = true
 		stmtAddCleanup(ctx, st, "Next")
+		r.children = append(r.children, r2)
 		dest[i] = r2
 
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
