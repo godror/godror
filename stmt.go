@@ -1381,6 +1381,11 @@ func (st *statement) bindVars(
 		// Have to setNumElementsInArray for the actual lengths for PL/SQL arrays
 		dv, data := st.vars[i], st.data[i]
 		if !info.isIn {
+			switch st.dests[i].(type) {
+			case *Object, *ObjectCollection:
+				// The caller gets the object of the variable.
+				st.varInfos[i].ownObjs = nil
+			}
 			if st.PlSQLArrays() {
 				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 					logger.Debug("dpiVar_setNumElementsInArray", "i", i, "n", 0)
@@ -3354,14 +3359,28 @@ func SliceToObjCollWriter[E ObjectWriter, T interface {
 		}}
 }
 
-// bindableObject returns the object of the variable at data[pos] to be written
-// as the IN value, if it is not NULL, or a new object of type ot.
+// ownObjs returns the objects that dataSetObject has created for the elements
+// of the variable dv, and dv still holds.
+func (stmt *statement) ownObjs(dv *C.dpiVar) *[]*C.dpiObject {
+	if i := slices.Index(stmt.vars, dv); 0 <= i && i < len(stmt.varInfos) {
+		return &stmt.varInfos[i].ownObjs
+	}
+	return new([]*C.dpiObject)
+}
+
+// bindableObject returns the object of the variable dv at data[pos] to be
+// written as the IN value, if it is not NULL and dataSetObject has created it
+// in a previous execution, or a new object of type ot.
 //
 // Reusing the object is important when the statement (and its bind variables)
 // is executed again: creating and releasing a new object tree on every
 // execution leaks Oracle Client memory (see TestPlSqlNestedObj).
-func (stmt *statement) bindableObject(ot *ObjectType, data []C.dpiData, pos int) (*Object, bool, error) {
-	if pos < len(data) && data[pos].isNull == 0 && C.dpiData_getObject(&data[pos]) != nil {
+//
+// An object that the caller has bound, or has got as an OUT value, is the
+// caller's: that is never written.
+func (stmt *statement) bindableObject(ot *ObjectType, dv *C.dpiVar, data []C.dpiData, pos int) (*Object, bool, error) {
+	if own := *stmt.ownObjs(dv); pos < len(own) && own[pos] != nil &&
+		pos < len(data) && data[pos].isNull == 0 && C.dpiData_getObject(&data[pos]) == own[pos] {
 		// The object belongs to the bind variable: do not take a reference
 		// for it, and do not close it.
 		d := Data{
@@ -3425,12 +3444,17 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		if err != nil {
 			return err
 		}
-		o, reused, err := stmt.bindableObject(ot, data, 0)
+		o, reused, err := stmt.bindableObject(ot, dv, data, 0)
 		if err != nil {
 			return err
 		}
 		created[0] = !reused
-		if err = v.WriteObject(o); err != nil {
+		// A reused object has the values of the previous execution.
+		o.stale = reused
+		if err = v.WriteObject(o); err == nil {
+			err = o.freshen()
+		}
+		if err != nil {
 			closeCreated([]*Object{o}, created)
 			return err
 		}
@@ -3445,7 +3469,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 				closeCreated(objs, created)
 				return err
 			}
-			o, reused, err := stmt.bindableObject(ot, data, i)
+			o, reused, err := stmt.bindableObject(ot, dv, data, i)
 			if err != nil {
 				closeCreated(objs, created)
 				return err
@@ -3464,7 +3488,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		if err != nil {
 			return err
 		}
-		o, reused, err := stmt.bindableObject(ot, data, 0)
+		o, reused, err := stmt.bindableObject(ot, dv, data, 0)
 		if err != nil {
 			return err
 		}
@@ -3494,9 +3518,12 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 		}
 	}
 
+	own := stmt.ownObjs(dv)
+	*own = (*own)[:0]
 	for i, obj := range objs {
 		if obj.dpiObject == nil {
 			data[i].isNull = 1
+			*own = append(*own, nil)
 			continue
 		}
 		data[i].isNull = 0
@@ -3504,6 +3531,13 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 			return C.dpiVar_setFromObject(dv, C.uint32_t(i), obj.dpiObject)
 		}); err != nil {
 			return fmt.Errorf("setFromObject: %w", err)
+		}
+		// The objects written here (created or reused) can be reused at the
+		// next execution, the caller's objects cannot.
+		if i < len(created) {
+			*own = append(*own, obj.dpiObject)
+		} else {
+			*own = append(*own, nil)
 		}
 		// Cannot close it before use (exec)
 		// obj.Close()

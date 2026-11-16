@@ -49,6 +49,36 @@ type Object struct {
 	// lobs are the open readers of the LOB attributes or elements
 	// that were read from the Object, closed by Close.
 	lobs []*dpiLobReader
+	// stale is set on an object that is reused for a bind, and still has
+	// the values of the previous execution: see freshen.
+	stale bool
+}
+
+// freshen empties a stale object.
+//
+// An ObjectWriter gets an empty object. A reused one is emptied only at the
+// first access, because StructWriteObject and SliceWriteObject, which write
+// all of the object, overwrite it in place instead: emptying it and creating
+// its sub-objects again on every execution leaks Oracle Client memory
+// (see TestPlSqlNestedObj).
+func (O *Object) freshen() error {
+	if !O.stale {
+		return nil
+	}
+	return O.reset()
+}
+
+// reset trims all elements of a collection, and sets all attributes to NULL.
+func (O *Object) reset() error {
+	O.stale = false
+	if coll := O.Collection(); coll.Object != nil {
+		n, err := coll.Len()
+		if err != nil || n == 0 {
+			return err
+		}
+		return coll.Trim(n)
+	}
+	return O.ResetAttributes()
 }
 
 // ErrNoSuchKey is the error for missing key in lookup.
@@ -62,6 +92,9 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	attr, ok := O.Attributes[name]
 	if !ok {
 		return fmt.Errorf("get %s[%s]: %w (have: %q)", O.Name, name, ErrNoSuchKey, O.AttributeNames())
+	}
+	if err := O.freshen(); err != nil {
+		return err
 	}
 
 	data.reset(O.dpiObject == nil)
@@ -97,6 +130,9 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 
 // SetAttribute sets the named attribute with data.
 func (O *Object) SetAttribute(name string, data *Data) error {
+	if err := O.freshen(); err != nil {
+		return err
+	}
 	attr, ok := O.Attributes[name]
 	if !ok {
 		var try string
@@ -898,6 +934,9 @@ func (O ObjectCollection) AppendData(data *Data) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return err
+	}
 	if data.err != nil {
 		return fmt.Errorf("append: %w", data.err)
 	}
@@ -943,6 +982,9 @@ func (O ObjectCollection) Delete(i int) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return err
+	}
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_deleteElementByIndex(O.dpiObject, C.int32_t(i))
 	}); err != nil {
@@ -955,6 +997,9 @@ func (O ObjectCollection) Delete(i int) error {
 func (O ObjectCollection) GetItem(data *Data, i int) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
+	}
+	if err := O.freshen(); err != nil {
+		return err
 	}
 	if data == nil {
 		panic("data cannot be nil")
@@ -1003,6 +1048,9 @@ func (O ObjectCollection) SetItem(i int, data *Data) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return err
+	}
 	if data.err != nil {
 		return fmt.Errorf("set(%d): %w", i, data.err)
 	}
@@ -1035,6 +1083,9 @@ func (O ObjectCollection) First() (int, error) {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return 0, ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return 0, err
+	}
 	var exists C.int
 	var idx C.int32_t
 	if err := O.drv.checkExec(func() C.int {
@@ -1052,6 +1103,9 @@ func (O ObjectCollection) First() (int, error) {
 func (O ObjectCollection) Last() (int, error) {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return 0, ErrNotCollection
+	}
+	if err := O.freshen(); err != nil {
+		return 0, err
 	}
 	var exists C.int
 	var idx C.int32_t
@@ -1071,6 +1125,9 @@ func (O ObjectCollection) Next(i int) (int, error) {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return 0, ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return 0, err
+	}
 	var exists C.int
 	var idx C.int32_t
 	if err := O.drv.checkExec(func() C.int {
@@ -1089,6 +1146,9 @@ func (O ObjectCollection) Len() (int, error) {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return 0, ErrNotCollection
 	}
+	if err := O.freshen(); err != nil {
+		return 0, err
+	}
 	var size C.int32_t
 	if err := O.drv.checkExec(func() C.int {
 		return C.dpiObject_getSize(O.dpiObject, &size)
@@ -1102,6 +1162,9 @@ func (O ObjectCollection) Len() (int, error) {
 func (O ObjectCollection) Trim(n int) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
+	}
+	if err := O.freshen(); err != nil {
+		return err
 	}
 	return O.drv.checkExec(func() C.int {
 		return C.dpiObject_trim(O.dpiObject, C.uint32_t(n))
@@ -1738,7 +1801,12 @@ func writeObjectElement(coll ObjectCollection, i, cur int, data *Data, f func(*O
 			return err
 		}
 	}
+	// A reused element has the values of the previous execution.
+	obj.stale = !created
 	err := f(obj)
+	if err == nil {
+		err = obj.freshen()
+	}
 	if created && err == nil {
 		data.SetObject(obj)
 		if i < cur {
@@ -1755,6 +1823,8 @@ func writeObjectElement(coll ObjectCollection, i, cur int, data *Data, f func(*O
 
 // SliceWriteObject helps implementing an ObjectWriter for a slice.
 func SliceWriteObject[E any](o *Object, ss []E) error {
+	// Every element is written: a stale collection need not be emptied.
+	o.stale = false
 	coll := o.Collection()
 	cur, err := collectionLen(coll, len(ss))
 	if err != nil {
@@ -2077,10 +2147,15 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 	if rvt.Kind() == reflect.Pointer {
 		rv, rvt = rv.Elem(), rvt.Elem()
 	}
+	// All of the object is written here: a stale object need not be emptied,
+	// its sub-objects are reused.
+	stale := o.stale
+	o.stale = false
 	if rv.IsZero() {
-		// A zero value is an object with all attributes NULL. Reset the
-		// object, so a reused one does not keep the previous values.
-		return o.ResetAttributes()
+		// A zero value is an object with all attributes NULL, or an empty
+		// collection. Reset the object, so a reused one does not keep the
+		// previous values.
+		return o.reset()
 	}
 	switch rvt.Kind() {
 	case reflect.Slice:
@@ -2125,6 +2200,11 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 	case reflect.Struct:
 		ad := scratch.Get()
 		defer scratch.Put(ad)
+		// written has the attributes of a stale object that are written.
+		var written map[string]struct{}
+		if stale {
+			written = make(map[string]struct{}, len(o.Attributes))
+		}
 		for i, n := 0, rvt.NumField(); i < n; i++ {
 			f := rvt.Field(i)
 			if !f.IsExported() {
@@ -2145,6 +2225,9 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 					f.Name,
 					o.Name, nm, ErrNoSuchKey, o.AttributeNames())
 			}
+			if stale {
+				written[nm] = struct{}{}
+			}
 			if err := func() error {
 				if !attr.IsObject() {
 					if err := ad.Set(rf.Interface()); err != nil {
@@ -2160,6 +2243,7 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 				}
 				if !ad.IsNull() && ad.IsObject() {
 					if sub := ad.GetObject(); sub != nil {
+						sub.stale = true
 						err := structWriteObject(sub, rf)
 						if cerr := sub.Close(); err == nil {
 							err = cerr
@@ -2183,6 +2267,19 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 				}
 				return nil
 			}(); err != nil {
+				return err
+			}
+		}
+		// The attributes that the struct does not have are NULL.
+		if !stale {
+			return nil
+		}
+		for nm, attr := range o.Attributes {
+			if _, ok := written[nm]; ok || attr.OracleTypeNum == 0 {
+				continue
+			}
+			ad.reset(true)
+			if err := o.SetAttribute(nm, ad); err != nil {
 				return err
 			}
 		}
