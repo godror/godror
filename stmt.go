@@ -1711,6 +1711,9 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		info.set = st.conn.dataSetTime
 		if info.isOut {
 			*get = st.conn.dataGetTime
+			if info.typ == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ && !st.conn.tzFromParams {
+				*get = st.conn.dataGetTimeTZ
+			}
 		}
 
 	case []time.Time, []NullTime, []*timestamppb.Timestamp:
@@ -1721,6 +1724,9 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		info.set = st.conn.dataSetTime
 		if info.isOut {
 			*get = st.conn.dataGetTime
+			if info.typ == C.DPI_ORACLE_TYPE_TIMESTAMP_TZ && !st.conn.tzFromParams {
+				*get = st.conn.dataGetTimeTZ
+			}
 		}
 
 	case time.Duration, []time.Duration:
@@ -1950,21 +1956,39 @@ func dataSetBool(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) er
 
 var _ = sql.Scanner((*NullTime)(nil))
 
+// dataGetTime reads the values as wall clocks in the connection's time zone
+// (a DATE has no time zone offset), with timeZoneFor's rules for the values
+// that have an offset.
 func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
+	return c.dataGetTimeIn(ctx, v, data, c.Timezone())
+}
+
+// dataGetTimeTZ reads TIMESTAMP WITH TIME ZONE values: each has its own time
+// zone offset, which must be obeyed, as rows.Next does.
+//
+// The connection's time zone must not be consulted: when it comes from the
+// session time zone, it is not UTC for most clients, and timeZoneFor would
+// take a +00:00 value, or one with the zone's current offset but from the
+// other half of the year, as a wall clock in that zone: another instant.
+func (c *conn) dataGetTimeTZ(ctx context.Context, v any, data []C.dpiData) error {
+	return c.dataGetTimeIn(ctx, v, data, nil)
+}
+
+func (c *conn) dataGetTimeIn(ctx context.Context, v any, data []C.dpiData, tz *time.Location) error {
 	switch x := v.(type) {
 	case *time.Time:
 		if len(data) == 0 || data[0].isNull == 1 {
 			*x = time.Time{}
 			return nil
 		}
-		c.dataGetTimeC(ctx, x, &data[0])
+		c.dataGetTimeC(ctx, x, &data[0], tz)
 	case *timestamppb.Timestamp:
 		if len(data) == 0 || data[0].isNull == 1 {
 			x.Reset()
 			return nil
 		}
 		var t time.Time
-		c.dataGetTimeC(ctx, &t, &data[0])
+		c.dataGetTimeC(ctx, &t, &data[0], tz)
 		if t.IsZero() {
 			x.Reset()
 		} else {
@@ -1973,7 +1997,7 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 
 	case *NullTime:
 		if x.Valid = !(len(data) == 0 || data[0].isNull == 1); x.Valid {
-			c.dataGetTimeC(ctx, &x.Time, &data[0])
+			c.dataGetTimeC(ctx, &x.Time, &data[0], tz)
 		}
 
 	case *[]time.Time:
@@ -1984,7 +2008,7 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 			*x = make([]time.Time, n)
 		}
 		for i := range data {
-			c.dataGetTimeC(ctx, &((*x)[i]), &data[i])
+			c.dataGetTimeC(ctx, &((*x)[i]), &data[i], tz)
 		}
 	case *[]*timestamppb.Timestamp:
 		n := len(data)
@@ -1995,7 +2019,7 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 		}
 		for i := range data {
 			var t time.Time
-			c.dataGetTimeC(ctx, &t, &data[i])
+			c.dataGetTimeC(ctx, &t, &data[i], tz)
 			if t.IsZero() {
 				// NULL; the element may be nil, so it cannot be Reset.
 				(*x)[i] = nil
@@ -2016,7 +2040,7 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 		}
 		for i := range data {
 			if (*x)[i].Valid = !(data[i].isNull == 1); (*x)[i].Valid {
-				c.dataGetTimeC(ctx, &((*x)[i].Time), &data[i])
+				c.dataGetTimeC(ctx, &((*x)[i].Time), &data[i], tz)
 			}
 		}
 
@@ -2028,7 +2052,7 @@ func (c *conn) dataGetTime(ctx context.Context, v any, data []C.dpiData) error {
 
 var errUnknownType = errors.New("unknown type")
 
-func (c *conn) dataGetTimeC(ctx context.Context, t *time.Time, data *C.dpiData) {
+func (c *conn) dataGetTimeC(ctx context.Context, t *time.Time, data *C.dpiData, tz *time.Location) {
 	if data.isNull == 1 {
 		*t = time.Time{}
 		return
@@ -2038,7 +2062,7 @@ func (c *conn) dataGetTimeC(ctx context.Context, t *time.Time, data *C.dpiData) 
 	*t = time.Date(
 		goYear(ts.year), time.Month(ts.month), int(ts.day),
 		int(ts.hour), int(ts.minute), int(ts.second), int(ts.fsecond),
-		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, c.Timezone()),
+		timeZoneFor(ts.tzHourOffset, ts.tzMinuteOffset, tz),
 	)
 }
 

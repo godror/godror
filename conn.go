@@ -64,6 +64,9 @@ type conn struct {
 	inTransaction       bool
 	released            bool
 	tzValid             bool
+	// tzFromParams is set when the time zone is the timezone connection
+	// parameter, not the session time zone.
+	tzFromParams bool
 
 	// forgottenObjTypes are the object types that were in objTypes when
 	// forgetObjTypes has emptied it. objTypesMu protects it.
@@ -589,7 +592,7 @@ func (c *conn) initTZ() error {
 	}
 	noTZCheck := c.params.NoTZCheck || c.params.Timezone != nil
 	if c.params.Timezone != nil && c.params.Timezone != time.Local {
-		c.tzValid = true
+		c.tzValid, c.tzFromParams = true, true
 		return nil
 	}
 	c.params.Timezone = time.Local

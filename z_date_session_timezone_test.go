@@ -134,3 +134,84 @@ func TestDateSessionTimezone(t *testing.T) {
 		}()
 	}
 }
+
+// TestOutTimestampTZOffset checks that a TIMESTAMP WITH (LOCAL) TIME ZONE
+// value read through an OUT bind is the instant the server has sent:
+// its offset must be obeyed, whatever the connection's time zone is.
+func TestOutTimestampTZOffset(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.StandaloneConnection = godror.Bool(true)
+
+	// Sessions of their own, as in TestDateSessionTimezone.
+	setup := sql.OpenDB(godror.NewConnector(P))
+	defer setup.Close()
+	tbl := "test_out_tstz" + tblSuffix
+	testDb.ExecContext(ctx, "DROP TABLE "+tbl+" PURGE")
+	if _, err = setup.ExecContext(ctx,
+		"CREATE TABLE "+tbl+" (tstz TIMESTAMP WITH TIME ZONE, tsltz TIMESTAMP WITH LOCAL TIME ZONE)",
+	); err != nil {
+		t.Fatal(err)
+	}
+	defer setup.ExecContext(context.Background(), "DROP TABLE "+tbl+" PURGE")
+
+	for _, sessTZ := range []string{"", "-07:00", "+05:45"} {
+		func() {
+			P := P
+			if sessTZ != "" {
+				P.SetSessionParamOnInit("TIME_ZONE", sessTZ)
+			}
+			db := sql.OpenDB(godror.NewConnector(P))
+			defer db.Close()
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			prefix := "TIME_ZONE=" + sessTZ
+
+			for _, tC := range []struct {
+				Lit  string
+				Want time.Time
+			}{
+				{"2021-07-01 12:34:56 +00:00", time.Date(2021, 7, 1, 12, 34, 56, 0, time.UTC)},
+				{"2021-01-15 12:34:56 +00:00", time.Date(2021, 1, 15, 12, 34, 56, 0, time.UTC)},
+				{"2021-07-01 12:34:56 +01:00", time.Date(2021, 7, 1, 11, 34, 56, 0, time.UTC)},
+				{"2021-01-15 12:34:56 +02:00", time.Date(2021, 1, 15, 10, 34, 56, 0, time.UTC)},
+				{"2021-07-01 12:34:56 +09:00", time.Date(2021, 7, 1, 3, 34, 56, 0, time.UTC)},
+				{"2021-07-01 12:34:56 -07:00", time.Date(2021, 7, 1, 19, 34, 56, 0, time.UTC)},
+				{"2021-07-01 12:34:56 +05:45", time.Date(2021, 7, 1, 6, 49, 56, 0, time.UTC)},
+			} {
+				var got time.Time
+				if _, err = conn.ExecContext(ctx,
+					"BEGIN :1 := TIMESTAMP '"+tC.Lit+"'; END;", sql.Out{Dest: &got},
+				); err != nil {
+					t.Fatalf("%s: %s: %v", prefix, tC.Lit, err)
+				}
+				if !got.Equal(tC.Want) {
+					t.Errorf("%s: %s through sql.Out is %s", prefix, tC.Lit, got.Format(time.RFC3339))
+				}
+
+				var tstz, tsltz sql.NullTime
+				if _, err = conn.ExecContext(ctx,
+					"INSERT INTO "+tbl+" (tstz, tsltz) VALUES (TIMESTAMP '"+tC.Lit+"', TIMESTAMP '"+tC.Lit+"')"+
+						" RETURNING tstz, tsltz INTO :1, :2",
+					sql.Out{Dest: &tstz}, sql.Out{Dest: &tsltz},
+				); err != nil {
+					t.Fatalf("%s: %s: %v", prefix, tC.Lit, err)
+				}
+				if !tstz.Time.Equal(tC.Want) {
+					t.Errorf("%s: %s RETURNING a TIMESTAMP WITH TIME ZONE is %s", prefix, tC.Lit, tstz.Time.Format(time.RFC3339))
+				}
+				if !tsltz.Time.Equal(tC.Want) {
+					t.Errorf("%s: %s RETURNING a TIMESTAMP WITH LOCAL TIME ZONE is %s", prefix, tC.Lit, tsltz.Time.Format(time.RFC3339))
+				}
+			}
+		}()
+	}
+}
