@@ -244,10 +244,10 @@ var ErrInvalidNumber = errors.New("invalid number")
 
 // hasDigit reports whether the number has a digit before the exponent.
 func (n Number) hasDigit() bool {
-	for i := 0; i < len(n); i++ {
-		if c := n[i]; '0' <= c && c <= '9' {
+	for _, r := range n {
+		if '0' <= r && r <= '9' {
 			return true
-		} else if c == 'e' || c == 'E' {
+		} else if r == 'e' || r == 'E' {
 			break
 		}
 	}
@@ -290,7 +290,7 @@ func (n *Number) UnmarshalText(p []byte) error {
 		}
 		p = p[:i]
 	}
-	if bytes.IndexAny(p, "0123456789") < 0 {
+	if bytes.ContainsAny(p, "0123456789") {
 		return fmt.Errorf("no digits in %q: %w", p, ErrInvalidNumber)
 	}
 	var dotNum int
