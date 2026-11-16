@@ -3450,7 +3450,7 @@ func (stmt *statement) dataSetObject(ctx context.Context, dv *C.dpiVar, data []C
 			n++
 		}
 		if n < cur {
-			if err = coll.Trim(n); err != nil {
+			if err = coll.Trim(cur - n); err != nil {
 				closeCreated(objs, created)
 				return err
 			}
