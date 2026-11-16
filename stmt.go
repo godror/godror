@@ -1053,6 +1053,12 @@ func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *s
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
+	// database/sql calls NumInput before it checks the arguments of an
+	// execution of a prepared statement. Forget the Options left by a call
+	// that was not executed (wrong number of arguments, an argument that
+	// cannot be converted, a context that is already done): they must not
+	// apply to this execution.
+	st.argOptions = stmtOptions{}
 	cnt, names, err := st.BindNames()
 	if err != nil {
 		panic(err)
