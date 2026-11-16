@@ -143,9 +143,12 @@ func (r *rows) Close() error {
 
 // closeJSONs marks the JSON values handed out since the last fetch as closed,
 // because the fetch or the Close that follows frees their dpiJson handles.
+// It waits for the methods of those JSON values that are running.
 func (r *rows) closeJSONs() {
 	for _, jr := range r.jsons {
+		jr.mu.Lock()
 		jr.closed = true
+		jr.mu.Unlock()
 	}
 	clear(r.jsons)
 	r.jsons = r.jsons[:0]

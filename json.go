@@ -234,6 +234,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -274,6 +275,13 @@ const (
 // or use the JSONAsString option to get the column as a string.
 // Calling its methods later returns ErrJSONClosed.
 //
+// The Close of the rows, which database/sql calls from another goroutine
+// when the context of the query is cancelled, and the Close of the JSON
+// wait for the methods of the JSON that are running. They cannot wait for
+// the use of a JSONObject, JSONArray, JSONScalar or Data, so do not use
+// those where the context can be cancelled or another goroutine can
+// call Close; GetValue and String are safe.
+//
 // With the KeepJSON option, a scanned JSON holds a reference of its own,
 // and is valid until its Close, which must be called.
 // That is the way to use QueryRow(...).Scan(&j), which closes the rows.
@@ -291,6 +299,9 @@ type JSON struct {
 
 // jsonRow is the state of a JSON that was scanned from a row.
 type jsonRow struct {
+	// mu is held by the methods of the JSON while they use the dpiJson,
+	// and by what closes it: the rows and JSON.Close.
+	mu sync.Mutex
 	// kept is set if the JSON has a reference to the dpiJson (KeepJSON),
 	// which Close releases. The dpiJson of the others is freed by the rows.
 	kept bool
@@ -303,7 +314,12 @@ type jsonRow struct {
 //
 // It does nothing for any other JSON, and it can be called more than once.
 func (j JSON) Close() error {
-	if j.row == nil || !j.row.kept || j.row.closed {
+	if j.row == nil || !j.row.kept {
+		return nil
+	}
+	j.row.mu.Lock()
+	defer j.row.mu.Unlock()
+	if j.row.closed {
 		return nil
 	}
 	j.row.closed = true
@@ -313,11 +329,22 @@ func (j JSON) Close() error {
 	return nil
 }
 
-// top returns the top node of the document.
-func (j JSON) top(opts JSONOption) (*C.dpiJsonNode, error) {
-	if j.row != nil && j.row.closed {
+// use locks the JSON against being closed, or returns ErrJSONClosed.
+// The dpiJson and its nodes can be used until the returned unlock is called.
+func (j JSON) use() (unlock func(), err error) {
+	if j.row == nil {
+		return func() {}, nil
+	}
+	j.row.mu.Lock()
+	if j.row.closed {
+		j.row.mu.Unlock()
 		return nil, ErrJSONClosed
 	}
+	return j.row.mu.Unlock, nil
+}
+
+// top returns the top node of the document. The caller must hold j.use.
+func (j JSON) top(opts JSONOption) (*C.dpiJsonNode, error) {
 	var node *C.dpiJsonNode
 	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
 		return nil, ErrInvalidJSON
@@ -326,7 +353,12 @@ func (j JSON) top(opts JSONOption) (*C.dpiJsonNode, error) {
 }
 
 func (j JSON) StringWithOption(opts JSONOption) (string, error) {
-	jScalar, err := j.GetJSONScalar(opts)
+	unlock, err := j.use()
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	jScalar, err := j.scalar(opts)
 	if err != nil {
 		return "", err
 	}
@@ -345,6 +377,11 @@ func (j JSON) StringWithOption(opts JSONOption) (string, error) {
 
 // Get retrieves the data stored in JSON based on option, opts.
 func (j JSON) Get(data *Data, opts JSONOption) error {
+	unlock, err := j.use()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	node, err := j.top(opts)
 	if err != nil {
 		return err
@@ -356,6 +393,11 @@ func (j JSON) Get(data *Data, opts JSONOption) error {
 // GetJSONObject retrieves JSONObject from JSON based on option, opts.
 // It returns error if JSON doesnt represent object type.
 func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
+	unlock, err := j.use()
+	if err != nil {
+		return JSONObject{}, err
+	}
+	defer unlock()
 	node, err := j.top(opts)
 	if err != nil {
 		return JSONObject{}, err
@@ -371,6 +413,11 @@ func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 // GetJSONArray retrieves JSONArray from JSON based on option, opts.
 // It returns error if JSON doesnt represent array type.
 func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
+	unlock, err := j.use()
+	if err != nil {
+		return JSONArray{}, err
+	}
+	defer unlock()
 	node, err := j.top(opts)
 	if err != nil {
 		return JSONArray{}, err
@@ -385,6 +432,16 @@ func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 
 // GetJSONScalar retrieves JSONScalar from JSON based on option, opts.
 func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
+	unlock, err := j.use()
+	if err != nil {
+		return JSONScalar{}, err
+	}
+	defer unlock()
+	return j.scalar(opts)
+}
+
+// scalar is GetJSONScalar for a caller that holds j.use.
+func (j JSON) scalar(opts JSONOption) (JSONScalar, error) {
 	node, err := j.top(opts)
 	if err != nil {
 		return JSONScalar{}, err
@@ -406,18 +463,27 @@ func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 //	string, for VARCHAR2(string)
 func (j JSON) GetValue(opts JSONOption) (any, error) {
 	j.stringOption = opts
-	jScalar, err := j.GetJSONScalar(opts)
-	if err != nil {
-		// later
-	} else if val, err2 := jScalar.GetValue(); err2 != nil {
-		err = err2
-	} else {
+	val, err := j.getValue(opts)
+	if err == nil {
 		return val, nil
 	}
 	if logger := getLogger(context.TODO()); logger != nil {
 		logger.Error("JSON.GetValue", "error", err)
 	}
 	return nil, err
+}
+
+func (j JSON) getValue(opts JSONOption) (any, error) {
+	unlock, err := j.use()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	jScalar, err := j.scalar(opts)
+	if err != nil {
+		return nil, err
+	}
+	return jScalar.GetValue()
 }
 
 // String returns standard JSON formatted string

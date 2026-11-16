@@ -3701,9 +3701,11 @@ func (c *conn) dataSetJSON(ctx context.Context, dv *C.dpiVar, data []C.dpiData, 
 	}
 	switch x := vv.(type) {
 	case JSON:
-		if x.row != nil && x.row.closed {
-			return ErrJSONClosed
+		unlock, err := x.use()
+		if err != nil {
+			return err
 		}
+		defer unlock()
 		*((**C.dpiJson)(unsafe.Pointer(&(data[0].value)))) = x.dpiJson
 
 		C.dpiVar_setFromJson(dv, C.uint32_t(i), *((**C.dpiJson)(unsafe.Pointer(&(data[0].value)))))
