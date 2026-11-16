@@ -75,6 +75,7 @@ type stmtOptions struct {
 	callTimeout        time.Duration
 	execMode           C.dpiExecMode
 	jsonStringOption   JSONOption
+	keepJSON           bool
 	plSQLArrays        bool
 	lobAsReader        bool
 	nullDateAsZeroTime bool
@@ -334,7 +335,18 @@ func JSONStringOption(opts JSONOption) Option {
 }
 
 // JSONAsString is an option to return JSON columns as string, not godror.JSON.
+//
+// The string is independent of the rows, unlike a godror.JSON,
+// which is valid only until the next Next or Close.
 func JSONAsString() Option { return func(o *stmtOptions) { o.jsonAsString = true } }
+
+// KeepJSON is an option to keep the godror.JSON values of the rows valid
+// after the next Next or Close of the rows, until their own Close.
+//
+// Close MUST be called on each JSON scanned with this option. Till then it
+// holds the memory of its document, and the session of its connection,
+// even if the connection is closed (returned to the pool) in the meantime.
+func KeepJSON() Option { return func(o *stmtOptions) { o.keepJSON = true } }
 
 const minChunkSize = 1 << 16
 
@@ -3541,6 +3553,9 @@ func (c *conn) dataSetJSON(ctx context.Context, dv *C.dpiVar, data []C.dpiData, 
 	}
 	switch x := vv.(type) {
 	case JSON:
+		if x.row != nil && x.row.closed {
+			return ErrJSONClosed
+		}
 		*((**C.dpiJson)(unsafe.Pointer(&(data[0].value)))) = x.dpiJson
 
 		C.dpiVar_setFromJson(dv, C.uint32_t(i), *((**C.dpiJson)(unsafe.Pointer(&(data[0].value)))))
