@@ -888,12 +888,17 @@ func (c *conn) GetPoolStats() (stats PoolStats, err error) {
 		return stats, nil
 	}
 
-	drv.mu.RLock()
+	// Count as a user of the pool, so that it is not closed while it is read.
+	drv.mu.Lock()
 	pool := drv.pools[key]
-	drv.mu.RUnlock()
+	if pool != nil {
+		pool.users++
+	}
+	drv.mu.Unlock()
 	if pool == nil {
 		return stats, nil
 	}
+	defer drv.putPool(pool)
 	return drv.getPoolStats(pool)
 }
 
