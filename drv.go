@@ -299,7 +299,9 @@ import (
 	"io"
 	"math"
 	"os/user"
+	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1845,15 +1847,62 @@ func (c connector) Close() error {
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
 //
 // Deprecated. Use ParseDSN + ConnectionParams.SetSessionParamOnInit and NewConnector.
-// which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
+// which calls "ALTER SESSION SET <key>=<value>" for the elements of the given map,
+// the values written as SetSessionParamOnInit's are.
 func NewSessionIniter(m map[string]string) func(context.Context, driver.ConnPrepareContext) error {
-	var buf strings.Builder
-	buf.WriteString("ALTER SESSION SET ")
+	kvs := make([][2]string, 0, len(m))
 	for k, v := range m {
-		buf.WriteByte(' ')
-		fmt.Fprintf(&buf, "%s=q'(%s)'", k, strings.Replace(v, "'", "''", -1))
+		kvs = append(kvs, [2]string{k, v})
 	}
-	return mkExecMany([]string{buf.String()})
+	slices.SortFunc(kvs, func(a, b [2]string) int { return strings.Compare(a[0], b[0]) })
+	return mkExecMany([]string{alterSessionStmt(kvs)})
+}
+
+// sessionKeywordParams are the parameters of ALTER SESSION SET that are not
+// initialization parameters: they take a keyword, a number or an identifier,
+// never a string.
+var sessionKeywordParams = map[string]struct{}{
+	"CONSTRAINT": {}, "CONSTRAINTS": {}, "CONTAINER": {}, "CURRENT_SCHEMA": {},
+	"DEFAULT_COLLATION": {}, "EDITION": {}, "ERROR_ON_OVERLAP_TIME": {},
+	"FLAGGER": {}, "INSTANCE": {}, "ISOLATION_LEVEL": {},
+	"ROW ARCHIVAL VISIBILITY": {}, "SQL_TRACE": {}, "SQL_TRANSLATION_PROFILE": {},
+	"STANDBY_MAX_DATA_DELAY": {}, "USE_PRIVATE_OUTLINES": {}, "USE_STORED_OUTLINES": {},
+}
+
+// rSessionKeyword matches what can be written into the statement as is:
+// words (READ COMMITTED, ORA$BASE, 1), or one quoted identifier.
+var rSessionKeyword = regexp.MustCompile(`^(?:[A-Za-z0-9_$#]+(?: [A-Za-z0-9_$#]+)*|"[^"]+")$`)
+
+// alterSessionStmt returns the ALTER SESSION SET statement of the key-value pairs.
+//
+// A value is written as is only if it is a keyword: for the parameters
+// that take no string, for TIME_ZONE's LOCAL and DBTIMEZONE, and for
+// TRUE and FALSE (a boolean parameter refuses 'TRUE').
+// Everything else is a string literal, so a value cannot set another parameter.
+func alterSessionStmt(kvs [][2]string) string {
+	var buf strings.Builder
+	buf.WriteString("ALTER SESSION SET")
+	for _, kv := range kvs {
+		k, v := strings.ToUpper(strings.TrimSpace(kv[0])), strings.ToUpper(kv[1])
+		_, raw := sessionKeywordParams[k]
+		if raw {
+			raw = rSessionKeyword.MatchString(kv[1])
+		} else {
+			raw = v == "TRUE" || v == "FALSE" ||
+				k == "TIME_ZONE" && (v == "LOCAL" || v == "DBTIMEZONE")
+		}
+		buf.WriteByte(' ')
+		buf.WriteString(kv[0])
+		buf.WriteByte('=')
+		if raw {
+			buf.WriteString(kv[1])
+		} else {
+			buf.WriteByte('\'')
+			buf.WriteString(strings.ReplaceAll(kv[1], "'", "''"))
+			buf.WriteByte('\'')
+		}
+	}
+	return buf.String()
 }
 
 func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) error {
@@ -1864,23 +1913,7 @@ func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) erro
 	stmts := P.OnInitStmts
 	stmts = stmts[:len(stmts):len(stmts)]
 	if len(P.AlterSession) != 0 {
-		var buf strings.Builder
-		buf.WriteString("ALTER SESSION SET")
-		for _, kv := range P.AlterSession {
-			buf.WriteByte(' ')
-			buf.WriteString(kv[0])
-			buf.WriteByte('=')
-			switch strings.ToUpper(kv[0]) {
-			case "CURRENT_SCHEMA", "EDITION", "CONTAINER":
-				// these take an identifier, not a string
-				buf.WriteString(kv[1])
-			default:
-				buf.WriteByte('\'')
-				buf.WriteString(strings.Replace(kv[1], "'", "''", -1))
-				buf.WriteByte('\'')
-			}
-		}
-		stmts = append(stmts, buf.String())
+		stmts = append(stmts, alterSessionStmt(P.AlterSession))
 	}
 	if len(stmts) == 0 {
 		return nil
