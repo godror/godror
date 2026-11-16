@@ -719,6 +719,15 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			if logger != nil && logger.Enabled(ctx, slog.LevelWarn) {
 				logger.Warn("batch", "errors", batchErrors)
 			}
+			// The Oracle Client does not commit a batch that has batch errors,
+			// DPI_MODE_EXEC_COMMIT_ON_SUCCESS notwithstanding. The rows reported
+			// as Affected would stay uncommitted in the session, for the next
+			// statement to commit them, or the next failed batch to roll them back.
+			if !st.inTransaction {
+				if cErr := st.checkExec(func() C.int { return C.dpiConn_commit(st.conn.dpiConn) }); cErr != nil {
+					return nil, closeIfBadConn(fmt.Errorf("commit the partial batch: %w", cErr))
+				}
+			}
 		} else {
 			batchErrors = err
 		}
