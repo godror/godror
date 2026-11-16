@@ -504,6 +504,9 @@ type connPool struct {
 	key                  string
 	wrapTokenCallBackCtx unsafe.Pointer
 	params               commonAndPoolParams
+	// users counts the connectors using the pool and the getPool calls
+	// not yet paired with putPool; guarded by drv.mu.
+	users int
 }
 
 // Purge force-closes the pool's connections then closes the pool.
@@ -620,7 +623,7 @@ func (d *drv) Open(s string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return d.createConnFromParams(context.Background(), c.(connector).params)
+	return d.createConnFromParams(context.Background(), c.(connector).params, nil)
 }
 
 func (d *drv) ClientVersion() (VersionInfo, error) {
@@ -1075,13 +1078,30 @@ func newShardingKeyColumns(values []any) (columns *C.dpiShardingKeyColumn, free 
 // standalone connection is created instead. The connection parameters are used
 // to acquire a connection from the pool specified by the pool parameters or
 // are used to create a standalone connection.
-func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) (*conn, error) {
+//
+// cu is the state of the connector that asks for the connection, nil if there is none.
+func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams, cu *connectorUses) (*conn, error) {
 	var err error
 	var pool *connPool
 	if !P.IsStandalone() {
 		pool, err = d.getPool(commonAndPoolParams{CommonParams: P.CommonParams, PoolParams: P.PoolParams})
 		if err != nil {
 			return nil, err
+		}
+		// A connector keeps one use of each pool it has connected through
+		// till its Close. Without a connector (Driver.Open) nothing tells
+		// when the pool is not needed anymore, so it is kept.
+		if cu != nil {
+			d.mu.Lock()
+			if _, ok := cu.pools[pool]; !ok {
+				if cu.pools == nil {
+					cu.pools = make(map[*connPool]struct{})
+				}
+				cu.pools[pool] = struct{}{}
+				pool.users++
+			}
+			d.mu.Unlock()
+			defer d.putPool(pool)
 		}
 	}
 	// createConn runs OnInit (respecting InitOnNewConn) in conn.init.
@@ -1093,6 +1113,9 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams) 
 //
 // Pools are stored in a map keyed by a string representation of the pool parameters.
 // If no pool exists, a pool is created and stored in the map.
+//
+// The returned pool is counted as used (connPool.users), so that
+// it is not closed under the caller: pair it with putPool.
 func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	// initialize driver, if necessary
 	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
@@ -1133,18 +1156,21 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	// pool; hold the lock while the pool is looked up (and created, if needed)
 	// in order to ensure that multiple goroutines do not attempt to create a
 	// pool
-	d.mu.RLock()
-	pool, ok := d.pools[poolKey]
-	d.mu.RUnlock()
-	if ok {
+	lookup := func() *connPool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		pool := d.pools[poolKey]
+		if pool != nil {
+			pool.users++
+		}
+		return pool
+	}
+	if pool := lookup(); pool != nil {
 		return pool, nil
 	}
 	d.poolMu.Lock()
 	defer d.poolMu.Unlock()
-	d.mu.RLock()
-	pool, ok = d.pools[poolKey]
-	d.mu.RUnlock()
-	if ok {
+	if pool := lookup(); pool != nil {
 		return pool, nil
 	}
 	// createPool uses checkExec wich needs getError which uses RLock,
@@ -1157,11 +1183,37 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	defer d.mu.Unlock()
 	if poolOld, ok := d.pools[poolKey]; ok {
 		_ = pool.Close()
+		poolOld.users++
 		return poolOld, nil
 	}
-	pool.key = poolKey
+	pool.key, pool.users = poolKey, 1
 	d.pools[poolKey] = pool
 	return pool, nil
+}
+
+// putPool gives back one use of the pool, and closes the pool if it was the last one.
+//
+// The pool is released, not force-closed: ODPI-C destroys the session pool
+// when the last connection acquired from it is released.
+func (d *drv) putPool(pool *connPool) {
+	d.mu.Lock()
+	pool.users--
+	// After Driver.Close the pool is not in the map: Close has purged it.
+	last := pool.users == 0 && d.pools[pool.key] == pool
+	if last {
+		delete(d.pools, pool.key)
+	}
+	d.mu.Unlock()
+	if !last {
+		return
+	}
+	// Destroying the sessions needs round trips: do not wait forever for them.
+	done := make(chan struct{})
+	go func() { _ = pool.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(driverCloseTimeout):
+	}
 }
 
 // createPool creates an ODPI-C pool with the specified parameters.
@@ -1631,14 +1683,23 @@ var _ io.Closer = (*connector)(nil)
 
 type connector struct {
 	drv    *drv
+	uses   *connectorUses
 	params dsn.ConnectionParams
+}
+
+// connectorUses is what a connector uses of its drv, from its first Connect
+// till its Close. It is shared by the copies of the connector, and guarded by drv.mu.
+type connectorUses struct {
+	// pools are the pools the connector has connected through,
+	// each counted once in connPool.users.
+	pools map[*connPool]struct{}
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB
 //
 // ConnectionParams must be complete, so start with what ParseDSN returns!
 func (d *drv) NewConnector(params dsn.ConnectionParams) driver.Connector {
-	return connector{drv: d, params: params}
+	return connector{drv: d, params: params, uses: new(connectorUses)}
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB,
@@ -1689,7 +1750,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 			return c.drv.createConnFromParams(ctx, dsn.ConnectionParams{
 				CommonParams: cc.CommonParams, ConnParams: cc.ConnParams,
 				PoolParams: params.PoolParams,
-			})
+			}, c.uses)
 		}
 	}
 
@@ -1704,7 +1765,7 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if logger != nil {
 		logger.Debug("connect", "poolParams", params.PoolParams, "connParams", params.ConnParams, "common", params.CommonParams)
 	}
-	return c.drv.createConnFromParams(ctx, params)
+	return c.drv.createConnFromParams(ctx, params, c.uses)
 }
 
 // Driver returns the underlying Driver of the Connector,
@@ -1712,14 +1773,28 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 // on sql.DB.
 func (c connector) Driver() driver.Driver { return c.drv }
 
-// Close the connector's underlying driver.
+// Close the connector: the session pools that no other connector uses are closed,
+// and so is the driver, when it is not the default one.
 //
 // From Go 1.17 sql.DB.Close() will call this method.
 func (c connector) Close() error {
-	if c.drv == nil || c.drv == defaultDrv {
+	d := c.drv
+	if d == nil {
 		return nil
 	}
-	return c.drv.Close()
+	if cu := c.uses; cu != nil {
+		d.mu.Lock()
+		pools := cu.pools
+		cu.pools = nil
+		d.mu.Unlock()
+		for pool := range pools {
+			d.putPool(pool)
+		}
+	}
+	if d == defaultDrv {
+		return nil
+	}
+	return d.Close()
 }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
