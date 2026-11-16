@@ -879,7 +879,61 @@ func acquireAttachSem(ctx context.Context, sem chan struct{}, needed bool) (rele
 	}
 }
 
+// acquireConn creates a standalone connection, or acquires one from the pool,
+// which ends with an error when ctx ends.
+//
+// ODPI-C waits for a free session of the pool up to the wait timeout of the pool,
+// and that wait cannot be interrupted. So the call is made on another goroutine,
+// where it is left to finish if ctx ends first; the session it may still get
+// is given back to the pool.
 func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if pool == nil || ctx.Done() == nil {
+		return d.acquireConnWait(ctx, pool, P)
+	}
+	// The call may outlive the caller, so it keeps the drv and the pool open itself.
+	d.mu.Lock()
+	d.conns++
+	pool.users++
+	d.mu.Unlock()
+	done := func() { d.putPool(pool); d.connDone() }
+	type result struct {
+		dc    *C.dpiConn
+		isNew bool
+		err   error
+	}
+	ch := make(chan result)
+	go func() {
+		var r result
+		r.dc, r.isNew, r.err = d.acquireConnWait(ctx, pool, P)
+		select {
+		case ch <- r:
+			return
+		case <-ctx.Done():
+		}
+		// Nobody waits for the connection anymore.
+		if r.err == nil {
+			if r.isNew {
+				// Not initialized: do not put it into the pool.
+				C.dpiConn_close(r.dc, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+			}
+			C.dpiConn_release(r.dc)
+		}
+		done()
+	}()
+	select {
+	case r := <-ch:
+		done()
+		return r.dc, r.isNew, r.err
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	}
+}
+
+// acquireConnWait is acquireConn that does not return before ODPI-C does.
+func (d *drv) acquireConnWait(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
 	logger := P.Logger
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
