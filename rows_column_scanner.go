@@ -128,7 +128,10 @@ func (r *rows) scanColumnDirect(i int, dest any) bool {
 				*p = i64
 				return true
 			case *sql.NullInt64:
-				*p = sql.NullInt64{Int64: i64, Valid: !isNull}
+				*p = sql.NullInt64{}
+				if !isNull {
+					*p = sql.NullInt64{Int64: i64, Valid: true}
+				}
 				return true
 			case *int:
 				if isNull {
