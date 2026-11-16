@@ -36,7 +36,11 @@ type Data struct {
 	keepAlive []byte
 	// err is the error of the last SetTime. The Object and ObjectCollection
 	// setters return it instead of writing the (NULL) value.
-	err           error
+	err error
+	// lob is the LOB that ODPI-C returned, with a reference, for an attribute
+	// or element of lobObj. reset releases it.
+	lob           *C.dpiLob
+	lobObj        *Object
 	dpiData       C.dpiData
 	implicitObj   bool
 	NativeTypeNum C.dpiNativeTypeNum
@@ -268,11 +272,24 @@ func (d *Data) SetIntervalYM(ym IntervalYM) {
 }
 
 // GetLob gets data as Lob.
+//
+// The Lob of an object attribute or collection element is valid
+// till its Object is closed, see Lob.
 func (d *Data) GetLob() *Lob {
 	if d.IsNull() {
 		return nil
 	}
-	return &Lob{Reader: &dpiLobReader{dpiLob: C.dpiData_getLOB(&d.dpiData)}}
+	rdr := &dpiLobReader{dpiLob: C.dpiData_getLOB(&d.dpiData)}
+	if d.lob != nil && d.lob == rdr.dpiLob && d.lobObj != nil {
+		// d has the LOB only till it is reset, so the reader
+		// gets its own reference, and the Object closes it.
+		if C.dpiLob_addRef(rdr.dpiLob) == C.DPI_FAILURE {
+			return nil
+		}
+		rdr.drv, rdr.owned = d.lobObj.drv, true
+		d.lobObj.addLob(rdr)
+	}
+	return &Lob{Reader: rdr}
 }
 
 // SetLob sets Lob to the data.
@@ -771,7 +788,19 @@ func (d *Data) reset(null bool) {
 	d.implicitObj = false
 	d.keepAlive = nil
 	d.err = nil
+	if d.lob != nil {
+		C.dpiLob_release(d.lob)
+		d.lob, d.lobObj = nil, nil
+	}
 	d.dpiData.isNull = C.int(b2i(null))
+}
+
+// takeLob notes that the LOB in d (if any) was returned by ODPI-C
+// for an attribute or element of O, with a reference that d must release.
+func (d *Data) takeLob(O *Object) {
+	if d.NativeTypeNum == C.DPI_NATIVE_TYPE_LOB && d.dpiData.isNull == 0 {
+		d.lob, d.lobObj = C.dpiData_getLOB(&d.dpiData), O
+	}
 }
 
 func (d *Data) dpiDataGetBytes() *C.dpiBytes { return C.dpiData_getBytes(&d.dpiData) }

@@ -28,7 +28,8 @@ import (
 // A Lob returned from a row is closed by the next Next of the rows,
 // and when its statement is executed again or closed;
 // a Lob returned as an OUT parameter is closed when its statement
-// is executed again or closed.
+// is executed again or closed;
+// a Lob read from an Object is closed when the Object is closed.
 var ErrLOBClosed = errors.New("LOB is closed")
 
 // Lob is for reading/writing a LOB.
@@ -36,7 +37,8 @@ var ErrLOBClosed = errors.New("LOB is closed")
 // A Lob that the database returned is valid only for a limited time:
 // when it is a column of a row (see LobAsReader), till the next Next of the rows,
 // and till the statement is executed again or closed;
-// when it is an OUT parameter, till the statement is executed again or closed.
+// when it is an OUT parameter, till the statement is executed again or closed;
+// when it is an attribute of an Object or an element of a collection, till the Object is closed.
 // After that, it returns ErrLOBClosed.
 //
 // Closing the rows closes the statement, too, unless it is a prepared one (sql.Stmt).
@@ -180,6 +182,13 @@ func (dlr *dpiLobReader) release() {
 		dlr.hijacked = nil
 	}
 	dlr.dropLob()
+}
+
+// done reports whether the reader holds no LOB anymore.
+func (dlr *dpiLobReader) done() bool {
+	dlr.mu.Lock()
+	defer dlr.mu.Unlock()
+	return dlr.dpiLob == nil && dlr.hijacked == nil
 }
 
 // rewind reports whether the reader is open and reads lob;
