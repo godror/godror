@@ -31,7 +31,12 @@ type stmtCache struct {
 	cache *sieve.Cache[string, *statement]
 }
 
+// newStmtCache returns a cache of at most max statements.
+// With max less than 1 nothing is cached.
 func newStmtCache(max int) stmtCache {
+	if max < 1 {
+		return stmtCache{}
+	}
 	return stmtCache{cache: sieve.NewCache[string, *statement](max)}
 }
 
@@ -41,12 +46,19 @@ func newStmtCache(max int) stmtCache {
 // connection closes the cached statements, and a failed statement is closed
 // by its user.
 func (sc *stmtCache) take(query string) *statement {
+	if sc.cache == nil {
+		return nil
+	}
 	st, _ := sc.cache.Delete(query)
 	return st
 }
 
 // put adds st to the cache, and closes the statement it evicts or replaces.
 func (sc *stmtCache) put(query string, st *statement) {
+	if sc.cache == nil {
+		st.Close()
+		return
+	}
 	if old, ok := sc.cache.Put(query, st); ok && old != st {
 		old.Close()
 	}
@@ -54,6 +66,9 @@ func (sc *stmtCache) put(query string, st *statement) {
 
 // clear closes and drops all cached statements.
 func (sc *stmtCache) Close() error {
+	if sc.cache == nil {
+		return nil
+	}
 	sc.cache.Clear(func(k string, v *statement) {
 		v.Close()
 	})

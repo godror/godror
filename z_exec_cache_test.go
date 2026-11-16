@@ -124,3 +124,35 @@ func TestExecCacheLostConn(t *testing.T) {
 		t.Fatal("Exec of a cached statement hangs on the lost connection")
 	}
 }
+
+// StmtCacheSize=-1 disables the statement cache; 1 is the smallest cache.
+func TestExecCacheSize(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+	for _, size := range []int{-1, 0, 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("StmtCacheSize=%d: panic: %v", size, r)
+				}
+			}()
+			db := execCacheDB(t, func(P *godror.ConnectionParams) { P.StmtCacheSize = size })
+			defer db.Close()
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			for i := range 6 {
+				qry := fmt.Sprintf("BEGIN /* %d */ :1 := :2 * 2; END;", i%2)
+				var got int
+				if _, err := conn.ExecContext(ctx, qry, sql.Out{Dest: &got}, i); err != nil {
+					t.Fatalf("%d. %+v", i, err)
+				}
+				if got != 2*i {
+					t.Errorf("%d. got %d, wanted %d", i, got, 2*i)
+				}
+			}
+		})
+	}
+}
