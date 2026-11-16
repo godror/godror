@@ -8,6 +8,7 @@ package godror_test
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"testing"
 	"time"
 
@@ -210,6 +211,58 @@ func TestOutTimestampTZOffset(t *testing.T) {
 				}
 				if !tsltz.Time.Equal(tC.Want) {
 					t.Errorf("%s: %s RETURNING a TIMESTAMP WITH LOCAL TIME ZONE is %s", prefix, tC.Lit, tsltz.Time.Format(time.RFC3339))
+				}
+			}
+		}()
+	}
+}
+
+// TestSessionTimezoneOnInitFunc checks that a session whose time zone is set
+// by an OnInit function gets its own zone, not the cached one of another
+// sql.DB of the same database, and that it does not leave its zone for others.
+func TestSessionTimezoneOnInitFunc(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+
+	plain, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain.StandaloneConnection = godror.Bool(true)
+	withFunc := plain
+	withFunc.OnInit = func(ctx context.Context, c driver.ConnPrepareContext) error {
+		st, err := c.PrepareContext(ctx, "ALTER SESSION SET TIME_ZONE='-07:00'")
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		_, err = st.(driver.StmtExecContext).ExecContext(ctx, nil)
+		return err
+	}
+
+	type namedParams struct {
+		Name string
+		P    godror.ConnectionParams
+	}
+	A, B := namedParams{"plain", plain}, namedParams{"OnInit func", withFunc}
+	for _, order := range [][]namedParams{{A, B}, {B, A}} {
+		func() {
+			// A driver of its own has an empty time zone cache.
+			drv := godror.NewDriver()
+			defer drv.Close()
+			for i, x := range order {
+				db := sql.OpenDB(drv.NewConnector(x.P))
+				defer db.Close()
+				// CURRENT_DATE is the wall clock in the session time zone.
+				var d, ts time.Time
+				if err := db.QueryRowContext(ctx,
+					"SELECT CURRENT_DATE, CURRENT_TIMESTAMP FROM DUAL",
+				).Scan(&d, &ts); err != nil {
+					t.Fatal(err)
+				}
+				if diff := d.Sub(ts).Round(time.Minute); diff != 0 {
+					t.Errorf("%s (connected as %d.): CURRENT_DATE is read as %s, %s off from CURRENT_TIMESTAMP",
+						x.Name, i+1, d.Format(time.RFC3339), diff)
 				}
 			}
 		}()
