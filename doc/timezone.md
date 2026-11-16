@@ -35,16 +35,13 @@ of dates of the other half of the year (a `BindTimeAsDate` value into a
 TIMESTAMP WITH TIME ZONE column, for example) are an hour off.
 Set a region name as the session time zone to have that right, too.
 
-Godror will print a
+The DB's OS' time zone (`TO_CHAR(SYSTIMESTAMP, 'TZR')`) may differ from the session time zone:
+a DATE filled with SYSDATE is in the former, but is read in the latter.
+(Godror used to print a "discrepancy between SESSIONTIMEZONE and SYSTIMESTAMP" warning for this;
+it does not anymore, and the `noTimezoneCheck` connection parameter has nothing to suppress.)
 
-    godor WARNING: discrepancy between SESSIONTIMEZONE and SYSTIMESTAMP
-
-warning when the session time zone differs from the DB's OS' time zone
-(`TO_CHAR(SYSTIMESTAMP, 'TZR')`): a DATE filled with SYSDATE is in the latter,
-but is read in the former.
-
-## How to eliminate this warning ?
-Either use the DB's OS' time zone as the session time zone with `ORA_SDTZ` or
+## How to choose the time zone ?
+Either set the session time zone with `ORA_SDTZ` or
 
     ALTER SESSION SET TIME_ZONE='Europe/Berlin'
 

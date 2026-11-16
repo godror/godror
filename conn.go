@@ -565,7 +565,6 @@ func (c *conn) initTZ(useCache bool) error {
 	if c.tzValid {
 		return nil
 	}
-	noTZCheck := c.params.NoTZCheck || c.params.Timezone != nil
 	if c.params.Timezone != nil && c.params.Timezone != time.Local {
 		c.tzValid, c.tzFromParams = true, true
 		return nil
@@ -642,7 +641,7 @@ func (c *conn) initTZ(useCache bool) error {
 		logger.Debug("calculateTZ", "sessionTZ", dbTZ, "dbOSTZ", dbOSTZ)
 	}
 
-	tzLoc, tzOff, err := calculateTZ(dbTZ, dbOSTZ, noTZCheck, logger)
+	tzLoc, tzOff, err := calculateTZ(dbTZ, dbOSTZ, logger)
 	//fmt.Printf("calculateTZ(%q, %q): %p=%v, %v, %v\n", dbTZ, timezone, tz.Location, tz.Location, tz.offSecs, err)
 	if logger != nil {
 		logger.Debug("calculateTZ", "timezone", dbOSTZ, "tz", tz, "error", err)
