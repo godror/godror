@@ -58,6 +58,9 @@ type rows struct {
 	scratch        []driver.Value
 	callsC         []bool
 	logger         *slog.Logger
+	// jsons are the JSON values handed out since the last fetch
+	// without the KeepJSON option: the next fetch or Close frees them.
+	jsons []*jsonRow
 }
 
 // Columns returns the names of the columns. The number of
@@ -77,6 +80,7 @@ func (r *rows) Close() error {
 	if r == nil {
 		return nil
 	}
+	r.closeJSONs()
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
@@ -102,6 +106,16 @@ func (r *rows) Close() error {
 	}
 	C.dpiStmt_release(st.dpiStmt)
 	return nil
+}
+
+// closeJSONs marks the JSON values handed out since the last fetch as closed,
+// because the fetch or the Close that follows frees their dpiJson handles.
+func (r *rows) closeJSONs() {
+	for _, jr := range r.jsons {
+		jr.closed = true
+	}
+	clear(r.jsons)
+	r.jsons = r.jsons[:0]
 }
 
 // ColumnTypeLength return the length of the column type if the column is a variable length type.
@@ -355,6 +369,7 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 		var moreRows C.int
 		var start time.Time
 		maxRows := C.uint32_t(r.statement.FetchArraySize())
+		r.closeJSONs()
 		r.statement.Lock()
 		if debugRowsNext {
 			fmt.Printf("fetching max=%d\n", maxRows)
@@ -417,6 +432,7 @@ type rowOptions struct {
 	nullDate         any
 	nass, naf        bool
 	jsonAsString     bool
+	keepJSON         bool
 	jsonStringOption JSONOption
 }
 
@@ -425,6 +441,7 @@ func (o *rowOptions) load(st *statement) {
 	o.nass = st.NumberAsString()
 	o.naf = !o.nass && st.NumberAsFloat64()
 	o.jsonAsString = st.JSONAsString()
+	o.keepJSON = st.keepJSON
 	o.jsonStringOption = st.JSONStringOption()
 }
 
@@ -735,6 +752,12 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 					return err
 				}
 			} else {
+				j.row = &jsonRow{kept: o.keepJSON}
+				if !o.keepJSON {
+					r.jsons = append(r.jsons, j.row)
+				} else if C.dpiJson_addRef(dj) == C.DPI_FAILURE {
+					return fmt.Errorf("JSON addRef: %w", r.getError())
+				}
 				dest[i] = j
 			}
 		default:

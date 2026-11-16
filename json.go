@@ -241,6 +241,10 @@ import (
 var (
 	ErrInvalidJSON = errors.New("invalid JSON Document")
 	ErrInvalidType = errors.New("invalid JSON Scalar Type")
+	// ErrJSONClosed is returned by the methods of a JSON that was scanned
+	// from a row, when they are called after the next Next or Close of its
+	// rows, or, if it was scanned with KeepJSON, after its Close. See JSON.
+	ErrJSONClosed = errors.New("JSON is closed")
 )
 
 // JSONOption provides an option to retrieve scalar values
@@ -262,9 +266,63 @@ const (
 
 // JSON holds the JSON data to/from Oracle.
 // It is like a root node in JSON tree.
+//
+// A JSON scanned from a row refers to the fetch buffer of the rows, just like
+// sql.RawBytes: it, and every JSONObject, JSONArray, JSONScalar and Data
+// read from it, is valid only until the next call of Next or Close
+// on the rows. Convert it (GetValue, String) inside the loop,
+// or use the JSONAsString option to get the column as a string.
+// Calling its methods later returns ErrJSONClosed.
+//
+// With the KeepJSON option, a scanned JSON holds a reference of its own,
+// and is valid until its Close, which must be called.
+// That is the way to use QueryRow(...).Scan(&j), which closes the rows.
+//
+// A JSON received as an OUT parameter belongs to its statement the same way:
+// it is valid until the statement is executed again or closed.
+// This is not checked, and KeepJSON does not apply to it.
 type JSON struct {
-	dpiJson      *C.dpiJson
+	dpiJson *C.dpiJson
+	// row is set for a JSON scanned from a row,
+	// and is shared by the copies of that JSON.
+	row          *jsonRow
 	stringOption JSONOption
+}
+
+// jsonRow is the state of a JSON that was scanned from a row.
+type jsonRow struct {
+	// kept is set if the JSON has a reference to the dpiJson (KeepJSON),
+	// which Close releases. The dpiJson of the others is freed by the rows.
+	kept bool
+	// closed is set when the dpiJson must not be used anymore.
+	closed bool
+}
+
+// Close releases a JSON that was scanned with the KeepJSON option.
+// The JSON and everything read from it must not be used after that.
+//
+// It does nothing for any other JSON, and it can be called more than once.
+func (j JSON) Close() error {
+	if j.row == nil || !j.row.kept || j.row.closed {
+		return nil
+	}
+	j.row.closed = true
+	if C.dpiJson_release(j.dpiJson) == C.DPI_FAILURE {
+		return fmt.Errorf("release: %w", ErrInvalidJSON)
+	}
+	return nil
+}
+
+// top returns the top node of the document.
+func (j JSON) top(opts JSONOption) (*C.dpiJsonNode, error) {
+	if j.row != nil && j.row.closed {
+		return nil, ErrJSONClosed
+	}
+	var node *C.dpiJsonNode
+	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
+		return nil, ErrInvalidJSON
+	}
+	return node, nil
 }
 
 func (j JSON) StringWithOption(opts JSONOption) (string, error) {
@@ -287,9 +345,9 @@ func (j JSON) StringWithOption(opts JSONOption) (string, error) {
 
 // Get retrieves the data stored in JSON based on option, opts.
 func (j JSON) Get(data *Data, opts JSONOption) error {
-	var node *C.dpiJsonNode
-	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return ErrInvalidJSON
+	node, err := j.top(opts)
+	if err != nil {
+		return err
 	}
 	jsonNodeToData(data, node)
 	return nil
@@ -298,11 +356,11 @@ func (j JSON) Get(data *Data, opts JSONOption) error {
 // GetJSONObject retrieves JSONObject from JSON based on option, opts.
 // It returns error if JSON doesnt represent object type.
 func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
-	var node *C.dpiJsonNode
-	var d Data
-	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return JSONObject{}, ErrInvalidJSON
+	node, err := j.top(opts)
+	if err != nil {
+		return JSONObject{}, err
 	}
+	var d Data
 	jsonNodeToData(&d, node)
 	if C.dpiOracleTypeNum(node.oracleTypeNum) != C.DPI_ORACLE_TYPE_JSON_OBJECT {
 		return JSONObject{}, ErrInvalidType
@@ -313,9 +371,9 @@ func (j JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 // GetJSONArray retrieves JSONArray from JSON based on option, opts.
 // It returns error if JSON doesnt represent array type.
 func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
-	var node *C.dpiJsonNode
-	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return JSONArray{}, ErrInvalidJSON
+	node, err := j.top(opts)
+	if err != nil {
+		return JSONArray{}, err
 	}
 	var d Data
 	jsonNodeToData(&d, node)
@@ -327,9 +385,9 @@ func (j JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 
 // GetJSONScalar retrieves JSONScalar from JSON based on option, opts.
 func (j JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
-	var node *C.dpiJsonNode
-	if C.dpiJson_getValue(j.dpiJson, C.uint32_t(opts), (**C.dpiJsonNode)(unsafe.Pointer(&node))) == C.DPI_FAILURE {
-		return JSONScalar{}, ErrInvalidJSON
+	node, err := j.top(opts)
+	if err != nil {
+		return JSONScalar{}, err
 	}
 	return JSONScalar{dpiJsonNode: node, stringOption: j.stringOption}, nil
 }
@@ -422,6 +480,9 @@ type JSONValue struct {
 // It includes all scalar values such as int, int8, int16, int32, int64,
 // uint, uint8, uint16, uint32, uint64, float32, float64, string,
 // map, array, string, byte[], time.Time, time.Duration, godror.Number and bool.
+//
+// A JSONScalar read from a JSON that was scanned from a row points into that
+// JSON, and is valid only as long as that JSON is. See JSON.
 type JSONScalar struct {
 	dpiJsonNode  *C.dpiJsonNode
 	stringOption JSONOption
@@ -496,6 +557,9 @@ func getJSONScalarString(d Data) (string, error) {
 }
 
 // JSONArray represents the array input.
+//
+// A JSONArray read from a JSON that was scanned from a row points into that
+// JSON, and is valid only as long as that JSON is. See JSON.
 type JSONArray struct {
 	dpiJsonArray *C.dpiJsonArray
 	stringOption JSONOption
@@ -573,6 +637,9 @@ func jsonArraySlice(arr *C.dpiJsonArray) []C.dpiJsonNode {
 }
 
 // JSONObject represents the map input.
+//
+// A JSONObject read from a JSON that was scanned from a row points into that
+// JSON, and is valid only as long as that JSON is. See JSON.
 type JSONObject struct {
 	dpiJsonObject *C.dpiJsonObject
 	stringOption  JSONOption

@@ -6,12 +6,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
+- KeepJSON option and JSON.Close: a godror.JSON scanned with KeepJSON is valid until its Close, so QueryRow(...).Scan(&j) can be used. See #472.
 - Implement driver.ExecerContext with a per-connection LRU statement cache:
   repeated Exec calls with the same query reuse the prepared statement.
 
 ### Fixed
 - Repeated Exec calls with an OUT object collection bind no longer grow the
   client-side memory of the Oracle Client (TestPlSqlNestedObj).
+
+### Changed
+- A godror.JSON scanned from a row is valid only until the next Next or Close of the rows (now documented). Using it later returns ErrJSONClosed instead of reading freed memory. See #472.
 
 ## [v0.52.0]
 ### Added
