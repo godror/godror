@@ -3264,7 +3264,9 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	if r, ok := L.Reader.(*dpiLobReader); ok {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.closed {
+		// At EOF the reader has released its LOB: ODPI-C would answer
+		// DPI-1002 for the nil handle, which counts as a bad connection.
+		if r.closed || r.dpiLob == nil {
 			return ErrLOBClosed
 		}
 		if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil {
