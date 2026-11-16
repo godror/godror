@@ -1698,11 +1698,13 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			*get = dataGetBytes
 		} else {
 			switch v := v.(type) {
+			// Over 32767 bytes ODPI-C makes the variable a dynamic (LONG) bind,
+			// which SQL takes as a CLOB: do that only if the value needs it.
 			case string:
-				info.bufSize = bindBufSize(4 * len(v))
+				info.bufSize = bindBufSize(min(4*len(v), max(len(v), 32767)))
 			case []string:
 				for _, s := range v {
-					if n := 4 * len(s); n > info.bufSize {
+					if n := min(4*len(s), max(len(s), 32767)); n > info.bufSize {
 						info.bufSize = n
 					}
 				}
