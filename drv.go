@@ -490,6 +490,10 @@ func (d *drv) close(onlyUnused bool) error {
 		// The pools may still use the context, so leave it allocated.
 		return fmt.Errorf("Driver.Close: purging pools: %w", context.DeadlineExceeded)
 	}
+	if dpiCtx == nil {
+		// Never initialized, or closed already.
+		return nil
+	}
 
 	done := make(chan error, 1)
 	go func() {
