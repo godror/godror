@@ -57,7 +57,8 @@ type rows struct {
 	options        rowOptions
 	scratch        []driver.Value
 	callsC         []bool
-	// lobs are the LOB readers of the current row, closed by Next and Close.
+	// lobs are the LOB readers of the current row, closed by Next,
+	// and by Close when the statement is closed with the rows.
 	lobs   []*dpiLobReader
 	logger *slog.Logger
 }
@@ -79,7 +80,15 @@ func (r *rows) Close() error {
 	if r == nil {
 		return nil
 	}
-	r.closeLobs()
+	if st := r.statement; st != nil && st.dpiStmt != nil && !r.fromData && st.dpiStmt.refCount >= 2 {
+		// The statement stays open (a prepared statement): the Lobs of the
+		// last row remain valid till it is executed again or closed.
+		st.outLobs = append(st.outLobs, r.lobs...)
+		clear(r.lobs)
+		r.lobs = r.lobs[:0]
+	} else {
+		r.closeLobs()
+	}
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
@@ -342,7 +351,7 @@ func (r *rows) Next(dest []driver.Value) error {
 // closeLobs closes the LOB readers handed out for the current row.
 //
 // The define variable owns the LOBs, and frees them at the next fetch and
-// when the statement is closed, so a row's Lob cannot outlive its row.
+// when the statement is closed or executed again.
 func (r *rows) closeLobs() {
 	for i, rdr := range r.lobs {
 		rdr.release()
