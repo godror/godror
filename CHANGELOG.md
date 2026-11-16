@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 - Repeated Exec calls with an OUT object collection bind no longer grow the
   client-side memory of the Oracle Client (TestPlSqlNestedObj).
+- A TIMESTAMP WITH LOCAL TIME ZONE column is read as the stored instant even
+  when the session time zone differs from the client's OS time zone (#495).
 
 ### Changed
 - A godror.JSON scanned from a row is valid only until the next Next or Close of the rows (now documented). Using it later returns ErrJSONClosed instead of reading freed memory. See #472.
