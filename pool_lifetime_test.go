@@ -8,6 +8,7 @@ package godror
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"os"
 	"testing"
 	"time"
@@ -198,4 +199,127 @@ func TestPoolClosedAfterHeldConn(t *testing.T) {
 	if got := poolsWithTimeout(defaultDrv, lo, lo+1); len(got) != 0 {
 		t.Errorf("the sql.DB and its connection are closed, %d session pools remain", len(got))
 	}
+}
+
+// TestSharedConnectorPool checks that two sql.DBs opened with the same
+// connector value share one pool till both are closed.
+func TestSharedConnectorPool(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const lo = 241 * time.Second
+	c := NewConnector(lifetimeTestParams(t, lo))
+	db1, db2 := sql.OpenDB(c), sql.OpenDB(c)
+	defer db1.Close()
+	defer db2.Close()
+	if err := db1.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := db2.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	pools := poolsWithTimeout(defaultDrv, lo, lo+1)
+	if err := db1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := poolsWithTimeout(defaultDrv, lo, lo+1); len(got) != 1 || got[0] != pools[0] {
+		t.Fatalf("closing one sql.DB closed the pool of the other, which shares its connector: %v", got)
+	}
+	conn.Close()
+	if conn, err = db2.Conn(ctx); err != nil {
+		t.Fatal(err)
+	}
+	conn2, err := db2.Conn(ctx) // a new session
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := poolsWithTimeout(defaultDrv, lo, lo+1); len(got) != 1 || got[0] != pools[0] {
+		t.Errorf("the remaining sql.DB does not use the pool it had: %v, wanted %v", got, pools)
+	}
+	conn.Close()
+	conn2.Close()
+	if err := db2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := poolsWithTimeout(defaultDrv, lo, lo+1); len(got) != 0 {
+		t.Errorf("both sql.DBs are closed, %d session pools remain", len(got))
+	}
+}
+
+// TestPoolClosedAfterLateConnect checks that a Connect that ends after
+// its connector was closed (database/sql may have one running when
+// sql.DB.Close closes the connector) does not leave a pool behind.
+func TestPoolClosedAfterLateConnect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	const lo = 251 * time.Second
+	c := NewConnector(lifetimeTestParams(t, lo))
+	db := sql.OpenDB(c)
+	err := db.PingContext(ctx)
+	if closeErr := db.Close(); err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	conn, err := c.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Error(err)
+	}
+	if got := poolsWithTimeout(defaultDrv, lo, lo+1); len(got) != 0 {
+		t.Errorf("the connector and its connection are closed, %d session pools remain", len(got))
+	}
+}
+
+// TestPoolStatsOfHeldConn checks that a connection held over the Close of
+// its sql.DB still sees its pool, while other sql.DBs with the same
+// parameters come and go. Run it with -race.
+func TestPoolStatsOfHeldConn(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	P := lifetimeTestParams(t, 261*time.Second)
+	db := sql.OpenDB(NewConnector(P))
+	defer db.Close()
+	held, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if err := held.Raw(func(dc any) error {
+				stats, err := dc.(*conn).GetPoolStats()
+				if err == nil && stats.Open == 0 {
+					t.Error("the pool of the held connection has no open session:", stats)
+					return driver.ErrSkip
+				}
+				return err
+			}); err != nil {
+				if err != driver.ErrSkip {
+					t.Error(err)
+				}
+				return
+			}
+		}
+	}()
+	if err := db.Close(); err != nil {
+		t.Error(err)
+	}
+	for range 5 {
+		db := sql.OpenDB(NewConnector(P))
+		if err := db.PingContext(ctx); err != nil {
+			t.Error(err)
+		}
+		db.Close()
+	}
+	close(stop)
+	<-done
 }

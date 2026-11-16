@@ -49,7 +49,9 @@ var (
 )
 
 type conn struct {
-	drv                 *drv
+	drv *drv
+	// uses is the state of the connector that created the connection, if any.
+	uses                *connectorUses
 	dpiConn             *C.dpiConn
 	currentTT           atomic.Value
 	poolKey             string
@@ -324,6 +326,9 @@ func (c *conn) closeNotLocking() error {
 	// To track reference counting, use DPI_DEBUG_LEVEL=2
 	C.dpiConn_release(dpiConn)
 
+	if c.uses != nil {
+		c.drv.connectorDone(c.uses, false)
+	}
 	c.drv.connDone()
 	return nil
 }
