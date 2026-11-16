@@ -6,11 +6,15 @@
 package godror_test
 
 import (
+	"database/sql"
+	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
 
 type (
+	namedInt8    int8
 	namedFloat32 float32
 	namedFloat64 float64
 	namedInt32   int32
@@ -53,4 +57,47 @@ func TestNamedFloat32Bind(t *testing.T) {
 		}
 	}
 
+}
+
+// TestNamedNumberOut checks that a named number type can be an OUT bind.
+func TestNamedNumberOut(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+
+	const qry = "BEGIN :1 := :1 * 2; END;"
+	f32, f64, i32, u16 := namedFloat32(1.5), namedFloat64(-2.25), namedInt32(-42), namedUint16(42)
+	for _, tC := range []struct {
+		dest any
+		want any
+	}{
+		{&f32, namedFloat32(3)},
+		{&f64, namedFloat64(-4.5)},
+		{&i32, namedInt32(-84)},
+		{&u16, namedUint16(84)},
+	} {
+		if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: tC.dest, In: true}); err != nil {
+			t.Errorf("%T: %+v", tC.dest, err)
+			continue
+		}
+		var got any
+		switch x := tC.dest.(type) {
+		case *namedFloat32:
+			got = *x
+		case *namedFloat64:
+			got = *x
+		case *namedInt32:
+			got = *x
+		case *namedUint16:
+			got = *x
+		}
+		if got != tC.want {
+			t.Errorf("%T: got %v, wanted %v", tC.dest, got, tC.want)
+		}
+	}
+
+	// A value that does not fit is an error, as for the base type.
+	i8 := namedInt8(100)
+	if _, err := testDb.ExecContext(ctx, qry, sql.Out{Dest: &i8, In: true}); !errors.Is(err, strconv.ErrRange) {
+		t.Errorf("%T: got %d with %v, wanted strconv.ErrRange", i8, i8, err)
+	}
 }

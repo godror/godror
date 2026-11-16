@@ -2528,20 +2528,47 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 		return dataGetBytes(ctx, x, data)
 
 	default:
+		// A pointer to a named number type: read the base type, then convert.
 		rv := reflect.ValueOf(v)
-		switch rv.Type().Kind() {
+		if rv.Kind() != reflect.Pointer || rv.IsNil() {
+			return fmt.Errorf("unknown number [%T] %#v", v, v)
+		}
+		rv = rv.Elem()
+		switch rv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			x := reflect.ValueOf(new(int64)).Elem()
-			x.SetInt(rv.Int())
-			return dataGetNumber(ctx, x.Interface(), data)
+			var n int64
+			if err := dataGetNumber(ctx, &n, data); err != nil {
+				return err
+			}
+			if rv.OverflowInt(n) {
+				return fmt.Errorf("%d does not fit into %s: %w", n, rv.Type(), strconv.ErrRange)
+			}
+			rv.SetInt(n)
+			return nil
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			x := reflect.ValueOf(new(uint64)).Elem()
-			x.SetUint(rv.Uint())
-			return dataGetNumber(ctx, x.Interface(), data)
-		case reflect.Float32, reflect.Float64:
-			x := reflect.ValueOf(new(float64)).Elem()
-			x.SetFloat(rv.Float())
-			return dataGetNumber(ctx, x.Interface(), data)
+			var n uint64
+			if err := dataGetNumber(ctx, &n, data); err != nil {
+				return err
+			}
+			if rv.OverflowUint(n) {
+				return fmt.Errorf("%d does not fit into %s: %w", n, rv.Type(), strconv.ErrRange)
+			}
+			rv.SetUint(n)
+			return nil
+		case reflect.Float32:
+			var f float32
+			if err := dataGetNumber(ctx, &f, data); err != nil {
+				return err
+			}
+			rv.SetFloat(float64(f))
+			return nil
+		case reflect.Float64:
+			var f float64
+			if err := dataGetNumber(ctx, &f, data); err != nil {
+				return err
+			}
+			rv.SetFloat(f)
+			return nil
 		}
 
 		return fmt.Errorf("unknown number [%T] %#v", v, v)
