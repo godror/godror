@@ -447,7 +447,11 @@ func (c *conn) endTran(isCommit bool) error {
 }
 
 type varInfo struct {
-	ObjectType        *C.dpiObjectType
+	ObjectType *C.dpiObjectType
+	// ownObjs[i] is the object that dataSetObject has created for the i-th
+	// element of the variable, and the variable still holds (or nil):
+	// only such an object is written again at the next execution.
+	ownObjs           []*C.dpiObject
 	SliceLen, BufSize int
 	NatTyp            C.dpiNativeTypeNum
 	Typ               C.dpiOracleTypeNum
