@@ -400,6 +400,8 @@ func (r *rows) closeLobs() {
 
 func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 	if r.fetched == 0 {
+		// The context of the query: Next has none of its own.
+		stmtCtx := r.statement.ctx
 		// Start the watchdog only once See issue #113 (https://github.com/godror/godror/issues/113)
 		if ctx := r.statement.ctx; ctx != nil {
 			// nil can be present when Next is issued on cursor returned from DB
@@ -432,9 +434,25 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 			fmt.Printf("fetching max=%d\n", maxRows)
 			start = time.Now()
 		}
-		err := r.statement.checkExecNoLOT(func() C.int {
-			return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
-		})
+		fetchRows := func() error {
+			return r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
+			})
+		}
+		var err error
+		if c := r.statement.conn; c == nil || stmtCtx == nil || stmtCtx.Done() == nil {
+			err = fetchRows()
+		} else {
+			// BREAK the fetch when the query's context is canceled,
+			// as the execute does.
+			c.mu.RLock()
+			done := make(chan struct{})
+			wait := breakOnCancel(stmtCtx, c, done, logger)
+			err = fetchRows()
+			close(done)
+			wait()
+			c.mu.RUnlock()
+		}
 		failed := err != nil
 		if debugRowsNext {
 			fmt.Printf("failed=%t bri=%d fetched=%d more=%d data=%d cols=%d dur=%s\n", failed, r.bufferRowIndex, r.fetched, moreRows, len(r.data), len(r.columns), time.Since(start))
@@ -445,7 +463,9 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 				logger.Error("fetch", "error", err)
 			}
 			_ = r.Close()
-			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
+			if stmtCtx != nil && stmtCtx.Err() != nil {
+				r.err = stmtCtx.Err()
+			} else if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
 				r.err = io.EOF
 			} else {
 				r.err = fmt.Errorf("Next: %w", err)
@@ -757,6 +777,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			conn:             r.conn,
 			statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
 			stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
+			ctx:              r.statement.ctx,         // and its context, for the fetches
 		}
 		stmtAddCleanup(ctx, st, "rows.Next")
 		var colCount C.uint32_t
