@@ -743,17 +743,55 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 }
 
 // paramNames are the parameter names that Parse knows.
-var paramNames = []string{
-	"connectString", "user", "password", "newPassword", "token", "privateKey",
-	"connectionClass", "adminRole", "sysdba", "sysoper", "sysasm", "prelim",
-	"standaloneConnection", "heterogeneousPool", "externalAuth", "noWait",
-	"poolMinSessions", "poolMaxSessions", "poolMaxSessionsPerShard",
-	"poolIncrement", "sessionIncrement",
-	"poolSessionTimeout", "poolWaitTimeout", "poolSessionMaxLifetime", "pingInterval",
-	"timezone", "noTimezoneCheck", "perSessionTimezone", "charset", "stmtCacheSize",
-	"enableEvents", "alterSession", "onInit", "initOnNewConnection",
-	"noBreakOnContextCancel", "shardingKey", "superShardingKey",
-	"configDir", "libDir",
+var knownParamNames = map[string]struct{}{
+	"connectString": {},
+	"user":          {},
+	"password":      {},
+	"newPassword":   {},
+	"token":         {},
+	"privateKey":    {},
+
+	"connectionClass": {},
+	"adminRole":       {},
+	"sysdba":          {},
+	"sysoper":         {},
+	"sysasm":          {},
+	"prelim":          {},
+
+	"standaloneConnection": {},
+	"heterogeneousPool":    {},
+	"externalAuth":         {},
+	"noWait":               {},
+
+	"poolMinSessions":         {},
+	"poolMaxSessions":         {},
+	"poolMaxSessionsPerShard": {},
+
+	"poolIncrement":    {},
+	"sessionIncrement": {},
+
+	"poolSessionTimeout":     {},
+	"poolWaitTimeout":        {},
+	"poolSessionMaxLifetime": {},
+	"pingInterval":           {},
+
+	"timezone":           {},
+	"noTimezoneCheck":    {},
+	"perSessionTimezone": {},
+	"charset":            {},
+	"stmtCacheSize":      {},
+
+	"enableEvents":        {},
+	"alterSession":        {},
+	"onInit":              {},
+	"initOnNewConnection": {},
+
+	"noBreakOnContextCancel": {},
+	"shardingKey":            {},
+	"superShardingKey":       {},
+
+	"configDir": {},
+	"libDir":    {},
 }
 
 // startsWithParam reports whether s starts with a known parameter name and an
@@ -763,12 +801,8 @@ func startsWithParam(s string) bool {
 	if !ok {
 		return false
 	}
-	for _, k := range paramNames {
-		if name == k {
-			return true
-		}
-	}
-	return false
+	_, ok = knownParamNames[name]
+	return ok
 }
 
 // Password is printed obfuscated with String, use Secret to reveal the secret.
