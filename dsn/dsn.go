@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-logfmt/logfmt"
 	"github.com/godror/godror/slog"
@@ -497,7 +498,7 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		//fmt.Printf("URL=%s cs=%q host=%q port=%q path=%q\n", u, P.ConnectString, u.Host, u.Port(), u.Path)
 		q = u.Query()
 	} else if strings.IndexByte(dataSourceName, '\n') >= 0 || // multi-line, or
-		strings.Contains(dataSourceName, "connectString=") || // contains connectString, or
+		hasConnectStringParam(dataSourceName) || // has a connectString parameter, or
 		startsWithParam(dataSourceName) { // starts with a parameter
 		// This should be a proper logfmt-encoded parameter string
 		paramsString, dataSourceName = dataSourceName, ""
@@ -794,6 +795,22 @@ var knownParamNames = map[string]struct{}{
 	"libDir":    {},
 }
 
+// hasConnectStringParam reports whether s has a connectString= parameter:
+// at its start, or after white space. The password of an old-style DSN
+// (user/connectString=x@db) is not one.
+func hasConnectStringParam(s string) bool {
+	const name = "connectString="
+	for off := 0; ; off++ {
+		i := strings.Index(s[off:], name)
+		if i < 0 {
+			return false
+		}
+		if off += i; off == 0 || s[off-1] == ' ' || s[off-1] == '\t' {
+			return true
+		}
+	}
+}
+
 // startsWithParam reports whether s starts with a known parameter name and an
 // equal sign, as a logfmt-encoded parameter string does.
 func startsWithParam(s string) bool {
@@ -961,7 +978,10 @@ func (p *paramsArray) Reset() {
 
 var unquoteSB = sync.Pool{New: func() any { return new(strings.Builder) }}
 
-// unquote replaces quoted ("\\n") with the quoted.
+// unquote replaces the escape sequences of an old-style DSN:
+// a backslash before a punctuation character or a space (\@, \/, \\) gives that character,
+// \n, \r and \t give a new line, a carriage return and a tab.
+// A backslash before anything else (or at the end) is a backslash.
 func unquote(s string) string {
 	if !strings.ContainsRune(s, '\\') {
 		return s
@@ -971,46 +991,47 @@ func unquote(s string) string {
 	buf.Grow(len(s))
 	var quoted bool
 	for _, r := range s {
-		if r == '\\' {
-			if !quoted {
-				quoted = true
+		if !quoted {
+			if quoted = r == '\\'; !quoted {
+				buf.WriteRune(r)
 			}
 			continue
 		}
-		if !quoted {
-			buf.WriteRune(r)
-			continue
-		}
 		quoted = false
-		switch r {
-		case 'n':
+		switch {
+		case r == 'n':
 			buf.WriteByte('\n')
-		case 'r':
+		case r == 'r':
 			buf.WriteByte('\r')
-		case 't':
+		case r == 't':
 			buf.WriteByte('\t')
+		case r >= utf8.RuneSelf || '0' <= r && r <= '9' || 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z':
+			buf.WriteByte('\\')
+			buf.WriteRune(r)
 		default:
 			buf.WriteRune(r)
 		}
 	}
+	if quoted {
+		buf.WriteByte('\\')
+	}
 	return buf.String()
 }
 
-// splitQuoted splits the string at sep, treating "\" as a quoting char.
+// splitQuoted splits the string at the first sep that is not escaped
+// with a backslash (a backslash escapes a backslash, too).
 func splitQuoted(s string, sep rune) []string {
-	var off int
-	sepLen := len(string([]rune{sep}))
-	for {
-		i := strings.IndexRune(s[off:], sep)
-		if i < 0 {
-			return []string{s}
+	var quoted bool
+	for i, r := range s {
+		if quoted {
+			quoted = false
+		} else if r == '\\' {
+			quoted = true
+		} else if r == sep {
+			return []string{s[:i], s[i+utf8.RuneLen(sep):]}
 		}
-		off += i
-		if off == 0 || s[off-1] != '\\' {
-			return []string{s[:off], s[off+sepLen:]}
-		}
-		off += sepLen
 	}
+	return []string{s}
 }
 
 // indexFold returns the index of the first instance of the ASCII substr in s,
