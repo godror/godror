@@ -1691,6 +1691,11 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 		}
 
 	case time.Duration, []time.Duration:
+		if _, ok := v.([]time.Duration); ok && st.plSQLArrays {
+			// A PL/SQL index-by table of INTERVAL DAY TO SECOND ends the
+			// server process (ORA-03113) as IN, and comes back wrong as OUT.
+			return value, fmt.Errorf("[]time.Duration with PlSQLArrays: %w", ErrNotSupported)
+		}
 		info.typ, info.natTyp = C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_NATIVE_TYPE_INTERVAL_DS
 		info.set = st.conn.dataSetIntervalDS
 		if info.isOut {
