@@ -889,8 +889,22 @@ func (c *PooledConn) Close() error {
 	// This wrapper is done: a second Close must not return the connection again.
 	conn, pool := c.Conn, c.pool
 	c.Conn, c.pool = nil, nil
-	if pool != nil && pool.put(conn) {
-		return nil
+	if pool != nil {
+		// Do not pool a connection that is closed or lost: it would be
+		// handed out for ever. Just as database/sql does for its own pool,
+		// ask the driver, which needs no round trip.
+		if err := conn.Raw(func(dc any) error {
+			if v, ok := dc.(driver.Validator); ok && !v.IsValid() {
+				return driver.ErrBadConn
+			}
+			return nil
+		}); err != nil {
+			_ = conn.Close()
+			return nil
+		}
+		if pool.put(conn) {
+			return nil
+		}
 	}
 	return conn.Close()
 }
