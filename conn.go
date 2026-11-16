@@ -1107,16 +1107,17 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) isHealthy() bool {
-	dpiConnOK := true
 	c.mu.Lock()
-	var isHealthy C.int
-	if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) == C.DPI_FAILURE {
-		dpiConnOK = false
-	} else {
-		dpiConnOK = isHealthy == 1
+	defer c.mu.Unlock()
+	// Ask again before reporting the connection as unhealthy: now and then
+	// the check fails on a healthy connection, and succeeds the next time.
+	for range 2 {
+		var isHealthy C.int
+		if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) != C.DPI_FAILURE && isHealthy == 1 {
+			return true
+		}
 	}
-	c.mu.Unlock()
-	return dpiConnOK
+	return false
 }
 
 func (c *conn) String() string {
