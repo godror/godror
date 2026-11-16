@@ -23,6 +23,7 @@ import (
 	"iter"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,9 @@ type Object struct {
 	dpiObject *C.dpiObject
 	cleanup   runtime.Cleanup
 	*ObjectType
+	// lobs are the open readers of the LOB attributes or elements
+	// that were read from the Object, closed by Close.
+	lobs []*dpiLobReader
 }
 
 // ErrNoSuchKey is the error for missing key in lookup.
@@ -81,6 +85,7 @@ func (O *Object) GetAttribute(data *Data, name string) error {
 	}); err != nil {
 		return fmt.Errorf("getAttributeValue(%q, obj=%s, attr=%+v, typ=%d): %w", name, O.Name, attr.dpiObjectAttr, data.NativeTypeNum, err)
 	}
+	data.takeLob(O)
 	if logger := getLogger(context.TODO()); logger != nil && logger.Enabled(context.TODO(), slog.LevelDebug) {
 		logger.Debug("getAttributeValue", "dpiObject", fmt.Sprintf("%p", O.dpiObject),
 			attr.Name, fmt.Sprintf("%p", attr.dpiObjectAttr),
@@ -351,9 +356,20 @@ func (O *Object) clear(logger *slog.Logger) {
 	O.resetAttributes(true)
 }
 
+// addLob remembers the reader of a LOB attribute or element of the Object,
+// to close it with the Object.
+func (O *Object) addLob(rdr *dpiLobReader) {
+	// Forget the ones that have been read to the end or closed.
+	O.lobs = append(slices.DeleteFunc(O.lobs, (*dpiLobReader).done), rdr)
+}
+
 // release releases the reference to the dpiObject.
 func (O *Object) release() error {
 	O.cleanup.Stop()
+	for _, rdr := range O.lobs {
+		rdr.release()
+	}
+	O.lobs = nil
 
 	dpiObject := O.dpiObject
 	O.dpiObject = nil
@@ -967,6 +983,7 @@ func (O ObjectCollection) GetItem(data *Data, i int) error {
 	if C.dpiObject_getElementValueByIndex(O.dpiObject, idx, data.NativeTypeNum, &data.dpiData) == C.DPI_FAILURE {
 		return fmt.Errorf("get(%d[%d]): %w", idx, data.NativeTypeNum, O.drv.getError())
 	}
+	data.takeLob(O.Object)
 	return nil
 }
 
