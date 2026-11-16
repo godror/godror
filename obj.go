@@ -1780,6 +1780,25 @@ func collectionLen(coll ObjectCollection, n int) (int, error) {
 	return cur, nil
 }
 
+// setElement sets the i-th element of coll, which has cur elements, to data,
+// and returns the number of elements that are there to be overwritten.
+//
+// OCI can append a NULL element, but cannot assign NULL to an existing one
+// (ORA-21560): for a NULL the collection is cut back to i elements, and this
+// element and the following ones are appended.
+func setElement(coll ObjectCollection, i, cur int, data *Data) (int, error) {
+	if i < cur {
+		if !data.IsNull() {
+			return cur, coll.SetItem(i, data)
+		}
+		if err := coll.Trim(cur - i); err != nil {
+			return cur, err
+		}
+		cur = i
+	}
+	return cur, coll.AppendData(data)
+}
+
 // writeObjectElement writes the i-th element of coll with f, reusing the
 // existing element object if there is one, instead of creating a new one.
 // cur is the number of elements the collection has.
@@ -1842,12 +1861,7 @@ func SliceWriteObject[E any](o *Object, ss []E) error {
 		if err := data.Set(v); err != nil {
 			return err
 		}
-		if i < cur {
-			err = coll.SetItem(i, data)
-		} else {
-			err = coll.AppendData(data)
-		}
-		if err != nil {
+		if cur, err = setElement(coll, i, cur, data); err != nil {
 			return fmt.Errorf("set %T[%d]: %w", v, i, err)
 		}
 	}
@@ -2171,12 +2185,8 @@ func structWriteObject(o *Object, rv reflect.Value) error {
 				if err := data.Set(rv.Index(i).Interface()); err != nil {
 					return fmt.Errorf("set %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
 				}
-				if i < cur {
-					if err := coll.SetItem(i, data); err != nil {
-						return fmt.Errorf("set %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
-					}
-				} else if err := coll.AppendData(data); err != nil {
-					return fmt.Errorf("append %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
+				if cur, err = setElement(coll, i, cur, data); err != nil {
+					return fmt.Errorf("set %T[%d] to %s: %w", rv.Index(i).Interface(), i, coll.FullName(), err)
 				}
 			}
 		} else {

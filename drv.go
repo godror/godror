@@ -490,6 +490,10 @@ func (d *drv) close(onlyUnused bool) error {
 		// The pools may still use the context, so leave it allocated.
 		return fmt.Errorf("Driver.Close: purging pools: %w", context.DeadlineExceeded)
 	}
+	if dpiCtx == nil {
+		// Never initialized, or closed already.
+		return nil
+	}
 
 	done := make(chan error, 1)
 	go func() {
@@ -879,7 +883,61 @@ func acquireAttachSem(ctx context.Context, sem chan struct{}, needed bool) (rele
 	}
 }
 
+// acquireConn creates a standalone connection, or acquires one from the pool,
+// which ends with an error when ctx ends.
+//
+// ODPI-C waits for a free session of the pool up to the wait timeout of the pool,
+// and that wait cannot be interrupted. So the call is made on another goroutine,
+// where it is left to finish if ctx ends first; the session it may still get
+// is given back to the pool.
 func (d *drv) acquireConn(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if pool == nil || ctx.Done() == nil {
+		return d.acquireConnWait(ctx, pool, P)
+	}
+	// The call may outlive the caller, so it keeps the drv and the pool open itself.
+	d.mu.Lock()
+	d.conns++
+	pool.users++
+	d.mu.Unlock()
+	done := func() { d.putPool(pool); d.connDone() }
+	type result struct {
+		dc    *C.dpiConn
+		isNew bool
+		err   error
+	}
+	ch := make(chan result)
+	go func() {
+		var r result
+		r.dc, r.isNew, r.err = d.acquireConnWait(ctx, pool, P)
+		select {
+		case ch <- r:
+			return
+		case <-ctx.Done():
+		}
+		// Nobody waits for the connection anymore.
+		if r.err == nil {
+			if r.isNew {
+				// Not initialized: do not put it into the pool.
+				C.dpiConn_close(r.dc, C.DPI_MODE_CONN_CLOSE_DROP, nil, 0)
+			}
+			C.dpiConn_release(r.dc)
+		}
+		done()
+	}()
+	select {
+	case r := <-ch:
+		done()
+		return r.dc, r.isNew, r.err
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	}
+}
+
+// acquireConnWait is acquireConn that does not return before ODPI-C does.
+func (d *drv) acquireConnWait(ctx context.Context, pool *connPool, P commonAndConnParams) (*C.dpiConn, bool, error) {
 	logger := P.Logger
 	if logger != nil {
 		logger.Debug("acquireConn", "pool", pool, "connParams", P)
@@ -1113,12 +1171,18 @@ func newShardingKeyColumns(values []any) (columns *C.dpiShardingKeyColumn, free 
 func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams, cu *connectorUses) (*conn, error) {
 	d.mu.Lock()
 	d.conns++ // the connection being created keeps the drv open, too
-	if cu != nil && !cu.active {
-		cu.active = true
-		d.connectors++
+	if cu != nil {
+		cu.conns++
+		if !cu.active {
+			cu.active = true
+			d.connectors++
+		}
 	}
 	d.mu.Unlock()
 	defer d.connDone()
+	if cu != nil {
+		defer d.connectorDone(cu, false)
+	}
 	var err error
 	var pool *connPool
 	if !P.IsStandalone() {
@@ -1144,6 +1208,12 @@ func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams, 
 	}
 	// createConn runs OnInit (respecting InitOnNewConn) in conn.init.
 	conn, _, err := d.createConn(ctx, pool, commonAndConnParams{CommonParams: P.CommonParams, ConnParams: P.ConnParams})
+	if err == nil && cu != nil {
+		d.mu.Lock()
+		cu.conns++ // till closeNotLocking
+		d.mu.Unlock()
+		conn.uses = cu
+	}
 	return conn, err
 }
 
@@ -1726,13 +1796,46 @@ type connector struct {
 }
 
 // connectorUses is what a connector uses of its drv, from its first Connect
-// till its Close. It is shared by the copies of the connector, and guarded by drv.mu.
+// till it is closed and its last connection is closed, too.
+// It is shared by the copies of the connector, and guarded by drv.mu.
 type connectorUses struct {
 	// pools are the pools the connector has connected through,
 	// each counted once in connPool.users.
 	pools map[*connPool]struct{}
+	// conns is the number of the connector's open connections
+	// and of those being created.
+	conns int
 	// active is true if the connector is counted in drv.connectors.
 	active bool
+	// closed is set by the first Close.
+	closed bool
+}
+
+// connectorDone tells that the connector was closed, or (with closed false)
+// that one of its connections was, or the creation of one is over.
+// What the connector uses is released when it is closed and has no connection.
+//
+// database/sql does not tell how many sql.DBs use a connector, and it may
+// still have a Connect running when it calls Close; the connections do tell.
+func (d *drv) connectorDone(cu *connectorUses, closed bool) {
+	d.mu.Lock()
+	if closed {
+		cu.closed = true
+	} else {
+		cu.conns--
+	}
+	var pools map[*connPool]struct{}
+	if cu.closed && cu.conns == 0 {
+		pools, cu.pools = cu.pools, nil
+		if cu.active {
+			cu.active = false
+			d.connectors--
+		}
+	}
+	d.mu.Unlock()
+	for pool := range pools {
+		d.putPool(pool)
+	}
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB
@@ -1817,24 +1920,18 @@ func (c connector) Driver() driver.Driver { return c.drv }
 // and so is the driver, when it is not the default one and it has no other
 // open connector or connection.
 //
+// If the connector still has open connections (of a second sql.DB that uses
+// the same connector, or held over the Close of their sql.DB), this happens
+// when the last of them is closed.
+//
 // From Go 1.17 sql.DB.Close() will call this method.
 func (c connector) Close() error {
 	d := c.drv
 	if d == nil {
 		return nil
 	}
-	if cu := c.uses; cu != nil {
-		d.mu.Lock()
-		pools := cu.pools
-		cu.pools = nil
-		if cu.active {
-			cu.active = false
-			d.connectors--
-		}
-		d.mu.Unlock()
-		for pool := range pools {
-			d.putPool(pool)
-		}
+	if c.uses != nil {
+		d.connectorDone(c.uses, true)
 	}
 	if d == defaultDrv {
 		return nil

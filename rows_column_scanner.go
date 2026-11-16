@@ -36,6 +36,8 @@ func (r *rows) NextRow() error {
 	}
 	// The LOBs of a row are valid only till the next row (or Close).
 	r.closeLobs()
+	// The nested cursors of a row are valid only till the next row.
+	r.closeChildren()
 	if err := r.fetch(context.Background(), r.logger); err != nil {
 		return err
 	}

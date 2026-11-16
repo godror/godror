@@ -49,7 +49,9 @@ var (
 )
 
 type conn struct {
-	drv                 *drv
+	drv *drv
+	// uses is the state of the connector that created the connection, if any.
+	uses                *connectorUses
 	dpiConn             *C.dpiConn
 	currentTT           atomic.Value
 	poolKey             string
@@ -324,6 +326,9 @@ func (c *conn) closeNotLocking() error {
 	// To track reference counting, use DPI_DEBUG_LEVEL=2
 	C.dpiConn_release(dpiConn)
 
+	if c.uses != nil {
+		c.drv.connectorDone(c.uses, false)
+	}
 	c.drv.connDone()
 	return nil
 }
@@ -883,12 +888,17 @@ func (c *conn) GetPoolStats() (stats PoolStats, err error) {
 		return stats, nil
 	}
 
-	drv.mu.RLock()
+	// Count as a user of the pool, so that it is not closed while it is read.
+	drv.mu.Lock()
 	pool := drv.pools[key]
-	drv.mu.RUnlock()
+	if pool != nil {
+		pool.users++
+	}
+	drv.mu.Unlock()
 	if pool == nil {
 		return stats, nil
 	}
+	defer drv.putPool(pool)
 	return drv.getPoolStats(pool)
 }
 
@@ -1097,16 +1107,17 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) isHealthy() bool {
-	dpiConnOK := true
 	c.mu.Lock()
-	var isHealthy C.int
-	if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) == C.DPI_FAILURE {
-		dpiConnOK = false
-	} else {
-		dpiConnOK = isHealthy == 1
+	defer c.mu.Unlock()
+	// Ask again before reporting the connection as unhealthy: now and then
+	// the check fails on a healthy connection, and succeeds the next time.
+	for range 2 {
+		var isHealthy C.int
+		if C.dpiConn_getIsHealthy(c.dpiConn, &isHealthy) != C.DPI_FAILURE && isHealthy == 1 {
+			return true
+		}
 	}
-	c.mu.Unlock()
-	return dpiConnOK
+	return false
 }
 
 func (c *conn) String() string {

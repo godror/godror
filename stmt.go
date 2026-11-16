@@ -1003,8 +1003,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return nil, closeIfBadConn(err)
 	}
 
-	// The Lobs of the previous execution are valid only till this one.
-	st.closeOutLobs()
 	rows, err := st.openRows(ctx, int(colCount))
 	return rows, closeIfBadConn(err)
 }
@@ -1382,7 +1380,12 @@ func (st *statement) bindVars(
 			return fmt.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
 		mustAllocate := st.vars[i] == nil || st.data[i] == nil
-		if !mustAllocate && !st.varInfos[i].canHold(vi) {
+		// ODPI-C sets only the scalar indicator of a variable to NULL, and
+		// leaves the object that the variable already holds, with its own
+		// indicator, in place: the server would get the previous object.
+		// A new variable gets a NULL object.
+		if !mustAllocate && (!st.varInfos[i].canHold(vi) ||
+			vi.NatTyp == C.DPI_NATIVE_TYPE_OBJECT && info.isIn && isNullObject(value)) {
 			C.dpiVar_release(st.vars[i])
 			mustAllocate = true
 		}
@@ -1698,11 +1701,13 @@ func (st *statement) bindVarTypeSwitch(ctx context.Context, info *argInfo, get *
 			*get = dataGetBytes
 		} else {
 			switch v := v.(type) {
+			// Over 32767 bytes ODPI-C makes the variable a dynamic (LONG) bind,
+			// which SQL takes as a CLOB: do that only if the value needs it.
 			case string:
-				info.bufSize = bindBufSize(4 * len(v))
+				info.bufSize = bindBufSize(min(4*len(v), max(len(v), 32767)))
 			case []string:
 				for _, s := range v {
-					if n := 4 * len(s); n > info.bufSize {
+					if n := min(4*len(s), max(len(s), 32767)); n > info.bufSize {
 						info.bufSize = n
 					}
 				}
@@ -2596,20 +2601,47 @@ func dataGetNumber(ctx context.Context, v any, data []C.dpiData) error {
 		return dataGetBytes(ctx, x, data)
 
 	default:
+		// A pointer to a named number type: read the base type, then convert.
 		rv := reflect.ValueOf(v)
-		switch rv.Type().Kind() {
+		if rv.Kind() != reflect.Pointer || rv.IsNil() {
+			return fmt.Errorf("unknown number [%T] %#v", v, v)
+		}
+		rv = rv.Elem()
+		switch rv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			x := reflect.ValueOf(new(int64)).Elem()
-			x.SetInt(rv.Int())
-			return dataGetNumber(ctx, x.Interface(), data)
+			var n int64
+			if err := dataGetNumber(ctx, &n, data); err != nil {
+				return err
+			}
+			if rv.OverflowInt(n) {
+				return fmt.Errorf("%d does not fit into %s: %w", n, rv.Type(), strconv.ErrRange)
+			}
+			rv.SetInt(n)
+			return nil
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			x := reflect.ValueOf(new(uint64)).Elem()
-			x.SetUint(rv.Uint())
-			return dataGetNumber(ctx, x.Interface(), data)
-		case reflect.Float32, reflect.Float64:
-			x := reflect.ValueOf(new(float64)).Elem()
-			x.SetFloat(rv.Float())
-			return dataGetNumber(ctx, x.Interface(), data)
+			var n uint64
+			if err := dataGetNumber(ctx, &n, data); err != nil {
+				return err
+			}
+			if rv.OverflowUint(n) {
+				return fmt.Errorf("%d does not fit into %s: %w", n, rv.Type(), strconv.ErrRange)
+			}
+			rv.SetUint(n)
+			return nil
+		case reflect.Float32:
+			var f float32
+			if err := dataGetNumber(ctx, &f, data); err != nil {
+				return err
+			}
+			rv.SetFloat(float64(f))
+			return nil
+		case reflect.Float64:
+			var f float64
+			if err := dataGetNumber(ctx, &f, data); err != nil {
+				return err
+			}
+			rv.SetFloat(f)
+			return nil
 		}
 
 		return fmt.Errorf("unknown number [%T] %#v", v, v)
@@ -2779,10 +2811,11 @@ func dataSetNumber(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) 
 			x := reflect.ValueOf(new(uint64)).Elem()
 			x.SetUint(rv.Uint())
 			return dataSetNumber(ctx, dv, data, x.Interface())
-		case reflect.Float32, reflect.Float64:
-			x := reflect.ValueOf(new(float64)).Elem()
-			x.SetFloat(rv.Float())
-			return dataSetNumber(ctx, dv, data, x.Interface())
+		case reflect.Float32:
+			// The variable is a NATIVE_FLOAT: it must get a float, not a double.
+			return dataSetNumber(ctx, dv, data, float32(rv.Float()))
+		case reflect.Float64:
+			return dataSetNumber(ctx, dv, data, rv.Float())
 		}
 
 		return fmt.Errorf("unknown number slice [%T] %#v", vv, vv)
@@ -3278,7 +3311,9 @@ func (c *conn) dataSetLOBOne(ctx context.Context, dv *C.dpiVar, data []C.dpiData
 	if r, ok := L.Reader.(*dpiLobReader); ok {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.closed {
+		// At EOF the reader has released its LOB: ODPI-C would answer
+		// DPI-1002 for the nil handle, which counts as a bad connection.
+		if r.closed || r.dpiLob == nil {
 			return ErrLOBClosed
 		}
 		if err := c.checkExec(func() C.int { return C.dpiVar_setFromLob(dv, C.uint32_t(i), r.dpiLob) }); err != nil {
@@ -3448,6 +3483,19 @@ func (stmt *statement) bindableObject(ot *ObjectType, dv *C.dpiVar, data []C.dpi
 	}
 	o, err := ot.NewObject()
 	return o, false, err
+}
+
+// isNullObject reports whether v, the value of an object bind, is a NULL object.
+func isNullObject(v any) bool {
+	switch x := v.(type) {
+	case Object:
+		return x.dpiObject == nil
+	case *Object:
+		return x == nil || x.dpiObject == nil
+	case ObjectCollection:
+		return x.Object == nil || x.Object.dpiObject == nil
+	}
+	return false
 }
 
 // closeCreated closes the objects among objs that were created by
@@ -3936,6 +3984,9 @@ func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dp
 var (
 	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
+	// ErrCursorClosed is returned by the rows of a nested cursor (a CURSOR() column)
+	// when used after its parent rows have moved to the next row.
+	ErrCursorClosed = errors.New("the nested cursor is closed: its parent rows have moved on")
 	// ErrStmtReexecuted is returned by the rows of a statement that
 	// has been executed again before all its rows have been read.
 	ErrStmtReexecuted = errors.New("the statement has been executed again, its previous rows are lost")

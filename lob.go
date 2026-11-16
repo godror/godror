@@ -633,8 +633,11 @@ func closeLob(d interface{ getError() error }, lob *C.dpiLob) error {
 
 // DirectLob holds a Lob and allows direct (Read/WriteAt, not streaming Read/Write) operations on it.
 type DirectLob struct {
-	drv            *drv
-	dpiLob         *C.dpiLob
+	drv    *drv
+	dpiLob *C.dpiLob
+	// mu protects dpiLob and opened: the rows or the statement that the
+	// DirectLob was hijacked from closes it, maybe from another goroutine.
+	mu             sync.Mutex
 	opened, isClob bool
 	// owned is true when dpiLob was created by us (NewTempLob),
 	// so Close must release it even if it was never opened.
@@ -659,7 +662,12 @@ func (c *conn) NewTempLob(isClob bool) (*DirectLob, error) {
 
 // Close the Lob.
 func (dl *DirectLob) Close() error {
-	if dl == nil || dl.dpiLob == nil || !(dl.opened || dl.owned) {
+	if dl == nil {
+		return nil
+	}
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+	if dl.dpiLob == nil || !(dl.opened || dl.owned) {
 		return nil
 	}
 	lob := dl.dpiLob
@@ -675,6 +683,8 @@ func (dl *DirectLob) Close() error {
 // For this reason, if a character requires more than one UCS-2 codepoint,
 // the size returned will be inaccurate and care must be taken to account for the difference!
 func (dl *DirectLob) Size() (int64, error) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 	var n C.uint64_t
 	if dl.dpiLob == nil {
 		return 0, nil
@@ -693,6 +703,8 @@ func (dl *DirectLob) Size() (int64, error) {
 
 // Trim the LOB to the given size.
 func (dl *DirectLob) Trim(size int64) error {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 	if err := dl.drv.checkExec(func() C.int {
 		return C.dpiLob_trim(dl.dpiLob, C.uint64_t(size))
 	}); err != nil {
@@ -704,6 +716,8 @@ func (dl *DirectLob) Trim(size int64) error {
 // Set the contents of the LOB to the given byte slice.
 // The LOB is cleared first.
 func (dl *DirectLob) Set(p []byte) error {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 	var ptr *C.char
 	if len(p) != 0 {
 		ptr = (*C.char)(unsafe.Pointer(&p[0]))
@@ -730,6 +744,8 @@ func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 		panic("ReadAt into an empty buffer")
 	}
 	n := C.uint64_t(len(p))
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 	if dl.dpiLob == nil {
 		return 0, io.EOF
 	}
@@ -755,6 +771,8 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 
 	if !dl.opened {
 		if err := dl.drv.checkExecNoLOT(func() C.int {
@@ -776,6 +794,8 @@ func (dl *DirectLob) WriteAt(p []byte, offset int64) (int, error) {
 
 // GetFileName Return directory alias and file name for a BFILE type LOB.
 func (dl *DirectLob) GetFileName() (dir, file string, err error) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 	var directoryAliasLength, fileNameLength C.uint32_t
 	var directoryAlias, fileName *C.char
 	if err := dl.drv.checkExec(func() C.int {

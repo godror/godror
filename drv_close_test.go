@@ -6,6 +6,8 @@
 package godror
 
 import (
+	"context"
+	"database/sql"
 	"os"
 	"sync"
 	"testing"
@@ -72,5 +74,36 @@ func TestGetPoolDuringDriverClose(t *testing.T) {
 		if t.Failed() {
 			return
 		}
+	}
+}
+
+// TestDriverCloseUninitialized checks that closing a Driver that
+// has no dpiContext (never used, or closed already) is not an error.
+func TestDriverCloseUninitialized(t *testing.T) {
+	cp, err := dsn.Parse(os.Getenv("GODROR_TEST_DSN"))
+	if err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	if err := NewDriver().Close(); err != nil {
+		t.Errorf("Close of a never used Driver: %v", err)
+	}
+
+	d := NewDriver()
+	if err := sql.OpenDB(d.NewConnector(cp)).Close(); err != nil {
+		t.Errorf("Close of a never used sql.DB: %v", err)
+	}
+
+	db := sql.OpenDB(d.NewConnector(cp))
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Error(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Errorf("Driver.Close after DB.Close: %v", err)
 	}
 }

@@ -85,6 +85,8 @@ type rows struct {
 	jsons []*jsonRow
 	// lobs are the LOB readers of the current row, closed by Next and Close.
 	lobs []*dpiLobReader
+	// children are the nested cursors of the current row, closed by Next.
+	children []*rows
 }
 
 // Columns returns the names of the columns. The number of
@@ -363,6 +365,8 @@ func (r *rows) Next(dest []driver.Value) error {
 
 	// The LOBs of a row are valid only till the next Next (or Close).
 	r.closeLobs()
+	// The nested cursors of a row are valid only till the next Next.
+	r.closeChildren()
 	if err := r.fetch(ctx, logger); err != nil {
 		return err
 	}
@@ -398,8 +402,23 @@ func (r *rows) closeLobs() {
 	r.lobs = r.lobs[:0]
 }
 
+// closeChildren closes the nested cursors handed out for the current row,
+// that the caller has not closed: each holds a cursor open on the server.
+func (r *rows) closeChildren() {
+	for i, child := range r.children {
+		if child.err == nil {
+			child.err = ErrCursorClosed
+		}
+		_ = child.Close()
+		r.children[i] = nil
+	}
+	r.children = r.children[:0]
+}
+
 func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 	if r.fetched == 0 {
+		// The context of the query: Next has none of its own.
+		stmtCtx := r.statement.ctx
 		// Start the watchdog only once See issue #113 (https://github.com/godror/godror/issues/113)
 		if ctx := r.statement.ctx; ctx != nil {
 			// nil can be present when Next is issued on cursor returned from DB
@@ -432,9 +451,25 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 			fmt.Printf("fetching max=%d\n", maxRows)
 			start = time.Now()
 		}
-		err := r.statement.checkExecNoLOT(func() C.int {
-			return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
-		})
+		fetchRows := func() error {
+			return r.statement.checkExecNoLOT(func() C.int {
+				return C.dpiStmt_fetchRows(r.dpiStmt, maxRows, &r.bufferRowIndex, &r.fetched, &moreRows)
+			})
+		}
+		var err error
+		if c := r.statement.conn; c == nil || stmtCtx == nil || stmtCtx.Done() == nil {
+			err = fetchRows()
+		} else {
+			// BREAK the fetch when the query's context is canceled,
+			// as the execute does.
+			c.mu.RLock()
+			done := make(chan struct{})
+			wait := breakOnCancel(stmtCtx, c, done, logger)
+			err = fetchRows()
+			close(done)
+			wait()
+			c.mu.RUnlock()
+		}
 		failed := err != nil
 		if debugRowsNext {
 			fmt.Printf("failed=%t bri=%d fetched=%d more=%d data=%d cols=%d dur=%s\n", failed, r.bufferRowIndex, r.fetched, moreRows, len(r.data), len(r.columns), time.Since(start))
@@ -445,7 +480,9 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 				logger.Error("fetch", "error", err)
 			}
 			_ = r.Close()
-			if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
+			if stmtCtx != nil && stmtCtx.Err() != nil {
+				r.err = stmtCtx.Err()
+			} else if strings.Contains(err.Error(), "DPI-1039: statement was already closed") {
 				r.err = io.EOF
 			} else {
 				r.err = fmt.Errorf("Next: %w", err)
@@ -757,6 +794,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 			conn:             r.conn,
 			statementInnards: statementInnards{dpiStmt: C.dpiData_getStmt(d)},
 			stmtOptions:      r.statement.stmtOptions, // inherit parent statement's options
+			ctx:              r.statement.ctx,         // and its context, for the fetches
 		}
 		stmtAddCleanup(ctx, st, "rows.Next")
 		var colCount C.uint32_t
@@ -783,6 +821,7 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		}
 		r2.fromData = true
 		stmtAddCleanup(ctx, st, "Next")
+		r.children = append(r.children, r2)
 		dest[i] = r2
 
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:
@@ -978,7 +1017,8 @@ func (r *rows) NextResultSet() error {
 		if r.nextRsErr != nil {
 			return r.nextRsErr
 		}
-		return fmt.Errorf("getImplicitResult: %w", io.EOF)
+		// database/sql compares with ==, so do not wrap it.
+		return io.EOF
 	}
 	orig := r.origSt // set by HasNextResultSet
 	st := &statement{
