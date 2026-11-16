@@ -247,6 +247,9 @@ func (n Number) MarshalText() ([]byte, error) {
 }
 
 // UnmarshalText parses text into a Number.
+//
+// An exponent (1.5e+3) is accepted, and expanded (1500):
+// a Number is the plain decimal text of the value.
 func (n *Number) UnmarshalText(p []byte) error {
 	*n = ""
 	if len(p) == 0 {
@@ -254,6 +257,24 @@ func (n *Number) UnmarshalText(p []byte) error {
 	}
 	if len(p) > numberAsTextChars {
 		return fmt.Errorf("%d characters, max %d: %w", len(p), numberAsTextChars, ErrNumberTooLong)
+	}
+	var exp int
+	if i := bytes.IndexAny(p, "eE"); i >= 0 {
+		var err error
+		if exp, err = strconv.Atoi(string(p[i+1:])); err != nil {
+			var numErr *strconv.NumError
+			if errors.As(err, &numErr) && numErr.Err == strconv.ErrRange {
+				return fmt.Errorf("exponent of %q: %w", p, ErrNumberTooLong)
+			}
+			return fmt.Errorf("bad exponent in %q", p)
+		}
+		// The expanded text would be longer than the limit.
+		if exp < -numberAsTextChars || exp > numberAsTextChars {
+			return fmt.Errorf("exponent of %q: %w", p, ErrNumberTooLong)
+		}
+		if p = p[:i]; bytes.IndexAny(p, "0123456789") < 0 {
+			return fmt.Errorf("no digits in %q", p)
+		}
 	}
 	var dotNum int
 	for i, c := range p {
@@ -267,8 +288,45 @@ func (n *Number) UnmarshalText(p []byte) error {
 			return fmt.Errorf("unknown char %c in %q", c, p)
 		}
 	}
+	if exp != 0 {
+		if p = shiftDecimalPoint(p, exp); len(p) > numberAsTextChars {
+			return fmt.Errorf("%d characters, max %d: %w", len(p), numberAsTextChars, ErrNumberTooLong)
+		}
+	}
 	*n = Number(p)
 	return nil
+}
+
+// shiftDecimalPoint returns the decimal number p (-123.45) multiplied with 10^exp.
+func shiftDecimalPoint(p []byte, exp int) []byte {
+	res := make([]byte, 0, len(p)+2+max(exp, -exp))
+	if p[0] == '-' {
+		res, p = append(res, '-'), p[1:]
+	}
+	// the place of the decimal point in the digits
+	point := bytes.IndexByte(p, '.')
+	if point < 0 {
+		point = len(p)
+	} else {
+		p = append(append(make([]byte, 0, len(p)), p[:point]...), p[point+1:]...)
+	}
+	if len(bytes.Trim(p, "0")) == 0 {
+		return []byte{'0'}
+	}
+	point += exp
+	for len(p) > 1 && point > 1 && p[0] == '0' { // leading zeros
+		p, point = p[1:], point-1
+	}
+	if point <= 0 {
+		res = append(res, '0', '.')
+		res = append(res, bytes.Repeat([]byte{'0'}, -point)...)
+		return append(res, p...)
+	}
+	if point >= len(p) {
+		res = append(res, p...)
+		return append(res, bytes.Repeat([]byte{'0'}, point-len(p))...)
+	}
+	return append(append(append(res, p[:point]...), '.'), p[point:]...)
 }
 
 // MarshalJSON marshals a Number into a JSON string.
