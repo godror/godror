@@ -3006,9 +3006,18 @@ func dataSetBytes(ctx context.Context, dv *C.dpiVar, data []C.dpiData, vv any) e
 			data[i].isNull = 1
 			return nil
 		}
+		// ODPI-C reads a text without digits ("-", ".") as 0.
+		if !x.hasDigit() {
+			return fmt.Errorf("%q: %w", string(x), ErrInvalidNumber)
+		}
 		data[i].isNull = 0
 		dpiSetFromString(dv, C.uint32_t(i), string(x))
 	case []Number:
+		for _, x := range slice {
+			if len(x) != 0 && !x.hasDigit() {
+				return fmt.Errorf("%q: %w", string(x), ErrInvalidNumber)
+			}
+		}
 		dpiSetFromSlice(dv, data, slice)
 
 	case decimalDecompose:
