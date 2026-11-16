@@ -444,6 +444,11 @@ type drv struct {
 	clientVersion VersionInfo
 	mu            sync.RWMutex
 	poolMu        sync.Mutex
+	// connectors is the number of connectors that have connected and are not closed,
+	// conns is the number of open connections and of those being created.
+	connectors, conns int
+	// closePending is set when the last connector was closed with connections still open.
+	closePending bool
 }
 
 // NewDriver creates a new drv.
@@ -451,7 +456,14 @@ type drv struct {
 func NewDriver() *drv { return &drv{} }
 
 // Close the drv, purge the pools and try to destroy the dpiContext in a timely manner.
-func (d *drv) Close() error {
+//
+// The connections of the driver must not be used after this.
+// The driver itself can be used again: it is initialized on the next use.
+func (d *drv) Close() error { return d.close(false) }
+
+// close the drv. With onlyUnused, do it only if the drv has no open connector
+// and no open connection; otherwise remember to do it when the last of them is closed.
+func (d *drv) close(onlyUnused bool) error {
 	if d == nil {
 		return nil
 	}
@@ -460,6 +472,9 @@ func (d *drv) Close() error {
 	defer d.poolMu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closePending = onlyUnused && (d.connectors != 0 || d.conns != 0); d.closePending {
+		return nil
+	}
 	dpiCtx, pools := d.dpiContext, d.pools
 	d.dpiContext, d.pools, d.timezones = nil, nil, nil
 	purged := make(chan struct{})
@@ -489,6 +504,18 @@ func (d *drv) Close() error {
 		return err
 	case <-time.After(driverCloseTimeout):
 		return fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
+	}
+}
+
+// connDone tells that a connection is closed (or the creation of one is over),
+// and closes the drv if its last connector has been closed already.
+func (d *drv) connDone() {
+	d.mu.Lock()
+	d.conns--
+	closeDrv := d.closePending && d.conns == 0 && d.connectors == 0
+	d.mu.Unlock()
+	if closeDrv {
+		_ = d.close(true)
 	}
 }
 
@@ -712,6 +739,9 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 		poolKey:  poolKey,
 		objTypes: make(map[string]*ObjectType),
 	}
+	d.mu.Lock()
+	d.conns++ // till closeNotLocking
+	d.mu.Unlock()
 	c.stmtCache = newStmtCache(stmtCacheMax(c.params.StmtCacheSize))
 
 	logger := P.Logger
@@ -1081,6 +1111,14 @@ func newShardingKeyColumns(values []any) (columns *C.dpiShardingKeyColumn, free 
 //
 // cu is the state of the connector that asks for the connection, nil if there is none.
 func (d *drv) createConnFromParams(ctx context.Context, P dsn.ConnectionParams, cu *connectorUses) (*conn, error) {
+	d.mu.Lock()
+	d.conns++ // the connection being created keeps the drv open, too
+	if cu != nil && !cu.active {
+		cu.active = true
+		d.connectors++
+	}
+	d.mu.Unlock()
+	defer d.connDone()
 	var err error
 	var pool *connPool
 	if !P.IsStandalone() {
@@ -1693,6 +1731,8 @@ type connectorUses struct {
 	// pools are the pools the connector has connected through,
 	// each counted once in connPool.users.
 	pools map[*connPool]struct{}
+	// active is true if the connector is counted in drv.connectors.
+	active bool
 }
 
 // NewConnector returns a driver.Connector to be used with sql.OpenDB
@@ -1774,7 +1814,8 @@ func (c connector) Connect(ctx context.Context) (driver.Conn, error) {
 func (c connector) Driver() driver.Driver { return c.drv }
 
 // Close the connector: the session pools that no other connector uses are closed,
-// and so is the driver, when it is not the default one.
+// and so is the driver, when it is not the default one and it has no other
+// open connector or connection.
 //
 // From Go 1.17 sql.DB.Close() will call this method.
 func (c connector) Close() error {
@@ -1786,6 +1827,10 @@ func (c connector) Close() error {
 		d.mu.Lock()
 		pools := cu.pools
 		cu.pools = nil
+		if cu.active {
+			cu.active = false
+			d.connectors--
+		}
 		d.mu.Unlock()
 		for pool := range pools {
 			d.putPool(pool)
@@ -1794,7 +1839,7 @@ func (c connector) Close() error {
 	if d == defaultDrv {
 		return nil
 	}
-	return d.Close()
+	return d.close(true)
 }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,

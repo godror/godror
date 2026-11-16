@@ -295,6 +295,8 @@ func (c *conn) closeNotLocking() error {
 	//
 	// To track reference counting, use DPI_DEBUG_LEVEL=2
 	C.dpiConn_release(dpiConn)
+
+	c.drv.connDone()
 	return nil
 }
 
