@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,4 +235,122 @@ func TestExecCacheRepeatedDDL(t *testing.T) {
 			t.Errorf("%d. second DROP PROCEDURE: got %+v, wanted ORA-04043", i, err)
 		}
 	}
+}
+
+// The Options given as arguments of Exec apply to that execution, and only to
+// that, though the next Exec of the same text reuses the statement.
+func TestExecCacheOptions(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	t.Run("PlSQLArrays", func(t *testing.T) {
+		const qry = `DECLARE
+  TYPE num_tt IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+  v num_tt := :1;
+BEGIN
+  :2 := v.COUNT;
+END;`
+		for i := range 2 {
+			var n int
+			if _, err := conn.ExecContext(ctx, qry, godror.PlSQLArrays, []int64{1, 2, 3}, sql.Out{Dest: &n}); err != nil {
+				t.Fatalf("%d. %+v", i, err)
+			}
+			if n != 3 {
+				t.Errorf("%d. got %d elements, wanted 3", i, n)
+			}
+		}
+	})
+
+	t.Run("BindTimeAsDate", func(t *testing.T) {
+		const qry = "BEGIN SELECT DUMP(:1) INTO :2 FROM DUAL; END;"
+		now := time.Now()
+		for i, asDate := range []bool{false, true, true, false, false, true} {
+			args := []any{now, sql.Out{Dest: new(string)}}
+			if asDate {
+				args = append(args, godror.BindTimeAsDate())
+			}
+			if _, err := conn.ExecContext(ctx, qry, args...); err != nil {
+				t.Fatalf("%d. %+v", i, err)
+			}
+			dump := *args[1].(sql.Out).Dest.(*string)
+			// DATE is type 12.
+			if isDate := strings.HasPrefix(dump, "Typ=12 "); isDate != asDate {
+				t.Errorf("%d. BindTimeAsDate=%t, the time was bound as %q", i, asDate, dump)
+			}
+		}
+	})
+
+	tbl := "test_exec_cache_opt" + tblSuffix
+	cleanup := func() { _, _ = testDb.Exec("DROP TABLE " + tbl + " PURGE") }
+	cleanup()
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE "+tbl+" (id NUMBER(3) PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	const ins = "INSERT INTO %s (id) VALUES (:1)"
+	count := func(t *testing.T) (n int) {
+		t.Helper()
+		if err := conn.QueryRowContext(ctx, "SELECT COUNT(0) FROM "+tbl).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	t.Run("PartialBatch", func(t *testing.T) {
+		qry := fmt.Sprintf(ins, tbl)
+		var oraErr *godror.OraErr
+		// Without the option the batch fails as a whole,
+		if _, err := conn.ExecContext(ctx, qry, []int{1, 2, 2, 3}); !errors.As(err, &oraErr) || oraErr.Code() != 1 {
+			t.Fatalf("got %+v, wanted ORA-00001", err)
+		}
+		if n := count(t); n != 0 {
+			t.Errorf("%d rows after the failed batch, wanted 0", n)
+		}
+		// with it the good rows are inserted,
+		var batchErrs *godror.BatchErrors
+		if _, err := conn.ExecContext(ctx, qry, godror.PartialBatch(), []int{1, 2, 2, 3}); !errors.As(err, &batchErrs) {
+			t.Fatalf("got %T (%+v), wanted *BatchErrors", err, err)
+		}
+		if n := count(t); n != 3 {
+			t.Errorf("%d rows after the partial batch, wanted 3", n)
+		}
+		// and the option does not stick.
+		if _, err := conn.ExecContext(ctx, qry, []int{4, 5}); err != nil {
+			t.Fatal(err)
+		}
+		batchErrs = nil
+		if _, err := conn.ExecContext(ctx, qry, []int{6, 6, 7}); errors.As(err, &batchErrs) || !errors.As(err, &oraErr) || oraErr.Code() != 1 {
+			t.Errorf("got %T (%+v), wanted ORA-00001", err, err)
+		}
+		if n := count(t); n != 5 {
+			t.Errorf("%d rows, wanted 5", n)
+		}
+	})
+
+	t.Run("ParseOnly", func(t *testing.T) {
+		if _, err := conn.ExecContext(ctx, "DELETE FROM "+tbl); err != nil {
+			t.Fatal(err)
+		}
+		qry := fmt.Sprintf(ins, tbl)
+		want := 0
+		for i, parseOnly := range []bool{true, false, true, true, false} {
+			args := []any{10 + i}
+			if parseOnly {
+				args = append(args, godror.ParseOnly())
+			} else {
+				want++
+			}
+			if _, err := conn.ExecContext(ctx, qry, args...); err != nil {
+				t.Fatalf("%d. %+v", i, err)
+			}
+			if n := count(t); n != want {
+				t.Errorf("%d. ParseOnly=%t: %d rows, wanted %d", i, parseOnly, n, want)
+			}
+		}
+	})
 }

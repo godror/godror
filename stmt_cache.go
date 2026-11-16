@@ -144,18 +144,19 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	return res, nil
 }
 
-// applyOptions applies the Options among args to st, and returns the bind
-// arguments without them.
+// applyOptions collects the Options among args for the coming execution of
+// st, as statement.CheckNamedValue does for a prepared statement, and returns
+// the bind arguments without them.
 //
-// The statement of an Exec may be reused by the next Exec, so start from the
-// default options: a plain Exec on a fresh statement sees the same.
+// They are the options of that execution only: the statement may be reused by
+// the next Exec of the same text, which must not inherit them.
 func (st *statement) applyOptions(args []driver.NamedValue) []driver.NamedValue {
-	st.stmtOptions = stmtOptions{}
+	st.argOptions = stmtOptions{}
 	n := 0
 	for _, arg := range args {
 		if opt, ok := arg.Value.(Option); ok {
 			if opt != nil {
-				opt(&st.stmtOptions)
+				opt(&st.argOptions)
 			}
 			continue
 		}
