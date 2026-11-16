@@ -98,6 +98,80 @@ func TestPoolClosedWithLastDB(t *testing.T) {
 	}
 }
 
+// TestSharedDriverClose checks that closing a sql.DB does not close
+// the Driver under another sql.DB, or under a connection still in use.
+func TestSharedDriverClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	P := lifetimeTestParams(t, 221*time.Second)
+	open := func(d *drv) bool {
+		d.mu.RLock()
+		defer d.mu.RUnlock()
+		return d.dpiContext != nil
+	}
+
+	for _, tc := range []struct {
+		Name                  string
+		Standalone, SameConnr bool
+	}{
+		{Name: "pooled"},
+		{Name: "standalone", Standalone: true},
+		{Name: "same connector", SameConnr: true},
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			P := P
+			P.StandaloneConnection = Bool(tc.Standalone)
+			d := NewDriver()
+			defer d.Close()
+			c1, c2 := d.NewConnector(P), d.NewConnector(P)
+			if tc.SameConnr {
+				c2 = c1
+			}
+			db1, db2 := sql.OpenDB(c1), sql.OpenDB(c2)
+			defer db1.Close()
+			defer db2.Close()
+			for _, db := range []*sql.DB{db1, db2} {
+				if err := db.PingContext(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db1.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// Do not go on with a closed driver: db2 would use freed memory.
+			// (Sharing the connector, db2 is known only by its connections.)
+			if !open(d) && !(tc.SameConnr && db2.Stats().OpenConnections == 0) {
+				t.Fatal("closing the first sql.DB closed the Driver of the second")
+			}
+			var s string
+			if err := db2.QueryRowContext(ctx, "SELECT 'a' FROM DUAL").Scan(&s); err != nil {
+				t.Fatal(err)
+			}
+
+			// A connection (with a transaction) still in use when its sql.DB is closed.
+			tx, err := db2.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := db2.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !open(d) {
+				t.Fatal("closing the sql.DB closed the Driver of its open transaction")
+			}
+			if err := tx.QueryRowContext(ctx, "SELECT 'b' FROM DUAL").Scan(&s); err != nil {
+				t.Error(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Error(err)
+			}
+			if open(d) {
+				t.Error("the Driver is still open after its last sql.DB and connection are closed")
+			}
+		})
+	}
+}
+
 // TestPoolClosedAfterHeldConn checks that a connection still in use when
 // its sql.DB is closed remains usable, and that the pool is gone after it.
 func TestPoolClosedAfterHeldConn(t *testing.T) {
