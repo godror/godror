@@ -12,6 +12,7 @@ package godror
 import "C"
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
@@ -66,7 +67,10 @@ type (
 			io.Closer
 			driver.StmtQueryContext
 		}
-		connIsOwned bool
+		// sqlConn is the dedicated connection that NewQueue has taken from
+		// a pool (*sql.DB); Close gives it back. It is nil when the caller
+		// gave a single connection (*sql.Conn, *sql.Tx), which the caller owns.
+		sqlConn *sql.Conn
 	}
 
 	queueOption interface{ qOption() }
@@ -109,32 +113,36 @@ func (queueTableName) qOption() {}
 // NewQueue creates a new Queue.
 //
 // WARNING: the connection given to it must not be closed before the Queue is closed!
-// So use an sql.Conn for it.
-func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string, options ...queueOption) (*Queue, error) {
-	cx, err := DriverConn(ctx, execer)
+// So use an sql.Conn or an sql.Tx for it: then the Queue works in that
+// session and transaction, and the caller commits.
+//
+// Given a pool (something with a Conn method, such as an *sql.DB), the Queue
+// takes a dedicated *sql.Conn from it, and gives it back in Close.
+// Nothing else can commit on that connection, and Close rolls back what
+// is uncommitted on it, so use VisibleImmediate with such a Queue.
+func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectTypeName string, options ...queueOption) (_ *Queue, err error) {
+	var sqlConn *sql.Conn
+	if conner, ok := execer.(interface {
+		Conn(context.Context) (*sql.Conn, error)
+	}); ok {
+		// A pool takes its connection back as soon as a call returns,
+		// and hands it to others: reserve one for the life of the Queue.
+		if sqlConn, err = conner.Conn(ctx); err != nil {
+			return nil, err
+		}
+		execer = sqlConn
+	}
+	Q := Queue{queueInnards: queueInnards{sqlConn: sqlConn}, name: name}
+	defer func() {
+		if err != nil {
+			Q.Close()
+		}
+	}()
+	cx, err := getConn(ctx, execer)
 	if err != nil {
 		return nil, err
 	}
-	var execerIsPool bool
-	{
-		// Check whether this is a pool or a single connection.
-		cx2, err := DriverConn(ctx, execer)
-		if err != nil {
-			cx.Close()
-			return nil, err
-		}
-		//fmt.Printf("cx=%p cx2=%p\n", cx.(*conn).dpiConn, cx2.(*conn).dpiConn)
-		if cx.(*conn).dpiConn != cx2.(*conn).dpiConn {
-			execerIsPool = true
-			cx2.Close()
-		}
-	}
-	Q := Queue{
-		queueInnards: queueInnards{
-			conn: cx.(*conn), connIsOwned: execerIsPool,
-		},
-		name: name,
-	}
+	Q.conn = cx
 	enqOpts := DefaultEnqOptions
 	deqOpts := DefaultDeqOptions
 	for _, o := range options {
@@ -204,7 +212,6 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	})
 	C.free(unsafe.Pointer(value))
 	if err != nil {
-		cx.Close()
 		return nil, fmt.Errorf("newQueue %q: %w", name, err)
 	}
 
@@ -241,13 +248,9 @@ func NewQueue(ctx context.Context, execer Execer, name string, payloadObjectType
 	}
 
 	if err = Q.SetEnqOptions(enqOpts); err != nil {
-		cx.Close()
-		Q.Close()
 		return nil, err
 	}
 	if err = Q.SetDeqOptions(deqOpts); err != nil {
-		cx.Close()
-		Q.Close()
 		return nil, err
 	}
 	Q.defEnqOpts = enqOpts
@@ -275,26 +278,30 @@ func (Q *Queue) closeLocked() error {
 }
 
 func (Q *queueInnards) Close() error {
-	c, q, ot, st := Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt
-	Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt = nil, nil, nil, nil
+	c, q, st, sqlConn := Q.conn, Q.dpiQueue, Q.sizeStmt, Q.sqlConn
+	Q.conn, Q.dpiQueue, Q.PayloadObjectType, Q.sizeStmt, Q.sqlConn = nil, nil, nil, nil, nil
 	if st != nil {
 		st.Close()
 	}
-	if q == nil {
-		return nil
-	}
-	if err := c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
-		return fmt.Errorf("release: %w", err)
-	}
-	if Q.connIsOwned {
-		if ot != nil && ot.dpiObjectType != nil {
-			ot.Close()
+	var err error
+	if q != nil {
+		if err = c.checkExec(func() C.int { return C.dpiQueue_release(q) }); err != nil {
+			err = fmt.Errorf("release: %w", err)
 		}
+	}
+	if sqlConn != nil {
+		// The connection goes back to the pool: don't leave the Queue's
+		// uncommitted work for the next user of it.
 		if c != nil {
-			c.Close()
+			if rbErr := c.Rollback(); err == nil {
+				err = rbErr
+			}
+		}
+		if closeErr := sqlConn.Close(); err == nil {
+			err = closeErr
 		}
 	}
-	return nil
+	return err
 }
 
 // Purge the expired messages from the queue.

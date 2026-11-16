@@ -1567,6 +1567,10 @@ func (A ObjectAttribute) Close() error {
 }
 
 // GetObjectType returns the ObjectType for the name.
+//
+// The ObjectType belongs to the connection of ex, so give it a single
+// connection (*sql.Conn or *sql.Tx), just as for DriverConn:
+// an *sql.DB does not reserve the connection for the caller.
 func GetObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType, error) {
 	c, err := getConn(ctx, ex)
 	if err != nil {
