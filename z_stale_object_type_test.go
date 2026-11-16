@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -95,4 +96,123 @@ func TestStaleObjectType(t *testing.T) {
 	if n != 3 {
 		t.Errorf("got %d attributes, wanted 3", n)
 	}
+}
+
+type staleOTWriter struct {
+	ID int32 `godror:"ID"`
+}
+
+// The name of the type is different in each run.
+var staleOTWriterTyp string
+
+func (staleOTWriter) ObjectTypeName() string { return staleOTWriterTyp }
+func (w staleOTWriter) WriteObject(o *godror.Object) error {
+	return godror.StructWriteObject(o, &w)
+}
+
+// A statement that fails with ORA-00902 is executed again only if the error
+// can come from a replaced object type: what the statement itself has raised
+// must not run it twice. And the object types the caller holds stay usable.
+func TestInvalidDatatypeRetry(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	sfx := strings.ToUpper(tblSuffix + "_" + strconv.FormatInt(time.Now().UnixNano()%1e12, 36))
+	staleOTWriterTyp = "TEST_STALE_W" + sfx
+	other, tbl := "TEST_STALE_O"+sfx, "TEST_STALE_T"+sfx
+	defer func() {
+		for _, qry := range []string{
+			"DROP TABLE " + tbl + " PURGE", "DROP TYPE " + other + " FORCE", "DROP TYPE " + staleOTWriterTyp + " FORCE",
+		} {
+			testDb.ExecContext(context.Background(), qry)
+		}
+	}()
+	for _, qry := range []string{
+		"CREATE TYPE " + staleOTWriterTyp + " AS OBJECT (id NUMBER(9))",
+		"CREATE TYPE " + other + " AS OBJECT (id NUMBER(9))",
+		"CREATE TABLE " + tbl + " (id NUMBER(9))",
+	} {
+		if _, err := testDb.ExecContext(ctx, qry); err != nil {
+			t.Fatalf("%s: %+v", qry, err)
+		}
+	}
+
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	// The caller holds an object type of the connection.
+	ot, err := godror.GetObjectType(ctx, conn, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want int
+	check := func(name string) {
+		t.Helper()
+		want++
+		var got int
+		if err := testDb.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("%s: the block has run %d times, wanted once", name, 1+got-want)
+			want = got
+		}
+		obj, err := ot.NewObject()
+		if err != nil {
+			t.Fatalf("%s: the caller's ObjectType is not usable: %+v", name, err)
+		}
+		obj.Close()
+	}
+
+	// The blocks insert a row (and commit), ...
+	block := func(decl, rest string) string {
+		return "DECLARE PRAGMA AUTONOMOUS_TRANSACTION; v " + decl + " := :1; BEGIN INSERT INTO " + tbl +
+			" (id) VALUES (1); COMMIT; " + rest + " END;"
+	}
+	// ... then these fail with ORA-00902 by themselves.
+	const raise = "EXECUTE IMMEDIATE 'CREATE TABLE test_stale_x (c test_stale_no_such_type)';"
+	for _, tC := range []struct {
+		name, qry string
+		arg       any
+	}{
+		{"no object bind", block("NUMBER", raise), 1},
+		{"object bind", block(staleOTWriterTyp, raise), staleOTWriter{ID: 1}},
+	} {
+		_, err := conn.ExecContext(ctx, tC.qry, tC.arg)
+		var oe *godror.OraErr
+		if !errors.As(err, &oe) || oe.Code() != 902 {
+			t.Fatalf("%s: got %+v, wanted ORA-00902", tC.name, err)
+		}
+		check(tC.name)
+		rows, err := conn.QueryContext(ctx, tC.qry, tC.arg)
+		if err == nil {
+			rows.Close()
+		}
+		if !errors.As(err, &oe) || oe.Code() != 902 {
+			t.Fatalf("%s: query got %+v, wanted ORA-00902", tC.name, err)
+		}
+		check(tC.name + " query")
+	}
+
+	// An ObjectWriter of a replaced type is bound again with the new type.
+	qry := block(staleOTWriterTyp, "")
+	if _, err = conn.ExecContext(ctx, qry, staleOTWriter{ID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	check("before the type is replaced")
+	replace := "CREATE OR REPLACE TYPE " + staleOTWriterTyp + " FORCE AS OBJECT (id NUMBER(9), extra DATE)"
+	if _, err = testDb.ExecContext(ctx, replace); err != nil {
+		t.Fatalf("%s: %+v", replace, err)
+	}
+	if _, err = conn.ExecContext(ctx, qry, staleOTWriter{ID: 1}); err != nil {
+		t.Fatalf("after the type has been replaced: %+v", err)
+	}
+	check("after the type has been replaced")
 }
