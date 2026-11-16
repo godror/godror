@@ -568,6 +568,11 @@ func (c *conn) init(ctx context.Context, isNew bool) error {
 		logger.Debug("init connection", "params", c.params)
 	}
 
+	// An OnInit function of the user may set the session time zone, and it
+	// cannot be part of a cache key: such sessions are asked for their zone.
+	// (getOnInit stores the function made of AlterSession and OnInitStmts
+	// in OnInit, so look at it before that.)
+	sharedTZ := c.params.CommonParams.OnInit == nil
 	if !c.params.CommonParams.InitOnNewConn || isNew {
 		if onInit := c.getOnInit(); onInit != nil {
 			if c.params.Timezone == nil {
@@ -579,10 +584,12 @@ func (c *conn) init(ctx context.Context, isNew bool) error {
 		}
 	}
 	// After onInit, as that may set the session time zone.
-	return c.initTZ()
+	return c.initTZ(sharedTZ && !c.params.PerSessionTimezone)
 }
 
-func (c *conn) initTZ() error {
+// initTZ sets the connection's time zone. With useCache the zone comes from
+// (and is stored in) the driver's cache, otherwise the session is asked.
+func (c *conn) initTZ(useCache bool) error {
 	logger := getLogger(context.TODO())
 	if logger != nil {
 		logger.Debug("initTZ", "tzValid", c.tzValid, "paramsTZ", c.params.Timezone)
@@ -599,7 +606,7 @@ func (c *conn) initTZ() error {
 
 	var tz locationWithOffSecs
 	var key string
-	if !c.params.PerSessionTimezone {
+	if useCache {
 		key = time.Local.String() + "\t" + c.params.ConnectString
 		if c.params.Timezone != nil {
 			key += "\t" + c.params.Timezone.String()
@@ -697,7 +704,7 @@ func (c *conn) initTZ() error {
 		logger.Debug("initTZ", "tz", c.params.Timezone, "offSecs", c.tzOffSecs)
 	}
 
-	if c.tzValid && !c.params.PerSessionTimezone {
+	if c.tzValid && useCache {
 		if c.drv.timezones == nil {
 			c.drv.timezones = make(map[string]locationWithOffSecs)
 		}
