@@ -239,6 +239,21 @@ func (n *Number) Scan(v any) error {
 // the longest text of an Oracle NUMBER (171 characters).
 var ErrNumberTooLong = errors.New("number is too long")
 
+// ErrInvalidNumber is returned for a Number that is not the text of a number.
+var ErrInvalidNumber = errors.New("invalid number")
+
+// hasDigit reports whether the number has a digit before the exponent.
+func (n Number) hasDigit() bool {
+	for i := 0; i < len(n); i++ {
+		if c := n[i]; '0' <= c && c <= '9' {
+			return true
+		} else if c == 'e' || c == 'E' {
+			break
+		}
+	}
+	return false
+}
+
 // MarshalText marshals a Number to text.
 func (n Number) MarshalText() ([]byte, error) {
 	if len(n) > numberAsTextChars {
@@ -273,9 +288,10 @@ func (n *Number) UnmarshalText(p []byte) error {
 		if exp < -numberAsTextChars || exp > numberAsTextChars {
 			return fmt.Errorf("exponent of %q: %w", p, ErrNumberTooLong)
 		}
-		if p = p[:i]; bytes.IndexAny(p, "0123456789") < 0 {
-			return fmt.Errorf("no digits in %q", p)
-		}
+		p = p[:i]
+	}
+	if bytes.IndexAny(p, "0123456789") < 0 {
+		return fmt.Errorf("no digits in %q: %w", p, ErrInvalidNumber)
 	}
 	var dotNum int
 	for i, c := range p {
