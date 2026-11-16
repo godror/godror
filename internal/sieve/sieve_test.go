@@ -102,6 +102,43 @@ func TestUpdateAndCapacityOne(t *testing.T) {
 	}
 }
 
+func TestPutReturnsOldAndDelete(t *testing.T) {
+	c := NewCache[string, int](2)
+	if old, ok := c.Put("a", 1); ok {
+		t.Fatalf("Put into an empty cache returned %d", old)
+	}
+	if old, ok := c.Put("a", 10); !ok || old != 1 {
+		t.Fatalf("replacing Put returned %d, %v; want 1", old, ok)
+	}
+	c.Put("b", 2)
+	c.Get("b")
+	if old, ok := c.Put("c", 3); !ok || old != 10 {
+		t.Fatalf("evicting Put returned %d, %v; want 10", old, ok)
+	}
+
+	// The hand is at b now: delete it, the next eviction must still work.
+	if v, ok := c.Delete("b"); !ok || v != 2 {
+		t.Fatalf("Delete(b) = %d, %v", v, ok)
+	}
+	if _, ok := c.Delete("b"); ok {
+		t.Fatal("b deleted twice")
+	}
+	if _, ok := c.Get("b"); ok || c.Len() != 1 {
+		t.Fatalf("b is still cached, Len() = %d", c.Len())
+	}
+	if _, ok := c.Put("d", 4); ok {
+		t.Fatal("Put after Delete evicted, though the cache was not full")
+	}
+	if old, ok := c.Put("e", 5); !ok || old != 3 {
+		t.Fatalf("evicting Put returned %d, %v; want 3", old, ok)
+	}
+	for _, k := range []string{"d", "e"} {
+		if _, ok := c.Get(k); !ok {
+			t.Fatalf("expected %s in cache", k)
+		}
+	}
+}
+
 func TestGenericValueAndNil(t *testing.T) {
 	type key struct{ x, y int }
 	type val struct{ items []string }

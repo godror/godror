@@ -36,14 +36,20 @@ func newStmtCache(max int) stmtCache {
 }
 
 // take removes and returns the statement cached for query, or nil.
+//
+// The statement must not stay in the cache while it is in use: closing the
+// connection closes the cached statements, and a failed statement is closed
+// by its user.
 func (sc *stmtCache) take(query string) *statement {
-	st, _ := sc.cache.Get(query)
+	st, _ := sc.cache.Delete(query)
 	return st
 }
 
-// put adds st to the cache, and closes the statements it evicts.
+// put adds st to the cache, and closes the statement it evicts or replaces.
 func (sc *stmtCache) put(query string, st *statement) {
-	sc.cache.Put(query, st)
+	if old, ok := sc.cache.Put(query, st); ok && old != st {
+		old.Close()
+	}
 }
 
 // clear closes and drops all cached statements.
