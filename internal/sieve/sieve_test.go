@@ -6,7 +6,7 @@ import (
 )
 
 func TestBasicGetPut(t *testing.T) {
-	c := New[string, int](2)
+	c := NewCache[string, int](2)
 	if v, ok := c.Get("missing"); ok || v != 0 {
 		t.Fatalf("missing key: got %d, %v", v, ok)
 	}
@@ -21,7 +21,7 @@ func TestBasicGetPut(t *testing.T) {
 }
 
 func TestSieveRetainsVisitedOldest(t *testing.T) {
-	c := New[string, int](3)
+	c := NewCache[string, int](3)
 	c.Put("a", 1) // oldest
 	c.Put("b", 2)
 	c.Put("c", 3)
@@ -39,7 +39,7 @@ func TestSieveRetainsVisitedOldest(t *testing.T) {
 }
 
 func TestHandContinuesFromPreviousEviction(t *testing.T) {
-	c := New[string, int](3)
+	c := NewCache[string, int](3)
 	c.Put("a", 1)
 	c.Put("b", 2)
 	c.Put("c", 3)
@@ -57,7 +57,7 @@ func TestHandContinuesFromPreviousEviction(t *testing.T) {
 }
 
 func TestAllVisitedAndWrap(t *testing.T) {
-	c := New[int, string](2)
+	c := NewCache[int, string](2)
 	c.Put(1, "a")
 	c.Put(2, "b")
 	c.Get(1)
@@ -75,7 +75,7 @@ func TestAllVisitedAndWrap(t *testing.T) {
 }
 
 func TestUpdateAndCapacityOne(t *testing.T) {
-	c := New[string, string](2)
+	c := NewCache[string, string](2)
 	c.Put("a", "old")
 	c.Put("b", "b")
 	c.Put("a", "new") // treat update as a visit; no duplicate or reordering
@@ -90,7 +90,7 @@ func TestUpdateAndCapacityOne(t *testing.T) {
 		t.Fatalf("Get(a) = %q, %v", v, ok)
 	}
 
-	one := New[int, int](1)
+	one := NewCache[int, int](1)
 	one.Put(1, 10)
 	one.Get(1)
 	one.Put(2, 20)
@@ -105,7 +105,7 @@ func TestUpdateAndCapacityOne(t *testing.T) {
 func TestGenericValueAndNil(t *testing.T) {
 	type key struct{ x, y int }
 	type val struct{ items []string }
-	c := New[key, *val](2)
+	c := NewCache[key, *val](2)
 	k := key{1, 2}
 	c.Put(k, &val{items: []string{"x"}})
 	v, ok := c.Get(k)
@@ -124,11 +124,11 @@ func TestBadCapacityPanics(t *testing.T) {
 			t.Fatal("expected panic")
 		}
 	}()
-	New[int, int](0)
+	NewCache[int, int](0)
 }
 
 func TestConcurrentUse(t *testing.T) {
-	c := New[int, int](16)
+	c := NewCache[int, int](16)
 	var wg sync.WaitGroup
 	for worker := 0; worker < 8; worker++ {
 		wg.Add(1)

@@ -32,7 +32,7 @@ type stmtCache struct {
 }
 
 func newStmtCache(max int) stmtCache {
-	return stmtCache{cache: sieve.New[string, *statement](max)}
+	return stmtCache{cache: sieve.NewCache[string, *statement](max)}
 }
 
 // take removes and returns the statement cached for query, or nil.
