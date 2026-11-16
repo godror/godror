@@ -441,7 +441,10 @@ func (vi varInfo) canHold(other varInfo) bool {
 	// that statement (with its own reference). Executing into the same
 	// variable again would open the new cursor on the statement of the
 	// previous one, which keeps its query metadata, defines and fetch state.
-	if other.IsOut && other.NatTyp == C.DPI_NATIVE_TYPE_STMT {
+	//
+	// The same goes for the LOB of a LOB variable, which the Lob returned
+	// to the caller uses, and closes when it is read to the end.
+	if other.IsOut && (other.NatTyp == C.DPI_NATIVE_TYPE_STMT || other.NatTyp == C.DPI_NATIVE_TYPE_LOB) {
 		return false
 	}
 	return vi.BufSize >= other.BufSize &&
