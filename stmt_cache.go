@@ -8,6 +8,8 @@ package godror
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
+	"fmt"
 
 	"github.com/godror/godror/internal/sieve"
 )
@@ -88,6 +90,10 @@ func stmtCacheMax(stmtCacheSize int) int {
 	}
 }
 
+// ErrArgCount is returned by Exec when the number of the arguments differs
+// from the number of the placeholders of the statement.
+var ErrArgCount = errors.New("wrong number of arguments")
+
 var _ driver.ExecerContext = (*conn)(nil)
 
 // ExecContext executes a query that does not return rows.
@@ -123,6 +129,24 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	// connection's CheckNamedValue on the ExecerContext path, instead of the
 	// statement's one, which strips them for prepared statements.
 	args = st.applyOptions(args)
+
+	// database/sql checks the number of the arguments only for a prepared
+	// statement. It must be checked here, too: the variables of the previous
+	// execution are still bound to the statement, so with fewer arguments it
+	// would be executed with the previous values of the others, instead of
+	// failing with ORA-01008.
+	n, names, err := st.BindNames()
+	if err == nil && names != nil {
+		// n may count a name more than once, as NumInput explains.
+		n = len(names)
+	}
+	if err == nil && n != len(args) {
+		err = fmt.Errorf("%w: expected %d, got %d", ErrArgCount, n, len(args))
+	}
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
 
 	// Keep only DML and PL/SQL: executing the statement handle of a DDL again
 	// does nothing, without an error. ODPI-C knows only CREATE, ALTER and DROP
