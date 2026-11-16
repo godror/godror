@@ -57,7 +57,7 @@ func (r *rows) NextRow() error {
 // Common destinations are set directly, others go through sql.ConvertAssign.
 func (r *rows) ScanColumn(scanCtx driver.ScanContext, i int, dest any) error {
 	p, isAny := dest.(*any)
-	if !isAny && r.scanColumnDirect(i, dest) {
+	if !isAny && !nilDest(dest) && r.scanColumnDirect(i, dest) {
 		return nil
 	}
 	if r.callsC[i] {
@@ -72,6 +72,30 @@ func (r *rows) ScanColumn(scanCtx driver.ScanContext, i int, dest any) error {
 		return nil
 	}
 	return sql.ConvertAssign(scanCtx, dest, r.scratch[i])
+}
+
+// nilDest reports whether dest is a nil pointer of a type that
+// scanColumnDirect sets. Such a destination is left to sql.ConvertAssign.
+func nilDest(dest any) bool {
+	switch p := dest.(type) {
+	case *string:
+		return p == nil
+	case *int64:
+		return p == nil
+	case *int:
+		return p == nil
+	case *Number:
+		return p == nil
+	case *time.Time:
+		return p == nil
+	case *sql.NullString:
+		return p == nil
+	case *sql.NullInt64:
+		return p == nil
+	case *sql.NullTime:
+		return p == nil
+	}
+	return false
 }
 
 func plainColumn(typ C.dpiOracleTypeNum) bool {

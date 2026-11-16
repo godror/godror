@@ -65,3 +65,47 @@ func TestScanNullAfterValue(t *testing.T) {
 		}
 	}
 }
+
+// TestScanNilPointer checks that a nil pointer destination is an error, not a panic.
+func TestScanNilPointer(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+
+	const qry = "SELECT 'x', CAST(1 AS NUMBER(9)), 1.5 FROM DUAL"
+	var s string
+	var i int64
+	var num godror.Number
+	for _, dests := range [][]any{
+		{(*string)(nil), &i, &num},
+		{&s, (*int64)(nil), &num},
+		{&s, (*int)(nil), &num},
+		{&s, &i, (*string)(nil)},
+	} {
+		rows, err := testDb.QueryContext(ctx, qry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rows.Next() {
+			rows.Close()
+			t.Fatal(rows.Err())
+		}
+		var panicked bool
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					panicked = true
+					t.Errorf("Scan(%T, %T, %T) panics: %v", dests[0], dests[1], dests[2], r)
+				}
+			}()
+			err = rows.Scan(dests...)
+		}()
+		if panicked {
+			// rows.Close would block: database/sql still holds its lock.
+			continue
+		}
+		rows.Close()
+		if err == nil {
+			t.Errorf("Scan(%T, %T, %T): no error for the nil pointer", dests[0], dests[1], dests[2])
+		}
+	}
+}
