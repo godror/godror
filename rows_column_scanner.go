@@ -56,6 +56,17 @@ func (r *rows) NextRow() error {
 // ScanColumn stores the column of the current row into dest.
 // Common destinations are set directly, others go through sql.ConvertAssign.
 func (r *rows) ScanColumn(scanCtx driver.ScanContext, i int, dest any) error {
+	if i == 0 {
+		// A new Scan: the previous one has succeeded.
+		_ = r.scanDone(nil)
+	}
+	if err := r.scanColumn(scanCtx, i, dest); err != nil {
+		return r.scanDone(err)
+	}
+	return nil
+}
+
+func (r *rows) scanColumn(scanCtx driver.ScanContext, i int, dest any) error {
 	p, isAny := dest.(*any)
 	if !isAny && r.scanColumnDirect(i, dest) {
 		return nil

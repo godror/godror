@@ -80,6 +80,10 @@ type rows struct {
 	scratch        []driver.Value
 	callsC         []bool
 	logger         *slog.Logger
+	// keptJSONs are the JSON values that the Scan in progress has taken
+	// a reference for (KeepJSON). They are released if that Scan fails,
+	// as the caller does not get them then.
+	keptJSONs []JSON
 	// jsons are the JSON values handed out since the last fetch
 	// without the KeepJSON option: the next fetch or Close frees them.
 	jsons []*jsonRow
@@ -149,6 +153,19 @@ func (r *rows) closeJSONs() {
 	}
 	clear(r.jsons)
 	r.jsons = r.jsons[:0]
+}
+
+// scanDone is called at the end of the Scan of a row. If that failed, it
+// releases the JSON values kept for it; otherwise they are the caller's.
+func (r *rows) scanDone(err error) error {
+	if err != nil {
+		for _, j := range r.keptJSONs {
+			_ = j.Close()
+		}
+	}
+	clear(r.keptJSONs)
+	r.keptJSONs = r.keptJSONs[:0]
+	return err
 }
 
 // ColumnTypeLength return the length of the column type if the column is a variable length type.
@@ -367,9 +384,10 @@ func (r *rows) Next(dest []driver.Value) error {
 	o.load(r.statement)
 	for i := range r.columns {
 		if err := r.setValue(ctx, logger, &o, i, r.bufferRowIndex, dest); err != nil {
-			return err
+			return r.scanDone(err)
 		}
 	}
+	_ = r.scanDone(nil)
 	r.bufferRowIndex++
 	r.fetched--
 
@@ -823,6 +841,8 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 					r.jsons = append(r.jsons, j.row)
 				} else if C.dpiJson_addRef(dj) == C.DPI_FAILURE {
 					return fmt.Errorf("JSON addRef: %w", r.getError())
+				} else {
+					r.keptJSONs = append(r.keptJSONs, j)
 				}
 				dest[i] = j
 			}
