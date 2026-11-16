@@ -70,6 +70,10 @@ type conn struct {
 	// database. IsValid reports false then, so database/sql discards
 	// the connection, and with it the cache.
 	staleObjTypes atomic.Bool
+
+	// objTypesMu protects objTypes: it is read and written by callers that
+	// hold only the read lock of mu. Lock it after mu.
+	objTypesMu sync.Mutex
 }
 
 func (c *conn) getError() error {
@@ -246,6 +250,23 @@ func (c *conn) Close() error {
 	return c.closeNotLocking()
 }
 
+// hasObjTypes reports whether the connection has cached object types.
+func (c *conn) hasObjTypes() bool {
+	c.objTypesMu.Lock()
+	defer c.objTypesMu.Unlock()
+	return len(c.objTypes) != 0
+}
+
+// clearObjTypes closes and forgets the cached object types.
+func (c *conn) clearObjTypes() {
+	c.objTypesMu.Lock()
+	defer c.objTypesMu.Unlock()
+	for _, v := range c.objTypes {
+		_ = v.Close()
+	}
+	clear(c.objTypes)
+}
+
 func (c *conn) closeNotLocking() error {
 	if c == nil {
 		return nil
@@ -267,10 +288,7 @@ func (c *conn) closeNotLocking() error {
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
 	}
-	for _, v := range c.objTypes {
-		_ = v.Close()
-	}
-	clear(c.objTypes)
+	c.clearObjTypes()
 
 	// dpiConn_release decrements dpiConn's reference counting,
 	// and closes it when it reaches zero.

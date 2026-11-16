@@ -644,14 +644,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 		// ORA-00902 is a bind variable of a replaced type (when the statement
 		// is reused, prepared before the type was replaced).
 		retryTypes := isInvalidObjectErr(err)
-		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
 			retryTypes, retypedTypes = true, true
 		}
 		if !st.noRetry && retryTypes {
-			for _, v := range st.conn.objTypes {
-				_ = v.Close()
-			}
-			clear(st.conn.objTypes)
+			st.conn.clearObjTypes()
 			for j, v := range st.vars {
 				if v != nil {
 					C.dpiVar_release(v)
@@ -668,7 +665,7 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			}
 			continue
 		}
-		if isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+		if isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
 			// A cached object type may have been replaced in the database:
 			// return the error, and do not let the connection be reused.
 			st.conn.staleObjTypes.Store(true)
@@ -931,14 +928,11 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		// ORA-00902 is a bind variable of a replaced type (when the statement
 		// is reused, prepared before the type was replaced).
 		retryTypes := isInvalidObjectErr(err)
-		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+		if !retryTypes && !retypedTypes && isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
 			retryTypes, retypedTypes = true, true
 		}
 		if !st.noRetry && retryTypes {
-			for _, v := range st.conn.objTypes {
-				_ = v.Close()
-			}
-			clear(st.conn.objTypes)
+			st.conn.clearObjTypes()
 			for j, v := range st.vars {
 				if v != nil {
 					C.dpiVar_release(v)
@@ -955,7 +949,7 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 			}
 			continue
 		}
-		if isInvalidDatatypeErr(err) && len(st.conn.objTypes) != 0 {
+		if isInvalidDatatypeErr(err) && st.conn.hasObjTypes() {
 			// A cached object type may have been replaced in the database:
 			// return the error, and do not let the connection be reused.
 			st.conn.staleObjTypes.Store(true)
