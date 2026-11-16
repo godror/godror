@@ -1382,7 +1382,12 @@ func (st *statement) bindVars(
 			return fmt.Errorf("maximum array size allowed is %d", maxArraySize)
 		}
 		mustAllocate := st.vars[i] == nil || st.data[i] == nil
-		if !mustAllocate && !st.varInfos[i].canHold(vi) {
+		// ODPI-C sets only the scalar indicator of a variable to NULL, and
+		// leaves the object that the variable already holds, with its own
+		// indicator, in place: the server would get the previous object.
+		// A new variable gets a NULL object.
+		if !mustAllocate && (!st.varInfos[i].canHold(vi) ||
+			vi.NatTyp == C.DPI_NATIVE_TYPE_OBJECT && info.isIn && isNullObject(value)) {
 			C.dpiVar_release(st.vars[i])
 			mustAllocate = true
 		}
@@ -3434,6 +3439,19 @@ func (stmt *statement) bindableObject(ot *ObjectType, dv *C.dpiVar, data []C.dpi
 	}
 	o, err := ot.NewObject()
 	return o, false, err
+}
+
+// isNullObject reports whether v, the value of an object bind, is a NULL object.
+func isNullObject(v any) bool {
+	switch x := v.(type) {
+	case Object:
+		return x.dpiObject == nil
+	case *Object:
+		return x == nil || x.dpiObject == nil
+	case ObjectCollection:
+		return x.Object == nil || x.Object.dpiObject == nil
+	}
+	return false
 }
 
 // closeCreated closes the objects among objs that were created by
