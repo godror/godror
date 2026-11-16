@@ -1098,7 +1098,7 @@ func (O ObjectCollection) Len() (int, error) {
 	return int(size), nil
 }
 
-// Trim the collection to n.
+// Trim removes n elements from the end of the collection.
 func (O ObjectCollection) Trim(n int) error {
 	if O.Object == nil || O.Object.dpiObject == nil {
 		return ErrNotCollection
@@ -1709,7 +1709,7 @@ func collectionLen(coll ObjectCollection, n int) (int, error) {
 		return 0, err
 	}
 	if cur > n {
-		if err := coll.Trim(n); err != nil {
+		if err := coll.Trim(cur - n); err != nil {
 			return 0, err
 		}
 		cur = n
