@@ -1003,8 +1003,6 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 		return nil, closeIfBadConn(err)
 	}
 
-	// The Lobs of the previous execution are valid only till this one.
-	st.closeOutLobs()
 	rows, err := st.openRows(ctx, int(colCount))
 	return rows, closeIfBadConn(err)
 }
