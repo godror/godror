@@ -58,9 +58,8 @@ type CommonSimpleParams struct {
 	Token, PrivateKey       string
 	Password                Password
 	Charset                 string
-	// StmtCacheSize of 0 means the default, -1 to disable the stmt cache
-	// completely. It bounds both the Oracle Client's statement cache and the
-	// per-connection cache of the statements prepared for Exec.
+	// StmtCacheSize controls the Oracle Client statement cache.
+	// Zero means the default; -1 disables it.
 	StmtCacheSize int
 	// true: OnInit will be called only by the new session / false: OnInit will called by new or pooled connection
 	InitOnNewConn                               bool

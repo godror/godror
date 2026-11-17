@@ -226,35 +226,42 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 		}
 		defer cx.Close()
 
-		callObjectType := func(ctx context.Context, dir direction) error {
-			tx, err := cx.BeginTx(ctx, nil)
-			if err != nil {
-				return err
-			}
-			defer tx.Commit()
-
-			s := pslice
-
-			var param any
-			switch dir {
-			// case justIn: param=s
-			case justOut:
-				param = sql.Out{Dest: &s}
-			case inOut:
-				param = sql.Out{Dest: &s, In: true}
-			}
-			qry := "begin " + sample + ".test_pobj_in(:1); end;"
-			_, err = tx.ExecContext(ctx, qry, param)
-			// t.Log(pslice)
-			return err
-		}
-
 		dirs := []direction{justOut, inOut}
 
 		dl, _ := ctx.Deadline()
 		dl = dl.Add(-3 * time.Second)
 		dur := time.Until(dl) / time.Duration(len(dirs))
 		run := func(t *testing.T, dir direction) {
+			stmts := make(map[string]*sql.Stmt, 2)
+			defer func() {
+				for _, st := range stmts {
+					st.Close()
+				}
+			}()
+			callObjectType := func(ctx context.Context, tx *sql.Tx, dir direction) error {
+				s := pslice
+
+				var param any
+				switch dir {
+				// case justIn: param=s
+				case justOut:
+					param = sql.Out{Dest: &s}
+				case inOut:
+					param = sql.Out{Dest: &s, In: true}
+				}
+				qry := "begin " + sample + ".test_pobj_in(:1); end;"
+				st := stmts[qry]
+				if st == nil {
+					if st, err = tx.PrepareContext(ctx, qry); err != nil {
+						return err
+					}
+					stmts[qry] = st
+				}
+				_, err = st.ExecContext(ctx, param)
+				// t.Log(pslice)
+				return err
+			}
+
 			var name string
 			switch dir {
 			// case justIn: name ="justIn"
@@ -268,8 +275,14 @@ func testPlSqlNestedObj(t *testing.T, step int) {
 				loopCnt = 0
 				t.Logf("dl: %v dur:%v", dl, dur)
 				var lastPrint time.Time
+				tx, err := cx.BeginTx(ctx, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Commit()
+
 				for ; time.Now().Before(dl); loopCnt++ {
-					if err := callObjectType(ctx, dir); err != nil {
+					if err := callObjectType(ctx, tx, dir); err != nil {
 						t.Fatal("callObjectType:", err)
 					}
 					if step <= 2 {

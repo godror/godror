@@ -290,7 +290,7 @@ func (n *Number) UnmarshalText(p []byte) error {
 		}
 		p = p[:i]
 	}
-	if bytes.ContainsAny(p, "0123456789") {
+	if !bytes.ContainsAny(p, "0123456789") {
 		return fmt.Errorf("no digits in %q: %w", p, ErrInvalidNumber)
 	}
 	var dotNum int

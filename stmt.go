@@ -384,7 +384,6 @@ type (
 		vars    []*C.dpiVar
 		tbc     []io.Closer
 		// outLobs are the readers of the OUT LOBs of the last execution,
-		// and of the LOBs of the last row of its closed rows,
 		// closed by the next execution and by Close.
 		outLobs []*dpiLobReader
 	}
@@ -459,9 +458,8 @@ func (st *statementInnards) close(ctx context.Context) error {
 	return nil
 }
 
-// closeOutLobs closes the readers of the OUT LOBs of the last execution, and
-// of the last row of its rows: their LOBs belong to the bind and define
-// variables, which are reused or released.
+// closeOutLobs closes the readers of the OUT LOBs of the last execution:
+// their LOBs belong to the bind variables, which are reused or released.
 func (st *statementInnards) closeOutLobs() {
 	for i, rdr := range st.outLobs {
 		rdr.release()
@@ -3984,9 +3982,6 @@ func (c *conn) dataSetVectorValue(ctx context.Context, dv *C.dpiVar, data []C.dp
 var (
 	// ErrNotImplemented is returned when the functionality is not implemented
 	ErrNotImplemented = errors.New("not implemented")
-	// ErrCursorClosed is returned by the rows of a nested cursor (a CURSOR() column)
-	// when used after its parent rows have moved to the next row.
-	ErrCursorClosed = errors.New("the nested cursor is closed: its parent rows have moved on")
 	// ErrStmtReexecuted is returned by the rows of a statement that
 	// has been executed again before all its rows have been read.
 	ErrStmtReexecuted = errors.New("the statement has been executed again, its previous rows are lost")

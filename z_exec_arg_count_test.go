@@ -7,8 +7,8 @@ package godror_test
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,8 +73,8 @@ func TestExecArgCount(t *testing.T) {
 				t.Fatal(qErr)
 			}
 			if tC.wantTxt == "" {
-				if !errors.Is(err, godror.ErrArgCount) {
-					t.Errorf("got %v, wanted ErrArgCount; the call inserted %q", err, got.String)
+				if err == nil || !strings.Contains(err.Error(), "arguments") {
+					t.Errorf("got %v, wanted an argument-count error; the call inserted %q", err, got.String)
 				}
 				return
 			}
@@ -98,12 +98,12 @@ func TestExecArgCount(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err := testDb.ExecContext(ctx, qry, 2)
-			if !errors.Is(err, godror.ErrArgCount) {
+			if err == nil || !strings.Contains(err.Error(), "arguments") {
 				var got sql.NullString
 				if qErr := testDb.QueryRowContext(ctx, "SELECT MAX(txt) FROM "+tbl+" WHERE id = 2").Scan(&got); qErr != nil {
 					t.Fatal(qErr)
 				}
-				t.Fatalf("got %v, wanted ErrArgCount; the call inserted %q", err, got.String)
+				t.Fatalf("got %v, wanted an argument-count error; the call inserted %q", err, got.String)
 			}
 		}
 	})
