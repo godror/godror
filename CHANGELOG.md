@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - KeepJSON option and JSON.Close: a godror.JSON scanned with KeepJSON is valid until its Close, so QueryRow(...).Scan(&j) can be used. See #472.
-- Implement driver.ExecerContext with a per-connection LRU statement cache:
-  repeated Exec calls with the same query reuse the prepared statement.
 
 ### Changed
+- Remove the implicit Go Exec statement cache and defer RowsColumnScanner support.
+- Row LOBs expire at Next or Close, including prepared statements. Nested cursors
+  are no longer automatically closed at the next parent row. See doc/resource-lifetimes.md.
 - DATE and TIMESTAMP (without time zone) values are written and read in the
   session's time zone (SESSIONTIMEZONE) instead of the database OS' time zone
   (SYSTIMESTAMP's), as the server itself converts them (#495). This changes the
@@ -21,8 +22,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   printed anymore (the `noTimezoneCheck` connection parameter has no effect).
 
 ### Fixed
-- Repeated Exec calls with an OUT object collection bind no longer grow the
-  client-side memory of the Oracle Client (TestPlSqlNestedObj).
 - A TIMESTAMP WITH LOCAL TIME ZONE column is read as the stored instant even
   when the session time zone differs from the client's OS time zone (#495).
 

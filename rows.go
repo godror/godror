@@ -75,18 +75,11 @@ type rows struct {
 	bufferRowIndex C.uint32_t
 	fetched        C.uint32_t
 	fromData       bool
-	current        C.uint32_t
-	options        rowOptions
-	scratch        []driver.Value
-	callsC         []bool
-	logger         *slog.Logger
 	// jsons are the JSON values handed out since the last fetch
 	// without the KeepJSON option: the next fetch or Close frees them.
 	jsons []*jsonRow
 	// lobs are the LOB readers of the current row, closed by Next and Close.
 	lobs []*dpiLobReader
-	// children are the nested cursors of the current row, closed by Next.
-	children []*rows
 }
 
 // Columns returns the names of the columns. The number of
@@ -107,15 +100,7 @@ func (r *rows) Close() error {
 		return nil
 	}
 	r.closeJSONs()
-	if st := r.statement; st != nil && st.dpiStmt != nil && !r.fromData && st.dpiStmt.refCount >= 2 {
-		// The statement stays open (a prepared statement): the Lobs of the
-		// last row remain valid till it is executed again or closed.
-		st.outLobs = append(st.outLobs, r.lobs...)
-		clear(r.lobs)
-		r.lobs = r.lobs[:0]
-	} else {
-		r.closeLobs()
-	}
+	r.closeLobs()
 	vars, st, nextRs := r.vars, r.statement, r.nextRs
 	r.columns, r.vars, r.data, r.statement, r.nextRs, r.origSt = nil, nil, nil, nil, nil, nil
 	fromData := r.fromData
@@ -365,8 +350,6 @@ func (r *rows) Next(dest []driver.Value) error {
 
 	// The LOBs of a row are valid only till the next Next (or Close).
 	r.closeLobs()
-	// The nested cursors of a row are valid only till the next Next.
-	r.closeChildren()
 	if err := r.fetch(ctx, logger); err != nil {
 		return err
 	}
@@ -393,26 +376,13 @@ func (r *rows) Next(dest []driver.Value) error {
 // closeLobs closes the LOB readers handed out for the current row.
 //
 // The define variable owns the LOBs, and frees them at the next fetch and
-// when the statement is closed or executed again.
+// when the statement is closed, so a row's Lob cannot outlive its row.
 func (r *rows) closeLobs() {
 	for i, rdr := range r.lobs {
 		rdr.release()
 		r.lobs[i] = nil
 	}
 	r.lobs = r.lobs[:0]
-}
-
-// closeChildren closes the nested cursors handed out for the current row,
-// that the caller has not closed: each holds a cursor open on the server.
-func (r *rows) closeChildren() {
-	for i, child := range r.children {
-		if child.err == nil {
-			child.err = ErrCursorClosed
-		}
-		_ = child.Close()
-		r.children[i] = nil
-	}
-	r.children = r.children[:0]
 }
 
 func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
@@ -821,7 +791,6 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 		}
 		r2.fromData = true
 		stmtAddCleanup(ctx, st, "Next")
-		r.children = append(r.children, r2)
 		dest[i] = r2
 
 	case C.DPI_ORACLE_TYPE_BOOLEAN, C.DPI_NATIVE_TYPE_BOOLEAN:

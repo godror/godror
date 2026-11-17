@@ -162,68 +162,17 @@ func TestLobRowLifetime(t *testing.T) {
 		wantClosed(t, "after QueryRow", c, b, c2)
 	})
 
-	t.Run("Prepared", func(t *testing.T) {
-		// A prepared statement stays open when its rows are closed, so the
-		// Lobs of the last row do, too: till it is executed again or closed.
-		stmt, err := conn.PrepareContext(ctx, qry+tbl+" WHERE id >= :1 ORDER BY id")
+	t.Run("prepared QueryRow", func(t *testing.T) {
+		st, err := conn.PrepareContext(ctx, qry+tbl+" WHERE id = 1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer stmt.Close()
-		wantData := func(t *testing.T, when string, i int, c, b *godror.Lob) {
-			t.Helper()
-			if got, err := io.ReadAll(c); err != nil {
-				t.Errorf("%s: read CLOB: %+v", when, err)
-			} else if string(got) != text(i) {
-				t.Errorf("%s: got %d bytes of CLOB, wanted %d", when, len(got), len(text(i)))
-			}
-			if got, err := io.ReadAll(b); err != nil {
-				t.Errorf("%s: read BLOB: %+v", when, err)
-			} else if !bytes.Equal(got, []byte(text(i))) {
-				t.Errorf("%s: got %d bytes of BLOB, wanted %d", when, len(got), len(text(i)))
-			}
-		}
-
-		// sql.Row.Scan closes the rows, but not the statement.
+		defer st.Close()
 		var c, b, c2 *godror.Lob
-		if err = stmt.QueryRowContext(ctx, godror.LobAsReader(), 3).Scan(&c, &b, &c2); err != nil {
+		if err := st.QueryRowContext(ctx, godror.LobAsReader()).Scan(&c, &b, &c2); err != nil {
 			t.Fatal(err)
 		}
-		wantData(t, "after QueryRow", 3, c, b) // c2 is left unread
-
-		// A loop that is left early.
-		rows, err := stmt.QueryContext(ctx, godror.LobAsReader(), 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer rows.Close()
-		// conn is busy with the rows, so wantClosed has to wait.
-		prev := []*godror.Lob{c, b, c2}
-		var a [8]byte
-		for _, lob := range prev {
-			if _, err := lob.Read(a[:]); !errors.Is(err, godror.ErrLOBClosed) {
-				t.Errorf("after the next execution: Read: got %v, wanted ErrLOBClosed", err)
-			}
-		}
-		var first [3]*godror.Lob
-		for i := 2; i < 4; i++ {
-			if !rows.Next() {
-				t.Fatal(rows.Err())
-			}
-			if err = rows.Scan(&c, &b, &c2); err != nil {
-				t.Fatal(err)
-			}
-			if i == 2 {
-				first = [...]*godror.Lob{c, b, c2}
-			}
-		}
-		rows.Close()
-		wantClosed(t, "after the next execution", prev...)
-		wantClosed(t, "after Next", first[:]...)
-		wantData(t, "after Close", 3, c, b)
-
-		stmt.Close()
-		wantClosed(t, "after the statement is closed", c, b, c2)
+		wantClosed(t, "after prepared QueryRow", c, b, c2)
 	})
 
 	t.Run("default", func(t *testing.T) {

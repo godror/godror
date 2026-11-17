@@ -746,7 +746,6 @@ func (d *drv) createConn(ctx context.Context, pool *connPool, P commonAndConnPar
 	d.mu.Lock()
 	d.conns++ // till closeNotLocking
 	d.mu.Unlock()
-	c.stmtCache = newStmtCache(stmtCacheMax(c.params.StmtCacheSize))
 
 	logger := P.Logger
 	var cs *C.char
