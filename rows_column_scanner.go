@@ -44,11 +44,13 @@ func (r *rows) NextRow() error {
 	if r.scratch == nil {
 		r.scratch = make([]driver.Value, len(r.columns))
 		r.callsC = make([]bool, len(r.columns))
+		r.scratchRow = make([]uint64, len(r.columns))
 		for i, col := range r.columns {
 			r.callsC[i] = !plainColumn(col.OracleType)
 		}
 		r.options.load(r.statement)
 	}
+	r.rowSeq++
 	r.current = r.bufferRowIndex
 	r.bufferRowIndex++
 	r.fetched--
@@ -62,12 +64,21 @@ func (r *rows) ScanColumn(scanCtx driver.ScanContext, i int, dest any) error {
 	if !isAny && !nilDest(dest) && r.scanColumnDirect(i, dest) {
 		return nil
 	}
-	if r.callsC[i] {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-	}
-	if err := r.setValue(context.Background(), r.logger, &r.options, i, r.current, r.scratch); err != nil {
-		return err
+	// Reading a LOB closes it, and opening a cursor again takes the rows
+	// from the one opened before: a repeated Scan of the row gets
+	// the value that the first one got, as with Next.
+	once := r.callsC[i] && readOnceColumn(r.columns[i].OracleType)
+	if !once || r.scratchRow[i] != r.rowSeq {
+		if r.callsC[i] {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+		}
+		if err := r.setValue(context.Background(), r.logger, &r.options, i, r.current, r.scratch); err != nil {
+			return err
+		}
+		if once {
+			r.scratchRow[i] = r.rowSeq
+		}
 	}
 	if isAny {
 		*p = r.scratch[i]
@@ -111,6 +122,17 @@ func plainColumn(typ C.dpiOracleTypeNum) bool {
 		C.DPI_ORACLE_TYPE_DATE, C.DPI_ORACLE_TYPE_TIMESTAMP,
 		C.DPI_ORACLE_TYPE_TIMESTAMP_TZ,
 		C.DPI_ORACLE_TYPE_INTERVAL_DS, C.DPI_ORACLE_TYPE_INTERVAL_YM:
+		return true
+	}
+	return false
+}
+
+// readOnceColumn reports whether ScanColumn reads the column only once per row.
+func readOnceColumn(typ C.dpiOracleTypeNum) bool {
+	switch typ {
+	case C.DPI_ORACLE_TYPE_CLOB, C.DPI_ORACLE_TYPE_NCLOB,
+		C.DPI_ORACLE_TYPE_BLOB, C.DPI_ORACLE_TYPE_BFILE,
+		C.DPI_ORACLE_TYPE_STMT:
 		return true
 	}
 	return false

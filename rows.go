@@ -79,7 +79,11 @@ type rows struct {
 	options        rowOptions
 	scratch        []driver.Value
 	callsC         []bool
-	logger         *slog.Logger
+	// rowSeq counts the rows of NextRow; scratchRow[i] is the row
+	// that scratch[i] of a LOB or cursor column was read from.
+	rowSeq     uint64
+	scratchRow []uint64
+	logger     *slog.Logger
 	// jsons are the JSON values handed out since the last fetch
 	// without the KeepJSON option: the next fetch or Close frees them.
 	jsons []*jsonRow
