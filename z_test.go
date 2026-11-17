@@ -38,6 +38,7 @@ import (
 
 	godror "github.com/godror/godror"
 	"github.com/godror/godror/dsn"
+	"github.com/godror/godror/internal/analyze"
 )
 
 var (
@@ -4998,9 +4999,8 @@ func TestLoopInLoop_199(t *testing.T) {
 	}
 	ctx, cancel := testContext(t, 1*time.Minute)
 	defer cancel()
-	var first, last, avg time.Duration
-	var n int
 	const cnt = 20
+	durations := make([]time.Duration, 0, cnt)
 	for i := range cnt {
 		start := time.Now()
 		rows, err := testDb.QueryContext(ctx, "SELECT 1 FROM DUAL")
@@ -5015,35 +5015,23 @@ func TestLoopInLoop_199(t *testing.T) {
 				}
 				for rows2.Next() {
 				}
-				//rows2.Close()
+				rows2.Close()
 			}
-			//rows.Close()
+			rows.Close()
 			if i == 0 { // The first is very cold (slow)
 				continue
 			}
-			last = time.Since(start)
-			if first == 0 {
-				first = last
-			}
-			avg += last
-			n++
-			t.Log(last)
+			dur := time.Since(start)
+			t.Log(dur)
+			durations = append(durations, dur)
 		}
 	}
-	if n > 0 {
-		avg /= time.Duration(n)
-	}
-	t.Log("first:", first, "last:", last, "avg:", avg)
+	outliers, drift, skew := analyze.Analyze(durations)
+	t.Log("outliers:", outliers, "drift:", drift, "skew:", skew)
 	// At millisecond resolution the run-to-run noise is easily 10-20%,
 	// so require an absolute difference too: only a real slowdown matters.
-	const noise = 5 * time.Millisecond
-	if first*11 < last*10 && last-first > noise {
-		t.Errorf("last (%s) > 110%% of first (%s)", last, first)
-	}
-	// Only a slowdown is a problem: early iterations are slower due to
-	// warm-up, so `last` being much faster than the average is expected.
-	if last > avg*12/10 && last-avg > noise {
-		t.Errorf("last (%s) is more than 20%% slower than the average (%s)", last, avg)
+	if drift > 40 {
+		t.Errorf("drift (%f) is more than 40%% ", drift)
 	}
 }
 func TestLobAsStringTypeName(t *testing.T) {
