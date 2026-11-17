@@ -169,8 +169,8 @@ func (P CommonSimpleParams) String() string {
 type ConnParams struct {
 	NewPassword                   Password
 	ConnClass                     string
-	ShardingKey, SuperShardingKey []any
 	AdminRole                     AdminRole
+	ShardingKey, SuperShardingKey []any
 	IsPrelim                      bool
 }
 
