@@ -9,12 +9,142 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 	"os"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/godror/godror/dsn"
 )
+
+// TestConnectorCloseWaitsForPoolRelease checks that closing the last connector
+// does not report completion or close its driver while native release is pending.
+func TestConnectorCloseWaitsForPoolRelease(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		calls := 0
+		old := closePool
+		closePool = func(*connPool) error { calls++; <-release; return nil }
+		defer func() { closePool = old }()
+		pool := &connPool{key: "slow", users: 1}
+		d := &drv{pools: map[string]*connPool{pool.key: pool}, connectors: 1}
+		c := connector{drv: d, uses: &connectorUses{pools: map[*connPool]struct{}{pool: {}}, active: true}}
+		done := make(chan error, 1)
+		go func() { done <- c.Close() }()
+		synctest.Wait()
+		time.Sleep(2 * driverCloseTimeout)
+		synctest.Wait()
+		returned := false
+		select {
+		case err := <-done:
+			returned = true
+			t.Errorf("Close returned before pool release: %v", err)
+		default:
+		}
+		d.mu.RLock()
+		closed := d.pools == nil
+		d.mu.RUnlock()
+		if closed {
+			t.Error("driver closed while pool release was pending")
+		}
+		close(release)
+		synctest.Wait()
+		if !returned {
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Error(err)
+				}
+			default:
+				t.Error("Close did not finish after pool release")
+			}
+		}
+		if calls != 1 {
+			t.Errorf("pool release called %d times, want 1", calls)
+		}
+	})
+}
+
+// TestConcurrentConnectorCloseKeepsDriverDuringPoolRelease checks that a
+// second Close cannot destroy the driver while another connector releases a pool.
+func TestConcurrentConnectorCloseKeepsDriverDuringPoolRelease(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		old := closePool
+		closePool = func(*connPool) error { <-release; return nil }
+		defer func() { closePool = old }()
+		pool := &connPool{key: "slow", users: 1}
+		d := &drv{pools: map[string]*connPool{pool.key: pool}, connectors: 2}
+		c1 := connector{drv: d, uses: &connectorUses{pools: map[*connPool]struct{}{pool: {}}, active: true}}
+		c2 := connector{drv: d, uses: &connectorUses{active: true}}
+		done := make(chan error, 1)
+		go func() { done <- c1.Close() }()
+		synctest.Wait()
+		if err := c2.Close(); err != nil {
+			t.Error(err)
+		}
+		d.mu.RLock()
+		closed := d.pools == nil
+		d.mu.RUnlock()
+		if closed {
+			t.Error("second connector closed driver while pool release was pending")
+		}
+		close(release)
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+		if d.pools != nil {
+			t.Error("driver still open after last connector completed release")
+		}
+	})
+}
+
+// TestConnectorPoolReleaseOwnership checks the shared and held-connection
+// reference counts without requiring an Oracle client or database.
+func TestConnectorPoolReleaseOwnership(t *testing.T) {
+	for _, held := range []bool{false, true} {
+		t.Run(fmt.Sprintf("held=%t", held), func(t *testing.T) {
+			calls := 0
+			old := closePool
+			closePool = func(*connPool) error { calls++; return nil }
+			defer func() { closePool = old }()
+			pool := &connPool{key: "shared", users: 2}
+			d := &drv{pools: map[string]*connPool{pool.key: pool}, connectors: 2}
+			c1 := connector{drv: d, uses: &connectorUses{pools: map[*connPool]struct{}{pool: {}}, active: true}}
+			c2 := connector{drv: d, uses: &connectorUses{pools: map[*connPool]struct{}{pool: {}}, active: true}}
+			if held {
+				c2.uses.conns = 1
+				d.conns = 1
+			}
+			if err := c1.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 0 {
+				t.Fatal("pool released while second connector still uses it")
+			}
+			if err := c1.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := c2.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if held {
+				if calls != 0 || d.pools == nil {
+					t.Fatal("pool or driver closed before held connection")
+				}
+				d.connectorDone(c2.uses, false)
+				d.connDone()
+			}
+			if calls != 1 {
+				t.Errorf("pool release called %d times, want 1", calls)
+			}
+			if d.pools != nil {
+				t.Error("driver still open after last reference released")
+			}
+		})
+	}
+}
 
 // lifetimeTestParams returns pooled connection parameters with the given
 // session timeout, which makes the pool key distinct from the other tests'.

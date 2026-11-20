@@ -444,7 +444,7 @@ type drv struct {
 	clientVersion VersionInfo
 	mu            sync.RWMutex
 	poolMu        sync.Mutex
-	// connectors is the number of connectors that have connected and are not closed,
+	// connectors counts connected connectors until their pool cleanup has finished;
 	// conns is the number of open connections and of those being created.
 	connectors, conns int
 	// closePending is set when the last connector was closed with connections still open.
@@ -1298,6 +1298,9 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	return pool, nil
 }
 
+// closePool permits deterministic tests of a slow native pool release.
+var closePool = (*connPool).Close
+
 // putPool gives back one use of the pool, and closes the pool if it was the last one.
 //
 // The pool is released, not force-closed: ODPI-C destroys the session pool
@@ -1314,13 +1317,9 @@ func (d *drv) putPool(pool *connPool) {
 	if !last {
 		return
 	}
-	// Destroying the sessions needs round trips: do not wait forever for them.
-	done := make(chan struct{})
-	go func() { _ = pool.Close(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(driverCloseTimeout):
-	}
+	// Releasing the last pool reference may need database round trips. Wait for
+	// them before reporting cleanup complete, without holding the driver mutex.
+	_ = closePool(pool)
 }
 
 // createPool creates an ODPI-C pool with the specified parameters.
@@ -1824,16 +1823,21 @@ func (d *drv) connectorDone(cu *connectorUses, closed bool) {
 		cu.conns--
 	}
 	var pools map[*connPool]struct{}
+	var active bool
 	if cu.closed && cu.conns == 0 {
 		pools, cu.pools = cu.pools, nil
-		if cu.active {
-			cu.active = false
-			d.connectors--
-		}
+		active, cu.active = cu.active, false
 	}
 	d.mu.Unlock()
 	for pool := range pools {
 		d.putPool(pool)
+	}
+	if active {
+		// A concurrent connector Close must keep the driver open until this
+		// connector has finished releasing its pools.
+		d.mu.Lock()
+		d.connectors--
+		d.mu.Unlock()
 	}
 }
 
