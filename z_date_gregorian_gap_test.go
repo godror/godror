@@ -19,7 +19,19 @@ import (
 func TestBindTimeGregorianGap(t *testing.T) {
 	ctx, cancel := testContext(t, time.Minute)
 	defer cancel()
-	conn, err := testDb.Conn(ctx)
+
+	// godror writes the wall clock of a time.Time in the connection's time
+	// zone into a DATE, so pin that zone to UTC: with a session east of UTC,
+	// 1582-10-14 23:59:59 UTC falls on the existing 1582-10-15, and there is
+	// nothing to refuse.
+	P, err := godror.ParseDSN(testConStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P.Timezone = time.UTC
+	db := sql.OpenDB(godror.NewConnector(P))
+	defer db.Close()
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

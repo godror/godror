@@ -50,7 +50,11 @@ func TestDataSetTimeBadDate(t *testing.T) {
 	}
 	defer collTyp.Close()
 
-	good := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	// A DATE has no time zone: Object.Get returns it via Data.GetTime, which
+	// interprets the stored wall clock in time.Local. A UTC value would
+	// compare unequal on a machine that is not in UTC, though the attribute
+	// is unchanged.
+	good := time.Date(2025, 1, 2, 0, 0, 0, 0, time.Local)
 	for _, bad := range []time.Time{
 		time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(-4713, 1, 1, 0, 0, 0, 0, time.UTC), // Oracle year -4714
