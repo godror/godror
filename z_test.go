@@ -64,8 +64,8 @@ var (
 const (
 	useDefaultFetchValue = -99
 
-	DefaultDSN         = "oracle://demo:demo@localhost:1521/freepdb1"
-	DefaultSystemDSN   = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
+	DefaultDSN         = dsn.DefaultTestDSN
+	DefaultSystemDSN   = dsn.DefaultTestSystemDSN
 	DefaultMaxSessions = 8
 )
 
@@ -113,6 +113,7 @@ func setUp() func() {
 	}
 
 	var tearDown []func()
+
 	eDSN := os.Getenv("GODROR_TEST_DSN")
 	eSysDSN := os.Getenv("GODROR_TEST_SYSTEM_DSN")
 	{

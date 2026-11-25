@@ -16,12 +16,15 @@ import (
 	"github.com/godror/godror/dsn"
 )
 
-func closeTestParams(t *testing.T) commonAndPoolParams {
-	s := os.Getenv("GODROR_TEST_DSN")
-	if s == "" {
-		t.Skip("GODROR_TEST_DSN is not set")
+var testConStr = sync.OnceValue(func() string {
+	if dsn := os.Getenv("GODROR_TEST_DSN"); dsn != "" {
+		return dsn
 	}
-	cp, err := dsn.Parse(s)
+	return dsn.DefaultTestDSN
+})
+
+func closeTestParams(t *testing.T) commonAndPoolParams {
+	cp, err := dsn.Parse(testConStr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +83,7 @@ func TestGetPoolDuringDriverClose(t *testing.T) {
 // TestDriverCloseUninitialized checks that closing a Driver that
 // has no dpiContext (never used, or closed already) is not an error.
 func TestDriverCloseUninitialized(t *testing.T) {
-	cp, err := dsn.Parse(os.Getenv("GODROR_TEST_DSN"))
+	cp, err := dsn.Parse(testConStr())
 	if err != nil {
 		t.Skip(err)
 	}
@@ -98,7 +101,7 @@ func TestDriverCloseUninitialized(t *testing.T) {
 
 	db := sql.OpenDB(d.NewConnector(cp))
 	if err := db.PingContext(ctx); err != nil {
-		t.Fatal(err)
+		t.Fatalf("ping %s: %+v", cp, err)
 	}
 	if err := db.Close(); err != nil {
 		t.Error(err)

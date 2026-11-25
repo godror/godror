@@ -1397,10 +1397,22 @@ func (st *statement) bindVars(
 		// Have to setNumElementsInArray for the actual lengths for PL/SQL arrays
 		dv, data := st.vars[i], st.data[i]
 		if !info.isIn {
-			switch st.dests[i].(type) {
-			case *Object, *ObjectCollection:
-				// The caller gets the object of the variable.
+			var ot *ObjectType
+			switch v := st.dests[i].(type) {
+			case *Object:
+				ot = v.ObjectType
+			case *ObjectCollection:
+				ot = v.ObjectType
+			}
+			// The caller gets the object of the variable, so it must hold an
+			// empty object of the type: the server cannot reference the
+			// attributes of a NULL object (ORA-06530), and the object of the
+			// previous execution may be one that the caller has closed.
+			if ot != nil {
 				st.varInfos[i].ownObjs = nil
+				if err := st.setEmptyObject(ot, dv, data); err != nil {
+					return fmt.Errorf("%d: %w", i, err)
+				}
 			}
 			if st.PlSQLArrays() {
 				if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
@@ -3481,6 +3493,32 @@ func (stmt *statement) bindableObject(ot *ObjectType, dv *C.dpiVar, data []C.dpi
 	}
 	o, err := ot.NewObject()
 	return o, false, err
+}
+
+// setEmptyObject sets a new, empty object of type ot as the IN value of the
+// OUT-only object variable dv: the server gets an initialized object (a NULL
+// one raises ORA-06530 as soon as an attribute is referenced), and
+// dataGetObject gives this very object to the caller.
+func (stmt *statement) setEmptyObject(ot *ObjectType, dv *C.dpiVar, data []C.dpiData) error {
+	if ot == nil || len(data) == 0 {
+		return nil
+	}
+	o, err := ot.NewObject()
+	if err != nil {
+		return err
+	}
+	// dpiVar_setFromObject retains its own reference to the object, so ours
+	// can be released: the variable (and the caller) keeps it alive.
+	err = stmt.conn.checkExec(func() C.int {
+		return C.dpiVar_setFromObject(dv, 0, o.dpiObject)
+	})
+	if closeErr := o.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return fmt.Errorf("setFromObject: %w", err)
+	}
+	return nil
 }
 
 // isNullObject reports whether v, the value of an object bind, is a NULL object.

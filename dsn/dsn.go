@@ -49,6 +49,9 @@ const (
 	DefaultStandaloneConnection = true
 	// DefaultNoBreakOnContextCancel holds the default for noBreakOnContext
 	DefaultNoBreakOnContextCancel = false
+
+	DefaultTestDSN       = "oracle://demo:demo@localhost:1521/freepdb1"
+	DefaultTestSystemDSN = "oracle://sys:system@localhost:1521/freepdb1?sysdba=1"
 )
 
 type CommonSimpleParams struct {
