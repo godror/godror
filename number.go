@@ -7,6 +7,7 @@
 package godror
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 )
@@ -43,6 +44,9 @@ func (N Number) Decompose(buf []byte) (form byte, negative bool, coefficient []b
 // Compose sets the internal decimal value from parts. If the value cannot be
 // represented then an error should be returned.
 func (N *Number) Compose(form byte, negative bool, coefficient []byte, exponent int32) error {
+	if form != 0 {
+		return fmt.Errorf("cannot compose decimal form %d: %w", form, ErrInvalidNumber)
+	}
 	var i big.Int
 	var start int
 	length := 1 + len(coefficient)*3

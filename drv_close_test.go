@@ -31,6 +31,45 @@ func closeTestParams(t *testing.T) commonAndPoolParams {
 	return commonAndPoolParams{CommonParams: cp.CommonParams, PoolParams: cp.PoolParams}
 }
 
+func TestPoolPurgeReleasesNativeReference(t *testing.T) {
+	P := closeTestParams(t)
+	P.MinSessions, P.MaxSessions, P.SessionIncrement = 0, 1, 1
+	P.ConnectString = "localhost:1/godror-purge-test"
+	d := NewDriver()
+	defer d.Close()
+	if err := d.init(P.ConfigDir, P.LibDir); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := d.createPool(P)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native := pool.dpiPool
+	// Retain a reference so inspecting the pool after Purge cannot read freed memory.
+	// No connections or other users can change this private pool's reference count.
+	native.refCount++
+	retained := connPool{dpiPool: native}
+	defer retained.Close()
+
+	pool.Purge()
+	if got := native.refCount; got != 1 {
+		t.Errorf("Purge left %d native references, want the retained reference only", got)
+	}
+	if native.handle != nil {
+		t.Error("Purge did not close the native pool")
+	}
+	if pool.dpiPool != nil {
+		t.Error("Purge retained the driver's native pool pointer")
+	}
+	pool.Purge()
+	if err := pool.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := native.refCount; got != 1 {
+		t.Errorf("repeated cleanup left %d native references, want 1", got)
+	}
+}
+
 // TestDriverCloseSlowPurge checks that Close survives purging taking longer
 // than its timeout: the purge goroutine must not send on a closed channel.
 func TestDriverCloseSlowPurge(t *testing.T) {
