@@ -756,6 +756,7 @@ func readLobAt(d *drv, lob *C.dpiLob, p []byte, offset int64) (int, error) {
 	}); err != nil {
 		return int(n), fmt.Errorf("readBytes at %d: %w", offset, err)
 	}
+	// typ != 0 iff we had a short read - but it matter only for BLOBs.
 	if typ == C.DPI_ORACLE_TYPE_BLOB {
 		return int(n), io.EOF
 	}
