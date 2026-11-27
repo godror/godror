@@ -5,10 +5,21 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- ODPI-C v26.1.0-b1
+
+### Fixed
+- NUMBER.Compose handling of invalid numbers
+- nil handling in Object.AsSlice and ToJSON
+- missing dpiPool_release
+- ODPI-C vector memory free issue
+
+### [v0.53.0]
 ### Added
 - KeepJSON option and JSON.Close: a godror.JSON scanned with KeepJSON is valid until its Close, so QueryRow(...).Scan(&j) can be used. See #472.
 
 ### Changed
+- ODPi-C v26.1.0
 - Remove the implicit Go Exec statement cache and defer RowsColumnScanner support.
 - Row LOBs expire at Next or Close, including prepared statements. Nested cursors
   are no longer automatically closed at the next parent row. See doc/resource-lifetimes.md.
