@@ -9,9 +9,10 @@ import (
 	"strconv"
 )
 
-// https://github.com/oracle/odpi/archive/refs/heads/main.zip
-//go:generate bash -c "echo 26.1.0>odpi-version; set -x; curl -L https://github.com/oracle/odpi/archive/refs/tags/v$(cat odpi-version).tar.gz | tar xzvf - odpi-$(cat odpi-version)/{embed,include,src,CONTRIBUTING.md,README.md,LICENSE.txt} && cp -a odpi/embed/require.go odpi-$(cat odpi-version)/embed/ && cp -a odpi/include/require.go odpi-$(cat odpi-version)/include/ && cp -a odpi/src/require.go odpi-$(cat odpi-version)/src/ && rm -rf odpi && mv odpi-$(cat odpi-version) odpi; rm -f odpi-{,v}version; git status --porcelain -- odpi/*/*.go | sed -n -e '/^ D / { s/^ D //;p;}' | xargs -r git checkout -- "
-// go : generate bash -c "echo main>odpi-version; set -x; curl -L https://github.com/oracle/odpi/archive/refs/heads/main.tar.gz | tar xzvf - odpi-$(cat odpi-version)/{embed,include,src,CONTRIBUTING.md,README.md,LICENSE.txt} && cp -a odpi/embed/require.go odpi-$(cat odpi-version)/embed/ && cp -a odpi/include/require.go odpi-$(cat odpi-version)/include/ && cp -a odpi/src/require.go odpi-$(cat odpi-version)/src/ && rm -rf odpi && mv odpi-$(cat odpi-version) odpi; rm -f odpi-{,v}version; git status --porcelain -- odpi/*/*.go | sed -n -e '/^ D / { s/^ D //;p;}' | xargs -r git checkout -- "
+//
+// To download the current main, call "VERSION=main go generate"
+//
+//go:generate bash -c "set -euo pipefail; : ${DOLLAR}{VERSION:=v26.1.0}; DIR=${DOLLAR}{VERSION#v}; echo VERSION=${DOLLAR}VERSION DIR=${DOLLAR}DIR; set -x; curl -L https://github.com/oracle/odpi/archive/refs/${DOLLAR}(if [[ ${DOLLAR}DIR = ${DOLLAR}VERSION ]]; then echo heads; else echo tags; fi)/${DOLLAR}{VERSION}.tar.gz | tar xzvf - odpi-${DOLLAR}DIR/{embed,include,src,CONTRIBUTING.md,README.md,LICENSE.txt} && cp -a odpi/embed/require.go odpi-${DOLLAR}DIR/embed/ && cp -a odpi/include/require.go odpi-${DOLLAR}DIR/include/ && cp -a odpi/src/require.go odpi-${DOLLAR}DIR/src/ && rm -rf odpi && mv odpi-${DOLLAR}DIR odpi; git status --porcelain -- odpi/*/*.go | sed -n -e '/^ D / { s/^ D //;p;}' | xargs -r git checkout -- "
 
 // Version of this driver
 func init() {
