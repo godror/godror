@@ -37,6 +37,109 @@ var (
 	_ godror.ObjectCollectionWriter = (MyTable{})
 )
 
+type objectJSONErrorWriter struct{ err error }
+
+func (w objectJSONErrorWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestObjectToJSONWriteError(t *testing.T) {
+	_, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	want := errors.New("object JSON write failed")
+	obj := &godror.Object{ObjectType: &godror.ObjectType{}}
+	if err := obj.ToJSON(objectJSONErrorWriter{want}); !errors.Is(err, want) {
+		t.Fatalf("ToJSON error = %v, want %v", err, want)
+	}
+}
+
+func TestObjectCollectionConversion(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	queryCollection := func(t *testing.T, expression string) godror.ObjectCollection {
+		t.Helper()
+		rows, err := testDb.QueryContext(ctx, "SELECT "+expression+" FROM dual")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			t.Fatalf("no collection row: %v", rows.Err())
+		}
+		var obj *godror.Object
+		if err := rows.Scan(&obj); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { obj.Close() })
+		return obj.Collection()
+	}
+
+	t.Run("ToJSON", func(t *testing.T) {
+		for _, tc := range []struct{ name, expression, want string }{
+			{"numbers", "SYS.ODCINUMBERLIST(1, 2)", `["1","2"]`},
+			{"strings", "SYS.ODCIVARCHAR2LIST('first', 'second')", `["first","second"]`},
+			{"null", "SYS.ODCIVARCHAR2LIST('first', NULL, 'last')", `["first",null,"last"]`},
+			{"empty", "SYS.ODCINUMBERLIST()", `[]`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				coll := queryCollection(t, tc.expression)
+				var buf strings.Builder
+				if err := coll.ToJSON(&buf); err != nil {
+					t.Fatal(err)
+				}
+				if got := buf.String(); got != tc.want {
+					t.Errorf("ToJSON = %q, want %q", got, tc.want)
+				}
+				wantErr := errors.New("collection JSON write failed")
+				if err := coll.ToJSON(objectJSONErrorWriter{wantErr}); !errors.Is(err, wantErr) {
+					t.Errorf("ToJSON error = %v, want %v", err, wantErr)
+				}
+			})
+		}
+	})
+	t.Run("AsSlice", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			dest any
+		}{
+			{"nil", nil},
+			{"typed nil", []godror.Number(nil)},
+			{"grow", []godror.Number{"old"}},
+			{"reuse", make([]godror.Number, 2, 4)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				coll := queryCollection(t, "SYS.ODCINUMBERLIST(1, 2)")
+				got, err := coll.AsSlice(tc.dest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if diff := cmp.Diff([]godror.Number{"1", "2"}, got); diff != "" {
+					t.Error(diff)
+				}
+				if dest, ok := tc.dest.([]godror.Number); ok && cap(dest) >= 2 {
+					if &got.([]godror.Number)[0] != &dest[:cap(dest)][0] {
+						t.Error("AsSlice did not reuse the destination backing array")
+					}
+				}
+			})
+		}
+		t.Run("invalid destination", func(t *testing.T) {
+			coll := queryCollection(t, "SYS.ODCINUMBERLIST(1, 2)")
+			if _, err := coll.AsSlice(42); err == nil {
+				t.Error("AsSlice accepted a non-slice destination")
+			}
+		})
+		t.Run("empty", func(t *testing.T) {
+			coll := queryCollection(t, "SYS.ODCINUMBERLIST()")
+			got, err := coll.AsSlice([]godror.Number{"old"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff([]godror.Number{}, got); diff != "" {
+				t.Error(diff)
+			}
+		})
+	})
+}
+
 // MYRecord represents TEST_PKG_TYPES.MY_RECORD
 type MyRecord struct {
 	Txt, AClob string

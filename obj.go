@@ -491,7 +491,6 @@ func (O *Object) ToJSON(w io.Writer) error {
 		return O.Collection().ToJSON(w)
 	}
 	bw := bufio.NewWriter(w)
-	defer bw.Flush()
 	if err := bw.WriteByte('{'); err != nil {
 		return err
 	}
@@ -533,7 +532,10 @@ func (O *Object) ToJSON(w io.Writer) error {
 			return fmt.Errorf("%q: %w", a, err)
 		}
 	}
-	return bw.WriteByte('}')
+	if err := bw.WriteByte('}'); err != nil {
+		return err
+	}
+	return bw.Flush()
 }
 
 func (O *Object) String() string {
@@ -846,7 +848,10 @@ func (O ObjectCollection) AsSlice(dest any) (any, error) {
 	var dr reflect.Value
 	if dest != nil {
 		dr = reflect.ValueOf(dest)
-		dr.SetLen(0)
+		if dr.Kind() != reflect.Slice {
+			return nil, fmt.Errorf("AsSlice destination must be a slice, got %T", dest)
+		}
+		dr = dr.Slice(0, 0)
 	}
 	d := scratch.Get()
 	defer scratch.Put(d)
@@ -871,8 +876,12 @@ func (O ObjectCollection) AsSlice(dest any) (any, error) {
 			}
 			if dest == nil {
 				dr = reflect.MakeSlice(reflect.SliceOf(vr.Type()), 0, length)
-			} else if dr.Cap()-dr.Len() < length {
-				dr.Grow(dr.Len() + length)
+			} else if n := length - dr.Cap(); n > 0 {
+				if dr.CanAddr() {
+					dr.Grow(n)
+				} else {
+					dr = reflect.MakeSlice(dr.Type(), 0, length)
+				}
 			}
 		}
 		dr = reflect.Append(dr, vr)
@@ -890,7 +899,8 @@ func (O ObjectCollection) ToJSON(w io.Writer) error {
 	}
 	var notFirst bool
 	bw := bufio.NewWriter(w)
-	defer bw.Flush()
+	data := scratch.Get()
+	defer scratch.Put(data)
 	if err := bw.WriteByte('['); err != nil {
 		return err
 	}
@@ -902,21 +912,36 @@ func (O ObjectCollection) ToJSON(w io.Writer) error {
 		} else {
 			notFirst = true
 		}
-		if v, err := O.Get(curr); err != nil {
+		if err := O.GetItem(data, curr); err != nil {
 			return fmt.Errorf("Get(%v): %w", curr, err)
-		} else if v == nil {
+		}
+		if data.IsNull() {
 			if _, err = bw.WriteString("null"); err != nil {
 				return err
 			}
-		} else if o, ok := v.(*Object); ok {
+			continue
+		}
+		v := data.Get()
+		if o, ok := v.(*Object); ok {
 			err = o.ToJSON(bw)
 			o.Close()
 			if err != nil {
 				return err
 			}
+		} else {
+			b, err := json.Marshal(maybeString(v, O.CollectionOf))
+			if err != nil {
+				return fmt.Errorf("Get(%v): %w", curr, err)
+			}
+			if _, err = bw.Write(b); err != nil {
+				return err
+			}
 		}
 	}
-	return bw.WriteByte(']')
+	if err := bw.WriteByte(']'); err != nil {
+		return err
+	}
+	return bw.Flush()
 }
 
 func (O ObjectCollection) String() string {
