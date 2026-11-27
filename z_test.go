@@ -338,6 +338,9 @@ func testContext(t testing.TB, dur time.Duration) (context.Context, context.Canc
 	if t != nil {
 		ctx = t.Context()
 		name = t.Name()
+		// Route log output through t.Log, so that it is shown only if the
+		// test fails (or `go test -v` is used), not for passing tests.
+		t.Cleanup(tl.enableLogging(t))
 	}
 	ctx, cancel := context.WithTimeout(ctx, dur)
 	ctx = godror.ContextWithTraceTag(ctx,
@@ -354,8 +357,8 @@ var bufPool = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 0,
 
 type testLogger struct {
 	enc      *logfmt.Encoder
-	Ts       []*testing.T
-	beHelped []*testing.T
+	Ts       []testing.TB
+	beHelped []testing.TB
 	mu       sync.RWMutex
 }
 
@@ -430,26 +433,30 @@ func (tl *testLogger) GetLog() func(keyvals ...any) error {
 		return nil
 	}
 }
-func (tl *testLogger) enableLogging(t *testing.T) func() {
+func (tl *testLogger) enableLogging(t testing.TB) func() {
 	tl.mu.Lock()
+	defer tl.mu.Unlock()
+
+	for _, f := range tl.Ts {
+		if f == t {
+			return func() {}
+		}
+	}
 	tl.Ts = append(tl.Ts, t)
 	tl.beHelped = append(tl.beHelped, t)
-	tl.mu.Unlock()
 
 	return func() {
 		tl.mu.Lock()
 		defer tl.mu.Unlock()
 		for i, f := range tl.Ts {
 			if f == t {
-				tl.Ts[i] = tl.Ts[0]
-				tl.Ts = tl.Ts[1:]
+				tl.Ts = append(tl.Ts[:i], tl.Ts[i+1:]...)
 				break
 			}
 		}
 		for i, f := range tl.beHelped {
 			if f == t {
-				tl.beHelped[i] = tl.beHelped[0]
-				tl.beHelped = tl.beHelped[1:]
+				tl.beHelped = append(tl.beHelped[:i], tl.beHelped[i+1:]...)
 				break
 			}
 		}
