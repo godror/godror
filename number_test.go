@@ -6,10 +6,48 @@
 package godror_test
 
 import (
+	"errors"
 	"testing"
 
 	godror "github.com/godror/godror"
 )
+
+type nonFiniteDecimal struct {
+	form     byte
+	negative bool
+}
+
+func (d nonFiniteDecimal) Decompose([]byte) (byte, bool, []byte, int32) {
+	return d.form, d.negative, nil, 0
+}
+
+func TestNumberRejectsNonFiniteDecimal(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value nonFiniteDecimal
+	}{
+		{"Infinity", nonFiniteDecimal{form: 1}},
+		{"NegativeInfinity", nonFiniteDecimal{form: 1, negative: true}},
+		{"NaN", nonFiniteDecimal{form: 2}},
+		{"InvalidForm", nonFiniteDecimal{form: 255}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := godror.Number("7")
+			if err := n.Compose(tc.value.Decompose(nil)); !errors.Is(err, godror.ErrInvalidNumber) {
+				t.Errorf("Compose: got %q, %v; want ErrInvalidNumber", n, err)
+			}
+			if n != "7" {
+				t.Errorf("Compose changed the destination to %q on error", n)
+			}
+			if err := n.Scan(tc.value); !errors.Is(err, godror.ErrInvalidNumber) {
+				t.Errorf("Scan: got %q, %v; want ErrInvalidNumber", n, err)
+			}
+			if v, err := godror.Num.ConvertValue(tc.value); !errors.Is(err, godror.ErrInvalidNumber) {
+				t.Errorf("ConvertValue: got %v, %v; want ErrInvalidNumber", v, err)
+			}
+		})
+	}
+}
 
 func TestNumberDeCompose(t *testing.T) {
 	p := make([]byte, 38)
