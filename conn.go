@@ -78,6 +78,9 @@ type conn struct {
 	// the connection, and with it the cache.
 	staleObjTypes atomic.Bool
 
+	// A failed round trip after cancellation leaves the session unsafe to use.
+	brokenAfterBreak atomic.Bool
+
 	// objTypesMu protects objTypes: it is read and written by callers that
 	// hold only the read lock of mu. Lock it after mu.
 	objTypesMu sync.Mutex
@@ -127,6 +130,9 @@ func (c *conn) checkExecWithWarning(f func() C.int) error {
 // used before an ODPI call to force it to return within the context deadline
 func (c *conn) handleDeadline(ctx context.Context) (cleanup func(), err error) {
 	cleanup = func() {}
+	if c.brokenAfterBreak.Load() {
+		return cleanup, driver.ErrBadConn
+	}
 	logger := c.getLogger(ctx)
 	if err := ctx.Err(); err != nil {
 		if logger != nil {
@@ -207,6 +213,20 @@ func (c *conn) breakDpiConn(dpiConn *C.dpiConn) error {
 		return maybeBadConn(fmt.Errorf("Break: %w", err), nil)
 	}
 	return nil
+}
+
+// closeBrokenSession prevents any further calls on a session that could not be
+// synchronized. The caller holds c.mu and has finished using the original
+// statement's result. Outstanding statements and LOBs also lose the session.
+func (c *conn) closeBrokenSession() {
+	if c.dpiConn == nil {
+		return
+	}
+	mode := C.dpiConnCloseMode(C.DPI_MODE_CONN_CLOSE_DEFAULT)
+	if c.poolKey != "" {
+		mode = C.DPI_MODE_CONN_CLOSE_DROP
+	}
+	C.dpiConn_close(c.dpiConn, mode, nil, 0)
 }
 
 func (c *conn) ClientVersion() (VersionInfo, error) { return c.drv.ClientVersion() }
@@ -297,7 +317,11 @@ func (c *conn) closeNotLocking() error {
 	// Clear what this connection has set, so that the next user of the
 	// pooled session does not inherit it. This needs no round trip:
 	// OCI sends the attributes with the next call on the session.
-	_ = c.setTraceTag(TraceTag{})
+	if c.brokenAfterBreak.Load() {
+		c.closeBrokenSession()
+	} else {
+		_ = c.setTraceTag(TraceTag{})
+	}
 	c.dpiConn = nil
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
@@ -337,6 +361,9 @@ func (c *conn) Begin() (driver.Tx, error) {
 // value is true to either set the read-only transaction property if supported
 // or return an error if it is not supported.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if c.brokenAfterBreak.Load() {
+		return nil, driver.ErrBadConn
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -391,6 +418,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 // context is for the preparation of the statement,
 // it must not store the context within the statement itself.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	if c.brokenAfterBreak.Load() {
+		return nil, driver.ErrBadConn
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -446,6 +476,9 @@ func (c *conn) endTran(isCommit bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.inTransaction = false
+	if c.brokenAfterBreak.Load() {
+		return driver.ErrBadConn
+	}
 
 	var err error
 	//msg := "Commit"
@@ -724,7 +757,7 @@ func maybeBadConn(err error, c *conn) error {
 			// database/sql on a force-closed conn) can't pin the pooled session busy
 			// forever (ORA-24496, #415). Only the bad-conn path hard-closes; healthy
 			// Close keeps the plain release (queues/LOBs outlive the conn via refcount).
-			if c.dpiConn != nil {
+			if c.dpiConn != nil && !c.brokenAfterBreak.Load() {
 				C.dpiConn_close(c.dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
 			}
 			_ = c.closeNotLocking()
@@ -1039,7 +1072,7 @@ var _ = driver.SessionResetter((*conn)(nil))
 // if the connection has been used before. If the driver returns driver.ErrBadConn
 // the connection is discarded.
 func (c *conn) ResetSession(ctx context.Context) error {
-	if c == nil {
+	if c == nil || c.brokenAfterBreak.Load() {
 		return driver.ErrBadConn
 	}
 	c.mu.RLock()
@@ -1063,7 +1096,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 // A pooled connection keeps its session so it stays reusable; the session
 // returns to the OCI pool only when the connection is closed.
 func (c *conn) IsValid() bool {
-	if c == nil || c.staleObjTypes.Load() {
+	if c == nil || c.brokenAfterBreak.Load() || c.staleObjTypes.Load() {
 		return false
 	}
 	c.mu.RLock()

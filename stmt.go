@@ -645,7 +645,11 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				return st.checkExec(f)
 			}
 		}()
-		wait()
+		if !wait(err) {
+			// Let the completed call read its row count and OUT values first.
+			breakConn.brokenAfterBreak.Store(true)
+			defer breakConn.closeBrokenSession()
+		}
 		if err == nil {
 			break
 		}
@@ -948,7 +952,11 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 				return st.checkExec(f)
 			}
 		}()
-		wait()
+		if !wait(err) {
+			// Let the completed call read its row count and OUT values first.
+			breakConn.brokenAfterBreak.Store(true)
+			defer breakConn.closeBrokenSession()
+		}
 		if err == nil {
 			break
 		}
@@ -1005,22 +1013,28 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 	return rows, closeIfBadConn(err)
 }
 
-// breakOnCancel starts a goroutine that BREAKs the execution on c
-// when ctx is canceled before done is closed, unless NoBreakOnContextCancel is set.
-//
-// The caller must hold c.mu (so c.dpiConn stays valid), close done when the
-// execution returns, then call the returned wait before returning:
-// wait returns only after the goroutine finished, so the BREAK cannot hit
-// the next call on the connection, nor race with closing it.
-func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *slog.Logger) (wait func()) {
-	if c.params.NoBreakOnContextCancel {
-		return func() {}
+// breakOnCancel interrupts the native call on context cancellation. The caller
+// holds c.mu, closes done when the call returns, and waits before reusing the
+// connection. A false result means the session must be discarded. Recovery uses
+// the existing OCI call timeout (or network settings when no timeout is set).
+func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *slog.Logger) func(error) bool {
+	if ctx.Done() == nil || c.params.NoBreakOnContextCancel {
+		return func(error) bool { return true }
 	}
-	// Do not lock c.mu in the goroutine: the caller already holds it, and
-	// waits for this goroutine.
 	dpiConn := c.dpiConn
+	return watchCancel(ctx, done, func() {
+		if logger != nil {
+			logger.Warn("BREAK dpiStmt_execute")
+		}
+		_ = c.breakDpiConn(dpiConn)
+	}, func() error {
+		return c.checkExec(func() C.int { return C.dpiConn_ping(dpiConn) })
+	})
+}
+
+func watchCancel(ctx context.Context, done <-chan struct{}, interrupt func(), ping func() error) func(error) bool {
 	finished := make(chan struct{})
-	// Forcefully BREAK execution on context cancelation
+	var sent bool // published by closing finished
 	go func() {
 		defer close(finished)
 		select {
@@ -1029,14 +1043,29 @@ func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *s
 			select {
 			case <-done:
 			default:
-				if logger != nil {
-					logger.Warn("BREAK dpiStmt_execute")
-				}
-				_ = c.breakDpiConn(dpiConn)
+				sent = true
+				interrupt()
 			}
 		}
 	}()
-	return func() { <-finished }
+	return func(callErr error) bool {
+		<-finished
+		if !sent {
+			// An OCI call timeout can interrupt the session just before
+			// the Go deadline fires, even if the watcher did not send BREAK.
+			if oe, ok := AsOraErr(callErr); !ok || oe.Code() != 3156 {
+				return true
+			}
+		}
+		// The native call could already have finished before BREAK reached
+		// the session. Consume a pending interrupt with a harmless round
+		// trip and require a successful response before allowing reuse.
+		err := ping()
+		if oe, ok := AsOraErr(err); ok && oe.Code() == 1013 {
+			err = ping()
+		}
+		return err == nil
+	}
 }
 
 // NumInput returns the number of placeholder parameters.
@@ -1049,6 +1078,11 @@ func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *s
 // its number of placeholders. In that case, the sql package
 // will not sanity check Exec or Query argument counts.
 func (st *statement) NumInput() int {
+	if st.conn != nil && st.conn.brokenAfterBreak.Load() {
+		// database/sql calls NumInput before ExecContext or QueryContext.
+		// The native statement has been closed, so let execution report it.
+		return -1
+	}
 	// database/sql calls NumInput before it checks the arguments of an
 	// execution of a prepared statement. Forget the Options left by a call
 	// that was not executed (wrong number of arguments, an argument that

@@ -437,7 +437,13 @@ func (r *rows) fetch(ctx context.Context, logger *slog.Logger) error {
 			wait := breakOnCancel(stmtCtx, c, done, logger)
 			err = fetchRows()
 			close(done)
-			wait()
+			if !wait(err) {
+				c.brokenAfterBreak.Store(true)
+				c.closeBrokenSession()
+				if err == nil {
+					err = stmtCtx.Err()
+				}
+			}
 			c.mu.RUnlock()
 		}
 		failed := err != nil

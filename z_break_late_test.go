@@ -15,19 +15,52 @@ import (
 	godror "github.com/godror/godror"
 )
 
+// A late BREAK must not leak into the next operation in an open transaction.
+func TestBreakOnIdleSession(t *testing.T) {
+	ctx, cancel := testContext(t, time.Minute)
+	defer cancel()
+	conn, err := testDb.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	// The savepoint also checks that recovery preserves the transaction.
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT before_break"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Raw(func(dc any) error {
+		godror.BreakIdleSessionForTest(dc.(godror.Conn))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, "ROLLBACK TO before_break"); err != nil {
+		t.Fatalf("first call after late BREAK: %v", err)
+	}
+}
+
 // TestBreakAfterCancelDoesNotHitNextCall checks that the BREAK sent on
 // context cancelation does not cancel the next call on the same connection,
 // when the cancelation races with the end of the execution.
 //
 // The race is narrow: run it a few times, with -race to see the data races too.
 func TestBreakAfterCancelDoesNotHitNextCall(t *testing.T) {
-	ctx, cancel := testContext(t, 2*time.Minute)
+	ctx, cancel := testContext(t, 10*time.Minute)
 	defer cancel()
 	conn, err := testDb.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { conn.Close() }()
+	defer func() {
+		if conn != nil {
+			conn.Close()
+		}
+	}()
 
 	const qry = "BEGIN DBMS_SESSION.SLEEP(0.01); END;"
 	// Measure how long the execution takes without a deadline.

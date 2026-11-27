@@ -6,12 +6,93 @@
 package godror
 
 import (
+	"context"
 	"database/sql/driver"
 	"fmt"
 	"io"
 	"testing"
 	"time"
 )
+
+// BreakIdleSessionForTest forces the window between a completed native call
+// and its owner's notification to the cancellation watcher.
+func BreakIdleSessionForTest(dc Conn) {
+	c := dc.(*conn)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	wait := breakOnCancel(ctx, c, done, nil)
+	// Keep done open until the watcher has sent BREAK to the idle session.
+	if !wait(nil) {
+		c.brokenAfterBreak.Store(true)
+		c.closeBrokenSession()
+	}
+	close(done)
+}
+
+// The execution has finished locally while BREAK is in flight. A ping can
+// itself consume the interrupt; only the following round trip proves reuse.
+func TestBreakAfterCompletedCall(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		secondPing   error
+		wantReusable bool
+	}{
+		{"pending break consumed", nil, true},
+		{"session closed after break", &OraErr{code: 24909}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done, started := make(chan struct{}), make(chan struct{})
+			var pending bool
+			pings := 0
+			wait := watchCancel(ctx, done, func() {
+				close(started)
+				<-done
+				pending = true
+			}, func() error {
+				pings++
+				if pending {
+					pending = false
+					return &OraErr{code: 1013}
+				}
+				return tc.secondPing
+			})
+			cancel()
+			<-started
+			close(done)
+			if reusable := wait(nil); reusable != tc.wantReusable || pings != 2 || pending {
+				t.Fatalf("reusable=%t pings=%d pending=%t; want reusable=%t and two pings", reusable, pings, pending, tc.wantReusable)
+			}
+		})
+	}
+}
+
+func TestBreakDiscardsUnsynchronizedSession(t *testing.T) {
+	c := new(conn)
+	c.brokenAfterBreak.Store(true)
+	c.closeBrokenSession()
+	ctx := context.Background()
+	if c.IsValid() || c.ResetSession(ctx) != driver.ErrBadConn {
+		t.Fatal("discarded session remained eligible for reuse")
+	}
+	if _, err := c.PrepareContext(ctx, "SELECT 1 FROM DUAL"); err != driver.ErrBadConn {
+		t.Fatalf("PrepareContext: %v", err)
+	}
+	st := &statement{conn: c}
+	if n := st.NumInput(); n != -1 {
+		t.Fatalf("NumInput on discarded session returned %d", n)
+	}
+	if _, err := st.ExecContext(ctx, nil); err != driver.ErrBadConn {
+		t.Fatalf("ExecContext: %v", err)
+	}
+	if _, err := st.QueryContext(ctx, nil); err != driver.ErrBadConn {
+		t.Fatalf("QueryContext: %v", err)
+	}
+}
 
 func TestMaybeBadConn(t *testing.T) {
 	t.Parallel()
