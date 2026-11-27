@@ -478,14 +478,7 @@ func (dlr *dpiLobReader) ReadAt(p []byte, off int64) (int, error) {
 	if dlr.IsClob {
 		return 0, ErrCLOB
 	}
-	n := C.uint64_t(len(p))
-	err := dlr.checkExec(func() C.int {
-		return C.dpiLob_readBytes(dlr.dpiLob, C.uint64_t(off+1), n, (*C.char)(unsafe.Pointer(&p[0])), &n)
-	})
-	if err != nil {
-		err = fmt.Errorf("readBytes at %d for %d: %w", off, n, dlr.getError())
-	}
-	return int(n), err
+	return readLobAt(dlr.drv, dlr.dpiLob, p, off)
 }
 func (dlr *dpiLobReader) Close() error {
 	if dlr == nil {
@@ -738,23 +731,33 @@ func (dl *DirectLob) ReadAt(p []byte, offset int64) (int, error) {
 	if len(p) == 0 {
 		panic("ReadAt into an empty buffer")
 	}
-	n := C.uint64_t(len(p))
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
 	if dl.dpiLob == nil {
 		return 0, io.EOF
 	}
-	amount := n
-	if dl.isClob {
-		amount /= 4
-		if amount == 0 {
-			return 0, io.ErrShortBuffer
-		}
+	if dl.isClob && len(p) < 4 {
+		return 0, io.ErrShortBuffer
 	}
-	if err := dl.drv.checkExec(func() C.int {
-		return C.dpiLob_readBytes(dl.dpiLob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n)
+	return readLobAt(dl.drv, dl.dpiLob, p, offset)
+}
+
+func readLobAt(d *drv, lob *C.dpiLob, p []byte, offset int64) (int, error) {
+	var typ C.dpiOracleTypeNum
+	n := C.uint64_t(len(p))
+	if err := d.checkExec(func() C.int {
+		rc := C.dpiLob_readBytes(lob, C.uint64_t(offset)+1, n, (*C.char)(unsafe.Pointer(&p[0])), &n)
+		if rc == C.DPI_SUCCESS && int(n) < len(p) {
+			// A short byte count indicates EOF for BLOBs. Character LOBs
+			// use character offsets, and a hijacked LOB may lack Go-side type info.
+			return C.dpiLob_getType(lob, &typ)
+		}
+		return rc
 	}); err != nil {
-		return int(n), fmt.Errorf("readBytes: %w", err)
+		return int(n), fmt.Errorf("readBytes at %d: %w", offset, err)
+	}
+	if typ == C.DPI_ORACLE_TYPE_BLOB {
+		return int(n), io.EOF
 	}
 	return int(n), nil
 }

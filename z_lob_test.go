@@ -28,6 +28,53 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestBlobReadAt(t *testing.T) {
+	ctx, cancel := testContext(t, 30*time.Second)
+	defer cancel()
+	rows, err := testDb.QueryContext(ctx, "SELECT TO_BLOB(HEXTORAW('010203')) FROM dual", godror.LobAsReader())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatalf("expected a BLOB row: %v", rows.Err())
+	}
+	var lob *godror.Lob
+	if err := rows.Scan(&lob); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(t *testing.T, r io.ReaderAt) {
+		t.Helper()
+		for _, tc := range []struct {
+			offset int64
+			size   int
+			want   []byte
+			err    error
+		}{
+			{1, 2, []byte{2, 3}, nil},
+			{1, 8, []byte{2, 3}, io.EOF},
+			{3, 1, nil, io.EOF},
+		} {
+			buf := make([]byte, tc.size)
+			n, err := r.ReadAt(buf, tc.offset)
+			if n != len(tc.want) || err != tc.err || !bytes.Equal(buf[:n], tc.want) {
+				t.Errorf("ReadAt(%d bytes, offset %d) = (%d, %v), buffer %x; want (%d, %v), data %x",
+					tc.size, tc.offset, n, err, buf, len(tc.want), tc.err, tc.want)
+			}
+		}
+	}
+	t.Run("Lob", func(t *testing.T) { check(t, lob) })
+	t.Run("DirectLob", func(t *testing.T) {
+		direct, err := lob.Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer direct.Close()
+		check(t, direct)
+	})
+}
+
 func TestLoadXMLLOB(t *testing.T) {
 	ctx, cancel := testContext(t, 60*time.Second)
 	defer cancel()
