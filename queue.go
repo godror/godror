@@ -336,6 +336,8 @@ func (Q *Queue) Name() string { return Q.name }
 
 // EnqOptions returns the queue's enqueue options in effect.
 func (Q *Queue) EnqOptions() (EnqOptions, error) {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
 	var E EnqOptions
 	var opts *C.dpiEnqOptions
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getEnqOptions(Q.dpiQueue, &opts) }); err != nil {
@@ -348,6 +350,8 @@ func (Q *Queue) EnqOptions() (EnqOptions, error) {
 
 // DeqOptions returns the queue's dequeue options in effect.
 func (Q *Queue) DeqOptions() (DeqOptions, error) {
+	Q.mu.Lock()
+	defer Q.mu.Unlock()
 	var D DeqOptions
 	var opts *C.dpiDeqOptions
 	if err := Q.conn.checkExec(func() C.int { return C.dpiQueue_getDeqOptions(Q.dpiQueue, &opts) }); err != nil {
