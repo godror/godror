@@ -552,6 +552,7 @@ func (p *connPool) Purge() {
 			UnRegisterTokenCallback(p.wrapTokenCallBackCtx)
 			p.wrapTokenCallBackCtx = nil
 		}
+		C.dpiPool_release(dpiPool)
 	}
 }
 
