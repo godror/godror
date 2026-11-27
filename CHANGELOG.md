@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - NUMBER.Compose handling of invalid numbers
+- Int64.ConvertValue rejects out-of-range numbers
+- Short BLOB ReadAt returns with io.EOF
 - nil handling in Object.AsSlice and ToJSON
 - missing dpiPool_release
 - ODPI-C vector memory free issue
