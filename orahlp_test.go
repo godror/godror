@@ -6,12 +6,15 @@
 package godror_test
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"math"
 	"reflect"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	godror "github.com/godror/godror"
@@ -107,6 +110,70 @@ END;
 			t.Errorf("%d. params: got\n\t%#v,\nwanted\n\t%#v.", i, params, tc.params)
 		}
 	}
+}
+
+// Only connection acquisition and release are exercised by the pool test.
+type poolTestConnector struct{}
+
+func (poolTestConnector) Connect(context.Context) (driver.Conn, error) { return poolTestConn{}, nil }
+func (poolTestConnector) Driver() driver.Driver                        { return poolTestConnector{} }
+func (poolTestConnector) Open(string) (driver.Conn, error)             { return poolTestConn{}, nil }
+
+type poolTestConn struct{}
+
+func (poolTestConn) Prepare(string) (driver.Stmt, error) { return nil, driver.ErrSkip }
+func (poolTestConn) Begin() (driver.Tx, error)           { return nil, driver.ErrSkip }
+func (poolTestConn) Close() error                        { return nil }
+
+func TestConnPoolWaitingBorrower(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		db := sql.OpenDB(poolTestConnector{})
+		defer db.Close()
+		db.SetMaxOpenConns(1)
+		pool := godror.NewConnPool(db, 1)
+		defer pool.Close()
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		first, err := pool.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+
+		borrow := func(ctx context.Context) <-chan error {
+			done := make(chan error, 1)
+			go func() {
+				conn, err := pool.Conn(ctx)
+				if err == nil {
+					err = conn.Close()
+				}
+				done <- err
+			}()
+			return done
+		}
+		waiter := borrow(ctx)
+		cancelCtx, cancelBorrow := context.WithCancel(ctx)
+		canceled := borrow(cancelCtx)
+		synctest.Wait()
+		if n := db.Stats().WaitCount; n != 2 {
+			t.Fatalf("database/sql wait count = %d, want 2", n)
+		}
+		cancelBorrow()
+		if err := <-canceled; !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled borrower: got %v, want context.Canceled", err)
+		}
+
+		if err := first.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-waiter; err != nil {
+			t.Fatalf("waiting borrower after first connection was returned: %v", err)
+		}
+		if n := db.Stats().InUse; n != 1 {
+			t.Errorf("after the last borrower returned: %d connections retained, want 1", n)
+		}
+	})
 }
 
 func TestConnPool(t *testing.T) {

@@ -809,9 +809,10 @@ func Raw(ctx context.Context, ex Execer, f func(driverConn Conn) error) (err err
 //
 // This is a very simple implementation, usable, but serving more as an example - if possible, use *sql.DB !
 type ConnPool struct {
-	get      func(context.Context) (*sql.Conn, error)
-	freeList chan *PooledConn
-	// mu protects get and freeList, and the sends on freeList
+	get       func(context.Context) (*sql.Conn, error)
+	freeList  chan *PooledConn
+	acquiring int // calls acquiring a connection from the backing pool
+	// mu protects get, freeList, acquiring, and the sends on freeList
 	mu sync.Mutex
 }
 
@@ -839,19 +840,23 @@ func (p *ConnPool) Conn(ctx context.Context) (*PooledConn, error) {
 	}
 	p.mu.Lock()
 	get := p.get
-	var pc *PooledConn
-	select {
-	case pc = <-p.freeList:
-	default:
-	}
-	p.mu.Unlock()
-	if pc != nil {
-		return pc, nil
-	}
 	if get == nil {
+		p.mu.Unlock()
 		return nil, fmt.Errorf("ConnPool is closed: %w", sql.ErrConnDone)
 	}
+	select {
+	case pc := <-p.freeList:
+		p.mu.Unlock()
+		return pc, nil
+	default:
+	}
+	p.acquiring++
+	p.mu.Unlock()
+
 	c, err := get(ctx)
+	p.mu.Lock()
+	p.acquiring--
+	p.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -862,7 +867,9 @@ func (p *ConnPool) Conn(ctx context.Context) (*PooledConn, error) {
 func (p *ConnPool) put(c *sql.Conn) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.freeList == nil {
+	// A caller blocked in get cannot receive from freeList. Return the
+	// connection to the backing pool so that caller can acquire it.
+	if p.freeList == nil || p.acquiring != 0 {
 		return false
 	}
 	select {
