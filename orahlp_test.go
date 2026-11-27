@@ -7,13 +7,42 @@ package godror_test
 
 import (
 	"database/sql"
+	"errors"
+	"math"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
 	godror "github.com/godror/godror"
 	"github.com/google/go-cmp/cmp"
 )
+
+func TestInt64ConvertValueRange(t *testing.T) {
+	for _, v := range []any{
+		uint64(1 << 63), uint64(math.MaxUint64),
+		float32(1 << 63), math.Nextafter32(-1<<63, float32(math.Inf(-1))),
+		float64(1 << 63), math.Nextafter(-1<<63, math.Inf(-1)),
+	} {
+		if got, err := godror.Int64.ConvertValue(v); !errors.Is(err, strconv.ErrRange) {
+			t.Errorf("ConvertValue(%T(%v)) = %v, %v; want range error", v, v, got, err)
+		}
+	}
+	for _, tc := range []struct {
+		in   any
+		want int64
+	}{
+		{uint64(math.MaxInt64), math.MaxInt64},
+		{float64(math.MinInt64), math.MinInt64},
+		{math.Nextafter(1<<63, 0), 1<<63 - 1024},
+		{float32(math.MinInt64), math.MinInt64},
+		{math.Nextafter32(1<<63, 0), 1<<63 - 1<<39},
+	} {
+		if got, err := godror.Int64.ConvertValue(tc.in); got != tc.want || err != nil {
+			t.Errorf("ConvertValue(%T(%v)) = %v, %v; want %d, nil", tc.in, tc.in, got, err, tc.want)
+		}
+	}
+}
 
 func TestMapToSlice(t *testing.T) {
 	for i, tc := range []struct {

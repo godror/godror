@@ -56,17 +56,14 @@ func (intType) ConvertValue(v any) (driver.Value, error) {
 	case uint32:
 		return int64(x), nil
 	case uint64:
+		if x > math.MaxInt64 {
+			return nil, fmt.Errorf("%d does not fit into int64: %w", x, strconv.ErrRange)
+		}
 		return int64(x), nil
 	case float32:
-		if _, f := math.Modf(float64(x)); f != 0 {
-			return int64(x), fmt.Errorf("non-zero fractional part: %f", f)
-		}
-		return int64(x), nil
+		return floatToInt64(float64(x))
 	case float64:
-		if _, f := math.Modf(x); f != 0 {
-			return int64(x), fmt.Errorf("non-zero fractional part: %f", f)
-		}
-		return int64(x), nil
+		return floatToInt64(x)
 	case string:
 		if x == "" {
 			return 0, nil
@@ -85,6 +82,17 @@ func (intType) ConvertValue(v any) (driver.Value, error) {
 	default:
 		return nil, fmt.Errorf("%T: %w", v, errUnknownType)
 	}
+}
+
+func floatToInt64(x float64) (driver.Value, error) {
+	// The upper bound is exclusive: MaxInt64 rounds up to 1<<63 as a float64.
+	if x < math.MinInt64 || x >= 1<<63 {
+		return nil, fmt.Errorf("%g does not fit into int64: %w", x, strconv.ErrRange)
+	}
+	if _, f := math.Modf(x); f != 0 {
+		return int64(x), fmt.Errorf("non-zero fractional part: %f", f)
+	}
+	return int64(x), nil
 }
 
 type floatType struct{}
