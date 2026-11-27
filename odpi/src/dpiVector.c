@@ -29,9 +29,6 @@
 
 #include "dpiImpl.h"
 
-// forward declarations of internal functions only used in this file
-static void dpiVector__clearDimensions(dpiVector *vector);
-
 //-----------------------------------------------------------------------------
 // dpiVector__allocate() [INTERNAL]
 //   Allocate and initialize a vector object.
@@ -60,19 +57,6 @@ int dpiVector__allocate(dpiConn *conn, dpiVector **vector, dpiError *error)
 
 
 //-----------------------------------------------------------------------------
-// dpiVector__clearDimensions() [INTERNAL]
-//   Clear the dimensions cached in the vector.
-//-----------------------------------------------------------------------------
-static void dpiVector__clearDimensions(dpiVector *vector)
-{
-    if (vector->dimensions) {
-        dpiUtils__freeMemory(vector->dimensions);
-        vector->dimensions = NULL;
-    }
-}
-
-
-//-----------------------------------------------------------------------------
 // dpiVector__free() [INTERNAL]
 //   Free the vector object contents.
 //-----------------------------------------------------------------------------
@@ -86,7 +70,14 @@ void dpiVector__free(dpiVector *vector, dpiError *error)
         dpiGen__setRefCount(vector->conn, error, -1);
         vector->conn = NULL;
     }
-    dpiVector__clearDimensions(vector);
+    if (vector->dimensions) {
+        dpiUtils__freeMemory(vector->dimensions);
+        vector->dimensions = NULL;
+    }
+    if (vector->sparseIndices) {
+        dpiUtils__freeMemory(vector->sparseIndices);
+        vector->sparseIndices = NULL;
+    }
     dpiUtils__freeMemory(vector);
 }
 
