@@ -3248,22 +3248,14 @@ int dpiConn_tpcRollback(dpiConn *conn, dpiXid *xid)
 int dpiConn_unsubscribe(dpiConn *conn, dpiSubscr *subscr)
 {
     dpiError error;
-    int status;
 
     if (dpiConn__check(conn, __func__, &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
     if (dpiGen__checkHandle(subscr, DPI_HTYPE_SUBSCR, "check subscription",
             &error) < 0)
         return dpiGen__endPublicFn(conn, DPI_FAILURE, &error);
-    if (subscr->registered) {
-        dpiMutex__acquire(subscr->mutex);
-        status = dpiOci__subscriptionUnRegister(conn, subscr, &error);
-        if (status == DPI_SUCCESS)
-            subscr->registered = 0;
-        dpiMutex__release(subscr->mutex);
-        if (status < 0)
-            return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
-    }
+    if (dpiSubscr__unregister(subscr, conn, &error) < 0)
+        return dpiGen__endPublicFn(subscr, DPI_FAILURE, &error);
 
     dpiGen__setRefCount(subscr, &error, -1);
     return dpiGen__endPublicFn(subscr, DPI_SUCCESS, &error);
