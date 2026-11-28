@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v0.54.0]
+### Added
+- SessionParamKeyword and SessionParamString types: the two kinds of session parameter value, written as-is (a keyword or an identifier) or as a quoted string literal, in the "ALTER SESSION SET" statement. Pass them to SetSessionParamOnInit / SetSessionParamOnInitKeyword for the parameters that take a keyword (ISOLATION_LEVEL, TIME_ZONE=LOCAL, the boolean initialization parameters) or an identifier. See #546.
+
+### Changed
+- ConnectionParams.AlterSession is []SessionParam (Key, Value SessionParamValue) instead of [][2]string; Value is a dsn.Keyword or a dsn.String.
+- The alterSession DSN parameter keeps the value type: a value containing a single quote is a dsn.String (written as a quoted string literal), any other is a dsn.Keyword (written as-is). This is what ConnectionParams.String writes, too, so Parse gives the same types back. Quote the values that must be strings: alterSession="TIME_ZONE='Europe/Berlin'" (a bare value is a keyword now, which TIME_ZONE refuses).
+- NewSessionIniter writes quoted string literals instead of q'(...)' literals with doubled quotes: a value with a quote arrives as given, and CURRENT_SCHEMA, EDITION and CONTAINER can be set through it, too.
+
 ### Fixed
 - KeepJSON: a Next that fails on a later column releases the JSON it kept for an earlier one, instead of leaking the reference and with it the session. See #553.
 

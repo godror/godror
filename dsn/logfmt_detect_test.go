@@ -79,7 +79,7 @@ func TestParamNames(t *testing.T) {
 	P.Username, P.ConnectString, P.Timezone = "u", "db", time.UTC
 	P.Password, P.NewPassword = NewPassword("p"), NewPassword("n")
 	P.Token, P.PrivateKey, P.ConfigDir, P.LibDir, P.Charset = "t", "k", "c", "l", "cs"
-	P.OnInitStmts, P.AlterSession = []string{"x"}, [][2]string{{"a", "b"}}
+	P.OnInitStmts, P.AlterSession = []string{"x"}, []SessionParam{{Key: "a", Value: String("b")}}
 	P.StmtCacheSize, P.ConnClass, P.AdminRole = 1, "cc", SysDBA
 	P.EnableEvents, P.NoTZCheck, P.PerSessionTimezone, P.IsPrelim = true, true, true, true
 	P.InitOnNewConn, P.NoBreakOnContextCancel = true, true

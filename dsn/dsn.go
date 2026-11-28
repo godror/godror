@@ -77,6 +77,43 @@ func (P CommonSimpleParams) IsZero() bool {
 // CommonParams holds the common parameters for pooled or standalone connections.
 //
 // For details, see https://oracle.github.io/odpi/doc/structs/dpiCommonCreateParams.html#dpicommoncreateparams
+// Keyword is a session parameter value that godror writes as-is (unquoted)
+// into the "ALTER SESSION SET" statement: a keyword (TRUE, FALSE, LOCAL,
+// DBTIMEZONE, SERIALIZABLE, READ COMMITTED, ...) or an identifier (a schema,
+// an edition or a container name).
+// See the ALTER SESSION documentation for which parameter takes which.
+//
+// The textual form (ConnectionParams.String and the alterSession DSN
+// parameter) keeps the type: a String is written as a quoted literal, a
+// Keyword as-is, and Parse reads them back the same way. A Keyword must not
+// contain a single quote, or it is read back as a String.
+type Keyword string
+
+func (Keyword) sessionParamValue() {}
+
+// String is a session parameter value written as a quoted string literal,
+// with its single quotes doubled, so it can only set its own parameter.
+//
+// The parameters that take an identifier (CURRENT_SCHEMA, EDITION,
+// CONTAINER) are written as-is even when their value is a String.
+// In the textual form a String is written as a quoted literal; see Keyword.
+type String string
+
+func (String) sessionParamValue() {}
+
+// SessionParamValue is the value of a SessionParam: a Keyword, written
+// as-is, or a String, written as a quoted string literal.
+// The interface is sealed: only Keyword and String implement it.
+type SessionParamValue interface {
+	sessionParamValue()
+}
+
+// SessionParam is one "ALTER SESSION SET Key=Value" on session init.
+type SessionParam struct {
+	Key   string
+	Value SessionParamValue
+}
+
 type CommonParams struct {
 	// Logger is the per-pool or per-connection logger.
 	// The default nil logger does not log.
@@ -86,7 +123,7 @@ type CommonParams struct {
 	// OnInitStmts are executed on session init, iff OnInit is nil.
 	OnInitStmts []string
 	// AlterSession key-values are set with "ALTER SESSION SET key=value" on session init, iff OnInit is nil.
-	AlterSession [][2]string
+	AlterSession []SessionParam
 	CommonSimpleParams
 }
 
@@ -309,9 +346,71 @@ func (P *ConnectionParams) comb() {
 	}
 }
 
-// SetSessionParamOnInit adds an "ALTER SESSION k=v" to the OnInit task list.
+// SetSessionParamOnInit adds an "ALTER SESSION SET Key=Value" to the OnInit
+// task list, with the value written as a quoted string literal.
 func (P *ConnectionParams) SetSessionParamOnInit(k, v string) {
-	P.AlterSession = append(P.AlterSession, [2]string{k, v})
+	P.AlterSession = append(P.AlterSession, SessionParam{Key: k, Value: String(v)})
+}
+
+// SetSessionParamOnInitKeyword adds an "ALTER SESSION SET Key=Value" to the
+// OnInit task list, with the value written as-is: pass Keyword(v) for the
+// parameters that take a keyword (ISOLATION_LEVEL, TIME_ZONE=LOCAL, the
+// boolean initialization parameters) or an identifier (CURRENT_SCHEMA,
+// EDITION, CONTAINER).
+func (P *ConnectionParams) SetSessionParamOnInitKeyword(k string, v Keyword) {
+	P.AlterSession = append(P.AlterSession, SessionParam{Key: k, Value: v})
+}
+
+// AlterSessionStmt returns the "ALTER SESSION SET key=value ..." statement
+// of the session parameters, each Key written as given, and the Value
+// written as-is if it is a Keyword, as a quoted string literal if a String.
+func AlterSessionStmt(ps []SessionParam) string {
+	var buf strings.Builder
+	buf.WriteString("ALTER SESSION SET")
+	for _, p := range ps {
+		buf.WriteByte(' ')
+		buf.WriteString(p.Key)
+		buf.WriteByte('=')
+		switch v := p.Value.(type) {
+		case Keyword:
+			// As the caller said: as-is.
+			buf.WriteString(string(v))
+		case String:
+			switch strings.ToUpper(p.Key) {
+			case "CURRENT_SCHEMA", "EDITION", "CONTAINER":
+				// These take an identifier, not a string.
+				buf.WriteString(string(v))
+			default:
+				buf.WriteString(sqlQuote(string(v)))
+			}
+		default:
+			// A nil Value: the empty string is the least surprising.
+			buf.WriteString(sqlQuote(""))
+		}
+	}
+	return buf.String()
+}
+
+// sqlQuote returns s as a SQL string literal, with its single quotes doubled.
+func sqlQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// parseSessionParamValue returns the type of a session parameter value
+// written in the textual form, as ConnectionParams.String writes it and the
+// alterSession DSN parameter parses it: a value containing a single quote is
+// a String, written as a SQL string literal; everything else is a Keyword,
+// written as-is.
+func parseSessionParamValue(v string) SessionParamValue {
+	if !strings.ContainsRune(v, '\'') {
+		return Keyword(v)
+	}
+	if len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\'' {
+		return String(strings.ReplaceAll(v[1:len(v)-1], "''", "'"))
+	}
+	// Contains a quote, but is not written as a literal: use it as the
+	// string it is.
+	return String(v)
 }
 
 // String returns the string representation of ConnectionParams.
@@ -420,9 +519,18 @@ func (P ConnectionParams) string(class, withPassword bool) string {
 	}
 	as := acquireParamsArray(1)
 	defer releaseParamsArray(as)
-	for _, kv := range P.AlterSession {
+	for _, p := range P.AlterSession {
 		as.Reset()
-		as.Add(kv[0], kv[1])
+		// Keep the type in the textual form (see parseSessionParamValue):
+		// a String is a quoted literal, a Keyword is written as-is.
+		switch v := p.Value.(type) {
+		case Keyword:
+			as.Add(p.Key, string(v))
+		case String:
+			as.Add(p.Key, sqlQuote(string(v)))
+		default:
+			as.Add(p.Key, "")
+		}
 		q.Add("alterSession", strings.TrimSpace(as.String()))
 	}
 	if P.InitOnNewConn {
@@ -719,7 +827,10 @@ func Parse(dataSourceName string) (ConnectionParams, error) {
 		d := logfmt.NewDecoder(strings.NewReader(s))
 		for d.ScanRecord() {
 			for d.ScanKeyval() {
-				P.AlterSession = append(P.AlterSession, [2]string{string(d.Key()), string(d.Value())})
+				P.AlterSession = append(P.AlterSession, SessionParam{
+					Key:   string(d.Key()),
+					Value: parseSessionParamValue(string(d.Value())),
+				})
 			}
 		}
 		if err := d.Err(); err != nil {

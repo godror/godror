@@ -352,5 +352,5 @@ func ExampleParse() {
 	P.SetSessionParamOnInit("NLS_LANGUAGE", "FRENCH")
 	fmt.Println(P.StringWithPassword())
 	// Output:
-	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2" alterSession="NLS_NUMERIC_CHARACTERS=,." alterSession="NLS_LANGUAGE=FRENCH" connectionClass= newPassword= poolIncrement=0 poolMinSessions=0 poolSessionMaxLifetime=0s poolSessionTimeout=42s poolWaitTimeout=0s
+	// user=scott password=tiger connectString="dbhost:1521/orclpdb1?connect_timeout=2" alterSession="NLS_NUMERIC_CHARACTERS=',.'" alterSession="NLS_LANGUAGE='FRENCH'" connectionClass= newPassword= poolIncrement=0 poolMinSessions=0 poolSessionMaxLifetime=0s poolSessionTimeout=42s poolWaitTimeout=0s
 }

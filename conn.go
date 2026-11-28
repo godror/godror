@@ -609,7 +609,7 @@ func (c *conn) initTZ(useCache bool) error {
 		}
 		// These may set the session time zone.
 		if P := &c.params.CommonParams; len(P.AlterSession) != 0 || len(P.OnInitStmts) != 0 {
-			key += fmt.Sprintf("\t%q\t%q", P.AlterSession, P.OnInitStmts)
+			key += fmt.Sprintf("\t%#v\t%q", P.AlterSession, P.OnInitStmts)
 		}
 		var ok bool
 		c.drv.mu.RLock()

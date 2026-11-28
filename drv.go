@@ -300,6 +300,7 @@ import (
 	"math"
 	"os/user"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -389,6 +390,19 @@ func ParseDSN(dataSourceName string) (P ConnectionParams, err error) {
 
 // Bool is a helper for sql.NullBool
 func Bool(b bool) sql.NullBool { return dsn.Bool(b) }
+
+// SessionParamKeyword is a session parameter value written as-is (unquoted) into the
+// "ALTER SESSION SET" statement; any other string value is written as a
+// quoted string literal. See dsn.SessionParamKeyword.
+type SessionParamKeyword = dsn.Keyword
+
+// SessionParam is one "ALTER SESSION SET Key=Value" on session init.
+// See dsn.SessionParam.
+type SessionParam = dsn.SessionParam
+
+// SessionParamString is a session parameter value written as a quoted string literal;
+// see dsn.SessionParamString.
+type SessionParamString = dsn.String
 
 func NewPassword(s string) Password { return dsn.NewPassword(s) }
 
@@ -1944,17 +1958,19 @@ func (c connector) Close() error {
 }
 
 // NewSessionIniter returns a function suitable for use in NewConnector as onInit,
+// which calls "ALTER SESSION SET <key>=<value>" for each element of the given map.
+// The value is written as a quoted string literal; use an OnInitStmt, or
+// ConnectionParams.SetSessionParamOnInitKeyword, for a parameter that takes a
+// keyword or an identifier.
 //
 // Deprecated. Use ParseDSN + ConnectionParams.SetSessionParamOnInit and NewConnector.
-// which calls "ALTER SESSION SET <key>='<value>'" for each element of the given map.
 func NewSessionIniter(m map[string]string) func(context.Context, driver.ConnPrepareContext) error {
-	var buf strings.Builder
-	buf.WriteString("ALTER SESSION SET ")
+	ps := make([]SessionParam, 0, len(m))
 	for k, v := range m {
-		buf.WriteByte(' ')
-		fmt.Fprintf(&buf, "%s=q'(%s)'", k, strings.Replace(v, "'", "''", -1))
+		ps = append(ps, SessionParam{Key: k, Value: SessionParamString(v)})
 	}
-	return mkExecMany([]string{buf.String()})
+	slices.SortFunc(ps, func(a, b SessionParam) int { return strings.Compare(a.Key, b.Key) })
+	return mkExecMany([]string{dsn.AlterSessionStmt(ps)})
 }
 
 func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) error {
@@ -1965,23 +1981,7 @@ func (c *conn) getOnInit() func(context.Context, driver.ConnPrepareContext) erro
 	stmts := P.OnInitStmts
 	stmts = stmts[:len(stmts):len(stmts)]
 	if len(P.AlterSession) != 0 {
-		var buf strings.Builder
-		buf.WriteString("ALTER SESSION SET")
-		for _, kv := range P.AlterSession {
-			buf.WriteByte(' ')
-			buf.WriteString(kv[0])
-			buf.WriteByte('=')
-			switch strings.ToUpper(kv[0]) {
-			case "CURRENT_SCHEMA", "EDITION", "CONTAINER":
-				// these take an identifier, not a string
-				buf.WriteString(kv[1])
-			default:
-				buf.WriteByte('\'')
-				buf.WriteString(strings.Replace(kv[1], "'", "''", -1))
-				buf.WriteByte('\'')
-			}
-		}
-		stmts = append(stmts, buf.String())
+		stmts = append(stmts, dsn.AlterSessionStmt(P.AlterSession))
 	}
 	if len(stmts) == 0 {
 		return nil
