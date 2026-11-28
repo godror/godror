@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - nil handling in Object.AsSlice and ToJSON
 - missing dpiPool_release
 - ODPI-C vector memory free issue
+- Late BREAK should not cause next statement to get ORA-01031
 
 ### [v0.53.0]
 ### Added
