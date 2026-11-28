@@ -525,6 +525,9 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
+	if st.conn.dpiConn == nil {
+		return nil, driver.ErrBadConn
+	}
 
 	if st.callTimeout != 0 {
 		var cancel context.CancelFunc
@@ -645,7 +648,18 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 				return st.checkExec(f)
 			}
 		}()
-		wait()
+		if !wait(err) {
+			if err != nil {
+				breakConn.dpiConn.deadSession = 1
+			} else {
+				// Let the completed call read its row count and OUT values first.
+				defer func() {
+					if breakConn.dpiConn != nil {
+						breakConn.dpiConn.deadSession = 1
+					}
+				}()
+			}
+		}
 		if err == nil {
 			break
 		}
@@ -688,9 +702,14 @@ func (st *statement) ExecContext(ctx context.Context, args []driver.NamedValue) 
 			break
 		}
 	}
-	if err != nil && (!many || !st.PartialBatch() || closeIfBadConn(err) != nil && closed.Load()) {
-		rollbackBatch()
-		return nil, err
+	if err != nil {
+		if !many || !st.PartialBatch() {
+			rollbackBatch()
+			return nil, closeIfBadConn(err)
+		}
+		if err = closeIfBadConn(err); closed.Load() {
+			return nil, err
+		}
 	}
 	executed = true
 
@@ -851,6 +870,9 @@ func (st *statement) QueryContext(ctx context.Context, args []driver.NamedValue)
 	}
 	st.conn.mu.RLock()
 	defer st.conn.mu.RUnlock()
+	if st.conn.dpiConn == nil {
+		return nil, driver.ErrBadConn
+	}
 	return st.queryContextNotLocked(ctx, args)
 }
 
@@ -948,7 +970,18 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 				return st.checkExec(f)
 			}
 		}()
-		wait()
+		if !wait(err) {
+			if err != nil {
+				breakConn.dpiConn.deadSession = 1
+			} else {
+				// Let the completed call read its row count and OUT values first.
+				defer func() {
+					if breakConn.dpiConn != nil {
+						breakConn.dpiConn.deadSession = 1
+					}
+				}()
+			}
+		}
 		if err == nil {
 			break
 		}
@@ -1010,16 +1043,18 @@ func (st *statement) queryContextNotLocked(ctx context.Context, args []driver.Na
 //
 // The caller must hold c.mu (so c.dpiConn stays valid), close done when the
 // execution returns, then call the returned wait before returning:
-// wait returns only after the goroutine finished, so the BREAK cannot hit
-// the next call on the connection, nor race with closing it.
-func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *slog.Logger) (wait func()) {
-	if c.params.NoBreakOnContextCancel {
-		return func() {}
+// wait returns only after the goroutine finished and a sent BREAK was drained,
+// so the BREAK cannot hit the next call on the connection, nor race with
+// closing it. A false result means the session could not be synchronized.
+func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *slog.Logger) (wait func(error) bool) {
+	if c.params.NoBreakOnContextCancel || ctx.Done() == nil || c.dpiConn == nil {
+		return func(error) bool { return true }
 	}
 	// Do not lock c.mu in the goroutine: the caller already holds it, and
 	// waits for this goroutine.
 	dpiConn := c.dpiConn
 	finished := make(chan struct{})
+	var sent bool // written by the goroutine before finished is closed
 	// Forcefully BREAK execution on context cancelation
 	go func() {
 		defer close(finished)
@@ -1029,6 +1064,7 @@ func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *s
 			select {
 			case <-done:
 			default:
+				sent = true
 				if logger != nil {
 					logger.Warn("BREAK dpiStmt_execute")
 				}
@@ -1036,7 +1072,30 @@ func breakOnCancel(ctx context.Context, c *conn, done <-chan struct{}, logger *s
 			}
 		}
 	}()
-	return func() { <-finished }
+	return func(callErr error) bool {
+		<-finished
+		// An OCI call timeout can interrupt the statement even when the
+		// watcher lost the race and did not send BREAK.
+		if oe, ok := AsOraErr(callErr); !sent && !(ok && oe.Code() == 3156) {
+			return true
+		}
+		return drainBreak(func() error {
+			return c.checkExec(func() C.int { return C.dpiConn_ping(dpiConn) })
+		})
+	}
+}
+
+// drainBreak consumes a BREAK that reached the server after the call it was
+// meant to interrupt had already completed, so it cannot cancel the next
+// statement on the connection. A round trip takes the pending interrupt;
+// ORA-01013 proves it was delivered to the ping, so ping once more to check
+// that the session survived it.
+func drainBreak(ping func() error) bool {
+	err := ping()
+	if oe, ok := AsOraErr(err); ok && oe.Code() == 1013 {
+		err = ping()
+	}
+	return err == nil
 }
 
 // NumInput returns the number of placeholder parameters.
@@ -1057,7 +1116,7 @@ func (st *statement) NumInput() int {
 	st.argOptions = stmtOptions{}
 	cnt, names, err := st.BindNames()
 	if err != nil {
-		panic(err)
+		return -1
 	}
 	if names == nil {
 		return cnt

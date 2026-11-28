@@ -297,7 +297,11 @@ func (c *conn) closeNotLocking() error {
 	// Clear what this connection has set, so that the next user of the
 	// pooled session does not inherit it. This needs no round trip:
 	// OCI sends the attributes with the next call on the session.
-	_ = c.setTraceTag(TraceTag{})
+	if dpiConn.deadSession != 0 {
+		C.dpiConn_close(dpiConn, C.DPI_MODE_CONN_CLOSE_DEFAULT, nil, 0)
+	} else {
+		_ = c.setTraceTag(TraceTag{})
+	}
 	c.dpiConn = nil
 	if dpiConn.refCount <= 1 {
 		c.tzOffSecs, c.tzValid, c.params.Timezone = 0, false, nil
@@ -359,6 +363,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 
 	c.mu.Lock()
+	if c.dpiConn == nil || c.dpiConn.deadSession != 0 {
+		c.mu.Unlock()
+		return nil, driver.ErrBadConn
+	}
 	if c.inTransaction {
 		c.mu.Unlock()
 		return nil, errors.New("already in transaction")
