@@ -78,6 +78,11 @@ type rows struct {
 	// jsons are the JSON values handed out since the last fetch
 	// without the KeepJSON option: the next fetch or Close frees them.
 	jsons []*jsonRow
+	// keptJSONs are the JSON values the row in progress has taken a
+	// reference for (KeepJSON). If a later column of the same Next fails,
+	// the caller never gets them, so Next releases them; after a
+	// successful Next they are the caller's, to be closed with JSON.Close.
+	keptJSONs []JSON
 	// lobs are the LOB readers of the current row, closed by Next and Close.
 	lobs []*dpiLobReader
 }
@@ -357,9 +362,15 @@ func (r *rows) Next(dest []driver.Value) error {
 	o.load(r.statement)
 	for i := range r.columns {
 		if err := r.setValue(ctx, logger, &o, i, r.bufferRowIndex, dest); err != nil {
+			// The caller never gets the values of a row whose Next failed:
+			// release the JSONs kept for it (KeepJSON).
+			r.releaseKeptJSONs()
 			return err
 		}
 	}
+	// The JSONs kept for the row are the caller's now.
+	clear(r.keptJSONs)
+	r.keptJSONs = r.keptJSONs[:0]
 	r.bufferRowIndex++
 	r.fetched--
 
@@ -371,6 +382,15 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 
 	return nil
+}
+
+// releaseKeptJSONs closes the JSON values kept for the row in progress.
+func (r *rows) releaseKeptJSONs() {
+	for _, j := range r.keptJSONs {
+		_ = j.Close()
+	}
+	clear(r.keptJSONs)
+	r.keptJSONs = r.keptJSONs[:0]
 }
 
 // closeLobs closes the LOB readers handed out for the current row.
@@ -841,6 +861,8 @@ func (r *rows) setValue(ctx context.Context, logger *slog.Logger, o *rowOptions,
 					r.jsons = append(r.jsons, j.row)
 				} else if C.dpiJson_addRef(dj) == C.DPI_FAILURE {
 					return fmt.Errorf("JSON addRef: %w", r.getError())
+				} else {
+					r.keptJSONs = append(r.keptJSONs, j)
 				}
 				dest[i] = j
 			}

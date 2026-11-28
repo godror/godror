@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- KeepJSON: a Next that fails on a later column releases the JSON it kept for an earlier one, instead of leaking the reference and with it the session. See #553.
+
 ## [v0.53.1]
 ### Changed
 - ODPI-C v26.1.0-b1
