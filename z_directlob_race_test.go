@@ -27,7 +27,7 @@ func TestLobHijackConcurrentNext(t *testing.T) {
 	}
 	defer testDb.ExecContext(context.Background(), "DROP TABLE "+tbl+" PURGE")
 	want := bytes.Repeat([]byte("0123456789abcdef"), 16384)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		if _, err := testDb.ExecContext(ctx, "INSERT INTO "+tbl+" (id, b) VALUES (:1, :2)",
 			i, godror.Lob{Reader: bytes.NewReader(want)},
 		); err != nil {
@@ -49,9 +49,7 @@ func TestLobHijackConcurrentNext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			buf := make([]byte, 8192)
 			for off := int64(0); off < int64(len(want)); off += int64(len(buf)) {
 				n, err := dl.ReadAt(buf, off)
@@ -63,7 +61,7 @@ func TestLobHijackConcurrentNext(t *testing.T) {
 					t.Errorf("ReadAt(%d): got wrong data (%d bytes)", off, n)
 				}
 			}
-		}()
+		})
 	}
 	if err = rows.Err(); err != nil {
 		t.Error(err)

@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -437,10 +438,8 @@ func (tl *testLogger) enableLogging(t testing.TB) func() {
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
 
-	for _, f := range tl.Ts {
-		if f == t {
-			return func() {}
-		}
+	if slices.Contains(tl.Ts, t) {
+		return func() {}
 	}
 	tl.Ts = append(tl.Ts, t)
 	tl.beHelped = append(tl.beHelped, t)
@@ -2075,9 +2074,7 @@ func TestExecHang(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < cap(done); i++ {
 		i := i
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := ctx.Err(); err != nil {
 				done <- err
 				return
@@ -2087,7 +2084,7 @@ func TestExecHang(t *testing.T) {
 			if err == nil {
 				done <- fmt.Errorf("%w: %d. wanted timeout got %+v", errMismatch, i, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(done)
@@ -5666,7 +5663,7 @@ func TestGetCurrentSchema(t *testing.T) {
 		}
 		// The buffer returned by OCI must not be freed by us;
 		// calling it repeatedly used to corrupt the heap.
-		for i := 0; i < 1000; i++ {
+		for i := range 1000 {
 			got, err := sg.GetCurrentSchema("")
 			if err != nil {
 				return err

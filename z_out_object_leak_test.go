@@ -98,7 +98,7 @@ func TestOutObjectLeak(t *testing.T) {
 			// Close the driver connection on every release, to give the session back.
 			db.SetMaxIdleConns(0)
 
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				cx, err := db.Conn(ctx)
 				if err != nil {
 					t.Fatalf("%d. no session in the pool of two, though every connection was closed: %+v", i, err)

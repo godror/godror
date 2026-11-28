@@ -43,7 +43,7 @@ func TestLobRowLifetime(t *testing.T) {
 		}
 		return "clob-" + strconv.Itoa(i)
 	}
-	for i := 0; i < N; i++ {
+	for i := range N {
 		if _, err = conn.ExecContext(ctx, "INSERT INTO "+tbl+" (id, c, b, c2) VALUES (:1, :2, :3, :4)", i,
 			godror.Lob{IsClob: true, Reader: strings.NewReader(text(i))},
 			godror.Lob{Reader: strings.NewReader(text(i))},

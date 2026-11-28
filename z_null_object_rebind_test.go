@@ -172,7 +172,7 @@ END;`,
 						t.Fatal(err)
 					}
 					defer arg.Close()
-					for _, s := range strings.Split(strings.Trim(want, "[,]"), ",") {
+					for s := range strings.SplitSeq(strings.Trim(want, "[,]"), ",") {
 						n, _ := strconv.Atoi(s)
 						if err = arg.Collection().Append(n); err != nil {
 							t.Fatal(err)

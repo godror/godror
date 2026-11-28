@@ -100,16 +100,14 @@ func TestGetPoolDuringDriverClose(t *testing.T) {
 			t.Fatal(err)
 		}
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					t.Errorf("round %d: getPool panicked: %v", i, r)
 				}
 			}()
 			_, _ = d.getPool(P)
-		}()
+		})
 		time.Sleep(time.Duration(i%20) * 100 * time.Microsecond)
 		_ = d.Close()
 		wg.Wait()

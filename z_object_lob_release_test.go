@@ -55,7 +55,7 @@ func TestObjectLobRelease(t *testing.T) {
 	const qry = "SELECT " + "%OBJ%(1, c, TO_BLOB(UTL_RAW.CAST_TO_RAW('blob'))), %COLL%(c, TO_CLOB('second')) FROM (SELECT :1 AS c FROM DUAL)"
 	query := strings.NewReplacer("%OBJ%", objName, "%COLL%", collName).Replace(qry)
 	var a [8]byte
-	for round := 0; round < 3; round++ {
+	for round := range 3 {
 		cx, err := db.Conn(ctx)
 		if err != nil {
 			t.Fatalf("round %d: the session did not return to the pool: %v", round, err)

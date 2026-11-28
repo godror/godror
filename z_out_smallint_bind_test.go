@@ -38,7 +38,7 @@ func TestOutSmallIntNoCursorLeak(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer conn.Close()
-			for i := 0; i < iterations; i++ {
+			for i := range iterations {
 				_, err := conn.ExecContext(ctx, tc.qry, sql.Out{Dest: tc.dest()})
 				if err == nil {
 					t.Fatal("wanted an error")

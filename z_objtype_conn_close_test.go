@@ -51,7 +51,7 @@ func TestObjectTypeConnClose(t *testing.T) {
 	db := sql.OpenDB(godror.NewConnector(P))
 	defer db.Close()
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		cx, err := db.Conn(ctx)
 		if err != nil {
 			t.Fatal(err)

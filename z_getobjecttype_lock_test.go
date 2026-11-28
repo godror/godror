@@ -41,9 +41,7 @@ func TestGetObjectTypeConcurrent(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	for _, name := range names {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ot, err := conn.GetObjectType(name)
 			if err != nil {
 				t.Error(err)
@@ -55,7 +53,7 @@ func TestGetObjectTypeConcurrent(t *testing.T) {
 				return
 			}
 			o.Close()
-		}()
+		})
 	}
 	wg.Wait()
 }

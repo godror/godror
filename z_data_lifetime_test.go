@@ -52,10 +52,8 @@ func TestObjectNumberAttrGC(t *testing.T) {
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			var sink [][]byte
 			for {
 				select {
@@ -73,11 +71,11 @@ func TestObjectNumberAttrGC(t *testing.T) {
 					runtime.GC()
 				}
 			}
-		}()
+		})
 	}
 	defer func() { close(stop); wg.Wait() }()
 
-	for i := 0; i < 20000; i++ {
+	for i := range 20000 {
 		for k, v := range want {
 			got, err := obj.Get(k)
 			if err != nil {

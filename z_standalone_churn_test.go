@@ -97,16 +97,14 @@ func testStandaloneChurn(t *testing.T) {
 		defer bdb.Close()
 		bdb.SetMaxOpenConns(1)
 		bdb.SetMaxIdleConns(0)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for ctx.Err() == nil {
 				pctx, pcancel := context.WithTimeout(ctx, 2*time.Second)
 				_ = bdb.PingContext(pctx) // expected to fail
 				pcancel()
 				time.Sleep(500 * time.Millisecond)
 			}
-		}()
+		})
 	}
 
 	var ok, failed, rounds atomic.Int64
@@ -117,10 +115,8 @@ func testStandaloneChurn(t *testing.T) {
 			rounds.Add(1)
 			start := make(chan struct{})
 			var rwg sync.WaitGroup
-			for i := 0; i < workers; i++ {
-				rwg.Add(1)
-				go func() {
-					defer rwg.Done()
+			for range workers {
+				rwg.Go(func() {
 					<-start // release all workers at once: overlapping dpiConn_create
 					qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
 					defer qcancel()
@@ -146,7 +142,7 @@ func testStandaloneChurn(t *testing.T) {
 						ok.Add(1)
 					}
 					_ = conn.Close() // dpiConn_release
-				}()
+				})
 			}
 			close(start)
 			rwg.Wait()

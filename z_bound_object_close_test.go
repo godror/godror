@@ -70,7 +70,7 @@ func TestBoundObjectNotClosed(t *testing.T) {
 	t.Run("pointer", func(t *testing.T) {
 		obj := newObj(t, 42)
 		defer obj.Close()
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			var got int64
 			if _, err := conn.ExecContext(ctx, getIDQry, obj, sql.Out{Dest: &got}); err != nil {
 				t.Fatalf("%d. %s: %+v", i, getIDQry, err)
@@ -84,7 +84,7 @@ func TestBoundObjectNotClosed(t *testing.T) {
 
 	t.Run("value", func(t *testing.T) {
 		obj := newObj(t, 42)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			var got int64
 			if _, err := conn.ExecContext(ctx, getIDQry, *obj, sql.Out{Dest: &got}); err != nil {
 				t.Fatalf("%d. %s: %+v", i, getIDQry, err)
@@ -103,7 +103,7 @@ func TestBoundObjectNotClosed(t *testing.T) {
 		obj := newObj(t, 42)
 		defer obj.Close()
 		qry := "DECLARE v " + objName + " := :1; BEGIN v.id := v.id + 1; :1 := v; END;"
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			if _, err := conn.ExecContext(ctx, qry, sql.Out{Dest: obj, In: true}); err != nil {
 				t.Fatalf("%d. %s: %+v", i, qry, err)
 			}
@@ -121,13 +121,13 @@ func TestBoundObjectNotClosed(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer coll.Close()
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if err := coll.Append(i); err != nil {
 				t.Fatal(err)
 			}
 		}
 		qry := "DECLARE v " + collName + " := :1; BEGIN :2 := CASE WHEN v IS NULL THEN -1 ELSE v.COUNT END; END;"
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			var got int64
 			if _, err := conn.ExecContext(ctx, qry, coll, sql.Out{Dest: &got}); err != nil {
 				t.Fatalf("%d. %s: %+v", i, qry, err)

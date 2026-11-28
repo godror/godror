@@ -113,7 +113,7 @@ func TestOnInitFailedSessionNotReused(t *testing.T) {
 		conn.Close()
 		t.Fatal("the first connection succeeded, though its context was canceled in OnInit")
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		var s string
 		if err := db.QueryRowContext(ctx, "SELECT TO_CHAR(SYSDATE) FROM DUAL").Scan(&s); err != nil {
 			t.Fatal(err)

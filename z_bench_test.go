@@ -380,12 +380,13 @@ func TestSelectOrder(t *testing.T) {
 		cnt = 10
 		tbl = "(SELECT 1 FROM DUAL " + strings.Repeat("\nUNION ALL SELECT 1 FROM DUAL ", int(cnt)-1) + ")" //nolint:gas
 	}
-	qry := "SELECT ROWNUM FROM " + tbl //nolint:gas
+	var qry strings.Builder
+	qry.WriteString("SELECT ROWNUM FROM " + tbl) //nolint:gas
 	for i := cnt; i < limit; i *= cnt {
-		qry += ", " + tbl
+		qry.WriteString(", " + tbl)
 	}
-	t.Logf("qry=%s", qry)
-	rows, err := testDb.Query(qry)
+	t.Logf("qry=%s", qry.String())
+	rows, err := testDb.Query(qry.String())
 	if err != nil {
 		t.Fatal(err)
 	}

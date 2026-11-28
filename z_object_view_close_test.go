@@ -104,7 +104,7 @@ func TestObjectViewClose(t *testing.T) {
 	t.Run("element", func(t *testing.T) {
 		coll := newColl(t)
 		defer coll.Close()
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			v, err := coll.Get(0)
 			if err != nil {
 				t.Fatal(err)
@@ -129,7 +129,7 @@ func TestObjectViewClose(t *testing.T) {
 	t.Run("StructScan", func(t *testing.T) {
 		coll := newColl(t)
 		defer coll.Close()
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			var got []elemStruct
 			if err := godror.StructScan(&got, coll.Object); err != nil {
 				t.Fatal(err)
@@ -159,7 +159,7 @@ func TestObjectViewClose(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			v, err := wrap.Get("X")
 			if err != nil {
 				t.Fatal(err)
@@ -193,7 +193,7 @@ func TestObjectViewClose(t *testing.T) {
 			X     elemStruct   `godror:"X"`
 			Items []elemStruct `godror:"ITEMS"`
 		}
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			if err := godror.StructScan(&got, wrap); err != nil {
 				t.Fatal(err)
 			}

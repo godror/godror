@@ -31,7 +31,7 @@ func TestOutLobPreparedReexec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		lob := godror.Lob{IsClob: true}
 		if _, err := stmt.ExecContext(ctx, sql.Out{Dest: &lob}, i); err != nil {
 			t.Fatalf("%d. %v", i, err)

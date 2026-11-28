@@ -38,7 +38,7 @@ func TestSubscriptionCloseDuringCallback(t *testing.T) {
 	}
 	defer testDb.Exec("DROP TABLE " + tbl)
 
-	for round := 0; round < 3; round++ {
+	for round := range 3 {
 		func() {
 			cx, err := testDb.Conn(ctx)
 			if err != nil {

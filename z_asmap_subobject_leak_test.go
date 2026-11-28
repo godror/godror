@@ -81,7 +81,7 @@ func TestAsMapSubObjectLeak(t *testing.T) {
 			// Close the driver connection on every release, to give the session back.
 			db.SetMaxIdleConns(0)
 
-			for i := 0; i < 4; i++ {
+			for i := range 4 {
 				cx, err := db.Conn(ctx)
 				if err != nil {
 					t.Fatalf("%d. no session in the pool of two, though every connection was closed: %+v", i, err)
@@ -92,7 +92,7 @@ func TestAsMapSubObjectLeak(t *testing.T) {
 				}
 				obj := v.(*godror.Object)
 				// Twice: closing the sub-objects must leave obj intact.
-				for j := 0; j < 2; j++ {
+				for j := range 2 {
 					if got, err := tC.f(obj); err != nil {
 						t.Error(err)
 					} else if got != tC.want {

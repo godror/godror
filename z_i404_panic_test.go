@@ -52,9 +52,7 @@ func testExecContextPanicOne(t *testing.T, conn *sql.Conn, wait time.Duration) (
 	var err error
 
 	syncWg.Add(1)
-	doneWg.Add(1)
-	go func() {
-		defer doneWg.Done()
+	doneWg.Go(func() {
 		syncWg.Wait()
 
 		start := time.Now()
@@ -67,7 +65,7 @@ func testExecContextPanicOne(t *testing.T, conn *sql.Conn, wait time.Duration) (
 				t.Error(err)
 			}
 		}
-	}()
+	})
 
 	syncWg.Done()
 

@@ -132,11 +132,12 @@ func TestBindShorterCollection(t *testing.T) {
 		for _, kind := range []string{"SliceWriteObject", "ObjectCollectionWriter"} {
 			for _, n := range []int{3, 1, 0, 2} {
 				items := make([]bindReuseItem, n)
-				want := strconv.Itoa(n) + ":"
+				var want strings.Builder
+				want.WriteString(strconv.Itoa(n) + ":")
 				for i := range items {
 					id := 10*n + i
 					items[i] = bindReuseItem{ID: int32(id), Name: "n", Extra: "x"}
-					want += strconv.Itoa(id) + "/n/x,"
+					want.WriteString(strconv.Itoa(id) + "/n/x,")
 				}
 				var arg any = bindReuseList{Items: items}
 				if kind == "ObjectCollectionWriter" {
@@ -146,8 +147,8 @@ func TestBindShorterCollection(t *testing.T) {
 				if err := exec(sql.Out{Dest: &got}, arg); err != nil {
 					t.Fatalf("%s %d: %+v", kind, n, err)
 				}
-				if got != want {
-					t.Errorf("%s with %d elements: the server got %q, wanted %q", kind, n, got, want)
+				if got != want.String() {
+					t.Errorf("%s with %d elements: the server got %q, wanted %q", kind, n, got, want.String())
 				}
 			}
 		}

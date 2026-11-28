@@ -100,7 +100,7 @@ END;`)
 
 	// The cursors must not accumulate, whether they are unread, read fully
 	// or read in part (open_cursors is 300 by default).
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		rc := exec(i % 90)
 		if i%3 != 0 {
 			if _, err := read(rc, 2*(i%3)-3); err != nil {
@@ -127,7 +127,7 @@ func TestOutRefCursorOpenError(t *testing.T) {
 	}
 	defer conn.Close()
 	const qry = "BEGIN OPEN :1 FOR SELECT level AS a FROM DUAL CONNECT BY level <= 3; END;"
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		var rc driver.Rows
 		if _, err := conn.ExecContext(ctx, qry, sql.Out{Dest: &rc}, godror.FetchArraySize(1<<30)); err == nil {
 			rc.Close()

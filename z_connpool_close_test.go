@@ -70,7 +70,7 @@ func TestConnPoolClose(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		pool := godror.NewConnPool(testDb, 2)
 		c1, err := pool.Conn(ctx)
 		if err != nil {
@@ -84,9 +84,7 @@ func TestConnPoolClose(t *testing.T) {
 		var wg sync.WaitGroup
 		start := make(chan struct{})
 		for _, f := range []func() error{c1.Close, c2.Close, pool.Close} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				defer func() {
 					if r := recover(); r != nil {
 						t.Errorf("iteration %d: panic: %v", i, r)
@@ -94,7 +92,7 @@ func TestConnPoolClose(t *testing.T) {
 				}()
 				<-start
 				_ = f()
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()

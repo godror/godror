@@ -87,7 +87,7 @@ func TestImplicitResultsNoCursorLeak(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		got, err := readImplicitResults(ctx, conn)
 		skipNoImplicitResults(t, err)
 		if err != nil {

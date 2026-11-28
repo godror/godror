@@ -40,7 +40,7 @@ func TestTempLobClose(t *testing.T) {
 		if !ok {
 			t.Skipf("%T has no NewTempLob", dc)
 		}
-		for i := 0; i < N; i++ {
+		for i := range N {
 			lob, err := tl.NewTempLob(i%2 == 0)
 			if err != nil {
 				return err

@@ -93,7 +93,7 @@ func TestExecArgCount(t *testing.T) {
 			t.Fatal(err)
 		}
 		qry := positional + " /* pool */"
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			if _, err := testDb.ExecContext(ctx, qry, 1, "of the other user"); err != nil {
 				t.Fatal(err)
 			}
